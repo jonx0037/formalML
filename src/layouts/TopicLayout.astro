@@ -1,0 +1,157 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import DifficultyBadge from '../components/ui/DifficultyBadge.astro';
+import PrerequisiteChip from '../components/ui/PrerequisiteChip.astro';
+import { getCollection } from 'astro:content';
+
+interface Props {
+  frontmatter: {
+    title: string;
+    subtitle?: string;
+    difficulty: 'foundational' | 'intermediate' | 'advanced';
+    domain: string;
+    prerequisites: string[];
+    estimatedReadTime?: number;
+    videoId?: string | null;
+    abstract: string;
+    connections: { topic: string; relationship: string }[];
+    references: { type: string; title: string; authors?: string; year?: number; url?: string; note?: string }[];
+  };
+}
+
+const { frontmatter } = Astro.props;
+
+// Resolve prerequisites
+const allTopics = await getCollection('topics');
+const prereqs = frontmatter.prerequisites.map((slug) => {
+  const topic = allTopics.find((t) => t.id === slug);
+  return {
+    slug,
+    title: topic?.data.title ?? slug,
+    available: topic?.data.status === 'published',
+  };
+});
+
+// Find "where to go next" — topics that list this one as a prerequisite
+const currentSlug = Astro.url.pathname.split('/').filter(Boolean).pop() ?? '';
+const nextTopics = allTopics.filter(
+  (t) => t.data.prerequisites.includes(currentSlug) && t.data.status === 'published'
+);
+---
+
+<BaseLayout title={frontmatter.title} description={frontmatter.abstract}>
+  <article class="mx-auto max-w-3xl px-6 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <DifficultyBadge difficulty={frontmatter.difficulty} />
+        <span class="text-xs font-[family-name:var(--font-sans)] text-[var(--color-text-secondary)] uppercase tracking-wider">
+          {frontmatter.domain}
+        </span>
+        {frontmatter.estimatedReadTime && (
+          <span class="text-xs text-[var(--color-text-secondary)]">
+            {frontmatter.estimatedReadTime} min read
+          </span>
+        )}
+      </div>
+      <h1 class="text-4xl font-semibold font-[family-name:var(--font-sans)] leading-tight">
+        {frontmatter.title}
+      </h1>
+      {frontmatter.subtitle && (
+        <p class="mt-3 text-xl text-[var(--color-text-secondary)]">
+          {frontmatter.subtitle}
+        </p>
+      )}
+    </header>
+
+    <!-- Prerequisites bar -->
+    {prereqs.length > 0 && (
+      <div class="mb-10 flex flex-wrap items-center gap-2">
+        <span class="text-xs font-[family-name:var(--font-sans)] text-[var(--color-text-secondary)] uppercase tracking-wider mr-2">
+          Prerequisites:
+        </span>
+        {prereqs.map((p) => (
+          <PrerequisiteChip slug={p.slug} title={p.title} available={p.available} />
+        ))}
+      </div>
+    )}
+
+    <!-- Video embed (conditional) -->
+    {frontmatter.videoId && (
+      <div class="mb-12 aspect-video overflow-hidden rounded-lg">
+        <iframe
+          src={`https://www.youtube.com/embed/${frontmatter.videoId}`}
+          class="h-full w-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen
+        />
+      </div>
+    )}
+
+    <!-- MDX content (the three pillars) -->
+    <div class="prose">
+      <slot />
+    </div>
+
+    <!-- Connections -->
+    {frontmatter.connections.length > 0 && (
+      <section class="mt-16 border-t border-gray-200/60 pt-8">
+        <h2 class="mb-4 text-lg font-semibold font-[family-name:var(--font-sans)]">Connections</h2>
+        <ul class="space-y-2">
+          {frontmatter.connections.map((c) => (
+            <li class="text-sm">
+              <span class="text-[var(--color-text-secondary)] italic">{c.relationship}</span>{' '}
+              <a href={`/topics/${c.topic}`} class="text-[var(--color-accent)] hover:underline">{c.topic}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <!-- References -->
+    {frontmatter.references.length > 0 && (
+      <section class="mt-12 border-t border-gray-200/60 pt-8">
+        <h2 class="mb-4 text-lg font-semibold font-[family-name:var(--font-sans)]">References &amp; Further Reading</h2>
+        <ul class="space-y-3">
+          {frontmatter.references.map((r) => (
+            <li class="text-sm">
+              <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs uppercase">{r.type}</span>{' '}
+              {r.url ? (
+                <a href={r.url} class="text-[var(--color-accent)] hover:underline">{r.title}</a>
+              ) : (
+                <span>{r.title}</span>
+              )}
+              {r.authors && <span class="text-[var(--color-text-secondary)]"> — {r.authors}</span>}
+              {r.year && <span class="text-[var(--color-text-secondary)]"> ({r.year})</span>}
+              {r.note && <span class="block text-xs text-[var(--color-text-secondary)] mt-0.5">{r.note}</span>}
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <!-- Navigation footer -->
+    <nav class="mt-16 flex justify-between border-t border-gray-200/60 pt-8 text-sm">
+      {prereqs.length > 0 && (
+        <div>
+          <span class="block text-xs text-[var(--color-text-secondary)] uppercase tracking-wider mb-2">Prerequisites</span>
+          <div class="flex flex-wrap gap-2">
+            {prereqs.filter((p) => p.available).map((p) => (
+              <a href={`/topics/${p.slug}`} class="text-[var(--color-accent)] hover:underline">{p.title}</a>
+            ))}
+          </div>
+        </div>
+      )}
+      {nextTopics.length > 0 && (
+        <div class="text-right">
+          <span class="block text-xs text-[var(--color-text-secondary)] uppercase tracking-wider mb-2">Where to go next</span>
+          <div class="flex flex-wrap justify-end gap-2">
+            {nextTopics.map((t) => (
+              <a href={`/topics/${t.id}`} class="text-[var(--color-accent)] hover:underline">{t.data.title}</a>
+            ))}
+          </div>
+        </div>
+      )}
+    </nav>
+  </article>
+</BaseLayout>
