@@ -1,0 +1,445 @@
+---
+title: "Persistent Homology"
+subtitle: "Tracking topological features across scales — the workhorse of topological data analysis"
+status: "published"
+difficulty: "intermediate"
+prerequisites: ["simplicial-complexes"]
+tags: ["topology", "tda", "persistent-homology", "homology", "filtration"]
+domain: "topology"
+videoId: null
+notebookPath: "notebooks/persistent-homology.ipynb"
+githubUrl: null
+datePublished: 2026-03-15
+estimatedReadTime: 35
+abstract: "Persistent homology solves the fundamental problem of topological data analysis: at what scale should we analyze shape? By tracking how topological features — connected components, loops, voids — are born and die across a filtration of simplicial complexes, it produces a multiscale signature that is both theoretically grounded (via the Stability Theorem) and practically useful as input to machine learning pipelines."
+connections:
+  - topic: "simplicial-complexes"
+    relationship: "builds on"
+  - topic: "metric-spaces"
+    relationship: "uses concepts from"
+references:
+  - type: "paper"
+    title: "Topology and Data"
+    authors: "Gunnar Carlsson"
+    year: 2009
+    url: "https://doi.org/10.1090/S0273-0979-09-01249-X"
+    note: "The survey that defined TDA as a field — essential reading"
+  - type: "paper"
+    title: "Stability of Persistence Diagrams"
+    authors: "David Cohen-Steiner, Herbert Edelsbrunner & John Harer"
+    year: 2007
+    url: "https://doi.org/10.1007/s00454-006-1276-5"
+    note: "The foundational stability result; Theorem 5 in this topic"
+  - type: "book"
+    title: "Computational Topology: An Introduction"
+    authors: "Herbert Edelsbrunner & John Harer"
+    year: 2010
+    note: "Chapters 4-7 cover persistent homology comprehensively"
+  - type: "paper"
+    title: "Persistence Images: A Stable Vector Representation of Persistent Homology"
+    authors: "Henry Adams, Tegan Emerson, Michael Kirby, Rachel Neville, Chris Peterson, Patrick Shipman, Sofya Chepushtanova, Eric Hanson, Francis Motta & Lori Ziegelmeier"
+    year: 2017
+    url: "https://doi.org/10.5555/3122009.3122017"
+    note: "The standard vectorization method for ML pipelines"
+  - type: "paper"
+    title: "Sliding Windows and Persistence: An Application of Topological Methods to Signal Analysis"
+    authors: "Jose A. Perea & John Harer"
+    year: 2015
+    url: "https://doi.org/10.1007/s10208-014-9206-z"
+    note: "Time series → point cloud → topology via Takens embedding"
+  - type: "paper"
+    title: "Ripser: Efficient Computation of Vietoris-Rips Persistence Barcodes"
+    authors: "Ulrich Bauer"
+    year: 2021
+    url: "https://doi.org/10.1007/s41468-021-00071-5"
+    note: "State-of-the-art algorithm — what powers the ripser library"
+  - type: "book"
+    title: "Elementary Applied Topology"
+    authors: "Robert Ghrist"
+    year: 2014
+    url: "https://www2.math.upenn.edu/~ghrist/notes.html"
+    note: "The most visual introduction to applied algebraic topology"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import LinkedVizDemo from '../../components/viz/LinkedVizDemo.tsx';
+
+## Overview & Motivation
+
+Consider two point clouds with **identical** first- and second-order statistics — same mean, same variance, same covariance. One is sampled from an annulus (a ring), the other from a Gaussian cluster. Every classical statistical test says they're the same. But one has a *hole* and the other doesn't, and that difference can be the signal you need — whether you're detecting anomalies in sensor networks, classifying dynamical regimes in time series, or finding structure in high-dimensional embeddings.
+
+The problem is: what does "has a hole" even mean for a finite point cloud? Points are discrete; they don't have holes in any obvious sense. The Vietoris-Rips construction (see [Simplicial Complexes](/topics/simplicial-complexes)) gives us a way to build a continuous-ish structure from discrete data, but it introduces a new problem: the result depends on a scale parameter $\varepsilon$. Choose $\varepsilon$ too small and you see only isolated points. Too large and everything collapses into a single blob.
+
+**Persistent homology** is the answer: instead of choosing a single scale, track the topology at *every* scale simultaneously. Features that persist across a wide range of $\varepsilon$ are real structure; features that flicker in and out are noise. This insight — that **persistence is a proxy for significance** — is what makes TDA useful for machine learning.
+
+---
+
+## Formal Framework
+
+### Filtrations
+
+<TheoremBlock type="definition" number={1}>
+A **filtration** of a simplicial complex $K$ is a nested sequence of subcomplexes:
+
+$$\emptyset = K_0 \subseteq K_1 \subseteq K_2 \subseteq \cdots \subseteq K_m = K$$
+
+Each $K_i$ is a simplicial complex, and the inclusion $K_i \hookrightarrow K_{i+1}$ adds one or more simplices.
+</TheoremBlock>
+
+For the Vietoris-Rips complex, the filtration is parameterized by $\varepsilon$: as $\varepsilon$ increases from 0 to $\infty$, simplices enter the complex at their **birth time** (the minimum $\varepsilon$ at which they appear). An edge $[v_i, v_j]$ is born at $\varepsilon = d(v_i, v_j)$. A triangle $[v_i, v_j, v_k]$ is born at $\varepsilon = \max(d(v_i, v_j), d(v_i, v_k), d(v_j, v_k))$.
+
+### Chain Groups and the Boundary Operator
+
+To detect "holes," we need algebra. The key idea: a *loop* is a collection of edges that forms a cycle, and a *hole* is a loop that isn't the boundary of something filled in.
+
+<TheoremBlock type="definition" number={2}>
+The **$k$-chain group** $C_k(K)$ of a simplicial complex $K$ is the free abelian group (or $\mathbb{Z}_2$-vector space) generated by the $k$-simplices of $K$. A $k$-chain is a formal sum of $k$-simplices:
+
+$$c = \sum_i a_i \sigma_i, \quad a_i \in \mathbb{Z}_2, \quad \sigma_i \in K \text{ with } \dim(\sigma_i) = k$$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Working over $\mathbb{Z}_2$ (coefficients are 0 or 1, with $1 + 1 = 0$) simplifies everything: we don't need to worry about orientations. Most TDA software uses $\mathbb{Z}_2$ coefficients. Over $\mathbb{Z}$, you get torsion information (e.g., distinguishing a Möbius band from a cylinder), but this is rarely needed in data analysis.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={3}>
+The **boundary operator** $\partial_k : C_k(K) \to C_{k-1}(K)$ maps each $k$-simplex to the alternating sum of its $(k-1)$-dimensional faces:
+
+$$\partial_k [v_0, v_1, \ldots, v_k] = \sum_{i=0}^{k} (-1)^i [v_0, \ldots, \hat{v}_i, \ldots, v_k]$$
+
+where $\hat{v}_i$ denotes omission. Over $\mathbb{Z}_2$, the signs disappear and this reduces to the sum of all faces.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={1}>
+For the triangle $[v_0, v_1, v_2]$ with vertices, edges, and the filled face:
+
+**$\partial_2$:** The boundary of the triangle is the sum of its edges:
+$$\partial_2 [v_0, v_1, v_2] = [v_1, v_2] - [v_0, v_2] + [v_0, v_1]$$
+
+**$\partial_1$:** The boundary of each edge is the difference of its endpoints:
+$$\partial_1 [v_i, v_j] = [v_j] - [v_i]$$
+
+Written as matrices (with $\mathbb{Z}$ coefficients):
+
+$$\partial_2 = \begin{pmatrix} 1 \\ -1 \\ 1 \end{pmatrix}, \quad \partial_1 = \begin{pmatrix} -1 & -1 & 0 \\ 1 & 0 & -1 \\ 0 & 1 & 1 \end{pmatrix}$$
+
+The rows of $\partial_1$ correspond to vertices $v_0, v_1, v_2$; columns to edges $[v_0,v_1], [v_0,v_2], [v_1,v_2]$.
+</TheoremBlock>
+
+The following property is the engine of homology:
+
+<TheoremBlock type="theorem" number={1} title="Fundamental Property of the Boundary Operator">
+For all $k \geq 1$:
+
+$$\partial_{k-1} \circ \partial_k = 0$$
+
+That is, the boundary of a boundary is always zero.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+It suffices to check on generators. Let $\sigma = [v_0, v_1, \ldots, v_k]$ be a $k$-simplex. We compute $\partial_{k-1}(\partial_k(\sigma))$ by expanding both operators:
+
+$$\partial_k(\sigma) = \sum_{i=0}^{k} (-1)^i [v_0, \ldots, \hat{v}_i, \ldots, v_k]$$
+
+Applying $\partial_{k-1}$ to each term, we omit a second vertex $v_j$. For each term $(-1)^i [v_0, \ldots, \hat{v}_i, \ldots, v_k]$, the boundary is:
+
+$$\partial_{k-1}\bigl((-1)^i [v_0, \ldots, \hat{v}_i, \ldots, v_k]\bigr) = (-1)^i \sum_{\substack{j=0 \\ j \neq i}}^{k} (-1)^{j'} [v_0, \ldots, \hat{v}_i, \ldots, \hat{v}_j, \ldots, v_k]$$
+
+where the exponent $j'$ depends on the position of $v_j$ in the face *after* $v_i$ has been removed: $j' = j$ if $j < i$, and $j' = j - 1$ if $j > i$.
+
+Now consider a specific $(k-2)$-face $[v_0, \ldots, \hat{v}_i, \ldots, \hat{v}_j, \ldots, v_k]$ with $i < j$. It appears exactly twice in the double sum:
+
+1. First omit $v_i$, then omit $v_j$: sign is $(-1)^i \cdot (-1)^{j-1}$
+2. First omit $v_j$, then omit $v_i$: sign is $(-1)^j \cdot (-1)^{i}$
+
+The sum of these two signs is:
+
+$$(-1)^{i+j-1} + (-1)^{i+j} = (-1)^{i+j-1}(1 + (-1)) = 0$$
+
+Every $(k-2)$-face appears exactly twice with opposite signs, so the entire sum vanishes. Over $\mathbb{Z}_2$, the argument is even simpler: each face appears twice, and $1 + 1 = 0$.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={2}>
+We can verify this directly for the triangle. From Example 1:
+
+$$\partial_1 \circ \partial_2 = \begin{pmatrix} -1 & -1 & 0 \\ 1 & 0 & -1 \\ 0 & 1 & 1 \end{pmatrix} \begin{pmatrix} 1 \\ -1 \\ 1 \end{pmatrix} = \begin{pmatrix} 0 \\ 0 \\ 0 \end{pmatrix}$$
+
+The boundary of the triangle is the cycle $[v_0,v_1] - [v_0,v_2] + [v_1,v_2]$, and the boundary of *that* cycle is zero — exactly because it closes up.
+</TheoremBlock>
+
+### Homology Groups
+
+The $\partial \circ \partial = 0$ property gives us two important subgroups:
+
+<TheoremBlock type="definition" number={4}>
+The **cycle group** is $Z_k = \ker(\partial_k)$ — chains with zero boundary (they "close up").
+
+The **boundary group** is $B_k = \text{im}(\partial_{k+1})$ — chains that are the boundary of something.
+
+Since $\partial_k \circ \partial_{k+1} = 0$, every boundary is a cycle: $B_k \subseteq Z_k$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={5}>
+The **$k$-th homology group** of $K$ is the quotient:
+
+$$H_k(K) = Z_k / B_k = \ker(\partial_k) / \text{im}(\partial_{k+1})$$
+
+The **$k$-th Betti number** is $\beta_k = \text{rank}(H_k)$.
+</TheoremBlock>
+
+Homology counts holes that are *not* filled in:
+- $\beta_0$ = number of **connected components**
+- $\beta_1$ = number of **loops** (independent 1-cycles not bounding a filled region)
+- $\beta_2$ = number of **voids** (enclosed cavities)
+
+<TheoremBlock type="example" number={3}>
+For the **filled triangle** $K = \{[v_0,v_1,v_2], [v_0,v_1], [v_0,v_2], [v_1,v_2], [v_0], [v_1], [v_2]\}$:
+
+- $\ker(\partial_1)$ has rank 1 (one independent cycle: the loop around the triangle)
+- $\text{im}(\partial_2)$ has rank 1 (that loop is the boundary of the filled face)
+- $\beta_1 = 1 - 1 = 0$ — no holes. The apparent loop is a boundary.
+- $\beta_0 = 1$ — one connected component.
+
+Now remove the 2-simplex (just the wireframe triangle, no fill):
+- $\ker(\partial_1)$ still has rank 1
+- $\text{im}(\partial_2)$ now has rank 0 (no 2-simplices to bound anything)
+- $\beta_1 = 1 - 0 = 1$ — one hole. The loop is no longer a boundary.
+
+This is the key insight: the *same cycle* can be a hole or not, depending on whether there's something to fill it.
+</TheoremBlock>
+
+### Persistent Homology
+
+Now we combine filtrations with homology. As $\varepsilon$ increases, new simplices enter the complex. Each new simplex either:
+1. **Creates** a topological feature (a new cycle appears that isn't a boundary), or
+2. **Destroys** a topological feature (a cycle that was a hole gets filled in)
+
+<TheoremBlock type="definition" number={6}>
+Given a filtration $K_0 \subseteq K_1 \subseteq \cdots \subseteq K_m$, the **persistent homology** tracks, for each topological feature:
+- Its **birth time** $b$: the filtration index where the feature first appears
+- Its **death time** $d$: the filtration index where the feature is destroyed
+- Its **persistence**: $d - b$, measuring how long the feature survives
+
+A feature with $d = \infty$ (never destroyed) is called an **essential** feature.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={7}>
+The **persistence diagram** $\text{Dgm}(K_\bullet)$ is the multiset of points $(b_i, d_i) \in \mathbb{R}^2$ corresponding to birth-death pairs, together with infinitely many copies of every point on the diagonal $\{(x,x) \mid x \in \mathbb{R}\}$.
+
+Equivalently, the **persistence barcode** represents each feature as a horizontal interval $[b_i, d_i)$.
+</TheoremBlock>
+
+Points far from the diagonal have high persistence — they represent features that survive across a wide range of scales. Points near the diagonal have low persistence — they are topological "noise," features that appear and immediately disappear. The diagonal points are a technical convenience that makes the space of persistence diagrams well-behaved.
+
+<TheoremBlock type="remark">
+There is a deep algebraic structure here that we're glossing over: the inclusions $K_i \hookrightarrow K_j$ induce maps on homology $H_k(K_i) \to H_k(K_j)$. The persistence module is the entire sequence of these maps, and the Structure Theorem for persistence modules (a consequence of the classification of finitely generated modules over a PID) guarantees that this module decomposes into interval summands — which are exactly the bars in the barcode. This decomposition is unique and computable via matrix reduction.
+</TheoremBlock>
+
+---
+
+## Visual Intuition
+
+The visualization below is the core interactive experience. The top panel shows a Vietoris-Rips complex built from points sampled near a circle. The bottom panels show the persistence diagram and barcode.
+
+**Drag the $\varepsilon$ slider** and watch all three panels update together:
+
+<LinkedVizDemo client:visible />
+
+**What to notice:**
+
+1. **$H_0$ features (teal):** At $\varepsilon = 0$, every point is its own connected component — 15 features are born simultaneously. As $\varepsilon$ increases, components merge. Each merge event kills a component: you see teal points appear in the persistence diagram with increasing death values. One component survives to $\infty$ (the essential $H_0$ feature).
+
+2. **$H_1$ features (purple):** At a critical $\varepsilon$ around 0.7-0.9, the edges form a cycle around the point cloud but the interior hasn't filled in yet — a loop is *born*. As $\varepsilon$ increases further, 2-simplices fill the interior, and the loop *dies*. The persistence (death minus birth) of this $H_1$ feature is the key topological signal: it tells you "this point cloud has a circular structure."
+
+3. **Signal vs. noise:** The long-lived $H_1$ bar stands out from the short bars near the diagonal. That gap between persistent and ephemeral features is what makes TDA work in practice — it's a built-in notion of statistical significance, grounded in geometry rather than distributional assumptions.
+
+---
+
+## The Stability Theorem
+
+The practical utility of persistent homology rests on a single theorem: small perturbations of the input data produce small changes in the persistence diagram. Without this, the method would be useless — any noise would scramble the output.
+
+<TheoremBlock type="definition" number={8}>
+The **bottleneck distance** between two persistence diagrams $D$ and $D'$ is:
+
+$$d_B(D, D') = \inf_\gamma \sup_{p \in D} \| p - \gamma(p) \|_\infty$$
+
+where the infimum is over all bijections $\gamma: D \to D'$ (including diagonal points).
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Stability Theorem (Cohen-Steiner, Edelsbrunner, Harer 2007)">
+Let $f, g: X \to \mathbb{R}$ be tame functions on a topological space $X$. Then:
+
+$$d_B(\text{Dgm}(f), \text{Dgm}(g)) \leq \| f - g \|_\infty$$
+
+The bottleneck distance between persistence diagrams is bounded by the $L^\infty$ distance between the functions that generate them.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The full proof uses the theory of interleavings of persistence modules and is beyond our scope. The essential idea: if $\|f - g\|_\infty \leq \delta$, then the sublevel set filtrations of $f$ and $g$ are $\delta$-interleaved — $f^{-1}(-\infty, t] \subseteq g^{-1}(-\infty, t + \delta]$ and vice versa — which forces a matching between their persistence diagrams that moves no point by more than $\delta$. See Cohen-Steiner, Edelsbrunner & Harer (2007) for the complete argument.
+</TheoremBlock>
+
+For point cloud data, the relevant corollary is:
+
+<TheoremBlock type="corollary" number={1}>
+Let $X$ and $Y$ be finite point clouds with $d_H(X, Y) \leq \delta$ (Hausdorff distance). Then:
+
+$$d_B(\text{Dgm}(\text{VR}(X)), \text{Dgm}(\text{VR}(Y))) \leq 2\delta$$
+</TheoremBlock>
+
+In plain language: if you jiggle each point by at most $\delta$, the persistence diagram moves by at most $2\delta$. This is what makes persistent homology safe to use on noisy real-world data.
+
+---
+
+## Working Code
+
+### Computing Persistence with Ripser
+
+```python
+import numpy as np
+from ripser import ripser
+from persim import plot_diagrams
+
+# Generate an annulus (has a hole) and a Gaussian cluster (no hole)
+np.random.seed(42)
+n = 200
+
+theta = np.random.uniform(0, 2 * np.pi, n)
+r = 1.0 + np.random.normal(0, 0.1, n)
+annulus = np.column_stack([r * np.cos(theta), r * np.sin(theta)])
+
+cluster = np.random.randn(n, 2) * np.std(annulus, axis=0) + np.mean(annulus, axis=0)
+
+# Compute persistence (H₀ and H₁)
+result_annulus = ripser(annulus, maxdim=1)
+result_cluster = ripser(cluster, maxdim=1)
+
+# The annulus has a high-persistence H₁ feature (the loop)
+dgm1 = result_annulus['dgms'][1]
+max_pers = np.max(dgm1[:, 1] - dgm1[:, 0])
+print(f"Annulus max H₁ persistence: {max_pers:.4f}")
+
+# The cluster has only low-persistence H₁ noise
+dgm1_c = result_cluster['dgms'][1]
+max_pers_c = np.max(dgm1_c[:, 1] - dgm1_c[:, 0])
+print(f"Cluster max H₁ persistence: {max_pers_c:.4f}")
+```
+
+### Verifying the Stability Theorem Empirically
+
+```python
+from persim import bottleneck
+
+# Clean circle
+n_pts = 100
+theta_base = np.linspace(0, 2 * np.pi, n_pts, endpoint=False)
+base_cloud = np.column_stack([np.cos(theta_base), np.sin(theta_base)])
+base_dgm = ripser(base_cloud, maxdim=1)['dgms'][1]
+
+# Add increasing noise and measure diagram movement
+for noise_std in [0.0, 0.1, 0.2, 0.3, 0.5]:
+    noise = noise_std * np.random.randn(n_pts, 2)
+    noisy_cloud = base_cloud + noise
+    noisy_dgm = ripser(noisy_cloud, maxdim=1)['dgms'][1]
+
+    bn = bottleneck(base_dgm, noisy_dgm)
+    linf = np.max(np.abs(noise)) if noise_std > 0 else 0
+    print(f"noise σ={noise_std:.1f}: ||perturbation||∞={linf:.3f}, d_B={bn:.3f}, "
+          f"bound holds: {bn <= linf + 1e-10 or noise_std == 0}")
+```
+
+### Vectorization: Persistence Images for ML
+
+Persistence diagrams aren't fixed-size vectors, so we can't feed them directly to most classifiers. **Persistence images** (Adams et al., 2017) solve this by placing a Gaussian at each point $(b, d-b)$ and evaluating on a grid:
+
+```python
+from persim import PersistenceImager
+
+# Create a persistence image from H₁
+pimgr = PersistenceImager(pixel_size=0.05, birth_range=(0, 1.5), pers_range=(0, 1.0))
+pimgr.fit([result_annulus['dgms'][1]])
+
+img = pimgr.transform(result_annulus['dgms'][1])
+print(f"Feature vector shape: {img.flatten().shape}")
+# This fixed-size vector goes into any sklearn classifier
+```
+
+### Full Pipeline: Time Series Classification
+
+The Takens delay embedding theorem connects time series analysis to topology:
+
+$$x(t) \mapsto \bigl(x(t),\; x(t+\tau),\; x(t+2\tau),\; \ldots,\; x(t+(d-1)\tau)\bigr)$$
+
+Periodic signals produce loops in the embedding; chaotic signals do not.
+
+```python
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+
+def takens_embedding(ts, dim=2, delay=10):
+    """Takens delay embedding of a 1D time series."""
+    n = len(ts) - (dim - 1) * delay
+    return np.array([ts[i:i + dim * delay:delay] for i in range(n)])
+
+def topological_features(ts):
+    """Extract topological feature vector from a time series."""
+    embedded = takens_embedding(ts, dim=2, delay=10)
+    result = ripser(embedded, maxdim=1)
+    features = []
+    for d in range(2):  # H₀ and H₁
+        dgm = result['dgms'][d]
+        finite = dgm[np.isfinite(dgm[:, 1])]
+        if len(finite) > 0:
+            pers = finite[:, 1] - finite[:, 0]
+            features.extend([
+                np.max(pers),        # Max persistence
+                np.mean(pers),       # Mean persistence
+                np.std(pers),        # Std of persistence
+                np.sum(pers > 0.1),  # Count of significant features
+                np.sum(pers ** 2),   # Total persistence (L² norm)
+            ])
+        else:
+            features.extend([0, 0, 0, 0, 0])
+    return np.array(features)
+
+# Generate labeled time series from 3 dynamical regimes
+X, y = [], []
+for regime in range(3):
+    for _ in range(50):
+        t = np.linspace(0, 6 * np.pi, 300)
+        noise = 0.05 * np.random.randn(300)
+        if regime == 0:    # Periodic
+            ts = np.sin(t) + noise
+        elif regime == 1:  # Quasi-periodic
+            ts = np.sin(t) + 0.5 * np.sin(np.sqrt(2) * t) + noise
+        else:              # Chaotic (logistic map)
+            ts = np.zeros(300)
+            ts[0] = 0.1
+            for i in range(1, 300):
+                ts[i] = 3.9 * ts[i-1] * (1 - ts[i-1])
+        X.append(topological_features(ts))
+        y.append(regime)
+
+X, y = np.array(X), np.array(y)
+scores = cross_val_score(RandomForestClassifier(n_estimators=100, random_state=42),
+                         X, y, cv=5)
+print(f"5-fold CV accuracy: {scores.mean():.3f} ± {scores.std():.3f}")
+```
+
+This pipeline — time series → Takens embedding → persistent homology → feature vector → classifier — is one of the most successful applications of TDA in practice. It works because the persistence features are **invariant to reparameterization** of the time series (you can stretch or compress time and the topology doesn't change) and **stable under noise** (by the Stability Theorem).
+
+---
+
+## Connections & Applications
+
+Persistent homology sits at the center of a growing web of mathematical and applied techniques:
+
+- **Topological machine learning:** Persistence features have been used for protein classification (Cang & Wei, 2017), materials science (Hiraoka et al., 2016), cosmology (Xu et al., 2019), and neuroscience (Giusti et al., 2015). The common thread: data has shape, and shape carries information that statistics alone miss.
+
+- **Persistence landscapes** (Bubenik, 2015) and **persistence images** (Adams et al., 2017) transform diagrams into Banach space elements or fixed-size vectors, enabling statistical inference and ML integration.
+
+- **Extended persistence** and **zigzag persistence** generalize the one-parameter filtration to more complex parameter spaces, capturing richer topological information.
+
+- **The Stability Theorem** extends to other metrics: Wasserstein distances between diagrams, interleaving distances between persistence modules, and Gromov-Hausdorff distances between metric spaces. This creates a rich metric geometry on the space of shapes.
+
+- **Takens embedding** connects persistent homology to dynamical systems and time series analysis — see Perea & Harer (2015) for the theoretical foundation and the working code above for the practical pipeline.
