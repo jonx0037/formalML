@@ -80,7 +80,12 @@ export default function DAGGraph({
       .append('circle')
       .attr('r', (d) => (d.id === highlightNode ? 12 : 8))
       .attr('fill', (d) => domainColorScale(d.domain))
-      .attr('stroke', (d) => (d.id === highlightNode ? '#1A1A1A' : 'white'))
+      .attr('stroke', (d) => {
+        const style = getComputedStyle(document.documentElement);
+        return d.id === highlightNode
+          ? style.getPropertyValue('--color-text').trim()
+          : style.getPropertyValue('--color-surface').trim();
+      })
       .attr('stroke-width', (d) => (d.id === highlightNode ? 3 : 2))
       .attr('opacity', (d) => (d.status === 'draft' ? 0.4 : 1));
 
