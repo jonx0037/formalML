@@ -103,7 +103,7 @@ export default function PersistenceDiagram({
         .attr('y1', yScale(0))
         .attr('x2', xScale(currentEpsilon))
         .attr('y2', yScale(maxVal))
-        .attr('stroke', '#0F6E56')
+        .attr('stroke', getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim())
         .attr('stroke-width', 1.5)
         .attr('stroke-opacity', 0.5)
         .attr('stroke-dasharray', '6,3');
@@ -115,7 +115,7 @@ export default function PersistenceDiagram({
         .attr('text-anchor', 'middle')
         .style('font-size', '11px')
         .style('font-family', 'var(--font-sans)')
-        .style('fill', '#0F6E56')
+        .style('fill', getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim())
         .text(`ε = ${currentEpsilon.toFixed(2)}`);
     }
 
@@ -206,7 +206,7 @@ export default function PersistenceDiagram({
         .attr('y1', margin.top - 5)
         .attr('x2', xScale(currentEpsilon))
         .attr('y2', height - margin.bottom)
-        .attr('stroke', '#0F6E56')
+        .attr('stroke', getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim())
         .attr('stroke-width', 1.5)
         .attr('stroke-dasharray', '6,3');
     }
@@ -214,7 +214,7 @@ export default function PersistenceDiagram({
 
   return (
     <div ref={containerRef} className="w-full">
-      <svg ref={svgRef} width={width} height={height} className="rounded-lg border border-gray-200" />
+      <svg ref={svgRef} width={width} height={height} className="rounded-lg border border-[var(--color-border)]" />
     </div>
   );
 }
