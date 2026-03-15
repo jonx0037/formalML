@@ -1,12 +1,65 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import TopicCard from '../components/ui/TopicCard.astro';
+import DAGGraph from '../components/viz/DAGGraph.tsx';
+import { getCollection } from 'astro:content';
+import { buildPrerequisiteGraph } from '../lib/prerequisiteGraph';
+
+const allTopics = await getCollection('topics');
+const publishedTopics = allTopics.filter((t) => t.data.status === 'published');
+const latestTopics = publishedTopics
+  .sort((a, b) => (b.data.datePublished?.getTime() ?? 0) - (a.data.datePublished?.getTime() ?? 0))
+  .slice(0, 3);
+
+const { nodes, edges } = buildPrerequisiteGraph(allTopics);
 ---
 
 <BaseLayout title="Home">
-  <h1 class="text-4xl font-semibold font-[family-name:var(--font-sans)] text-center mt-24">
-    formalML
-  </h1>
-  <p class="text-center text-[var(--color-text-secondary)] mt-4 text-lg">
-    The mathematical machinery behind modern machine learning
-  </p>
+  <!-- Hero -->
+  <section class="mx-auto max-w-3xl px-6 pt-24 pb-16 text-center">
+    <h1 class="text-5xl font-semibold font-[family-name:var(--font-sans)] tracking-tight">
+      formal<span class="text-[var(--color-accent)]">ML</span>
+    </h1>
+    <p class="mt-6 text-xl text-[var(--color-text-secondary)] leading-relaxed">
+      The mathematical machinery behind modern machine learning
+    </p>
+    <p class="mt-4 text-base text-[var(--color-text-secondary)] max-w-xl mx-auto leading-relaxed">
+      Deep-dive explainers combining rigorous mathematics, interactive visualizations,
+      and working code. Built for practitioners, graduate students, and researchers.
+    </p>
+  </section>
+
+  <!-- Prerequisite Graph -->
+  {nodes.length > 0 && (
+    <section class="mx-auto max-w-4xl px-6 pb-16">
+      <DAGGraph
+        client:visible
+        nodes={nodes}
+        edges={edges}
+        onNodeClick={(id) => { window.location.href = `/topics/${id}`; }}
+      />
+    </section>
+  )}
+
+  <!-- Latest Topics -->
+  {latestTopics.length > 0 && (
+    <section class="mx-auto max-w-4xl px-6 pb-24">
+      <h2 class="mb-8 text-sm font-medium font-[family-name:var(--font-sans)] uppercase tracking-wider text-[var(--color-text-secondary)]">
+        Latest Topics
+      </h2>
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {latestTopics.map((topic) => (
+          <TopicCard
+            id={topic.id}
+            title={topic.data.title}
+            subtitle={topic.data.subtitle}
+            abstract={topic.data.abstract}
+            difficulty={topic.data.difficulty}
+            domain={topic.data.domain}
+            prerequisiteCount={topic.data.prerequisites.length}
+          />
+        ))}
+      </div>
+    </section>
+  )}
 </BaseLayout>
