@@ -21,6 +21,7 @@ export interface DAGNode {
   label: string;
   status: string;
   domain: string;
+  url?: string | null;
 }
 
 export interface DAGEdge {

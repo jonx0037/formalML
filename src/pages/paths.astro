@@ -1,6 +1,9 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import CurriculumGraph from '../components/viz/CurriculumGraph.tsx';
 import { getCollection } from 'astro:content';
+import { tracks } from '../data/curriculum';
+import graphData from '../data/curriculum-graph.json';
 
 const allTopics = await getCollection('topics');
 const publishedTopics = allTopics.filter((t) => t.data.status === 'published');
@@ -17,105 +20,6 @@ const publishedByDomain = publishedTopics.reduce<Record<string, typeof published
 
 const difficultyOrder = { foundational: 0, intermediate: 1, advanced: 2 };
 
-const curriculum = [
-  {
-    domain: 'topology',
-    label: 'Topology & TDA',
-    description:
-      'Topological Data Analysis — from simplices to persistence diagrams. The geometric heart of the site.',
-    planned: [
-      'Čech Complexes & Nerve Theorem',
-      'Mapper Algorithm',
-      'Barcodes & Bottleneck Distance',
-      'Sheaf Theory',
-    ],
-  },
-  {
-    domain: 'linear-algebra',
-    label: 'Linear Algebra',
-    description:
-      'Spectral theory, matrix decompositions, and the algebraic backbone of nearly every ML method.',
-    planned: [
-      'Spectral Theorem',
-      'Singular Value Decomposition',
-      'PCA & Low-Rank Approximation',
-      'Tensor Decompositions',
-    ],
-  },
-  {
-    domain: 'probability',
-    label: 'Probability & Statistics',
-    description:
-      'Measure-theoretic foundations through PAC learning and concentration inequalities.',
-    planned: [
-      'Measure-Theoretic Probability',
-      'Concentration Inequalities',
-      'PAC Learning Framework',
-      'Bayesian Nonparametrics',
-    ],
-  },
-  {
-    domain: 'optimization',
-    label: 'Optimization',
-    description:
-      'Convex analysis, gradient methods, and the theoretical tools behind modern training algorithms.',
-    planned: [
-      'Convex Analysis',
-      'Gradient Descent & Convergence',
-      'Proximal Methods',
-      'Lagrangian Duality & KKT',
-    ],
-  },
-  {
-    domain: 'geometry',
-    label: 'Differential Geometry',
-    description:
-      'Smooth manifolds, Riemannian metrics, and information geometry for probabilistic models.',
-    planned: [
-      'Smooth Manifolds',
-      'Riemannian Geometry',
-      'Geodesics & Curvature',
-      'Information Geometry & Fisher Metric',
-    ],
-  },
-  {
-    domain: 'information-theory',
-    label: 'Information Theory',
-    description:
-      'Entropy, divergences, and the theoretical limits that underpin compression, coding, and learning.',
-    planned: [
-      'Shannon Entropy & Mutual Information',
-      'KL Divergence & f-Divergences',
-      'Rate-Distortion Theory',
-      'Minimum Description Length',
-    ],
-  },
-  {
-    domain: 'graph-theory',
-    label: 'Graph Theory',
-    description:
-      'Spectral graph theory and random walks — the mathematical foundation of graph neural networks.',
-    planned: [
-      'Graph Laplacians & Spectrum',
-      'Random Walks & Mixing',
-      'Expander Graphs',
-      'Message Passing & GNNs',
-    ],
-  },
-  {
-    domain: 'category-theory',
-    label: 'Category Theory',
-    description:
-      'Functors, adjunctions, and monads — the abstract language that unifies disparate ML structures.',
-    planned: [
-      'Categories & Functors',
-      'Natural Transformations',
-      'Adjunctions',
-      'Monads & Comonads',
-    ],
-  },
-];
-
 const difficultyLabel: Record<string, string> = {
   foundational: 'Foundational',
   intermediate: 'Intermediate',
@@ -130,14 +34,22 @@ const difficultyLabel: Record<string, string> = {
       A planned map of content areas. Published topics are linked; everything else is on the roadmap.
     </p>
 
+    {/* Interactive prerequisite graph — hidden on mobile */}
+    <div class="hidden md:block mb-12">
+      <p class="text-sm text-[var(--color-text-secondary)] mb-4">
+        Explore the full dependency graph, or browse by track below.
+      </p>
+      <CurriculumGraph client:visible nodes={graphData.nodes} edges={graphData.edges} />
+    </div>
+
     <div class="space-y-10">
-      {curriculum.map(({ domain, label, description, planned }) => {
+      {tracks.map(({ domain, label, description, planned }) => {
         const live = (publishedByDomain[domain] ?? []).sort(
           (a, b) => difficultyOrder[a.data.difficulty] - difficultyOrder[b.data.difficulty]
         );
 
         return (
-          <div class="border-t border-[var(--color-border)] pt-8">
+          <div id={domain} class="border-t border-[var(--color-border)] pt-8 scroll-mt-24">
             <div class="flex items-baseline gap-3 mb-1">
               <h2 class="text-lg font-semibold font-[family-name:var(--font-sans)]">{label}</h2>
               {live.length > 0 && (
@@ -161,6 +73,11 @@ const difficultyLabel: Record<string, string> = {
                   <span class="text-xs text-[var(--color-text-secondary)] capitalize">
                     {difficultyLabel[t.data.difficulty]}
                   </span>
+                  {t.data.prerequisites.length === 0 && (
+                    <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+                      Start here
+                    </span>
+                  )}
                 </li>
               ))}
 
