@@ -36,6 +36,44 @@ function circumradius(a: Point2D, b: Point2D, c: Point2D): number {
   return (ab * bc * ca) / (4 * area);
 }
 
+/**
+ * Radius of the smallest enclosing circle of three points.
+ *
+ * For three points, the minimal enclosing circle is:
+ * - With radius maxEdge / 2 if the triangle is right, obtuse, or degenerate/collinear.
+ * - Otherwise, the circumcircle of the triangle (circumradius).
+ */
+function minimalEnclosingCircleRadius(a: Point2D, b: Point2D, c: Point2D): number {
+  const ab = dist(a, b);
+  const bc = dist(b, c);
+  const ca = dist(c, a);
+
+  // Identify the longest side c and the other two sides a and b.
+  let x = ab;
+  let y = bc;
+  let z = ca;
+
+  // Ensure z is the longest side.
+  if (x > y && x > z) {
+    [x, z] = [z, x];
+  } else if (y > x && y > z) {
+    [y, z] = [z, y];
+  }
+
+  const aLen = x;
+  const bLen = y;
+  const cLen = z; // longest side
+
+  // If angle opposite the longest side is >= 90 degrees (or points are collinear),
+  // the minimal enclosing circle has radius cLen / 2.
+  if (aLen * aLen + bLen * bLen <= cLen * cLen) {
+    return cLen / 2;
+  }
+
+  // Acute triangle: minimal enclosing circle is the circumcircle.
+  return circumradius(a, b, c);
+}
+
 interface NerveComplex {
   edges: [number, number][];
   triangles: [number, number, number][];
@@ -60,7 +98,7 @@ function computeNerve(points: Point2D[], epsilon: number): NerveComplex {
     }
   }
 
-  // Triple intersection: all 3 pairwise overlap AND circumradius <= epsilon
+  // Triple intersection: all 3 pairwise overlap AND the smallest enclosing circle radius <= epsilon
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       for (let k = j + 1; k < n; k++) {
@@ -69,7 +107,7 @@ function computeNerve(points: Point2D[], epsilon: number): NerveComplex {
           overlaps.has(`${i}-${k}`) &&
           overlaps.has(`${j}-${k}`)
         ) {
-          const R = circumradius(points[i], points[j], points[k]);
+          const R = minimalEnclosingCircleRadius(points[i], points[j], points[k]);
           if (R <= epsilon) {
             triangles.push([i, j, k]);
           }
