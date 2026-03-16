@@ -7,7 +7,7 @@ import * as d3 from 'd3';
 interface DiagramPoint {
   birth: number;
   death: number;
-  dim: number;
+  dimension: number;
 }
 
 interface MatchedPair {
