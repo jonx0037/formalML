@@ -13,7 +13,7 @@ export default function FilterFunctionComparison() {
   const graphRef = useRef<SVGSVGElement>(null);
   const [activeFilter, setActiveFilter] = useState(0);
 
-  const variant = filterVariants[activeFilter];
+  const variant: FilterVariant = filterVariants[activeFilter];
 
   const panelWidth = useMemo(() => {
     if (!containerWidth) return 300;
