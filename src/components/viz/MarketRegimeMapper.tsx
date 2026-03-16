@@ -5,8 +5,6 @@ import {
   financialData,
   financialMapperNodes,
   financialMapperEdges,
-  type FinancialDataPoint,
-  type FinancialMapperNode,
   type Regime,
 } from '../../data/mapper-financial-data';
 
