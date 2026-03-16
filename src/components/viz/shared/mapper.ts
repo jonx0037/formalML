@@ -38,6 +38,13 @@ export function createIntervalCover(
   nIntervals: number,
   overlap: number,
 ): [number, number][] {
+  if (!Number.isFinite(nIntervals) || nIntervals < 1) {
+    throw new Error(`createIntervalCover: nIntervals must be a finite number >= 1, got ${nIntervals}`);
+  }
+  if (!Number.isFinite(overlap) || overlap <= 0 || overlap >= 1) {
+    throw new Error(`createIntervalCover: overlap must be a finite number in (0, 1), got ${overlap}`);
+  }
+
   const range = max - min;
   // Step between interval centers
   const step = range / nIntervals;
