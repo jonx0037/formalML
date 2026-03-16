@@ -193,8 +193,8 @@ export default function MapperPipelineExplorer() {
         .attr('x', margin.left + innerW / 2)
         .attr('y', barY + barH + 14)
         .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-text)')
-        .style('font-family', 'var(--font-sans)')
+        .attr('fill', 'var(--color-text)')
+        .attr('font-family', 'var(--font-sans)')
         .attr('font-size', 10)
         .attr('opacity', 0.6)
         .text('Filter range (x-coordinate)');
@@ -249,8 +249,8 @@ export default function MapperPipelineExplorer() {
       .attr('x', gW / 2)
       .attr('y', 14)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-text)')
-      .style('font-family', 'var(--font-sans)')
+      .attr('fill', 'var(--color-text)')
+      .attr('font-family', 'var(--font-sans)')
       .attr('font-size', 12)
       .attr('font-weight', 600)
       .text('Mapper Graph');
@@ -264,7 +264,7 @@ export default function MapperPipelineExplorer() {
       .attr('y1', (d: any) => d.source.y)
       .attr('x2', (d: any) => d.target.x)
       .attr('y2', (d: any) => d.target.y)
-      .style('stroke', 'var(--color-text)')
+      .attr('stroke', 'var(--color-text)')
       .attr('stroke-opacity', 0.25)
       .attr('stroke-width', 2);
 
@@ -278,7 +278,7 @@ export default function MapperPipelineExplorer() {
       .attr('r', (d) => Math.max(5, Math.min(14, d.size * 1.2)))
       .attr('fill', '#0F6E56')
       .attr('fill-opacity', 0.7)
-      .style('stroke', 'var(--color-surface)')
+      .attr('stroke', 'var(--color-surface)')
       .attr('stroke-width', 2);
 
     // Node labels
@@ -290,7 +290,7 @@ export default function MapperPipelineExplorer() {
       .attr('y', (d: any) => d.y + 3)
       .attr('text-anchor', 'middle')
       .attr('fill', '#fff')
-      .style('font-family', 'var(--font-sans)')
+      .attr('font-family', 'var(--font-sans)')
       .attr('font-size', 8)
       .attr('font-weight', 600)
       .attr('pointer-events', 'none')
@@ -302,8 +302,8 @@ export default function MapperPipelineExplorer() {
       .attr('x', gW / 2)
       .attr('y', gH - 4)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-text)')
-      .style('font-family', 'var(--font-sans)')
+      .attr('fill', 'var(--color-text)')
+      .attr('font-family', 'var(--font-sans)')
       .attr('font-size', 10)
       .attr('opacity', 0.5)
       .text(`${mapperResult.nodes.length} nodes, ${mapperResult.edges.length} edges`);
