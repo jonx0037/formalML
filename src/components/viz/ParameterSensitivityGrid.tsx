@@ -71,7 +71,7 @@ function SensitivityCell({ entry, width, height }: CellProps) {
       .join('circle')
       .attr('class', 'node')
       .attr('r', (d: any) => Math.max(3, Math.min(7, d.size * 0.6)))
-      .style('fill', entry.isGoldilocks ? '#0F6E56' : 'var(--color-text)')
+      .style('fill', entry.isGoldilocks ? 'var(--color-accent)' : 'var(--color-text)')
       .attr('fill-opacity', entry.isGoldilocks ? 0.8 : 0.4)
       .style('stroke', 'var(--color-surface)')
       .attr('stroke-width', 1);
