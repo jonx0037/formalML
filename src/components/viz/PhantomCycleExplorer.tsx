@@ -111,7 +111,7 @@ export default function PhantomCycleExplorer() {
             .attr('y1', yScale(VERTICES[i][1]))
             .attr('x2', xScale(VERTICES[j][0]))
             .attr('y2', yScale(VERTICES[j][1]))
-            .attr('stroke', 'var(--color-text)')
+            .style('stroke', 'var(--color-text)')
             .attr('stroke-opacity', 0.8)
             .attr('stroke-width', 2);
         });
@@ -141,7 +141,7 @@ export default function PhantomCycleExplorer() {
             .attr('dominant-baseline', 'middle')
             .attr('fill', '#6B7280')
             .attr('font-size', '12px')
-            .attr('font-family', 'var(--font-sans)')
+            .style('font-family', 'var(--font-sans)')
             .attr('font-style', 'italic')
             .text('VR only');
         } else if (topology.cechHasTriangle) {
@@ -162,8 +162,8 @@ export default function PhantomCycleExplorer() {
           .attr('cx', xScale(vx))
           .attr('cy', yScale(vy))
           .attr('r', 5)
-          .attr('fill', 'var(--color-surface)')
-          .attr('stroke', 'var(--color-text)')
+          .style('fill', 'var(--color-surface)')
+          .style('stroke', 'var(--color-text)')
           .attr('stroke-width', 1.5);
 
         // Vertex labels
@@ -174,9 +174,9 @@ export default function PhantomCycleExplorer() {
           .attr('y', yScale(vy) + labelOffsetY)
           .attr('text-anchor', 'middle')
           .attr('dominant-baseline', 'middle')
-          .attr('fill', 'var(--color-text)')
+          .style('fill', 'var(--color-text)')
           .attr('font-size', '13px')
-          .attr('font-family', 'var(--font-sans)')
+          .style('font-family', 'var(--font-sans)')
           .text(VERTEX_LABELS[i]);
       });
     },
