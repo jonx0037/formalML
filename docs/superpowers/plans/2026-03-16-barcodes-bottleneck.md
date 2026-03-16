@@ -86,7 +86,7 @@ interface MatchingPair {
 Component layout:
 ```
 ┌─────────────────────────────────────────────┐
-│  [Circle vs Cluster]  [Circle vs Figure-8]  │  ← tab buttons
+│  [Circle vs Cluster]  [Circle vs Figure-Eight]  │  ← tab buttons
 ├─────────────────────────────────────────────┤
 │     Diagram A          Diagram B            │
 │     ●                  ●                    │
