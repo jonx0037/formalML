@@ -222,7 +222,7 @@ references:
     title: "Induced Matchings and the Algebraic Stability of Persistence Barcodes"
     authors: "Ulrich Bauer & Michael Lesnick"
     year: 2015
-    url: "https://doi.org/10.1007/s41468-015-0004-0"
+    url: "https://arxiv.org/abs/1303.7117"
     note: "The Isometry Theorem — bottleneck distance equals interleaving distance"
   - type: "paper"
     title: "Confidence Sets for Persistence Diagrams"
