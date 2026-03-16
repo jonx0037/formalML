@@ -57,16 +57,16 @@ function TimeSeriesPanel({ width, height, highlightIndices, onHoverIndices }: Pa
       .attr('transform', `translate(0,${innerH})`)
       .call(d3.axisBottom(xScale).ticks(5).tickFormat((d) => `t=${d}`))
       .selectAll('text')
-      .attr('fill', 'var(--color-text)')
+      .style('fill', 'var(--color-text)')
       .attr('font-size', 8);
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(4).tickFormat(d3.format('.1%')))
       .selectAll('text')
-      .attr('fill', 'var(--color-text)')
+      .style('fill', 'var(--color-text)')
       .attr('font-size', 8);
 
-    g.selectAll('.domain, .tick line').attr('stroke', 'var(--color-border)');
+    g.selectAll('.domain, .tick line').style('stroke', 'var(--color-border)');
 
     // Title
     svg
@@ -74,8 +74,8 @@ function TimeSeriesPanel({ width, height, highlightIndices, onHoverIndices }: Pa
       .attr('x', width / 2)
       .attr('y', 14)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'var(--color-text)')
-      .attr('font-family', 'var(--font-sans)')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 11)
       .attr('font-weight', 600)
       .text('Returns');
@@ -128,8 +128,8 @@ function MapperGraphPanel({ width, height, highlightIndices, onHoverIndices }: P
       .attr('x', width / 2)
       .attr('y', 14)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'var(--color-text)')
-      .attr('font-family', 'var(--font-sans)')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 11)
       .attr('font-weight', 600)
       .text('Mapper Graph');
@@ -143,7 +143,7 @@ function MapperGraphPanel({ width, height, highlightIndices, onHoverIndices }: P
       .attr('y1', ([s]) => yScale(financialMapperNodes[s].y))
       .attr('x2', ([, t]) => xScale(financialMapperNodes[t].x))
       .attr('y2', ([, t]) => yScale(financialMapperNodes[t].y))
-      .attr('stroke', 'var(--color-text)')
+      .style('stroke', 'var(--color-text)')
       .attr('stroke-opacity', 0.2)
       .attr('stroke-width', 2);
 
@@ -156,7 +156,7 @@ function MapperGraphPanel({ width, height, highlightIndices, onHoverIndices }: P
       .attr('cy', (d) => yScale(d.y))
       .attr('r', (d) => Math.max(6, Math.min(16, d.size * 0.8)))
       .attr('fill', (d) => REGIME_COLORS[d.dominantRegime])
-      .attr('stroke', 'var(--color-surface)')
+      .style('stroke', 'var(--color-surface)')
       .attr('stroke-width', 2)
       .attr('opacity', (d) => {
         if (highlightIndices === null) return 0.85;
@@ -175,7 +175,7 @@ function MapperGraphPanel({ width, height, highlightIndices, onHoverIndices }: P
       .attr('y', (d) => yScale(d.y) + 3)
       .attr('text-anchor', 'middle')
       .attr('fill', '#fff')
-      .attr('font-family', 'var(--font-sans)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 8)
       .attr('font-weight', 600)
       .attr('pointer-events', 'none')
@@ -215,16 +215,16 @@ function PCAPanel({ width, height, highlightIndices, onHoverIndices }: PanelProp
       .attr('transform', `translate(0,${innerH})`)
       .call(d3.axisBottom(xScale).ticks(4))
       .selectAll('text')
-      .attr('fill', 'var(--color-text)')
+      .style('fill', 'var(--color-text)')
       .attr('font-size', 8);
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(4))
       .selectAll('text')
-      .attr('fill', 'var(--color-text)')
+      .style('fill', 'var(--color-text)')
       .attr('font-size', 8);
 
-    g.selectAll('.domain, .tick line').attr('stroke', 'var(--color-border)');
+    g.selectAll('.domain, .tick line').style('stroke', 'var(--color-border)');
 
     // Title
     svg
@@ -232,8 +232,8 @@ function PCAPanel({ width, height, highlightIndices, onHoverIndices }: PanelProp
       .attr('x', width / 2)
       .attr('y', 14)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'var(--color-text)')
-      .attr('font-family', 'var(--font-sans)')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 11)
       .attr('font-weight', 600)
       .text('Feature Space (PCA)');

@@ -50,8 +50,8 @@ export default function FilterFunctionComparison() {
       .attr('x', panelWidth / 2)
       .attr('y', 16)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'var(--color-text)')
-      .attr('font-family', 'var(--font-sans)')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 12)
       .attr('font-weight', 600)
       .text(`Colored by ${variant.name}`);
@@ -66,7 +66,7 @@ export default function FilterFunctionComparison() {
       .attr('cy', (p) => yScale(p.y))
       .attr('r', 3.5)
       .attr('fill', (_, i) => colorScale(variant.filterValues[i]))
-      .attr('stroke', 'var(--color-surface)')
+      .style('stroke', 'var(--color-surface)')
       .attr('stroke-width', 0.5)
       .attr('opacity', 0.85);
   }, [variant, panelWidth]);
@@ -88,8 +88,8 @@ export default function FilterFunctionComparison() {
       .attr('x', gW / 2)
       .attr('y', 16)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'var(--color-text)')
-      .attr('font-family', 'var(--font-sans)')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 12)
       .attr('font-weight', 600)
       .text('Mapper Graph');
@@ -138,7 +138,7 @@ export default function FilterFunctionComparison() {
       .attr('y1', (d: any) => d.source.y)
       .attr('x2', (d: any) => d.target.x)
       .attr('y2', (d: any) => d.target.y)
-      .attr('stroke', 'var(--color-text)')
+      .style('stroke', 'var(--color-text)')
       .attr('stroke-opacity', 0.2)
       .attr('stroke-width', 2);
 
@@ -151,7 +151,7 @@ export default function FilterFunctionComparison() {
       .attr('cy', (d: any) => d.y)
       .attr('r', (d: any) => Math.max(5, Math.min(12, d.size * 0.8)))
       .attr('fill', (d: any) => colorScale(d.filterValue))
-      .attr('stroke', 'var(--color-surface)')
+      .style('stroke', 'var(--color-surface)')
       .attr('stroke-width', 2)
       .attr('opacity', 0.85);
 
@@ -161,8 +161,8 @@ export default function FilterFunctionComparison() {
       .attr('x', gW / 2)
       .attr('y', gH - 6)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'var(--color-text)')
-      .attr('font-family', 'var(--font-sans)')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 10)
       .attr('opacity', 0.5)
       .text(`${graph.nodes.length} nodes, ${graph.edges.length} edges`);

@@ -60,7 +60,7 @@ function SensitivityCell({ entry, width, height }: CellProps) {
       .data(simEdges)
       .join('line')
       .attr('class', 'edge')
-      .attr('stroke', 'var(--color-text)')
+      .style('stroke', 'var(--color-text)')
       .attr('stroke-opacity', 0.3)
       .attr('stroke-width', 1.5);
 
@@ -71,9 +71,9 @@ function SensitivityCell({ entry, width, height }: CellProps) {
       .join('circle')
       .attr('class', 'node')
       .attr('r', (d: any) => Math.max(3, Math.min(7, d.size * 0.6)))
-      .attr('fill', entry.isGoldilocks ? '#0F6E56' : 'var(--color-text)')
+      .style('fill', entry.isGoldilocks ? 'var(--color-accent)' : 'var(--color-text)')
       .attr('fill-opacity', entry.isGoldilocks ? 0.8 : 0.4)
-      .attr('stroke', 'var(--color-surface)')
+      .style('stroke', 'var(--color-surface)')
       .attr('stroke-width', 1);
 
     // Label at bottom
@@ -82,8 +82,8 @@ function SensitivityCell({ entry, width, height }: CellProps) {
       .attr('x', width / 2)
       .attr('y', height - 4)
       .attr('text-anchor', 'middle')
-      .attr('fill', 'var(--color-text)')
-      .attr('font-family', 'var(--font-sans)')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
       .attr('font-size', 9)
       .attr('opacity', 0.7)
       .text(entry.label);
