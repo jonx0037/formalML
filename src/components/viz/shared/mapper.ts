@@ -133,6 +133,12 @@ export function clusterDBSCAN(
     clusterId++;
   }
 
+  // If no clusters were found, keep each point as its own singleton cluster.
+  // This avoids incorrectly merging all-noise points into a single cluster.
+  if (clusterId === 0) {
+    return indices.map((idx) => [idx]);
+  }
+
   // Assign noise points to nearest cluster
   for (let i = 0; i < n; i++) {
     if (labels[i] >= 0) continue;
