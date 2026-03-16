@@ -112,15 +112,6 @@ function SensitivityCell({ entry, width, height }: CellProps) {
     for (let i = 0; i < 120; i++) simulation.tick();
     simulation.stop();
 
-    // Final position update
-    links
-      .attr('x1', (d: any) => d.source.x)
-      .attr('y1', (d: any) => d.source.y)
-      .attr('x2', (d: any) => d.target.x)
-      .attr('y2', (d: any) => d.target.y);
-
-    nodes.attr('cx', (d: any) => d.x).attr('cy', (d: any) => d.y);
-
     return () => simulation.stop();
   }, [entry, width, height]);
 
@@ -170,7 +161,7 @@ export default function ParameterSensitivityGrid() {
           Varying n_intervals (overlap = 0.35)
         </p>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {row1.map((entry, i) => (
+          {row1.map((entry) => (
             <SensitivityCell key={entry.label} entry={entry} width={cellWidth} height={cellHeight} />
           ))}
         </div>
@@ -185,7 +176,7 @@ export default function ParameterSensitivityGrid() {
           Varying overlap (n_intervals = 12)
         </p>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {row2.map((entry, i) => (
+          {row2.map((entry) => (
             <SensitivityCell key={entry.label} entry={entry} width={cellWidth} height={cellHeight} />
           ))}
         </div>
