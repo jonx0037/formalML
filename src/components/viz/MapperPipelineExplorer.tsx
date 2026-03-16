@@ -109,8 +109,7 @@ export default function MapperPipelineExplorer() {
         .attr('cy', (p) => yScale(p.y))
         .attr('r', 4)
         .attr('fill', (p) => {
-          if (step === 0) return filterColorScale(p.filterValue);
-          if (step === 1) return filterColorScale(p.filterValue);
+          if (step <= 1) return filterColorScale(p.filterValue);
           if (step >= 2) {
             // Color by interval membership
             for (let i = 0; i < mapperResult.pullbackAssignments.length; i++) {
