@@ -28,3 +28,43 @@ export interface DAGEdge {
   source: string;
   target: string;
 }
+
+// ─── Mapper Algorithm Types ───
+
+export interface MapperPoint {
+  x: number;
+  y: number;
+  id: number;
+  filterValue: number;
+}
+
+export interface MapperParams {
+  nIntervals: number;
+  overlap: number;
+  clusterEps?: number; // auto-estimated if omitted
+  minClusterSize?: number; // defaults to 2
+}
+
+export interface MapperCluster {
+  intervalIdx: number;
+  clusterIdx: number;
+  members: number[]; // indices into the original point array
+  centroidX: number;
+  centroidY: number;
+}
+
+export interface MapperResult {
+  clusters: MapperCluster[];
+  nodes: MapperGraphNode[];
+  edges: [number, number][];
+  intervals: [number, number][];
+  pullbackAssignments: number[][]; // for each interval, which point indices
+}
+
+export interface MapperGraphNode {
+  id: number;
+  size: number;
+  members: number[];
+  centroidX: number;
+  centroidY: number;
+}
