@@ -94,9 +94,10 @@ function SensitivityCell({ entry, width, height }: CellProps) {
     simulation.stop();
 
     // Clamp positions and apply to DOM
+    const NODE_PADDING = 4;
     for (const n of simNodes) {
-      (n as any).x = Math.max(4, Math.min(innerW - 4, (n as any).x));
-      (n as any).y = Math.max(4, Math.min(innerH - 4, (n as any).y));
+      (n as any).x = Math.max(NODE_PADDING, Math.min(innerW - NODE_PADDING, (n as any).x));
+      (n as any).y = Math.max(NODE_PADDING, Math.min(innerH - NODE_PADDING, (n as any).y));
     }
 
     links
