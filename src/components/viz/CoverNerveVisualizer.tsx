@@ -188,8 +188,8 @@ export default function CoverNerveVisualizer({
         .attr('x', panelWidth / 2)
         .attr('y', 16)
         .attr('text-anchor', 'middle')
-        .attr('fill', 'var(--color-text)')
-        .attr('font-family', 'var(--font-sans)')
+        .style('fill', 'var(--color-text)')
+        .style('font-family', 'var(--font-sans)')
         .attr('font-size', 13)
         .attr('font-weight', 600)
         .text('The Cover');
@@ -233,8 +233,8 @@ export default function CoverNerveVisualizer({
         .attr('x', (p) => xScale(p.x))
         .attr('y', (p) => yScale(p.y) - 10)
         .attr('text-anchor', 'middle')
-        .attr('fill', 'var(--color-text)')
-        .attr('font-family', 'var(--font-sans)')
+        .style('fill', 'var(--color-text)')
+        .style('font-family', 'var(--font-sans)')
         .attr('font-size', 11)
         .attr('font-weight', 500)
         .text((_, i) => `U${'\u2080\u2081\u2082\u2083\u2084'[i]}`);
@@ -273,8 +273,8 @@ export default function CoverNerveVisualizer({
         .attr('x', panelWidth / 2)
         .attr('y', 16)
         .attr('text-anchor', 'middle')
-        .attr('fill', 'var(--color-text)')
-        .attr('font-family', 'var(--font-sans)')
+        .style('fill', 'var(--color-text)')
+        .style('font-family', 'var(--font-sans)')
         .attr('font-size', 13)
         .attr('font-weight', 600)
         .text('The Nerve');
@@ -306,7 +306,7 @@ export default function CoverNerveVisualizer({
         .attr('y1', ([i]) => yScale(points[i].y))
         .attr('x2', ([, j]) => xScale(points[j].x))
         .attr('y2', ([, j]) => yScale(points[j].y))
-        .attr('stroke', 'var(--color-text)')
+        .style('stroke', 'var(--color-text)')
         .attr('stroke-opacity', 0.7)
         .attr('stroke-width', 2);
 
@@ -330,8 +330,8 @@ export default function CoverNerveVisualizer({
         .attr('x', (p) => xScale(p.x))
         .attr('y', (p) => yScale(p.y) - 10)
         .attr('text-anchor', 'middle')
-        .attr('fill', 'var(--color-text)')
-        .attr('font-family', 'var(--font-sans)')
+        .style('fill', 'var(--color-text)')
+        .style('font-family', 'var(--font-sans)')
         .attr('font-size', 11)
         .attr('font-weight', 500)
         .text((_, i) => `v${'\u2080\u2081\u2082\u2083\u2084'[i]}`);
