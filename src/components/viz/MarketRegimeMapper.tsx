@@ -44,11 +44,12 @@ function TimeSeriesPanel({ width, height, highlightIndices, onHoverIndices }: Pa
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
     const xScale = d3.scaleLinear().domain([0, financialData.length - 1]).range([0, innerW]);
-    const yExtent = d3.extent(financialData, (d) => d.returns) as [number, number];
-    const yPad = (yExtent[1] - yExtent[0]) * 0.1;
+    const yExtent = d3.extent(financialData, (d) => d.returns);
+    if (yExtent[0] == null) return;
+    const yPad = (yExtent[1]! - yExtent[0]) * 0.1;
     const yScale = d3
       .scaleLinear()
-      .domain([yExtent[0] - yPad, yExtent[1] + yPad])
+      .domain([yExtent[0] - yPad, yExtent[1]! + yPad])
       .range([innerH, 0]);
 
     // Axes
@@ -115,10 +116,11 @@ function MapperGraphPanel({ width, height, highlightIndices, onHoverIndices }: P
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
     // Scale node positions to panel
-    const xExtent = d3.extent(financialMapperNodes, (n) => n.x) as [number, number];
-    const yExtent = d3.extent(financialMapperNodes, (n) => n.y) as [number, number];
-    const xScale = d3.scaleLinear().domain(xExtent).range([20, innerW - 20]);
-    const yScale = d3.scaleLinear().domain(yExtent).range([20, innerH - 20]);
+    const xExtent = d3.extent(financialMapperNodes, (n) => n.x);
+    const yExtent = d3.extent(financialMapperNodes, (n) => n.y);
+    if (xExtent[0] == null || yExtent[0] == null) return;
+    const xScale = d3.scaleLinear().domain([xExtent[0], xExtent[1]!]).range([20, innerW - 20]);
+    const yScale = d3.scaleLinear().domain([yExtent[0], yExtent[1]!]).range([20, innerH - 20]);
 
     // Title
     svg
@@ -199,13 +201,14 @@ function PCAPanel({ width, height, highlightIndices, onHoverIndices }: PanelProp
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const xExtent = d3.extent(financialData, (d) => d.pcaX) as [number, number];
-    const yExtent = d3.extent(financialData, (d) => d.pcaY) as [number, number];
-    const xPad = (xExtent[1] - xExtent[0]) * 0.1;
-    const yPad = (yExtent[1] - yExtent[0]) * 0.1;
+    const xExtent = d3.extent(financialData, (d) => d.pcaX);
+    const yExtent = d3.extent(financialData, (d) => d.pcaY);
+    if (xExtent[0] == null || yExtent[0] == null) return;
+    const xPad = (xExtent[1]! - xExtent[0]) * 0.1;
+    const yPad = (yExtent[1]! - yExtent[0]) * 0.1;
 
-    const xScale = d3.scaleLinear().domain([xExtent[0] - xPad, xExtent[1] + xPad]).range([0, innerW]);
-    const yScale = d3.scaleLinear().domain([yExtent[0] - yPad, yExtent[1] + yPad]).range([innerH, 0]);
+    const xScale = d3.scaleLinear().domain([xExtent[0] - xPad, xExtent[1]! + xPad]).range([0, innerW]);
+    const yScale = d3.scaleLinear().domain([yExtent[0] - yPad, yExtent[1]! + yPad]).range([innerH, 0]);
 
     // Axes
     g.append('g')

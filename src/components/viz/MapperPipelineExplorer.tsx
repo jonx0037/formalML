@@ -122,23 +122,16 @@ export default function MapperPipelineExplorer() {
           return filterColorScale(p.filterValue);
         })
         .attr('stroke', (p) => {
-          // Highlight overlap points in step 2+
           if (step >= 2) {
-            let count = 0;
-            for (const pb of mapperResult.pullbackAssignments) {
-              if (pb.includes(p.id)) count++;
-            }
-            if (count > 1) return '#fff';
+            const membershipCount = mapperResult.pullbackAssignments.filter((pb) => pb.includes(p.id)).length;
+            if (membershipCount > 1) return '#fff';
           }
           return 'var(--color-surface)';
         })
         .attr('stroke-width', (p) => {
           if (step >= 2) {
-            let count = 0;
-            for (const pb of mapperResult.pullbackAssignments) {
-              if (pb.includes(p.id)) count++;
-            }
-            if (count > 1) return 2;
+            const membershipCount = mapperResult.pullbackAssignments.filter((pb) => pb.includes(p.id)).length;
+            if (membershipCount > 1) return 2;
           }
           return 1;
         })

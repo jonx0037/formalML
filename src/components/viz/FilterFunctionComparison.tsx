@@ -4,7 +4,6 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   figureEightPoints,
   filterVariants,
-  type FilterVariant,
 } from '../../data/mapper-filter-data';
 
 export default function FilterFunctionComparison() {
@@ -33,15 +32,17 @@ export default function FilterFunctionComparison() {
     const innerW = panelWidth - margin.left - margin.right;
     const innerH = panelHeight - margin.top - margin.bottom;
 
-    const xExtent = d3.extent(figureEightPoints, (p) => p.x) as [number, number];
-    const yExtent = d3.extent(figureEightPoints, (p) => p.y) as [number, number];
+    const xExtent = d3.extent(figureEightPoints, (p) => p.x);
+    const yExtent = d3.extent(figureEightPoints, (p) => p.y);
+    if (xExtent[0] == null || yExtent[0] == null) return;
     const pad = 0.1;
 
-    const xScale = d3.scaleLinear().domain([xExtent[0] - pad, xExtent[1] + pad]).range([margin.left, margin.left + innerW]);
-    const yScale = d3.scaleLinear().domain([yExtent[0] - pad, yExtent[1] + pad]).range([margin.top + innerH, margin.top]);
+    const xScale = d3.scaleLinear().domain([xExtent[0] - pad, xExtent[1]! + pad]).range([margin.left, margin.left + innerW]);
+    const yScale = d3.scaleLinear().domain([yExtent[0] - pad, yExtent[1]! + pad]).range([margin.top + innerH, margin.top]);
 
-    const fExtent = d3.extent(variant.filterValues) as [number, number];
-    const colorScale = d3.scaleSequential(d3.interpolateViridis).domain(fExtent);
+    const fExtent = d3.extent(variant.filterValues);
+    if (fExtent[0] == null) return;
+    const colorScale = d3.scaleSequential(d3.interpolateViridis).domain([fExtent[0], fExtent[1]!]);
 
     // Title
     svg
@@ -122,8 +123,9 @@ export default function FilterFunctionComparison() {
       (n as any).y = Math.max(30, Math.min(gH - 20, (n as any).y));
     }
 
-    const fExtent = d3.extent(graph.nodes, (n) => n.filterValue) as [number, number];
-    const colorScale = d3.scaleSequential(d3.interpolateViridis).domain(fExtent);
+    const fExtent = d3.extent(graph.nodes, (n) => n.filterValue);
+    if (fExtent[0] == null) return;
+    const colorScale = d3.scaleSequential(d3.interpolateViridis).domain([fExtent[0], fExtent[1]!]);
 
     const g = svg.append('g');
 

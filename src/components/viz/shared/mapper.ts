@@ -38,22 +38,19 @@ export function createIntervalCover(
   nIntervals: number,
   overlap: number,
 ): [number, number][] {
-  if (!Number.isFinite(nIntervals) || nIntervals < 1) {
-    throw new Error(`createIntervalCover: nIntervals must be a finite number >= 1, got ${nIntervals}`);
-  }
-  if (!Number.isFinite(overlap) || overlap <= 0 || overlap >= 1) {
-    throw new Error(`createIntervalCover: overlap must be a finite number in (0, 1), got ${overlap}`);
-  }
+  // Validate parameters to prevent invalid intervals
+  const safeN = Math.max(1, Math.round(nIntervals));
+  const safeOverlap = Math.max(0.01, Math.min(0.99, overlap));
 
   const range = max - min;
   // Step between interval centers
-  const step = range / nIntervals;
+  const step = range / safeN;
   // Each interval has width = step / (1 - overlap)
-  const width = step / (1 - overlap);
+  const width = step / (1 - safeOverlap);
   const halfWidth = width / 2;
 
   const intervals: [number, number][] = [];
-  for (let i = 0; i < nIntervals; i++) {
+  for (let i = 0; i < safeN; i++) {
     const center = min + step * (i + 0.5);
     intervals.push([center - halfWidth, center + halfWidth]);
   }
@@ -68,12 +65,15 @@ export function pullbackCover(
   points: MapperPoint[],
   intervals: [number, number][],
 ): number[][] {
-  return intervals.map(([lo, hi]) =>
-    points.reduce<number[]>((acc, p, idx) => {
-      if (p.filterValue >= lo && p.filterValue <= hi) acc.push(idx);
-      return acc;
-    }, []),
-  );
+  return intervals.map(([lo, hi]) => {
+    const indices: number[] = [];
+    points.forEach((p, idx) => {
+      if (p.filterValue >= lo && p.filterValue <= hi) {
+        indices.push(idx);
+      }
+    });
+    return indices;
+  });
 }
 
 /**
@@ -140,26 +140,26 @@ export function clusterDBSCAN(
     clusterId++;
   }
 
-  // If no clusters were found, keep each point as its own singleton cluster.
-  // This avoids incorrectly merging all-noise points into a single cluster.
-  if (clusterId === 0) {
-    return indices.map((idx) => [idx]);
-  }
-
-  // Assign noise points to nearest cluster
-  for (let i = 0; i < n; i++) {
-    if (labels[i] >= 0) continue;
-    let minDist = Infinity;
-    let nearest = 0;
-    for (let j = 0; j < n; j++) {
-      if (labels[j] < 0) continue;
-      const d = distMatrix[indices[i]][indices[j]];
-      if (d < minDist) {
-        minDist = d;
-        nearest = labels[j];
+  // Assign noise points to nearest cluster (only if clusters exist)
+  const hasCluster = labels.some((l) => l >= 0);
+  if (hasCluster) {
+    for (let i = 0; i < n; i++) {
+      if (labels[i] >= 0) continue;
+      let minDist = Infinity;
+      let nearest = 0;
+      for (let j = 0; j < n; j++) {
+        if (labels[j] < 0) continue;
+        const d = distMatrix[indices[i]][indices[j]];
+        if (d < minDist) {
+          minDist = d;
+          nearest = labels[j];
+        }
       }
+      labels[i] = nearest;
     }
-    labels[i] = nearest;
+  } else {
+    // No clusters formed — treat each point as its own singleton cluster
+    return indices.map((idx) => [idx]);
   }
 
   // Group by cluster label
