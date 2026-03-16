@@ -69,13 +69,14 @@ function lInfDist(a: { birth: number; death: number }, b: { birth: number; death
 }
 
 /**
- * Compute an approximate bottleneck matching via greedy assignment.
+ * Compute a greedy heuristic bottleneck matching between two persistence diagrams.
  * Each point in A can match to a point in B, or to its projection on the diagonal.
  * Each point in B can match to a point in A, or to its projection on the diagonal.
- * The bottleneck distance is the maximum cost in the optimal matching.
+ * We approximate the bottleneck distance as the maximum cost in this greedy matching.
  *
- * We use a greedy approach: enumerate all possible assignments (including diagonal),
- * sort by cost, and greedily assign. This is exact for small diagrams.
+ * The algorithm enumerates all candidate assignments (including matches to the diagonal),
+ * sorts them by cost, and greedily selects non-conflicting assignments until all points
+ * are matched. This is a heuristic and is not guaranteed to find the optimal matching.
  */
 function computeMatching(
   diagramA: DiagramPoint[],
