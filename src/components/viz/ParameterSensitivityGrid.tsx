@@ -88,29 +88,27 @@ function SensitivityCell({ entry, width, height }: CellProps) {
       .attr('opacity', 0.7)
       .text(entry.label);
 
-    // Tick updates
-    simulation.on('tick', () => {
-      links
-        .attr('x1', (d: any) => Math.max(4, Math.min(innerW - 4, d.source.x)))
-        .attr('y1', (d: any) => Math.max(4, Math.min(innerH - 4, d.source.y)))
-        .attr('x2', (d: any) => Math.max(4, Math.min(innerW - 4, d.target.x)))
-        .attr('y2', (d: any) => Math.max(4, Math.min(innerH - 4, d.target.y)));
-
-      nodes
-        .attr('cx', (d: any) => {
-          d.x = Math.max(4, Math.min(innerW - 4, d.x));
-          return d.x;
-        })
-        .attr('cy', (d: any) => {
-          d.y = Math.max(4, Math.min(innerH - 4, d.y));
-          return d.y;
-        });
-    });
-
-    // Run simulation to completion quickly
-    simulation.alpha(1).restart();
+    // Run simulation to completion synchronously
+    simulation.alpha(1);
     for (let i = 0; i < 120; i++) simulation.tick();
     simulation.stop();
+
+    // Clamp positions and apply to DOM
+    const NODE_PADDING = 4;
+    for (const n of simNodes) {
+      (n as any).x = Math.max(NODE_PADDING, Math.min(innerW - NODE_PADDING, (n as any).x));
+      (n as any).y = Math.max(NODE_PADDING, Math.min(innerH - NODE_PADDING, (n as any).y));
+    }
+
+    links
+      .attr('x1', (d: any) => d.source.x)
+      .attr('y1', (d: any) => d.source.y)
+      .attr('x2', (d: any) => d.target.x)
+      .attr('y2', (d: any) => d.target.y);
+
+    nodes
+      .attr('cx', (d: any) => d.x)
+      .attr('cy', (d: any) => d.y);
 
     return () => simulation.stop();
   }, [entry, width, height]);
