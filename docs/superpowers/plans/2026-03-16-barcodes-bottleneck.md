@@ -23,7 +23,7 @@
 | File | Responsibility |
 |------|---------------|
 | `src/content/topics/barcodes-bottleneck.mdx` | Full article content — frontmatter, imports, 6 formal framework sections, visual intuition, working code, connections, references |
-| `src/components/viz/BottleneckMatchingViz.tsx` | Interactive visualization showing two persistence diagrams with optimal bottleneck matching lines drawn between matched points. User can drag points to see how matching and distance change. |
+| `src/components/viz/BottleneckMatchingViz.tsx` | Interactive visualization showing two pre-defined persistence diagram pairs with optimal bottleneck matching lines drawn between matched points, selectable via tabs/buttons, and displaying the bottleneck distance. |
 | `src/components/viz/StabilityDemo.tsx` | Noise slider demo — generates a point cloud, adds Gaussian noise at user-controlled σ, shows persistence diagram shifting and displays d_B and d_H values, confirming the stability bound empirically. |
 
 ### Files to Modify
