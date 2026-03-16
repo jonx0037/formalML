@@ -1,0 +1,618 @@
+---
+title: "The Mapper Algorithm"
+subtitle: "A topological lens for high-dimensional data — building interpretable graphs from point clouds via the Nerve Theorem"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "simplicial-complexes"
+  - "persistent-homology"
+  - "cech-complexes"
+tags:
+  - "topology"
+  - "tda"
+  - "data-analysis"
+  - "visualization"
+  - "algebraic-topology"
+domain: "topology"
+videoId: null
+notebookPath: "notebooks/mapper-algorithm/mapper-algorithm-notebook.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/mapper-algorithm.mdx"
+datePublished: 2026-03-16
+estimatedReadTime: 40
+abstract: "The Mapper algorithm constructs a compressed graph summary of high-dimensional data by pulling back an interval cover through a filter function, clustering within each pullback, and taking the nerve of the resulting cover. The Nerve Theorem guarantees that this graph faithfully captures the data's topology. We develop the full construction from first principles, build Mapper from scratch, compare with the KeplerMapper library, analyze parameter sensitivity, and apply the algorithm to financial market regime detection."
+connections:
+  - topic: "simplicial-complexes"
+    relationship: "the Mapper graph is a 1-dimensional simplicial complex (graph)"
+  - topic: "persistent-homology"
+    relationship: "PH on the Mapper graph quantifies topological features; multiscale Mapper uses PH"
+  - topic: "cech-complexes"
+    relationship: "the Nerve Theorem (proved in Čech Complexes) is the theoretical foundation of Mapper"
+  - topic: "barcodes-bottleneck-distance"
+    relationship: "stability of Mapper under perturbation is measured via bottleneck distance"
+references:
+  - type: "paper"
+    title: "Topological Methods for the Analysis of High Dimensional Data Sets and 3D Object Recognition"
+    authors: "Singh, Mémoli & Carlsson"
+    year: 2007
+    note: "The original Mapper paper"
+  - type: "paper"
+    title: "Extracting insights from the shape of complex data using topology"
+    authors: "Lum, Singh, Lehman, Ishkanov, Vejdemo-Johansson, Alagappan, Carlsson & Carlsson"
+    year: 2013
+    url: "https://doi.org/10.1038/srep01236"
+    note: "Landmark applications — breast cancer, NBA, politics"
+  - type: "paper"
+    title: "Structure and Stability of the One-Dimensional Mapper"
+    authors: "Carrière & Oudot"
+    year: 2018
+    url: "https://doi.org/10.1007/s10208-017-9370-z"
+    note: "Convergence and stability theory"
+  - type: "paper"
+    title: "Towards persistence-based reconstruction in Euclidean spaces"
+    authors: "Chazal & Oudot"
+    year: 2008
+    note: "Persistent Nerve Theorem"
+  - type: "paper"
+    title: "Kepler Mapper: A flexible Python implementation of the Mapper algorithm"
+    authors: "van Veen, Saul, Eargle & Mangham"
+    year: 2019
+    url: "https://doi.org/10.21105/joss.01315"
+    note: "KeplerMapper library"
+  - type: "paper"
+    title: "Multiscale Mapper: Topological Summarization via Codomain Covers"
+    authors: "Dey, Mémoli & Wang"
+    year: 2016
+    note: "Multiscale Mapper construction"
+  - type: "paper"
+    title: "Ball Mapper: A Shape Summary for Topological Data Analysis"
+    authors: "Dłotko"
+    year: 2019
+    note: "Ball Mapper variant — removes the filter function"
+  - type: "book"
+    title: "Computational Topology: An Introduction"
+    authors: "Edelsbrunner & Harer"
+    year: 2010
+    note: "General reference for TDA constructions"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import MapperPipelineExplorer from '../../components/viz/MapperPipelineExplorer.tsx';
+import ParameterSensitivityGrid from '../../components/viz/ParameterSensitivityGrid.tsx';
+import MarketRegimeMapper from '../../components/viz/MarketRegimeMapper.tsx';
+import FilterFunctionComparison from '../../components/viz/FilterFunctionComparison.tsx';
+
+## Overview & Motivation
+
+[Persistent Homology](/topics/persistent-homology) gives us **algebraic summaries** of data topology — barcodes and persistence diagrams that count features like connected components, loops, and voids across all scales. These are powerful invariants, but they are abstract: a barcode tells you *that* a loop exists, not *where* it is or *how* it connects to the rest of the data.
+
+The **Mapper algorithm** (Singh, Memoli & Carlsson, 2007) fills this gap. It produces a **graph** — a visual, interpretable summary of high-dimensional data that captures topological features like loops, branches, flares, and clusters. Each node in the Mapper graph represents a cluster of data points, and edges connect clusters that share points. The resulting graph is low-dimensional enough to visualize and explore, yet rich enough to reveal the global shape of the data.
+
+To appreciate why Mapper matters, compare it with two standard approaches to understanding high-dimensional data:
+
+- **PCA / t-SNE / UMAP** reduce dimensionality but can destroy topology. A circle projected to a line loses its loop; t-SNE can create spurious clusters. These methods optimize for local or variance-based criteria, not topological faithfulness.
+- **Persistent Homology** preserves topology but produces abstract algebraic summaries. A persistence diagram says $\beta_1 = 2$ (two loops), but does not tell you which data points form each loop or how the loops relate spatially.
+
+Mapper gives us the best of both worlds: a **geometrically faithful, visually interpretable** summary. The landmark paper by Lum et al. (2013) demonstrated this on breast cancer gene expression data (revealing a previously unknown subgroup of patients with 100% survival), NBA player statistics (recovering positional archetypes), and U.S. political voting patterns (visualizing polarization as a topological feature).
+
+The key theoretical guarantee comes from the [Nerve Theorem](/topics/cech-complexes), which we proved on the Cech Complexes page. Under appropriate conditions, the Mapper graph has the same homotopy type as the underlying data — its connected components, loops, and higher-dimensional features faithfully reflect those of the original point cloud.
+
+![The Mapper pipeline transforms a point cloud into a graph summary](/images/topics/mapper-algorithm/mapper-motivation.png)
+
+---
+
+## The Mapper Pipeline
+
+The Mapper algorithm transforms a point cloud $X = \{x_1, \ldots, x_n\} \subset \mathbb{R}^d$ into a graph through a sequence of composable operations. We formalize each step.
+
+### Step 1: The Filter Function
+
+<TheoremBlock type="definition" number={1} title="Filter Function (Lens)">
+A **filter function** (or **lens**) is a continuous map $f: X \to \mathbb{R}^m$ where typically $m = 1$ (scalar filter) or $m = 2$ (bivariate filter). It assigns to each data point a low-dimensional "measurement" that captures some geometric or statistical property.
+</TheoremBlock>
+
+Common choices include eccentricity $f(x) = \max_{y \in X} d(x, y)$, density estimation $f(x) = \hat{p}(x)$ via KDE, PCA projection $f(x) = \langle x - \bar{x}, v_1 \rangle$, or domain-specific quantities like rolling volatility or gene expression level. The choice of filter is the primary modeling decision in Mapper — it determines *which topological features are visible* in the output.
+
+### Step 2: The Cover
+
+<TheoremBlock type="definition" number={2} title="Interval Cover">
+Given the range $f(X) \subseteq \mathbb{R}$, an **interval cover** $\mathcal{V} = \{V_1, \ldots, V_n\}$ is a collection of overlapping intervals that covers $f(X)$. The cover is parameterized by the number of intervals $n$ and the overlap fraction $p \in (0, 1)$.
+</TheoremBlock>
+
+Concretely, if $\text{Im}(f) = [a, b]$, the step size is $s = (b - a) / n$, the interval width is $w = s / (1 - p)$, and each interval is $V_i = [a + (i-1)s - (w - s)/2, \; a + (i-1)s - (w-s)/2 + w]$. Adjacent intervals overlap by $wp$ in length.
+
+### Step 3: The Pullback
+
+<TheoremBlock type="definition" number={3} title="Pullback Cover">
+The **pullback cover** $f^{-1}(\mathcal{V}) = \{f^{-1}(V_1), \ldots, f^{-1}(V_n)\}$ pulls each interval back through the filter function. Each set $f^{-1}(V_i)$ contains all data points whose filter values lie in $V_i$.
+</TheoremBlock>
+
+The overlap in the cover is essential: it ensures that nearby data points (in filter space) appear together in at least one pullback set, creating the shared memberships that produce edges in the final graph.
+
+### Step 4: Clustering
+
+<TheoremBlock type="definition" number={4} title="Refined Cover">
+The **refined cover** $\mathcal{W}$ is obtained by applying a clustering algorithm $\mathcal{A}$ (e.g., DBSCAN, single-linkage) independently to each pullback set $f^{-1}(V_i)$:
+$$f^{-1}(V_i) = C_{i,1} \sqcup C_{i,2} \sqcup \cdots \sqcup C_{i,k_i}$$
+The refined cover is $\mathcal{W} = \{C_{i,j}\}_{i,j}$, the union of all clusters across all pullback sets.
+</TheoremBlock>
+
+This refinement step is what gives Mapper its power over a naive partitioning scheme. Within each pullback set, the clustering algorithm can detect that points which are close in filter space may be far apart in the ambient metric — they belong to different branches or components of the data. Without clustering, these geometrically separate groups would be merged into a single node.
+
+### Step 5: The Nerve (Mapper Graph)
+
+<TheoremBlock type="definition" number={5} title="Mapper Graph">
+The **Mapper graph** $\mathcal{M}(X, f, \mathcal{V}, \mathcal{A})$ is the 1-skeleton of the nerve of the refined cover $\mathcal{W}$:
+$$\mathcal{M} = \text{Nrv}(\mathcal{W})$$
+- **Nodes**: one node for each cluster $C_{i,j}$
+- **Edges**: an edge between $C_{i,j}$ and $C_{k,l}$ whenever $C_{i,j} \cap C_{k,l} \neq \emptyset$ (they share at least one data point)
+</TheoremBlock>
+
+The Mapper graph is a [simplicial complex](/topics/simplicial-complexes) of dimension 1 (a graph). Two clusters share data points precisely when they come from overlapping intervals and the shared points are assigned to both clusters. This is the mechanism by which topological features of the data — loops, branches, flares — are captured in the graph.
+
+### The Complete Pipeline
+
+In summary, the five steps of the Mapper algorithm are:
+
+1. **Choose a filter function** $f: X \to \mathbb{R}$ (or $\mathbb{R}^m$)
+2. **Cover** the range $f(X)$ with overlapping intervals $\mathcal{V} = \{V_1, \ldots, V_n\}$
+3. **Pull back** the cover: $f^{-1}(V_i)$ for each interval
+4. **Cluster** within each pullback set: $f^{-1}(V_i) \mapsto \{C_{i,1}, \ldots, C_{i,k_i}\}$
+5. **Take the nerve**: connect clusters that share data points
+
+![The 5-step Mapper pipeline](/images/topics/mapper-algorithm/mapper-nerve-pipeline.png)
+
+---
+
+## Interactive Pipeline Explorer
+
+The interactive visualization below lets you step through the Mapper pipeline on a sample point cloud. Adjust the filter function, number of intervals, and overlap fraction to see how each parameter affects the resulting Mapper graph.
+
+<MapperPipelineExplorer client:visible />
+
+---
+
+## Filter Functions
+
+The filter function is the "lens" through which Mapper views the data. Different filters reveal different aspects of the data's shape, and there is no single "correct" choice — the filter is a modeling decision that should be guided by domain knowledge and the question being asked.
+
+### Three Canonical Filter Choices
+
+Consider a figure-eight point cloud in $\mathbb{R}^2$. Three natural filters highlight different structures:
+
+**Eccentricity** measures how far each point is from the farthest point in the dataset:
+$$\text{ecc}(x) = \max_{y \in X} d(x, y)$$
+This filter discriminates the tips of the two lobes from the center. A Mapper graph with this filter will highlight the branching structure at the crossing point.
+
+**Density** via kernel density estimation assigns to each point the local density of the data:
+$$\hat{p}(x) = \frac{1}{n h^d} \sum_{i=1}^n K\left(\frac{x - x_i}{h}\right)$$
+This filter peaks at the crossing point where data is dense. It emphasizes the pinch point — topologically the most interesting feature of a figure-eight.
+
+**PCA projection** projects onto the first principal component:
+$$f(x) = \langle x - \bar{x}, v_1 \rangle$$
+This separates the two lobes along the axis of maximum variance. The resulting Mapper graph will clearly show the two loops as separate cycles connected at the crossing.
+
+Choosing a filter is choosing a perspective. Each filter reveals different topological features, and an exploratory analysis will often try several filters to build a complete picture.
+
+```python
+# Compute three filters on the figure-eight
+from scipy.spatial.distance import pdist, squareform
+from scipy.stats import gaussian_kde
+from sklearn.decomposition import PCA
+
+D = squareform(pdist(fig8))
+
+# 1. Eccentricity (max distance)
+ecc = D.max(axis=1)
+
+# 2. Density via KDE
+kde = gaussian_kde(fig8.T)
+density = kde(fig8.T)
+
+# 3. PCA first component
+pca = PCA(n_components=1)
+pca_proj = pca.fit_transform(fig8).ravel()
+```
+
+<FilterFunctionComparison client:visible />
+
+![Three filters on the figure-eight](/images/topics/mapper-algorithm/filter-functions.png)
+
+---
+
+## Covering & Pullback
+
+The interval cover and its pullback are where the Mapper algorithm converts the continuous problem (topology of a point cloud) into a combinatorial one (a cover whose nerve we can compute). The two parameters — the number of intervals $n$ and the overlap fraction $p$ — control the resolution and connectivity of the resulting graph.
+
+### Interval Cover Parameterization
+
+Given $\text{Im}(f) = [a, b]$, the step size is $s = (b - a) / n$ and the interval width is $w = s / (1 - p)$. Adjacent intervals overlap by $wp$ in length. The overlap is what creates shared memberships between clusters in adjacent pullback sets, which in turn become edges in the Mapper graph.
+
+<TheoremBlock type="proposition" number={1} title="Overlap and Connectivity">
+If two data points $x, y \in X$ satisfy $|f(x) - f(y)| < w \cdot p$ where $w$ is the interval width and $p$ is the overlap fraction, then $x$ and $y$ appear in at least one common pullback set $f^{-1}(V_i)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $w$ be the interval width and $p$ the overlap fraction, so adjacent intervals overlap by $wp$. If $|f(x) - f(y)| < wp$, then any interval $V_i$ containing $f(x)$ at distance less than $wp/2$ from its boundary must also contain $f(y)$. Since the cover has overlap $wp$ between consecutive intervals, at least one such interval exists. ∎
+</TheoremBlock>
+
+This proposition makes precise the intuition that overlap controls connectivity: larger overlap means more points appear in multiple pullback sets, creating more edges in the Mapper graph. The extreme case $p \to 1$ makes every pair of points co-occur in some pullback set, producing a complete graph (no useful structure). The case $p \to 0$ eliminates all overlap, making the pullback sets disjoint and producing a graph with no edges (no connectivity information).
+
+### The Pullback in Action
+
+Each pullback set $f^{-1}(V_i)$ is a "slice" of the data — all points whose filter values fall in the interval $V_i$. Because intervals overlap, a single data point may belong to multiple pullback sets. When that point is assigned to clusters in different pullback sets, those clusters will share the point, producing an edge in the Mapper graph.
+
+This is the geometric mechanism by which Mapper detects loops: if the data forms a circle and the filter is the x-coordinate projection, the circle is sliced into overlapping strips. At the top and bottom of the circle, each strip contains two separate groups (the upper and lower arcs), producing two clusters per interval. The shared points between adjacent intervals create edges that trace out a cycle in the Mapper graph — faithfully recovering the loop in the data.
+
+![Covering and pullback visualization](/images/topics/mapper-algorithm/covering-pullback.png)
+
+---
+
+## From-Scratch Implementation
+
+To solidify the construction, we build Mapper from scratch in pure Python. The implementation follows the five definitions above step by step.
+
+```python
+def mapper_from_scratch(X, filter_values, n_intervals=10, overlap=0.3,
+                        clusterer=None, min_cluster_size=3):
+    '''
+    Mapper algorithm -- from-scratch implementation.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n, d)
+        Point cloud in ambient space.
+    filter_values : ndarray, shape (n,)
+        Scalar filter function evaluated at each point.
+    n_intervals : int
+        Number of covering intervals (Definition 2).
+    overlap : float
+        Fractional overlap between adjacent intervals, in (0, 1).
+    clusterer : sklearn estimator or None
+        Clustering algorithm with .fit_predict(). Default: DBSCAN.
+    min_cluster_size : int
+        Minimum points to form a cluster (used if clusterer is None).
+
+    Returns
+    -------
+    graph : dict
+        'nodes': {node_id: [list of point indices]}
+        'edges': [(node_id_a, node_id_b)]
+        'meta':  {node_id: {'interval': i, 'cluster': j, 'size': k}}
+    '''
+    if clusterer is None:
+        # Adaptive DBSCAN: eps = 10th percentile of pairwise distances
+        from scipy.spatial.distance import pdist
+        dists = pdist(X)
+        eps = np.percentile(dists, 10)
+        clusterer = DBSCAN(eps=eps, min_samples=min_cluster_size)
+
+    f = filter_values
+    f_min, f_max = f.min(), f.max()
+
+    # --- Step 2: Build interval cover (Definition 2) ---
+    step = (f_max - f_min) / n_intervals
+    width = step / (1 - overlap)
+    intervals = []
+    for i in range(n_intervals):
+        left = f_min + i * step - (width - step) / 2
+        right = left + width
+        intervals.append((left, right))
+
+    # --- Steps 3 & 4: Pullback and cluster (Definitions 3 & 4) ---
+    nodes = {}
+    meta = {}
+    node_id = 0
+
+    for i, (left, right) in enumerate(intervals):
+        # Pullback: points whose filter value falls in [left, right]
+        mask = (f >= left) & (f <= right)
+        indices = np.where(mask)[0]
+
+        if len(indices) < min_cluster_size:
+            continue
+
+        # Cluster within the pullback set
+        labels = clusterer.fit_predict(X[indices])
+
+        for label in set(labels):
+            if label == -1:  # noise in DBSCAN
+                continue
+            cluster_members = indices[labels == label]
+            nodes[node_id] = list(cluster_members)
+            meta[node_id] = {'interval': i, 'cluster': label,
+                             'size': len(cluster_members)}
+            node_id += 1
+
+    # --- Step 5: Build the nerve (Definition 5) ---
+    edges = []
+    node_ids = list(nodes.keys())
+    for a in range(len(node_ids)):
+        for b in range(a + 1, len(node_ids)):
+            id_a, id_b = node_ids[a], node_ids[b]
+            # Edge iff clusters share at least one data point
+            if set(nodes[id_a]) & set(nodes[id_b]):
+                edges.append((id_a, id_b))
+
+    return {'nodes': nodes, 'edges': edges, 'meta': meta}
+```
+
+The implementation is deliberately simple — about 50 lines of code — to emphasize that Mapper is a *composition of elementary operations*. The mathematical content is in the definitions; the code is a direct translation. In production, libraries like KeplerMapper add optimizations (spatial indexing for the nerve computation, efficient cluster tracking, HTML visualization), but the core logic is identical.
+
+![Mapper from scratch on a noisy circle](/images/topics/mapper-algorithm/mapper-from-scratch-circle.png)
+
+---
+
+## Classic Examples
+
+### The Circle
+
+The simplest non-trivial test case is a noisy circle in $\mathbb{R}^2$. A circle has Betti numbers $\beta_0 = 1$ (one connected component) and $\beta_1 = 1$ (one loop). Using the x-coordinate projection as a filter, the Mapper algorithm slices the circle into overlapping vertical strips. Each strip intersects the circle in one or two arcs, which become clusters. The shared points between adjacent clusters create a cycle in the Mapper graph — faithfully recovering the $H_1$ feature.
+
+### The Figure-Eight
+
+A figure-eight (wedge of two circles) has $\beta_0 = 1$ and $\beta_1 = 2$. Mapper with an eccentricity filter recovers the two loops and the branching point where they meet. The Mapper graph is a "figure-eight graph" — two cycles sharing a single node at the crossing point.
+
+### The Torus
+
+A torus embedded in $\mathbb{R}^3$ has $\beta_0 = 1$, $\beta_1 = 2$ (two independent loops — meridional and longitudinal), and $\beta_2 = 1$ (a cavity). While the 1-skeleton Mapper graph cannot directly detect the $\beta_2$ feature, it reveals the two independent cycles and the overall connectivity structure of the torus.
+
+![Classic Mapper examples](/images/topics/mapper-algorithm/mapper-classic-examples.png)
+
+---
+
+## KeplerMapper
+
+For production work, the **KeplerMapper** library (van Veen et al., 2019) provides an optimized, well-tested implementation with built-in HTML visualization. The workflow condenses to three lines:
+
+```python
+import kmapper as km
+from sklearn.cluster import DBSCAN
+
+mapper = km.KeplerMapper(verbose=0)
+lens = mapper.fit_transform(X, projection=[0])      # Step 1: filter
+graph = mapper.map(lens, X,                          # Steps 2-5
+                   cover=km.Cover(n_cubes=10, perc_overlap=0.3),
+                   clusterer=DBSCAN(eps=0.5))
+```
+
+The `fit_transform` method computes the filter function (here, projection onto the first coordinate). The `map` method handles covering, pullback, clustering, and nerve computation in a single call. The `Cover` object parameterizes the interval cover: `n_cubes` is the number of intervals (generalizing to hypercubes for multivariate filters) and `perc_overlap` is the overlap fraction $p$.
+
+KeplerMapper also supports bivariate filters (projecting to $\mathbb{R}^2$ and covering with a 2D grid of overlapping rectangles), custom clustering algorithms, and interactive HTML visualization via `mapper.visualize()`. The HTML output is a force-directed graph layout where node size encodes cluster size and node color encodes a user-specified function — useful for exploratory data analysis.
+
+```python
+# Full KeplerMapper workflow with visualization
+mapper_km = km.KeplerMapper(verbose=0)
+
+# Circle example
+lens_circle = mapper_km.fit_transform(circle, projection=[0])
+graph_km_circle = mapper_km.map(lens_circle, circle,
+                                 cover=km.Cover(n_cubes=12, perc_overlap=0.4),
+                                 clusterer=DBSCAN(eps=0.3, min_samples=3))
+
+# Figure-eight with L2 norm filter
+lens_fig8 = mapper_km.fit_transform(fig8, projection="l2norm")
+graph_km_fig8 = mapper_km.map(lens_fig8, fig8,
+                               cover=km.Cover(n_cubes=15, perc_overlap=0.45),
+                               clusterer=DBSCAN(eps=0.15, min_samples=5))
+```
+
+![KeplerMapper output](/images/topics/mapper-algorithm/keplermapper-examples.png)
+
+---
+
+## Parameter Sensitivity
+
+The Mapper graph depends on three choices: the filter function $f$, the number of intervals $n$, and the overlap fraction $p$ (plus the clustering algorithm and its parameters). Understanding how the graph responds to parameter changes is essential for drawing reliable conclusions.
+
+### The Number of Intervals
+
+The number of intervals $n$ controls the **resolution** of the Mapper graph:
+
+- **Too few intervals** ($n$ small): each pullback set contains many points, and the clustering step may merge geometrically distinct groups. The graph is over-smoothed — topological features are lost.
+- **Too many intervals** ($n$ large): each pullback set contains few points, and the clustering step may fragment coherent groups. The graph is noisy — spurious features appear.
+- **The Goldilocks zone**: there exists a range of $n$ values where the graph is stable — the same topological features (connected components, loops) persist across the range. This is the regime where Mapper is most informative.
+
+### The Overlap Fraction
+
+The overlap fraction $p$ controls the **connectivity** of the Mapper graph:
+
+- **Low overlap** ($p$ near 0): pullback sets are nearly disjoint, so few clusters share data points. The graph has many isolated nodes and few edges — connectivity information is lost.
+- **High overlap** ($p$ near 1): pullback sets overlap heavily, so many clusters share data points. The graph is densely connected — topological structure is drowned in edges.
+- **Moderate overlap** ($p \in [0.25, 0.5]$): the typical sweet spot. Enough overlap to detect genuine connections, but not so much that the graph becomes uninformative.
+
+### Stability Heuristic
+
+A practical heuristic for parameter selection: compute Mapper graphs over a grid of $(n, p)$ values and look for the *stable range* — parameter combinations where topological invariants (the number of connected components and the first Betti number $\beta_1$) remain constant. Features that persist across a wide range of parameters are likely genuine; features that appear only at specific parameter values are likely artifacts.
+
+<ParameterSensitivityGrid client:visible />
+
+![Parameter sensitivity sweep](/images/topics/mapper-algorithm/parameter-sensitivity.png)
+
+---
+
+## The Nerve Theorem Connection
+
+The Nerve Theorem is the mathematical engine that powers Mapper. It provides the theoretical guarantee that the Mapper graph faithfully captures the topology of the data — not just approximately, but exactly, under appropriate conditions.
+
+<TheoremBlock type="theorem" number={1} title="Mapper--Nerve Correspondence">
+If the refined cover $\mathcal{W} = \{C_{i,j}\}$ is a **good cover** (every non-empty finite intersection is contractible), then the Mapper graph $\mathcal{M} = \text{Nrv}(\mathcal{W})$ is homotopy equivalent to the union $\bigcup \mathcal{W}$:
+$$\text{Nrv}(\mathcal{W}) \simeq \bigcup_{C \in \mathcal{W}} C$$
+In particular, the connected components ($H_0$) and loops ($H_1$) of the Mapper graph faithfully reflect those of the data.
+</TheoremBlock>
+
+The key question is: when is the refined cover a good cover? Recall from the [Cech Complexes & Nerve Theorem](/topics/cech-complexes) page (Definition 5) that a good cover requires every non-empty finite intersection to be contractible.
+
+In Euclidean space, convex sets form good covers automatically (intersections of convex sets are convex, hence contractible). When the clustering algorithm produces convex clusters — for example, single-linkage clustering with a distance threshold, or $k$-means on well-separated data — the refined cover is a good cover and the Nerve Theorem applies directly.
+
+In practice, DBSCAN clusters are not guaranteed to be convex. However, they are typically connected and "approximately convex" in the sense that their intersections (which arise from the overlap region of adjacent intervals) are small, connected subsets. Empirical evidence strongly supports the Nerve Theorem correspondence even when the strict good cover condition is not met — topological features detected by Mapper overwhelmingly correspond to genuine features of the data.
+
+### The Persistent Nerve Theorem
+
+For a more robust theoretical foundation, the Persistent Nerve Theorem extends the classical Nerve Theorem to filtrations:
+
+<TheoremBlock type="theorem" number={2} title="Persistent Nerve Theorem (Chazal & Oudot, 2008)">
+For a family of covers $\{\mathcal{W}_\alpha\}_\alpha$ indexed by a scale parameter, the persistence modules of the nerves $\text{Nrv}(\mathcal{W}_\alpha)$ are interleaved with the persistence modules of the unions $\bigcup \mathcal{W}_\alpha$. This guarantees that topological features persistent across scales in the Mapper construction correspond to genuine features of the underlying space.
+</TheoremBlock>
+
+This result is the theoretical justification for the stability heuristic described in the previous section. When a topological feature of the Mapper graph persists across a range of parameter values (varying the cover resolution $n$), the Persistent Nerve Theorem guarantees that this feature corresponds to a genuine topological feature of the data that persists across the corresponding scales in the cover.
+
+For the full proof of the Nerve Theorem, see our [Cech Complexes & Nerve Theorem](/topics/cech-complexes) page, Theorem 2. The proof via partition-of-unity maps given there applies directly to the Mapper setting: the refined cover $\mathcal{W}$ plays the role of the cover $\mathcal{U}$, and the nerve $\text{Nrv}(\mathcal{W})$ plays the role of the Cech complex.
+
+---
+
+## Financial Market Regime Detection
+
+One of Mapper's most compelling applications is **unsupervised market regime detection**. Financial markets exhibit distinct regimes — bull markets, bear markets, and transition periods — that correspond to different statistical properties of returns. Mapper can discover these regimes and their transitions without any labeled data, producing a topological map of market states.
+
+### Feature Engineering
+
+We generate synthetic market data with three regimes (calm bull, volatile bear, and recovery) and compute rolling features over a 60-day window:
+
+```python
+def generate_regime_returns(n_periods=2000):
+    '''Generate synthetic returns with three market regimes.'''
+    returns = np.zeros(n_periods)
+    regime = np.zeros(n_periods, dtype=int)
+
+    # Regime 0: Calm bull market (low vol, positive drift)
+    # Regime 1: Volatile bear market (high vol, negative drift)
+    # Regime 2: Recovery / transition (medium vol, high positive drift)
+
+    params = {
+        0: {'mu': 0.0005, 'sigma': 0.008},   # Calm bull
+        1: {'mu': -0.001, 'sigma': 0.025},     # Volatile bear
+        2: {'mu': 0.002, 'sigma': 0.015}       # Recovery
+    }
+
+    regime_sequence = [0]*500 + [1]*300 + [2]*200 + [0]*400 + [1]*200 + [2]*100 + [0]*300
+    regime_sequence = regime_sequence[:n_periods]
+
+    for t in range(n_periods):
+        r = regime_sequence[t]
+        regime[t] = r
+        returns[t] = np.random.normal(params[r]['mu'], params[r]['sigma'])
+
+    return returns, regime
+
+returns, true_regime = generate_regime_returns(2000)
+
+# Compute rolling features
+window = 60
+rolling_mean = np.array([np.mean(returns[max(0,i-window):i])
+                         for i in range(window, len(returns))])
+rolling_vol = np.array([np.std(returns[max(0,i-window):i])
+                        for i in range(window, len(returns))])
+rolling_skew = np.array([
+    np.mean(((returns[max(0,i-window):i] - np.mean(returns[max(0,i-window):i])) /
+              max(np.std(returns[max(0,i-window):i]), 1e-8))**3)
+    for i in range(window, len(returns))
+])
+
+# Feature matrix
+X_fin = np.column_stack([rolling_mean, rolling_vol, rolling_skew])
+X_fin_scaled = StandardScaler().fit_transform(X_fin)
+```
+
+### Mapper on Financial Data
+
+We apply Mapper with an L2-norm filter (eccentricity-like), which captures how "extreme" each market state is relative to normal conditions:
+
+```python
+mapper_fin = km.KeplerMapper(verbose=0)
+lens_fin = mapper_fin.fit_transform(X_fin_scaled, projection="l2norm")
+
+graph_fin = mapper_fin.map(lens_fin, X_fin_scaled,
+                            cover=km.Cover(n_cubes=15, perc_overlap=0.4),
+                            clusterer=DBSCAN(eps=0.8, min_samples=10))
+```
+
+### Reading the Mapper Graph
+
+The resulting graph reveals three key structures:
+
+1. **Regime clusters:** Nodes dominated by a single regime (blue = calm bull, red = volatile bear, green = recovery) form tight groups. These correspond to stable market states.
+
+2. **Transition edges:** Edges connecting nodes of different colors represent **regime transitions** — periods where market conditions are evolving from one state to another. These are precisely the points that fall in the overlap region of adjacent covering intervals.
+
+3. **Graph topology:** The overall graph structure reveals how regimes connect. If the graph has a loop, it suggests a **cyclical** pattern (e.g., bull to bear to recovery to bull). Branching suggests multiple possible transitions from a single state.
+
+This is Mapper's unique contribution to market analysis: it provides a **topological map of market states and transitions** that standard clustering methods cannot produce. The graph is interpretable, colorable by any feature of interest, and directly reveals the transition dynamics.
+
+<MarketRegimeMapper client:visible />
+
+### Statistical Convergence
+
+<TheoremBlock type="theorem" number={3} title="Statistical Convergence (Carriere & Oudot, 2018)">
+Under mild regularity conditions, as the number of data points $n \to \infty$ with appropriately scaled parameters, the Mapper graph converges in the bottleneck distance to the Reeb graph of the filter function applied to the underlying probability distribution's support.
+</TheoremBlock>
+
+More precisely, if $X_n$ is an i.i.d. sample from a distribution $\mu$ on $\mathbb{R}^d$ with density $p$, and if the filter function $f$ is Lipschitz, then for appropriate choices of cover parameters (growing with $n$), the Reeb graph of $f$ is recovered in the limit. This provides rigorous justification for using Mapper on finite samples: with enough data, the Mapper graph faithfully approximates the continuous topological summary.
+
+![Financial market regime detection](/images/topics/mapper-algorithm/mapper-financial-regimes.png)
+
+---
+
+## Stability & Further Reading
+
+### Bootstrap Mapper
+
+A natural concern with Mapper is its sensitivity to parameter choices. The **bootstrap Mapper** procedure provides a practical stability assessment: resample the data (with replacement) $B$ times, compute Mapper on each bootstrap sample, and retain only graph features (connected components, cycles) that appear in a majority of bootstrap samples. This is analogous to the stability selection principle in statistics.
+
+```python
+# Bootstrap stability demonstration
+np.random.seed(42)
+n_bootstrap = 20
+
+# Track cycle counts across bootstrap samples
+cycle_counts = []
+
+for b in range(n_bootstrap):
+    # Bootstrap resample
+    idx = np.random.choice(len(circle), size=len(circle), replace=True)
+    X_boot = circle[idx]
+    f_boot = X_boot[:, 0]
+
+    # Run Mapper
+    result = mapper_from_scratch(X_boot, f_boot,
+                                  n_intervals=10, overlap=0.35)
+
+    # Count independent cycles (beta_1 = edges - nodes + components)
+    G_boot = nx.Graph()
+    G_boot.add_nodes_from(result['nodes'].keys())
+    G_boot.add_edges_from(result['edges'])
+    beta_1 = len(result['edges']) - len(result['nodes']) + \
+             nx.number_connected_components(G_boot)
+    cycle_counts.append(beta_1)
+
+print(f"Cycle counts across {n_bootstrap} bootstrap samples: {cycle_counts}")
+print(f"Median: {np.median(cycle_counts)}, Std: {np.std(cycle_counts):.2f}")
+```
+
+Features that appear consistently across bootstrap samples are robust. If the circle's loop ($\beta_1 = 1$) appears in 19 out of 20 bootstrap samples, we can be confident it reflects genuine topology rather than a parameter artifact.
+
+![Bootstrap stability](/images/topics/mapper-algorithm/mapper-stability.png)
+
+### Variants and Extensions
+
+The Mapper algorithm has inspired several important variants:
+
+| Variant | Key Idea | Reference |
+|---------|----------|-----------|
+| **Reeb Graph** | The continuous limit of Mapper as resolution $\to \infty$ | Classical (Reeb, 1946) |
+| **Multiscale Mapper** | Uses persistent homology to select optimal cover resolution | Dey, Memoli & Wang, 2016 |
+| **Ball Mapper** | Removes the filter function; covers the data directly with balls | Dlotko, 2019 |
+| **Stochastic Mapper** | Randomized construction for scalability | Various, 2020s |
+
+**Reeb graphs** are the continuous analogue of Mapper: given a continuous function $f: X \to \mathbb{R}$ on a topological space, the Reeb graph is the quotient space obtained by identifying points in the same connected component of each level set $f^{-1}(t)$. Theorem 3 above states that Mapper converges to the Reeb graph in the limit of infinite data and infinitely refined covers.
+
+**Multiscale Mapper** (Dey, Memoli & Wang, 2016) addresses the parameter selection problem by computing Mapper at multiple resolutions simultaneously and using persistent homology to identify features that persist across scales. This connects Mapper back to [Persistent Homology](/topics/persistent-homology) in a theoretically principled way.
+
+**Ball Mapper** (Dlotko, 2019) eliminates the filter function entirely. Instead of pulling back a cover of $\mathbb{R}$ through $f$, it directly covers the data $X$ with balls of a fixed radius and takes the nerve. This produces a simplicial complex (not just a graph) that captures higher-dimensional topological features, at the cost of losing the interpretability that comes from a filter function.
+
+### Connections to Other Topics
+
+The Mapper algorithm sits at the intersection of several topics developed on formalML:
+
+- [Simplicial Complexes](/topics/simplicial-complexes): The Mapper graph is a 1-dimensional simplicial complex (graph). Higher-dimensional nerves can be computed but are rarely needed in practice.
+- [Persistent Homology](/topics/persistent-homology): PH on the Mapper graph quantifies its topological features. Multiscale Mapper uses PH to select optimal parameters.
+- [Cech Complexes & Nerve Theorem](/topics/cech-complexes): The Nerve Theorem is the theoretical foundation of Mapper. The proof via partition-of-unity maps given on that page applies directly to the Mapper setting.
