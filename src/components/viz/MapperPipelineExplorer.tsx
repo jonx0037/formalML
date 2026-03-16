@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { runMapper, createIntervalCover } from './shared/mapper';
-import type { MapperPoint, MapperResult } from './shared/types';
+import type { MapperPoint } from './shared/types';
 import { circlePoints } from '../../data/mapper-pipeline-data';
 
 const STEP_LABELS = [
