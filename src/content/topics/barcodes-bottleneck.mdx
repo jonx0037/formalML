@@ -1,0 +1,450 @@
+---
+title: "Barcodes & Bottleneck Distance"
+subtitle: "Comparing persistence diagrams — the metrics that make TDA a rigorous statistical tool"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "persistent-homology"
+tags:
+  - "topology"
+  - "tda"
+  - "persistent-homology"
+  - "metric-spaces"
+domain: "topology"
+videoId: null
+notebookPath: "notebooks/barcodes-bottleneck.ipynb"
+githubUrl: null
+datePublished: 2026-03-16
+estimatedReadTime: 30
+abstract: "Persistence barcodes decompose a persistence module into interval summands, giving a complete invariant of the multiscale topology captured by a filtration. The bottleneck and Wasserstein distances turn the space of persistence diagrams into a metric space, and the Stability Theorem guarantees that small perturbations of the input produce small changes in the diagram — the theoretical foundation that makes topological data analysis a rigorous tool for real-world data."
+connections:
+  - topic: "persistent-homology"
+    relationship: "builds on"
+  - topic: "metric-spaces"
+    relationship: "uses concepts from"
+references:
+  - type: "paper"
+    title: "Stability of Persistence Diagrams"
+    authors: "David Cohen-Steiner, Herbert Edelsbrunner & John Harer"
+    year: 2007
+    url: "https://doi.org/10.1007/s00454-006-1276-5"
+    note: "The foundational stability result — Theorem 3 in this topic"
+  - type: "paper"
+    title: "Lipschitz Functions Have Lp-Stable Persistence"
+    authors: "David Cohen-Steiner, Herbert Edelsbrunner, John Harer & Yuriy Mileyko"
+    year: 2010
+    url: "https://doi.org/10.1007/s10208-010-9060-6"
+    note: "Wasserstein stability for persistence diagrams"
+  - type: "paper"
+    title: "Computing Persistent Homology"
+    authors: "Afra Zomorodian & Gunnar Carlsson"
+    year: 2005
+    url: "https://doi.org/10.1007/s00454-004-1146-y"
+    note: "The Structure Theorem for persistence modules"
+  - type: "paper"
+    title: "Induced Matchings and the Algebraic Stability of Persistence Barcodes"
+    authors: "Ulrich Bauer & Michael Lesnick"
+    year: 2015
+    url: "https://doi.org/10.1007/s41468-015-0004-0"
+    note: "The Isometry Theorem — bottleneck distance equals interleaving distance"
+  - type: "paper"
+    title: "Confidence Sets for Persistence Diagrams"
+    authors: "Brittany Terese Fasy, Fabrizio Lecci, Alessandro Rinaldo, Larry Wasserman, Sivaraman Balakrishnan & Aarti Singh"
+    year: 2014
+    url: "https://doi.org/10.1214/14-AOS1252"
+    note: "Bootstrap methods for statistical inference on persistence diagrams"
+  - type: "paper"
+    title: "Statistical Topological Data Analysis using Persistence Landscapes"
+    authors: "Peter Bubenik"
+    year: 2015
+    url: "https://jmlr.org/papers/v16/bubenik15a.html"
+    note: "Persistence landscapes as Banach space elements for statistical analysis"
+  - type: "book"
+    title: "Computational Topology: An Introduction"
+    authors: "Herbert Edelsbrunner & John Harer"
+    year: 2010
+    note: "Chapters 8-9 on stability and distances between diagrams"
+  - type: "paper"
+    title: "Geometry Helps to Compare Persistence Diagrams"
+    authors: "Michael Kerber, Dmitriy Morozov & Arnur Nigmetov"
+    year: 2017
+    url: "https://doi.org/10.1145/3064175"
+    note: "Efficient algorithms for Wasserstein distance computation"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import BottleneckMatchingViz from '../../components/viz/BottleneckMatchingViz.tsx';
+import StabilityDemo from '../../components/viz/StabilityDemo.tsx';
+
+## Overview & Motivation
+
+The [Persistent Homology](/topics/persistent-homology) article showed how to *compute* a persistence diagram — a multiset of birth-death pairs that summarizes the topological features of a dataset across scales. But a single diagram is just a picture. To do science, you need to **compare** diagrams: Is dataset A topologically similar to dataset B? Is this diagram stable under noise? Can I average over a population of diagrams?
+
+These questions require turning the collection of all persistence diagrams into a **metric space** — equipping it with a notion of distance that is both mathematically well-behaved and computationally tractable. Three questions frame the challenge:
+
+1. **How do we define a "distance" between two persistence diagrams?** A diagram is a multiset of points in $\mathbb{R}^2$, possibly of different sizes. Standard vector metrics don't apply directly.
+2. **Why can't we just use Hausdorff distance on the point sets?** Because persistence diagrams have a special structure: short-lived features (points near the diagonal) should contribute less to the distance than long-lived ones.
+3. **What makes bottleneck distance the natural choice for stability, and when do you want Wasserstein instead?** The answer involves a beautiful interplay between algebra (persistence modules), geometry (matchings), and analysis (stability inequalities).
+
+The solution comes in two equivalent representations — **barcodes** and **persistence diagrams** — and two families of metrics: the **bottleneck distance** $d_B$, which measures the worst-case cost of matching features, and the **Wasserstein distances** $W_p$, which measure the total cost. Both are true metrics on the space of persistence diagrams, and both satisfy stability theorems — but with different tradeoffs.
+
+These distances are what make TDA a *statistical* method rather than just a visualization trick. Without them, you can't do hypothesis testing, confidence sets, or machine learning on topological features. They are the bridge between topology and data science.
+
+---
+
+## Formal Framework
+
+### Barcodes as Interval Decompositions
+
+The [Persistent Homology](/topics/persistent-homology) article introduced persistence barcodes informally: each topological feature gets a bar $[b, d)$ recording when it is born and when it dies. The algebraic foundation for this representation is the Structure Theorem, which says that barcodes are not just a convenient visualization — they are a *complete* invariant.
+
+<TheoremBlock type="definition" number={1}>
+A **persistence barcode** is a finite multiset of intervals $\{[b_i, d_i)\}_{i=1}^n$ where $b_i < d_i \leq \infty$. Each interval is called a **bar** and represents one topological feature. The quantity $d_i - b_i$ is the **persistence** of the $i$-th feature.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={1} title="Structure Theorem for Persistence Modules (Zomorodian & Carlsson, 2005)">
+Let $\mathbb{V} = \{V_t\}_{t \in \mathbb{R}}$ be a pointwise finite-dimensional persistence module over a field $\mathbb{F}$. Then $\mathbb{V}$ decomposes uniquely (up to reordering) into interval modules:
+
+$$\mathbb{V} \cong \bigoplus_{i=1}^{n} \mathbb{I}[b_i, d_i)$$
+
+where $\mathbb{I}[b, d)$ is the interval module that is $\mathbb{F}$ on $[b, d)$ and $0$ elsewhere.
+</TheoremBlock>
+
+Each interval module $\mathbb{I}[b_i, d_i)$ corresponds to exactly one bar in the barcode. The theorem guarantees that this decomposition is unique: different filtrations can produce different barcodes, but a given persistence module has only one barcode (up to reordering of bars).
+
+<TheoremBlock type="remark">
+**Barcodes ↔ Persistence Diagrams.** There is a bijection between barcodes and persistence diagrams: each interval $[b, d)$ in the barcode corresponds to an off-diagonal point $(b, d)$ in the diagram. The two representations carry identical information — barcodes are better for visualizing individual features (each bar is one feature), while diagrams are better for defining metrics (they live in $\mathbb{R}^2$ where distances are natural).
+</TheoremBlock>
+
+<TheoremBlock type="example" number={1}>
+Consider four points forming a square with side length 1, vertices at $(0,0)$, $(1,0)$, $(1,1)$, $(0,1)$. The Vietoris-Rips filtration produces:
+
+- **$H_0$:** Four components born at $\varepsilon = 0$. Three die at $\varepsilon = 1$ (edges connect adjacent vertices). One survives to $\infty$. Barcode: three bars $[0, 1)$ and one $[0, \infty)$.
+- **$H_1$:** The four edges form a cycle at $\varepsilon = 1$. At $\varepsilon = \sqrt{2}$, the diagonals enter and a triangle fills the cycle. Barcode: one bar $[1, \sqrt{2})$ with persistence $\sqrt{2} - 1 \approx 0.414$.
+
+The $H_1$ bar is the topological signal: it says "this point cloud has a loop-like structure at scales between 1 and $\sqrt{2}$."
+</TheoremBlock>
+
+### The Space of Persistence Diagrams
+
+To define distances between diagrams, we first need to formalize what a persistence diagram *is* as a mathematical object.
+
+<TheoremBlock type="definition" number={2}>
+A **persistence diagram** is a multiset
+
+$$D \subset \{(b, d) \in \mathbb{R}^2 \mid b < d\} \cup \Delta$$
+
+where $\Delta = \{(x, x) \mid x \in \mathbb{R}\}$ is the **diagonal**, endowed with infinite multiplicity. Every persistence diagram contains every diagonal point with countably infinite multiplicity.
+</TheoremBlock>
+
+The diagonal plays a crucial role: it serves as a "graveyard" for unmatched features. Since two diagrams can have different numbers of off-diagonal points, we cannot match them point-to-point directly. The diagonal fixes this: any unmatched point in one diagram can be paired with a diagonal point in the other, at a cost equal to the point's distance from the diagonal — which is exactly half its persistence, $(d - b) / 2$.
+
+<TheoremBlock type="definition" number={3}>
+A **partial matching** between persistence diagrams $D$ and $D'$ is a bijection $\gamma: D \to D'$ (well-defined because both diagrams contain the entire diagonal with infinite multiplicity). Points in $D$ can be matched either to off-diagonal points in $D'$ or to diagonal points.
+</TheoremBlock>
+
+### Bottleneck Distance
+
+<TheoremBlock type="definition" number={4}>
+The **bottleneck distance** between persistence diagrams $D$ and $D'$ is:
+
+$$d_B(D, D') = \inf_{\gamma: D \to D'} \sup_{p \in D} \|p - \gamma(p)\|_\infty$$
+
+where $\gamma$ ranges over all bijections $D \to D'$ and $\|\cdot\|_\infty$ is the $L^\infty$ norm on $\mathbb{R}^2$: $\|(a,b)\|_\infty = \max(|a|, |b|)$.
+</TheoremBlock>
+
+Geometrically, $d_B$ asks: what is the minimum cost of a perfect matching between the two diagrams, where the cost of a matching is the worst single mismatch? It is a minimax problem — minimize over matchings, maximize over points within a matching.
+
+<TheoremBlock type="theorem" number={2}>
+$d_B$ is a metric on the space of persistence diagrams (with finitely many off-diagonal points). That is:
+
+1. $d_B(D, D') \geq 0$, with equality iff $D = D'$
+2. $d_B(D, D') = d_B(D', D)$ (symmetry)
+3. $d_B(D, D'') \leq d_B(D, D') + d_B(D', D'')$ (triangle inequality)
+</TheoremBlock>
+
+<TheoremBlock type="example" number={2}>
+Let $D = \{(0.2, 1.4),\; (0.5, 0.9)\}$ and $D' = \{(0.3, 1.5)\}$ (plus all diagonal points).
+
+We need to match $D$ to $D'$. The point $(0.3, 1.5)$ in $D'$ must match to something in $D$, and the remaining $D$ point matches to the diagonal.
+
+**Option 1:** Match $(0.2, 1.4) \leftrightarrow (0.3, 1.5)$ and $(0.5, 0.9) \leftrightarrow (0.7, 0.7) \in \Delta$.
+- Cost of first pair: $\max(|0.2-0.3|, |1.4-1.5|) = 0.1$
+- Cost of second pair: $(0.9 - 0.5)/2 = 0.2$
+- Bottleneck: $\max(0.1, 0.2) = 0.2$
+
+**Option 2:** Match $(0.5, 0.9) \leftrightarrow (0.3, 1.5)$ and $(0.2, 1.4) \leftrightarrow (0.8, 0.8) \in \Delta$.
+- Cost of first pair: $\max(|0.5-0.3|, |0.9-1.5|) = 0.6$
+- Cost of second pair: $(1.4 - 0.2)/2 = 0.6$
+- Bottleneck: $\max(0.6, 0.6) = 0.6$
+
+Option 1 is strictly better. So $d_B(D, D') = 0.2$.
+</TheoremBlock>
+
+### Wasserstein Distance
+
+<TheoremBlock type="definition" number={5}>
+The **$p$-Wasserstein distance** between persistence diagrams $D$ and $D'$ is:
+
+$$W_p(D, D') = \left(\inf_{\gamma: D \to D'} \sum_{x \in D} \|x - \gamma(x)\|_\infty^p \right)^{1/p}$$
+
+for $1 \leq p < \infty$, where $\gamma$ ranges over all bijections $D \to D'$.
+</TheoremBlock>
+
+The key difference from bottleneck: Wasserstein penalizes *all* mismatches, not just the worst one. If two diagrams differ by many small mismatches, bottleneck says they're close (the worst individual mismatch is small), while Wasserstein says they're far (the total mismatch accumulates).
+
+When to use which:
+- **Bottleneck ($d_B$):** Stability guarantees, worst-case analysis, theoretical proofs. Bottleneck is the natural metric for the Stability Theorem because it bounds the worst individual feature displacement.
+- **Wasserstein ($W_1$, $W_2$):** Statistical applications, persistence images, ML pipelines. $W_2$ is the standard choice in machine learning because it is sensitive to *all* features, not just the most persistent one. This matters when the signal is distributed across many moderate-persistence features.
+
+<TheoremBlock type="remark">
+The bottleneck distance is the limit of Wasserstein distances:
+
+$$d_B(D, D') = \lim_{p \to \infty} W_p(D, D')$$
+
+This follows from the standard relationship between $\ell^p$ norms: $\|\mathbf{x}\|_\infty = \lim_{p \to \infty} \|\mathbf{x}\|_p$. So the bottleneck distance sits at one end of a continuous family of metrics.
+</TheoremBlock>
+
+### The Stability Theorem
+
+The practical utility of everything above rests on a single result: the distances we've defined are **stable** under perturbations of the input. The [Persistent Homology](/topics/persistent-homology) article stated this informally; here is the full treatment.
+
+<TheoremBlock type="theorem" number={3} title="Stability Theorem (Cohen-Steiner, Edelsbrunner & Harer, 2007)">
+Let $f, g: X \to \mathbb{R}$ be tame functions on a triangulable topological space $X$. Then:
+
+$$d_B(\text{Dgm}(f), \text{Dgm}(g)) \leq \|f - g\|_\infty$$
+
+The bottleneck distance between the persistence diagrams of $f$ and $g$ is bounded by the $L^\infty$ distance between the functions themselves.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof proceeds via **$\delta$-interleavings** of persistence modules, where $\delta = \|f - g\|_\infty$. The key steps:
+
+1. Since $f(x) - \delta \leq g(x) \leq f(x) + \delta$ for all $x$, the sublevel sets satisfy $f^{-1}(-\infty, t] \subseteq g^{-1}(-\infty, t + \delta]$ and $g^{-1}(-\infty, t] \subseteq f^{-1}(-\infty, t + \delta]$ for all $t$.
+
+2. Applying homology, the persistence modules $\mathbb{V}^f$ and $\mathbb{V}^g$ are $\delta$-interleaved: there exist morphisms $\phi_t: V^f_t \to V^g_{t+\delta}$ and $\psi_t: V^g_t \to V^f_{t+\delta}$ satisfying $\psi_{t+\delta} \circ \phi_t = \iota^f_{t, t+2\delta}$ and $\phi_{t+\delta} \circ \psi_t = \iota^g_{t, t+2\delta}$.
+
+3. The $\delta$-interleaving induces a matching between the barcodes of $\mathbb{V}^f$ and $\mathbb{V}^g$: each interval $[b, d)$ in one barcode is matched to an interval $[b', d')$ in the other with $|b - b'| \leq \delta$ and $|d - d'| \leq \delta$, or to the diagonal if its persistence is $\leq 2\delta$.
+
+4. This matching achieves cost $\leq \delta$ in the bottleneck sense, proving $d_B \leq \delta = \|f - g\|_\infty$.
+
+See Cohen-Steiner, Edelsbrunner & Harer (2007) for the complete argument.
+</TheoremBlock>
+
+For point cloud data, the relevant corollary translates function perturbation into geometric perturbation:
+
+<TheoremBlock type="corollary" number={1}>
+Let $X$ and $Y$ be finite point clouds with Hausdorff distance $d_H(X, Y) \leq \delta$. Then:
+
+$$d_B(\text{Dgm}(\text{VR}(X)), \text{Dgm}(\text{VR}(Y))) \leq 2\delta$$
+
+The factor of 2 arises because the Vietoris-Rips filtration function uses diameter (maximum pairwise distance), and a perturbation of $\delta$ in each point can shift the diameter of a simplex by up to $2\delta$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={4} title="Wasserstein Stability (Cohen-Steiner, Edelsbrunner, Harer & Mileyko, 2010)">
+For Lipschitz functions $f, g: X \to \mathbb{R}$ on a triangulable compact space $X$, the $p$-Wasserstein distance satisfies:
+
+$$W_p(\text{Dgm}(f), \text{Dgm}(g))^p \leq C \cdot \|f - g\|_\infty^p$$
+
+where the constant $C$ depends on the total persistence of $f$ (or $g$). Unlike the bottleneck bound, the Wasserstein bound depends on how many features are present.
+</TheoremBlock>
+
+The key takeaway: stability is what makes TDA safe to use on real data. If your point cloud has measurement noise bounded by $\delta$, the persistence diagram moves by at most $2\delta$ in the bottleneck metric. Features with persistence $> 2\delta$ are guaranteed to be real topological features of the underlying space, not artifacts of noise.
+
+### The Isometry Theorem
+
+The Stability Theorem raises a natural question: is the bottleneck distance *the right* metric, or just *a* metric? The Isometry Theorem answers this definitively.
+
+<TheoremBlock type="theorem" number={5} title="Isometry Theorem (Bauer & Lesnick, 2015)">
+The bottleneck distance between persistence diagrams equals the interleaving distance between the corresponding persistence modules:
+
+$$d_B(\text{Dgm}(\mathbb{V}), \text{Dgm}(\mathbb{W})) = d_I(\mathbb{V}, \mathbb{W})$$
+</TheoremBlock>
+
+The **interleaving distance** $d_I$ measures how close two persistence modules are *algebraically* — it is the infimum over all $\delta$ such that the modules are $\delta$-interleaved. The Isometry Theorem says that this algebraic notion of proximity is *exactly* captured by the geometric notion of proximity in the persistence diagram.
+
+This is the deep reason why bottleneck distance is the canonical metric: it doesn't just compare point sets in $\mathbb{R}^2$ — it faithfully reflects the algebraic structure of the underlying persistence modules. The Stability Theorem is then a corollary: $d_I(\mathbb{V}^f, \mathbb{V}^g) \leq \|f - g\|_\infty$ by the interleaving argument, and $d_B = d_I$ by the Isometry Theorem.
+
+---
+
+## Visual Intuition
+
+### Bottleneck Matching
+
+The visualization below shows two persistence diagrams (H₁ features) overlaid in a single coordinate system. **Circles** represent features from one dataset; **diamonds** represent features from another. Lines show the optimal bottleneck matching — each feature is matched to its counterpart or to the diagonal. The **red line** marks the bottleneck pair: the single worst-cost match that determines $d_B$.
+
+Toggle between diagram pairs to see how different topological structures produce different matchings:
+
+<BottleneckMatchingViz client:visible />
+
+**What to notice:**
+
+1. **Circle vs Cluster:** The circle's dominant loop has no counterpart in the cluster — it matches to the diagonal at a cost of half its persistence. This large diagonal match drives $d_B$.
+
+2. **Circle vs Figure-Eight:** The circle's single loop matches to one of the figure-eight's two loops. The second figure-eight loop has no counterpart, so it too matches to the diagonal. The bottleneck distance reflects the mismatch in *number* of significant loops.
+
+### Stability Under Noise
+
+**Drag the σ slider** to add Gaussian noise to a circle point cloud and watch the persistence diagram respond. The metrics panel confirms that the Stability Theorem's bound $d_B \leq 2 \cdot d_H$ holds at every noise level:
+
+<StabilityDemo client:visible />
+
+**What to notice:**
+
+1. At low noise ($\sigma < 0.1$), the diagram barely moves — the topological signal is robust.
+2. As noise increases, short bars (near the diagonal) appear and shift, but the dominant features maintain their persistence.
+3. The bound $2 \cdot d_H$ is always above $d_B$ — often with significant slack, because the bound is worst-case.
+
+---
+
+## Working Code
+
+### Computing and Plotting Barcodes
+
+```python
+import numpy as np
+from ripser import ripser
+from persim import plot_diagrams
+import matplotlib.pyplot as plt
+
+np.random.seed(42)
+
+# Four canonical shapes with distinct topological signatures
+def sample_circle(n=150, noise=0.05):
+    theta = np.random.uniform(0, 2 * np.pi, n)
+    r = 1.0 + np.random.normal(0, noise, n)
+    return np.column_stack([r * np.cos(theta), r * np.sin(theta)])
+
+def sample_cluster(n=150):
+    return np.random.randn(n, 2) * 0.5
+
+def sample_figure_eight(n=200, noise=0.05):
+    n_half = n // 2
+    theta1 = np.random.uniform(0, 2 * np.pi, n_half)
+    theta2 = np.random.uniform(0, 2 * np.pi, n - n_half)
+    left = np.column_stack([-1 + np.cos(theta1), np.sin(theta1)]) + noise * np.random.randn(n_half, 2)
+    right = np.column_stack([1 + np.cos(theta2), np.sin(theta2)]) + noise * np.random.randn(n - n_half, 2)
+    return np.vstack([left, right])
+
+clouds = {
+    'Circle': sample_circle(),
+    'Cluster': sample_cluster(),
+    'Figure-Eight': sample_figure_eight(),
+}
+
+# Compute persistence and examine barcodes
+for name, pts in clouds.items():
+    result = ripser(pts, maxdim=1)
+    dgms = result['dgms']
+    for dim in range(2):
+        dgm = dgms[dim]
+        finite = dgm[np.isfinite(dgm[:, 1])]
+        if len(finite) > 0:
+            pers = finite[:, 1] - finite[:, 0]
+            print(f"{name} H_{dim}: {len(finite)} finite bars, max persistence = {pers.max():.4f}")
+```
+
+### Bottleneck Distance Computation
+
+```python
+from persim import bottleneck
+
+# Extract H₁ diagrams
+results = {name: ripser(pts, maxdim=1) for name, pts in clouds.items()}
+h1_dgms = {}
+for name, result in results.items():
+    dgm = result['dgms'][1]
+    h1_dgms[name] = dgm[np.isfinite(dgm[:, 1])]
+
+# Pairwise bottleneck distances
+names = list(clouds.keys())
+for i, a in enumerate(names):
+    for j, b in enumerate(names):
+        if i < j:
+            if len(h1_dgms[a]) > 0 and len(h1_dgms[b]) > 0:
+                d = bottleneck(h1_dgms[a], h1_dgms[b])
+            else:
+                nonempty = h1_dgms[a] if len(h1_dgms[a]) > 0 else h1_dgms[b]
+                d = (nonempty[:, 1] - nonempty[:, 0]).max() / 2
+            print(f"d_B({a}, {b}) = {d:.4f}")
+
+# Verify triangle inequality
+def safe_bottleneck(dgm_a, dgm_b):
+    """Bottleneck distance handling empty diagrams."""
+    if len(dgm_a) > 0 and len(dgm_b) > 0:
+        return bottleneck(dgm_a, dgm_b)
+    elif len(dgm_a) > 0:
+        return (dgm_a[:, 1] - dgm_a[:, 0]).max() / 2
+    elif len(dgm_b) > 0:
+        return (dgm_b[:, 1] - dgm_b[:, 0]).max() / 2
+    return 0.0
+
+for a, b, c in [('Circle', 'Cluster', 'Figure-Eight')]:
+    d_ab = safe_bottleneck(h1_dgms[a], h1_dgms[b])
+    d_bc = safe_bottleneck(h1_dgms[b], h1_dgms[c])
+    d_ac = safe_bottleneck(h1_dgms[a], h1_dgms[c])
+    print(f"Triangle: d_B(A,C) = {d_ac:.4f} ≤ d_B(A,B) + d_B(B,C) = {d_ab + d_bc:.4f}: {d_ac <= d_ab + d_bc + 1e-10}")
+```
+
+### Wasserstein Distance and Comparison
+
+```python
+from gudhi.wasserstein import wasserstein_distance
+
+# Compare bottleneck, W₁, and W₂ on the same pairs
+pairs = [('Circle', 'Cluster'), ('Circle', 'Figure-Eight')]
+
+for a, b in pairs:
+    dgm_a, dgm_b = h1_dgms[a], h1_dgms[b]
+    if len(dgm_a) == 0 or len(dgm_b) == 0:
+        print(f"{a} vs {b}: empty diagram, skipping Wasserstein")
+        continue
+
+    d_b = bottleneck(dgm_a, dgm_b)
+    w1 = wasserstein_distance(dgm_a, dgm_b, order=1)
+    w2 = wasserstein_distance(dgm_a, dgm_b, order=2)
+
+    print(f"{a} vs {b}:  d_B = {d_b:.4f},  W_1 = {w1:.4f},  W_2 = {w2:.4f}")
+    # Note: d_B ≤ W_p — bottleneck is always the cheapest metric
+```
+
+### Stability Verification Pipeline
+
+```python
+from scipy.spatial.distance import directed_hausdorff
+
+# Base point cloud: clean circle
+base = sample_circle(150, noise=0.0)
+base_dgm = ripser(base, maxdim=1)['dgms'][1]
+
+noise_levels = [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5]
+n_trials = 20
+
+print(f"{'σ':>6}  {'mean d_H':>10}  {'mean d_B':>10}  {'mean 2·d_H':>12}  {'holds':>8}")
+for sigma in noise_levels:
+    d_bs, d_hs = [], []
+    for _ in range(n_trials):
+        noisy = base + sigma * np.random.randn(*base.shape)
+        d_h = max(directed_hausdorff(base, noisy)[0], directed_hausdorff(noisy, base)[0])
+        noisy_dgm = ripser(noisy, maxdim=1)['dgms'][1]
+        d_b = bottleneck(base_dgm, noisy_dgm) if len(noisy_dgm) > 0 else (base_dgm[:, 1] - base_dgm[:, 0]).max() / 2 if len(base_dgm) > 0 else 0
+        d_bs.append(d_b)
+        d_hs.append(d_h)
+
+    mean_db, mean_dh = np.mean(d_bs), np.mean(d_hs)
+    bound = 2 * mean_dh
+    holds = all(db <= 2 * dh + 1e-10 for db, dh in zip(d_bs, d_hs))
+    print(f"{sigma:>6.2f}  {mean_dh:>10.4f}  {mean_db:>10.4f}  {bound:>12.4f}  {'✓' if holds else '✗':>8}")
+```
+
+---
+
+## Connections & Applications
+
+- **Statistical TDA**: Bottleneck and Wasserstein distances enable hypothesis testing on topological features. Fasy et al. (2014) construct bootstrap confidence sets for persistence diagrams: if a point in the diagram lies outside the confidence band around the diagonal, it is a statistically significant topological feature.
+
+- **Persistence landscapes** (Bubenik, 2015): an alternative representation that maps a persistence diagram to a sequence of piecewise-linear functions in a Banach space. This enables standard statistical tools — means, variances, $t$-tests — to be applied directly to topological summaries.
+
+- **Optimal transport**: Wasserstein distance on persistence diagrams is a special case of optimal transport between discrete measures on $\mathbb{R}^2$. This connects TDA to the rich theory of Monge-Kantorovich problems and provides access to efficient computational tools from the optimal transport literature (Kerber, Morozov & Nigmetov, 2017).
+
+- **Sheaf theory** (planned): sheaf-theoretic generalizations of persistence provide multi-parameter extensions where barcode decomposition no longer holds — the bottleneck distance generalizes to interleaving distance in this setting, and the Isometry Theorem shows why this generalization is natural.
