@@ -186,7 +186,7 @@ export default function ParameterSensitivityGrid() {
         </p>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {row2.map((entry, i) => (
-            <SensitivityCell key={i + 4} entry={entry} width={cellWidth} height={cellHeight} />
+            <SensitivityCell key={entry.label} entry={entry} width={cellWidth} height={cellHeight} />
           ))}
         </div>
       </div>
