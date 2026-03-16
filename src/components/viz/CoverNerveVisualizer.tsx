@@ -151,7 +151,21 @@ export default function CoverNerveVisualizer({
   const [epsilon, setEpsilon] = useState(initialEpsilon);
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
 
-  const panelWidth = containerWidth ? Math.max((containerWidth - 16) / 2, 280) : 300;
+  const panelWidth = useMemo(() => {
+    if (!containerWidth) {
+      return 300;
+    }
+    const gap = 16; // approximate horizontal gap/padding between panels
+    const minWidth = 280;
+
+    // For narrow viewports (stacked / single-column layout), use nearly full container width
+    if (containerWidth < 600) {
+      return Math.max(containerWidth - gap, minWidth);
+    }
+
+    // For wider viewports (two-column layout), use roughly half the container width
+    return Math.max((containerWidth - gap) / 2, minWidth);
+  }, [containerWidth]);
   const height = 360;
   const margin = { top: 24, right: 20, bottom: 20, left: 20 };
 
