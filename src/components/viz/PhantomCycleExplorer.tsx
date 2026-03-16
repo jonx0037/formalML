@@ -111,7 +111,7 @@ export default function PhantomCycleExplorer() {
             .attr('y1', yScale(VERTICES[i][1]))
             .attr('x2', xScale(VERTICES[j][0]))
             .attr('y2', yScale(VERTICES[j][1]))
-            .attr('stroke', '#000')
+            .attr('stroke', 'var(--color-text)')
             .attr('stroke-opacity', 0.8)
             .attr('stroke-width', 2);
         });
