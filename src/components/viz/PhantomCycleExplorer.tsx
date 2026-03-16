@@ -162,8 +162,8 @@ export default function PhantomCycleExplorer() {
           .attr('cx', xScale(vx))
           .attr('cy', yScale(vy))
           .attr('r', 5)
-          .attr('fill', '#000')
-          .attr('stroke', '#fff')
+          .attr('fill', 'var(--color-surface)')
+          .attr('stroke', 'var(--color-text)')
           .attr('stroke-width', 1.5);
 
         // Vertex labels
