@@ -160,8 +160,12 @@ function approxBottleneck(
   intB: PersistenceInterval[],
 ): number {
   // Compare only H₀ finite intervals for simplicity
-  const finA = intA.filter((i) => i.death !== Infinity).sort((a, b) => (b.death - b.birth) - (a.death - a.birth));
-  const finB = intB.filter((i) => i.death !== Infinity).sort((a, b) => (b.death - b.birth) - (a.death - a.birth));
+  const finA = intA
+    .filter((i) => i.dimension === 0 && i.death !== Infinity)
+    .sort((a, b) => (b.death - b.birth) - (a.death - a.birth));
+  const finB = intB
+    .filter((i) => i.dimension === 0 && i.death !== Infinity)
+    .sort((a, b) => (b.death - b.birth) - (a.death - a.birth));
 
   let maxCost = 0;
   const n = Math.max(finA.length, finB.length);
