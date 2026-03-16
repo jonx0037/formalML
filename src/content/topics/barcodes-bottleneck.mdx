@@ -28,7 +28,7 @@ references:
     authors: "David Cohen-Steiner, Herbert Edelsbrunner & John Harer"
     year: 2007
     url: "https://doi.org/10.1007/s00454-006-1276-5"
-    note: "The foundational stability result — Theorem 4 in this topic"
+    note: "The foundational stability result — Theorem 3 in this topic"
   - type: "paper"
     title: "Lipschitz Functions Have Lp-Stable Persistence"
     authors: "David Cohen-Steiner, Herbert Edelsbrunner, John Harer & Yuriy Mileyko"
@@ -369,10 +369,20 @@ for i, a in enumerate(names):
             print(f"d_B({a}, {b}) = {d:.4f}")
 
 # Verify triangle inequality
+def safe_bottleneck(dgm_a, dgm_b):
+    """Bottleneck distance handling empty diagrams."""
+    if len(dgm_a) > 0 and len(dgm_b) > 0:
+        return bottleneck(dgm_a, dgm_b)
+    elif len(dgm_a) > 0:
+        return (dgm_a[:, 1] - dgm_a[:, 0]).max() / 2
+    elif len(dgm_b) > 0:
+        return (dgm_b[:, 1] - dgm_b[:, 0]).max() / 2
+    return 0.0
+
 for a, b, c in [('Circle', 'Cluster', 'Figure-Eight')]:
-    d_ab = bottleneck(h1_dgms[a], h1_dgms[b]) if len(h1_dgms[a]) > 0 and len(h1_dgms[b]) > 0 else 0
-    d_bc = bottleneck(h1_dgms[b], h1_dgms[c]) if len(h1_dgms[b]) > 0 and len(h1_dgms[c]) > 0 else 0
-    d_ac = bottleneck(h1_dgms[a], h1_dgms[c]) if len(h1_dgms[a]) > 0 and len(h1_dgms[c]) > 0 else 0
+    d_ab = safe_bottleneck(h1_dgms[a], h1_dgms[b])
+    d_bc = safe_bottleneck(h1_dgms[b], h1_dgms[c])
+    d_ac = safe_bottleneck(h1_dgms[a], h1_dgms[c])
     print(f"Triangle: d_B(A,C) = {d_ac:.4f} ≤ d_B(A,B) + d_B(B,C) = {d_ab + d_bc:.4f}: {d_ac <= d_ab + d_bc + 1e-10}")
 ```
 
@@ -417,7 +427,7 @@ for sigma in noise_levels:
         noisy = base + sigma * np.random.randn(*base.shape)
         d_h = max(directed_hausdorff(base, noisy)[0], directed_hausdorff(noisy, base)[0])
         noisy_dgm = ripser(noisy, maxdim=1)['dgms'][1]
-        d_b = bottleneck(base_dgm, noisy_dgm) if len(noisy_dgm) > 0 else 0
+        d_b = bottleneck(base_dgm, noisy_dgm) if len(noisy_dgm) > 0 else (base_dgm[:, 1] - base_dgm[:, 0]).max() / 2 if len(base_dgm) > 0 else 0
         d_bs.append(d_b)
         d_hs.append(d_h)
 

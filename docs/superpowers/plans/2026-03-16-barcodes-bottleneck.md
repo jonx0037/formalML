@@ -46,11 +46,12 @@
 This component renders two small persistence diagrams side by side (or stacked on mobile) with the optimal bottleneck matching drawn as lines between matched points. It computes a greedy approximation of the bottleneck matching in the browser.
 
 **Key design decisions:**
-- Two pre-defined diagram pairs (selectable via tabs/buttons): "Circle vs Cluster" and "Circle vs Figure-Eight"
+- Two pre-defined diagram pairs (selectable via buttons): "Circle vs Cluster" and "Circle vs Figure-Eight"
 - Matching lines drawn from points in diagram A to matched points in diagram B (or to diagonal for unmatched)
 - Display the bottleneck distance value prominently
 - Use `dimensionColors` for point coloring (H₀ teal, H₁ purple)
 - Responsive via `useResizeObserver`, D3 rendering via `useD3`
+- Note: draggable points were considered but deferred in favor of pre-defined pairs for simplicity
 
 - [ ] **Step 1: Create the component file with basic structure**
 

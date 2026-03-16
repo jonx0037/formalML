@@ -26,15 +26,15 @@ const diagramPairs: Record<string, { name: string; a: DiagramPoint[]; b: Diagram
     labelB: 'Cluster',
     // Circle: one dominant H₁ loop
     a: [
-      { birth: 0.39, death: 1.80, dim: 1 },
-      { birth: 0.72, death: 0.83, dim: 1 },
-      { birth: 0.68, death: 0.76, dim: 1 },
+      { birth: 0.39, death: 1.80, dimension: 1 },
+      { birth: 0.72, death: 0.83, dimension: 1 },
+      { birth: 0.68, death: 0.76, dimension: 1 },
     ],
     // Cluster: only noise (short bars near diagonal)
     b: [
-      { birth: 0.55, death: 0.71, dim: 1 },
-      { birth: 0.61, death: 0.69, dim: 1 },
-      { birth: 0.48, death: 0.54, dim: 1 },
+      { birth: 0.55, death: 0.71, dimension: 1 },
+      { birth: 0.61, death: 0.69, dimension: 1 },
+      { birth: 0.48, death: 0.54, dimension: 1 },
     ],
   },
   'circle-vs-figure-eight': {
@@ -43,16 +43,16 @@ const diagramPairs: Record<string, { name: string; a: DiagramPoint[]; b: Diagram
     labelB: 'Figure-Eight',
     // Circle: one dominant loop
     a: [
-      { birth: 0.39, death: 1.80, dim: 1 },
-      { birth: 0.72, death: 0.83, dim: 1 },
-      { birth: 0.68, death: 0.76, dim: 1 },
+      { birth: 0.39, death: 1.80, dimension: 1 },
+      { birth: 0.72, death: 0.83, dimension: 1 },
+      { birth: 0.68, death: 0.76, dimension: 1 },
     ],
     // Figure-eight: two dominant loops
     b: [
-      { birth: 0.30, death: 1.64, dim: 1 },
-      { birth: 0.35, death: 1.52, dim: 1 },
-      { birth: 0.60, death: 0.74, dim: 1 },
-      { birth: 0.55, death: 0.66, dim: 1 },
+      { birth: 0.30, death: 1.64, dimension: 1 },
+      { birth: 0.35, death: 1.52, dimension: 1 },
+      { birth: 0.60, death: 0.74, dimension: 1 },
+      { birth: 0.55, death: 0.66, dimension: 1 },
     ],
   },
 };
@@ -69,14 +69,13 @@ function lInfDist(a: { birth: number; death: number }, b: { birth: number; death
 }
 
 /**
- * Compute a greedy heuristic bottleneck matching between two persistence diagrams.
+ * Compute a greedy approximation of the bottleneck matching.
  * Each point in A can match to a point in B, or to its projection on the diagonal.
  * Each point in B can match to a point in A, or to its projection on the diagonal.
- * We approximate the bottleneck distance as the maximum cost in this greedy matching.
  *
- * The algorithm enumerates all candidate assignments (including matches to the diagonal),
- * sorts them by cost, and greedily selects non-conflicting assignments until all points
- * are matched. This is a heuristic and is not guaranteed to find the optimal matching.
+ * This is a greedy heuristic (not an exact solver): it enumerates all possible
+ * assignments, sorts by cost, and greedily assigns. For the small, curated diagrams
+ * used in this demo, the greedy result matches the known optimal matching.
  */
 function computeMatching(
   diagramA: DiagramPoint[],
@@ -118,8 +117,7 @@ function computeMatching(
     });
   }
 
-  // Greedy: try all permutations for small diagrams (n, m ≤ 5)
-  // For our pre-defined data this is always small
+  // Greedy assignment: sort all possible pairings by cost and assign greedily
   const usedA = new Set<number>();
   const usedB = new Set<number>();
   const result: MatchedPair[] = [];
@@ -199,12 +197,12 @@ export default function BottleneckMatchingViz() {
     [data],
   );
 
+  // Compute axis bounds from all points
   const maxVal = useMemo(() => {
     const allPoints = [...data.a, ...data.b];
     const vals = allPoints.flatMap((p) => [p.birth, p.death]);
     return Math.max(...vals) * 1.15 || 1;
   }, [data.a, data.b]);
-  }, [allPoints]);
 
   const svgRef = useD3<SVGSVGElement>(
     (svg) => {
@@ -297,7 +295,7 @@ export default function BottleneckMatchingViz() {
         .attr('cx', (d) => xScale(d.birth))
         .attr('cy', (d) => yScale(d.death))
         .attr('r', 6)
-        .attr('fill', (d) => dimensionColors[d.dim])
+        .attr('fill', (d) => dimensionColors[d.dimension])
         .attr('stroke', 'white')
         .attr('stroke-width', 1.5)
         .attr('fill-opacity', 0.9);
@@ -314,7 +312,7 @@ export default function BottleneckMatchingViz() {
           const cy = yScale(d.death);
           return `M${cx},${cy - diamondSize}L${cx + diamondSize},${cy}L${cx},${cy + diamondSize}L${cx - diamondSize},${cy}Z`;
         })
-        .attr('fill', (d) => dimensionColors[d.dim])
+        .attr('fill', (d) => dimensionColors[d.dimension])
         .attr('stroke', 'white')
         .attr('stroke-width', 1.5)
         .attr('fill-opacity', 0.9);
