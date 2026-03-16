@@ -199,11 +199,11 @@ export default function BottleneckMatchingViz() {
     [data],
   );
 
-  // Compute axis bounds from all points
-  const allPoints = [...data.a, ...data.b];
   const maxVal = useMemo(() => {
+    const allPoints = [...data.a, ...data.b];
     const vals = allPoints.flatMap((p) => [p.birth, p.death]);
-    return Math.max(...vals) * 1.15;
+    return Math.max(...vals) * 1.15 || 1;
+  }, [data.a, data.b]);
   }, [allPoints]);
 
   const svgRef = useD3<SVGSVGElement>(
