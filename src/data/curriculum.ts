@@ -4,10 +4,7 @@ export const tracks = [
     label: 'Topology & TDA',
     description:
       'Topological Data Analysis \u2014 from simplices to persistence diagrams. The geometric heart of the site.',
-    planned: [
-      'Statistical TDA',
-      'Sheaf Theory',
-    ],
+    planned: [],
   },
   {
     domain: 'linear-algebra',

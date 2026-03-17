@@ -68,3 +68,20 @@ export interface MapperGraphNode {
   centroidX: number;
   centroidY: number;
 }
+
+// ─── Sheaf Theory Types ───
+
+export interface SheafNode {
+  id: string;
+  x: number;
+  y: number;
+  stalkDim: number;
+  value: number[];
+}
+
+export interface SheafEdge {
+  source: string;
+  target: string;
+  stalkDim: number;
+  restrictionMap: number[][];
+}
