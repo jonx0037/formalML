@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { consistencyColorScale, dimensionColors } from './shared/colorScales';
@@ -155,8 +155,6 @@ export default function SheafDiffusionSimulator() {
   const [state, setState] = useState<number[]>(INITIAL_STATE);
   const [energyHistory, setEnergyHistory] = useState<number[]>([]);
   const animFrameRef = useRef<number>(0);
-  const stateRef = useRef(state);
-  stateRef.current = state;
 
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const panelWidth = Math.min(((containerWidth || 700) - 16) / 2, 340);
@@ -181,7 +179,11 @@ export default function SheafDiffusionSimulator() {
   const handleStep = useCallback(() => {
     setState((prev) => {
       const next = diffusionStep(L, prev, alpha);
-      setEnergyHistory((h) => [...h, laplacianEnergy(L, next)]);
+      setEnergyHistory((h) => {
+        const entry = laplacianEnergy(L, next);
+        if (h.length > 200) return [...h.slice(-199), entry];
+        return [...h, entry];
+      });
       return next;
     });
   }, [L, alpha]);
@@ -229,11 +231,18 @@ export default function SheafDiffusionSimulator() {
         const s = GRAPH_NODES[edge.source];
         const t = GRAPH_NODES[edge.target];
 
-        // Compute edge inconsistency for coloring
+        // Compute edge inconsistency using restriction maps (must match Laplacian)
         const sv = state.slice(s.id * STALK_DIM, (s.id + 1) * STALK_DIM);
         const tv = state.slice(t.id * STALK_DIM, (t.id + 1) * STALK_DIM);
-        const diff = sv.map((v, i) => v - tv[i]);
-        const inc = Math.sqrt(diff.reduce((a, x) => a + x * x, 0));
+        let diff: number[];
+        if (preset === 'constant') {
+          diff = sv.map((v, i) => v - tv[i]);
+        } else {
+          const R = rotMat(theta);
+          const mappedTv = [R[0][0] * tv[0] + R[0][1] * tv[1], R[1][0] * tv[0] + R[1][1] * tv[1]];
+          diff = [mappedTv[0] - sv[0], mappedTv[1] - sv[1]];
+        }
+        const inc = Math.sqrt(diff[0] * diff[0] + diff[1] * diff[1]);
         const normInc = Math.min(inc / 1.5, 1);
 
         svg
@@ -260,8 +269,8 @@ export default function SheafDiffusionSimulator() {
           .attr('cx', cx)
           .attr('cy', cy)
           .attr('r', 26)
-          .attr('fill', 'var(--color-surface)')
-          .attr('stroke', 'var(--color-border)')
+          .style('fill', 'var(--color-surface)')
+          .style('stroke', 'var(--color-border)')
           .attr('stroke-width', 1.5);
 
         // Vector arrow
@@ -298,7 +307,7 @@ export default function SheafDiffusionSimulator() {
           .text(node.label);
       }
     },
-    [panelWidth, svgHeight, state],
+    [panelWidth, svgHeight, state, preset, theta],
   );
 
   // ─── Energy chart rendering ───

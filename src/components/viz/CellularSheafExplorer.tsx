@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback } from 'react';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { consistencyColorScale } from './shared/colorScales';
-import * as d3 from 'd3';
 
 // ─── Graph layout: equilateral triangle (K₃) ───
 
@@ -125,6 +124,7 @@ export default function CellularSheafExplorer() {
   const svgHeight = 380;
   const pad = 60;
 
+  const nodeMap = useMemo(() => new Map(NODES.map((n) => [n.id, n])), []);
   const maps = useMemo(() => buildRestrictionMaps(sheafType, theta), [sheafType, theta]);
   const inconsistency = useMemo(
     () => computeEdgeInconsistency(nodeValues, maps),
@@ -158,8 +158,9 @@ export default function CellularSheafExplorer() {
 
       // Draw edges
       for (const edge of EDGES) {
-        const s = NODES.find((n) => n.id === edge.source)!;
-        const t = NODES.find((n) => n.id === edge.target)!;
+        const s = nodeMap.get(edge.source);
+        const t = nodeMap.get(edge.target);
+        if (!s || !t) continue;
         const inc = inconsistency[edge.id];
         const normClamped = Math.min(inc.norm / 1.5, 1);
 
@@ -209,8 +210,8 @@ export default function CellularSheafExplorer() {
           .attr('cx', cx)
           .attr('cy', cy)
           .attr('r', 32)
-          .attr('fill', 'var(--color-surface)')
-          .attr('stroke', 'var(--color-border)')
+          .style('fill', 'var(--color-surface)')
+          .style('stroke', 'var(--color-border)')
           .attr('stroke-width', 2);
 
         // Vector arrow inside node
