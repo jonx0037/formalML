@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  moonsPoints, trueLabels, kmeansLabels, spectralLabels,
+  moonsPoints, trueLabels, spectralLabels,
   laplacianEigenvalues, spectralEmbedding,
   spectralAccuracy, kmeansAccuracy,
   SIGMA,
@@ -46,9 +46,6 @@ export default function SpectralClusteringDemo() {
     return Math.min(containerWidth - 16, 640);
   }, [containerWidth]);
 
-  const innerW = panelWidth - MARGIN.left - MARGIN.right;
-  const innerH = PANEL_HEIGHT - MARGIN.top - MARGIN.bottom;
-
   // Pre-compute similarity edges once
   const edges = useMemo(() => {
     const result: { i: number; j: number; sim: number }[] = [];
@@ -91,11 +88,13 @@ export default function SpectralClusteringDemo() {
   useEffect(() => {
     if (!svgRef.current || panelWidth === 0) return;
 
+    const innerW = panelWidth - MARGIN.left - MARGIN.right;
+    const innerH = PANEL_HEIGHT - MARGIN.top - MARGIN.bottom;
+
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
     const g = svg.append('g');
-    const pad = 0.15;
 
     // Title
     svg
@@ -109,8 +108,7 @@ export default function SpectralClusteringDemo() {
       .attr('font-weight', 600)
       .text(STEP_TITLES[step]);
 
-    if (step === 2) {
-      // ── Bar chart of eigenvalues ──
+    function renderEigenvalueBarChart() {
       const barData = laplacianEigenvalues;
       const xScale = d3
         .scaleBand<number>()
@@ -200,21 +198,21 @@ export default function SpectralClusteringDemo() {
         .style('font-family', 'var(--font-sans)')
         .attr('font-size', 9)
         .attr('opacity', 0.6);
-    } else {
-      // ── Scatter plot steps: 0, 1, 3, 4 ──
+    }
+
+    function renderScatterPlot() {
+      const pad = 0.15;
       let xDomain: [number, number];
       let yDomain: [number, number];
       let xLabel = '';
       let yLabel = '';
 
       if (step === 3) {
-        // Spectral embedding
         xDomain = [embXExtent[0] - pad, embXExtent[1] + pad];
         yDomain = [embYExtent[0] - pad, embYExtent[1] + pad];
         xLabel = 'v₂';
         yLabel = 'v₃';
       } else {
-        // Original space
         xDomain = [xExtent[0] - pad, xExtent[1] + pad];
         yDomain = [yExtent[0] - pad, yExtent[1] + pad];
       }
@@ -289,7 +287,7 @@ export default function SpectralClusteringDemo() {
           .text(yLabel);
       }
 
-      // K-means accuracy note on step 0
+      // Accuracy annotation
       if (step === 0) {
         svg
           .append('text')
@@ -303,7 +301,6 @@ export default function SpectralClusteringDemo() {
           .text(`K-means accuracy on this dataset: ${(kmeansAccuracy * 100).toFixed(0)}%`);
       }
 
-      // Result accuracy note on step 4
       if (step === 4) {
         svg
           .append('text')
@@ -317,7 +314,13 @@ export default function SpectralClusteringDemo() {
           .text(`Spectral clustering accuracy: ${(spectralAccuracy * 100).toFixed(0)}%`);
       }
     }
-  }, [step, panelWidth, innerW, innerH, edges, xExtent, yExtent, embXExtent, embYExtent]);
+
+    if (step === 2) {
+      renderEigenvalueBarChart();
+    } else {
+      renderScatterPlot();
+    }
+  }, [step, panelWidth]);
 
   return (
     <div ref={containerRef} className="w-full space-y-3">

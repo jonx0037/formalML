@@ -34,6 +34,14 @@ function definitenessBadgeColor(d: Definiteness): string {
   }
 }
 
+// ─── Layout constants ───
+
+const SM_BREAKPOINT = 640;
+const CONTAINER_PADDING = 16;
+const PANEL_GAP = 24;
+const PANEL_WIDTH_RATIO = 0.55;
+const MAX_PANEL_WIDTH = 500;
+
 // ─── Component ───
 
 export default function EigenDecompositionExplorer() {
@@ -76,7 +84,12 @@ export default function EigenDecompositionExplorer() {
 
   const panelWidth = useMemo(() => {
     if (!containerWidth) return 360;
-    return Math.min(containerWidth < 640 ? containerWidth - 16 : (containerWidth - 24) * 0.55, 500);
+    return Math.min(
+      containerWidth < SM_BREAKPOINT
+        ? containerWidth - CONTAINER_PADDING
+        : (containerWidth - PANEL_GAP) * PANEL_WIDTH_RATIO,
+      MAX_PANEL_WIDTH,
+    );
   }, [containerWidth]);
   const panelHeight = 300;
   const margin = { top: 20, right: 20, bottom: 20, left: 20 };
@@ -91,6 +104,24 @@ export default function EigenDecompositionExplorer() {
 
     const w = panelWidth - margin.left - margin.right;
     const h = panelHeight - margin.top - margin.bottom;
+
+    // ─── Arrow markers ───
+    const arrowColors = ['#2171b5', '#d94801'];
+    const defs = svg.append('defs');
+    arrowColors.forEach((color) => {
+      defs
+        .append('marker')
+        .attr('id', `arrow-${color.slice(1)}`)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('refX', 6)
+        .attr('refY', 3)
+        .attr('orient', 'auto')
+        .append('polygon')
+        .attr('points', '0 0, 6 3, 0 6')
+        .attr('fill', color);
+    });
+
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
     // Scale domain: fit eigenvalue magnitudes + unit circle
@@ -131,13 +162,20 @@ export default function EigenDecompositionExplorer() {
       .attr('stroke-dasharray', '4,3')
       .attr('opacity', 0.6);
 
-    // Image ellipse: A * [cos θ, sin θ]
+    // Image ellipse: A * [cos θ, sin θ], computed via spectral decomposition
+    // A * v = λ₁(q₁·v)q₁ + λ₂(q₂·v)q₂ — no need for raw matrix entries
+    const { lambda1, lambda2, q1, q2 } = eigen;
     const ellipseData: [number, number][] = [];
     for (let i = 0; i <= nPts; i++) {
       const theta = (2 * Math.PI * i) / nPts;
       const cx = Math.cos(theta);
       const sy = Math.sin(theta);
-      ellipseData.push([a * cx + b * sy, b * cx + c * sy]);
+      const dot1 = q1[0] * cx + q1[1] * sy;
+      const dot2 = q2[0] * cx + q2[1] * sy;
+      ellipseData.push([
+        lambda1 * dot1 * q1[0] + lambda2 * dot2 * q2[0],
+        lambda1 * dot1 * q1[1] + lambda2 * dot2 * q2[1],
+      ]);
     }
 
     g.append('path')
@@ -150,7 +188,6 @@ export default function EigenDecompositionExplorer() {
 
     // ─── Eigenvector arrows ───
 
-    const arrowColors = ['#2171b5', '#d94801'];
     const eigens = [
       { q: eigen.q1, lam: eigen.lambda1, label: 'λ₁' },
       { q: eigen.q2, lam: eigen.lambda2, label: 'λ₂' },
@@ -158,16 +195,21 @@ export default function EigenDecompositionExplorer() {
 
     eigens.forEach(({ q, lam, label }, idx) => {
       const absLam = Math.abs(lam);
-      if (absLam < 1e-9) return; // skip zero eigenvalue arrows
+      if (absLam < 1e-9) return;
 
       const sign = lam < 0 ? -1 : 1;
       const tipX = sign * q[0] * absLam;
       const tipY = sign * q[1] * absLam;
 
       const color = arrowColors[idx];
+      const markerId = `arrow-${color.slice(1)}`;
       const dashed = lam < 0;
 
-      // Arrow shaft
+      const dx = xScale(tipX) - xScale(0);
+      const dy = yScale(tipY) - yScale(0);
+      const len = Math.sqrt(dx * dx + dy * dy);
+
+      // Arrow shaft with marker-end
       g.append('line')
         .attr('x1', xScale(0))
         .attr('y1', yScale(0))
@@ -175,31 +217,14 @@ export default function EigenDecompositionExplorer() {
         .attr('y2', yScale(tipY))
         .attr('stroke', color)
         .attr('stroke-width', 2.5)
-        .attr('stroke-dasharray', dashed ? '6,3' : 'none');
-
-      // Arrowhead
-      const dx = xScale(tipX) - xScale(0);
-      const dy = yScale(tipY) - yScale(0);
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 8) {
-        const ux = dx / len;
-        const uy = dy / len;
-        const headLen = 8;
-        const headW = 4;
-        const base = [xScale(tipX) - ux * headLen, yScale(tipY) - uy * headLen];
-        const left = [base[0] - uy * headW, base[1] + ux * headW];
-        const right = [base[0] + uy * headW, base[1] - ux * headW];
-
-        g.append('polygon')
-          .attr('points', `${xScale(tipX)},${yScale(tipY)} ${left[0]},${left[1]} ${right[0]},${right[1]}`)
-          .attr('fill', color);
-      }
+        .attr('stroke-dasharray', dashed ? '6,3' : 'none')
+        .attr('marker-end', `url(#${markerId})`);
 
       // Label
       const labelOffset = 14;
       g.append('text')
-        .attr('x', xScale(tipX) + (dx / len) * labelOffset || xScale(tipX))
-        .attr('y', yScale(tipY) + (dy / len) * labelOffset || yScale(tipY))
+        .attr('x', len > 0 ? xScale(tipX) + (dx / len) * labelOffset : xScale(tipX))
+        .attr('y', len > 0 ? yScale(tipY) + (dy / len) * labelOffset : yScale(tipY))
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .style('fill', color)
@@ -208,7 +233,7 @@ export default function EigenDecompositionExplorer() {
         .attr('font-weight', 600)
         .text(`${label} = ${lam.toFixed(2)}`);
     });
-  }, [a, b, c, eigen, panelWidth, panelHeight, margin.left, margin.right, margin.top, margin.bottom]);
+  }, [eigen, panelWidth]);
 
   // ─── Slider handlers ───
 

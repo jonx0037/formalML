@@ -3,6 +3,8 @@ import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 
 const N_SAMPLES = 200;
+const PANEL_GAP = 24;
+const MAX_PANEL_SIZE = 360;
 
 export default function RayleighQuotientSurface() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -15,7 +17,7 @@ export default function RayleighQuotientSurface() {
 
   const panelSize = useMemo(() => {
     if (!containerWidth) return 300;
-    return Math.min(Math.floor((containerWidth - 24) / 2), 360);
+    return Math.min(Math.floor((containerWidth - PANEL_GAP) / 2), MAX_PANEL_SIZE);
   }, [containerWidth]);
   const panelH = panelSize;
 
@@ -162,7 +164,7 @@ export default function RayleighQuotientSurface() {
         .attr('font-weight', 600)
         .text(`${label} = ${lam.toFixed(2)}`);
     }
-  }, [samples, eigen, panelSize, rExtent]);
+  }, [samples, eigen, panelSize]);
 
   // ─── Cartesian plot ───
   useEffect(() => {
@@ -285,7 +287,7 @@ export default function RayleighQuotientSurface() {
       .attr('font-size', 11)
       .attr('opacity', 0.6)
       .text('R(\u03B8)');
-  }, [samples, eigen, panelSize, panelH, rExtent]);
+  }, [samples, eigen, panelSize]);
 
   const handleA = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setA(parseFloat(e.target.value)), []);
   const handleB = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setB(parseFloat(e.target.value)), []);
