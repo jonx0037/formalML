@@ -13,10 +13,150 @@ const SVG_HEIGHT = 360;
 const LAYER_COLORS = ['#1e3a5f', '#2a5f8f', '#3a80b8', '#5ea0d0', '#8ec2e6'];
 const LAYER_LABELS = ['k = 1', 'k = 2', 'k = 3', 'k = 4', 'k = 5'];
 
+// ─── Shared SVG sub-components ───
+
+function GridLines({
+  xScale,
+  yScale,
+  xTicks,
+  yTicks,
+  innerH,
+  innerW,
+  prefix,
+}: {
+  xScale: d3.ScaleLinear<number, number>;
+  yScale: d3.ScaleLinear<number, number>;
+  xTicks: number[];
+  yTicks: number[];
+  innerH: number;
+  innerW: number;
+  prefix: string;
+}) {
+  return (
+    <>
+      {xTicks.map((t) => (
+        <line
+          key={`${prefix}gx-${t}`}
+          x1={Math.round(xScale(t) * 100) / 100}
+          y1={MARGIN.top}
+          x2={Math.round(xScale(t) * 100) / 100}
+          y2={MARGIN.top + innerH}
+          stroke="var(--color-border)"
+          strokeOpacity={0.3}
+        />
+      ))}
+      {yTicks.map((t) => (
+        <line
+          key={`${prefix}gy-${t}`}
+          x1={MARGIN.left}
+          y1={Math.round(yScale(t) * 100) / 100}
+          x2={MARGIN.left + innerW}
+          y2={Math.round(yScale(t) * 100) / 100}
+          stroke="var(--color-border)"
+          strokeOpacity={0.3}
+        />
+      ))}
+    </>
+  );
+}
+
+function TickLabels({
+  xScale,
+  yScale,
+  xTicks,
+  yTicks,
+  innerH,
+  prefix,
+  formatY,
+}: {
+  xScale: d3.ScaleLinear<number, number>;
+  yScale: d3.ScaleLinear<number, number>;
+  xTicks: number[];
+  yTicks: number[];
+  innerH: number;
+  prefix: string;
+  formatY?: (t: number) => string;
+}) {
+  return (
+    <>
+      {xTicks.map((t) => (
+        <text
+          key={`${prefix}xt-${t}`}
+          x={Math.round(xScale(t) * 100) / 100}
+          y={MARGIN.top + innerH + 16}
+          textAnchor="middle"
+          fontSize={9}
+          fill="var(--color-text)"
+          opacity={0.5}
+          style={{ fontFamily: 'var(--font-sans)' }}
+        >
+          {t}
+        </text>
+      ))}
+      {yTicks.map((t) => (
+        <text
+          key={`${prefix}yt-${t}`}
+          x={MARGIN.left - 6}
+          y={Math.round(yScale(t) * 100) / 100 + 3}
+          textAnchor="end"
+          fontSize={9}
+          fill="var(--color-text)"
+          opacity={0.5}
+          style={{ fontFamily: 'var(--font-sans)' }}
+        >
+          {formatY ? formatY(t) : t}
+        </text>
+      ))}
+    </>
+  );
+}
+
+function AxisLabels({
+  xLabel,
+  yLabel,
+  innerW,
+  innerH,
+}: {
+  xLabel: string;
+  yLabel: string;
+  innerW: number;
+  innerH: number;
+}) {
+  return (
+    <>
+      <text
+        x={MARGIN.left + innerW / 2}
+        y={MARGIN.top + innerH + 32}
+        textAnchor="middle"
+        fontSize={11}
+        fill="var(--color-text)"
+        opacity={0.7}
+        style={{ fontFamily: 'var(--font-sans)' }}
+      >
+        {xLabel}
+      </text>
+      <text
+        x={14}
+        y={MARGIN.top + innerH / 2}
+        textAnchor="middle"
+        fontSize={11}
+        fill="var(--color-text)"
+        opacity={0.7}
+        transform={`rotate(-90, 14, ${MARGIN.top + innerH / 2})`}
+        style={{ fontFamily: 'var(--font-sans)' }}
+      >
+        {yLabel}
+      </text>
+    </>
+  );
+}
+
+// ─── Main component ───
+
 export default function LandscapeVisualizer() {
   const { ref, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [mode, setMode] = useState<'diagram' | 'landscape'>('diagram');
-  const [visibleLayers, setVisibleLayers] = useState([true, true, true, false, false]);
+  const [visibleLayers, setVisibleLayers] = useState(LAYER_LABELS.map((_, i) => i < 3));
 
   const toggleMode = useCallback(() => {
     setMode((m) => (m === 'diagram' ? 'landscape' : 'diagram'));
@@ -82,19 +222,16 @@ export default function LandscapeVisualizer() {
     return landscapeLayers.map((layer, k) => {
       if (!visibleLayers[k]) return '';
       const points: string[] = [];
-      // Top edge
       for (let i = 0; i < landscapeT.length; i++) {
         const x = Math.round(landXScale(landscapeT[i]) * 100) / 100;
         const y = Math.round(landYScale(layer[i]) * 100) / 100;
         points.push(`${x},${y}`);
       }
-      // Bottom edge (baseline at y=0)
       const baseline = Math.round(landYScale(0) * 100) / 100;
       const lastX = Math.round(landXScale(landscapeT[landscapeT.length - 1]) * 100) / 100;
       const firstX = Math.round(landXScale(landscapeT[0]) * 100) / 100;
       points.push(`${lastX},${baseline}`);
       points.push(`${firstX},${baseline}`);
-
       return points.join(' ');
     });
   }, [visibleLayers, landXScale, landYScale]);
@@ -150,84 +287,9 @@ export default function LandscapeVisualizer() {
           className="rounded-lg border border-[var(--color-border)] absolute top-0 left-0 transition-opacity duration-300"
           style={{ opacity: mode === 'diagram' ? 1 : 0, pointerEvents: mode === 'diagram' ? 'auto' : 'none' }}
         >
-          {/* Grid */}
-          {diagXTicks.map((t) => (
-            <line
-              key={`dgx-${t}`}
-              x1={Math.round(diagXScale(t) * 100) / 100}
-              y1={MARGIN.top}
-              x2={Math.round(diagXScale(t) * 100) / 100}
-              y2={MARGIN.top + innerH}
-              stroke="var(--color-border)"
-              strokeOpacity={0.3}
-            />
-          ))}
-          {diagYTicks.map((t) => (
-            <line
-              key={`dgy-${t}`}
-              x1={MARGIN.left}
-              y1={Math.round(diagYScale(t) * 100) / 100}
-              x2={MARGIN.left + innerW}
-              y2={Math.round(diagYScale(t) * 100) / 100}
-              stroke="var(--color-border)"
-              strokeOpacity={0.3}
-            />
-          ))}
-
-          {/* Tick labels */}
-          {diagXTicks.map((t) => (
-            <text
-              key={`dxt-${t}`}
-              x={Math.round(diagXScale(t) * 100) / 100}
-              y={MARGIN.top + innerH + 16}
-              textAnchor="middle"
-              fontSize={9}
-              fill="var(--color-text)"
-              opacity={0.5}
-              style={{ fontFamily: 'var(--font-sans)' }}
-            >
-              {t}
-            </text>
-          ))}
-          {diagYTicks.map((t) => (
-            <text
-              key={`dyt-${t}`}
-              x={MARGIN.left - 6}
-              y={Math.round(diagYScale(t) * 100) / 100 + 3}
-              textAnchor="end"
-              fontSize={9}
-              fill="var(--color-text)"
-              opacity={0.5}
-              style={{ fontFamily: 'var(--font-sans)' }}
-            >
-              {t}
-            </text>
-          ))}
-
-          {/* Axis labels */}
-          <text
-            x={MARGIN.left + innerW / 2}
-            y={MARGIN.top + innerH + 32}
-            textAnchor="middle"
-            fontSize={11}
-            fill="var(--color-text)"
-            opacity={0.7}
-            style={{ fontFamily: 'var(--font-sans)' }}
-          >
-            Birth
-          </text>
-          <text
-            x={14}
-            y={MARGIN.top + innerH / 2}
-            textAnchor="middle"
-            fontSize={11}
-            fill="var(--color-text)"
-            opacity={0.7}
-            transform={`rotate(-90, 14, ${MARGIN.top + innerH / 2})`}
-            style={{ fontFamily: 'var(--font-sans)' }}
-          >
-            Death
-          </text>
+          <GridLines xScale={diagXScale} yScale={diagYScale} xTicks={diagXTicks} yTicks={diagYTicks} innerH={innerH} innerW={innerW} prefix="d" />
+          <TickLabels xScale={diagXScale} yScale={diagYScale} xTicks={diagXTicks} yTicks={diagYTicks} innerH={innerH} prefix="d" />
+          <AxisLabels xLabel="Birth" yLabel="Death" innerW={innerW} innerH={innerH} />
 
           {/* Diagonal */}
           <line
@@ -263,87 +325,12 @@ export default function LandscapeVisualizer() {
           className="rounded-lg border border-[var(--color-border)] absolute top-0 left-0 transition-opacity duration-300"
           style={{ opacity: mode === 'landscape' ? 1 : 0, pointerEvents: mode === 'landscape' ? 'auto' : 'none' }}
         >
-          {/* Grid */}
-          {landXTicks.map((t) => (
-            <line
-              key={`lgx-${t}`}
-              x1={Math.round(landXScale(t) * 100) / 100}
-              y1={MARGIN.top}
-              x2={Math.round(landXScale(t) * 100) / 100}
-              y2={MARGIN.top + innerH}
-              stroke="var(--color-border)"
-              strokeOpacity={0.3}
-            />
-          ))}
-          {landYTicks.map((t) => (
-            <line
-              key={`lgy-${t}`}
-              x1={MARGIN.left}
-              y1={Math.round(landYScale(t) * 100) / 100}
-              x2={MARGIN.left + innerW}
-              y2={Math.round(landYScale(t) * 100) / 100}
-              stroke="var(--color-border)"
-              strokeOpacity={0.3}
-            />
-          ))}
-
-          {/* Tick labels */}
-          {landXTicks.map((t) => (
-            <text
-              key={`lxt-${t}`}
-              x={Math.round(landXScale(t) * 100) / 100}
-              y={MARGIN.top + innerH + 16}
-              textAnchor="middle"
-              fontSize={9}
-              fill="var(--color-text)"
-              opacity={0.5}
-              style={{ fontFamily: 'var(--font-sans)' }}
-            >
-              {t}
-            </text>
-          ))}
-          {landYTicks.map((t) => (
-            <text
-              key={`lyt-${t}`}
-              x={MARGIN.left - 6}
-              y={Math.round(landYScale(t) * 100) / 100 + 3}
-              textAnchor="end"
-              fontSize={9}
-              fill="var(--color-text)"
-              opacity={0.5}
-              style={{ fontFamily: 'var(--font-sans)' }}
-            >
-              {t.toFixed(2)}
-            </text>
-          ))}
-
-          {/* Axis labels */}
-          <text
-            x={MARGIN.left + innerW / 2}
-            y={MARGIN.top + innerH + 32}
-            textAnchor="middle"
-            fontSize={11}
-            fill="var(--color-text)"
-            opacity={0.7}
-            style={{ fontFamily: 'var(--font-sans)' }}
-          >
-            t
-          </text>
-          <text
-            x={14}
-            y={MARGIN.top + innerH / 2}
-            textAnchor="middle"
-            fontSize={11}
-            fill="var(--color-text)"
-            opacity={0.7}
-            transform={`rotate(-90, 14, ${MARGIN.top + innerH / 2})`}
-            style={{ fontFamily: 'var(--font-sans)' }}
-          >
-            λ(t)
-          </text>
+          <GridLines xScale={landXScale} yScale={landYScale} xTicks={landXTicks} yTicks={landYTicks} innerH={innerH} innerW={innerW} prefix="l" />
+          <TickLabels xScale={landXScale} yScale={landYScale} xTicks={landXTicks} yTicks={landYTicks} innerH={innerH} prefix="l" formatY={(t) => t.toFixed(2)} />
+          <AxisLabels xLabel="t" yLabel="λ(t)" innerW={innerW} innerH={innerH} />
 
           {/* Area fills — render in reverse order so k=1 paints on top */}
-          {[...Array(5).keys()].reverse().map((k) =>
+          {[...Array(LAYER_COLORS.length).keys()].reverse().map((k) =>
             visibleLayers[k] && areaPaths[k] ? (
               <polygon
                 key={`area-${k}`}

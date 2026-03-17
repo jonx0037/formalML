@@ -132,7 +132,7 @@ It tells us that persistence diagrams live in a well-behaved metric space, not s
 
 ### Demonstration: Stability Under Perturbation
 
-We sample 200 points from a unit circle with light noise, then add increasing amounts of Gaussian perturbation. The bottleneck distance between the original and perturbed $H_1$ diagrams grows proportionally to the perturbation magnitude — exactly as the Stability Theorem predicts.
+We sample 100 points from a unit circle with light noise, then add increasing amounts of Gaussian perturbation. The bottleneck distance between the original and perturbed $H_1$ diagrams grows proportionally to the perturbation magnitude — exactly as the Stability Theorem predicts.
 
 ![Three panels showing original circle, perturbed circle, and bottleneck distance growth](/images/topics/statistical-tda/stability_demo.png)
 
@@ -388,11 +388,22 @@ def persistence_image(dgm, pixel_size=20, sigma=None, weight_fn=None):
     if weight_fn is None:
         weight_fn = lambda b, p: p
 
-    # Build grid and accumulate weighted Gaussians
+    # Build grid
+    birth_range = (births.min(), births.max())
+    pers_range = (0, pers.max())
     B, P = np.meshgrid(
-        np.linspace(births.min(), births.max(), pixel_size),
-        np.linspace(0, pers.max(), pixel_size),
+        np.linspace(birth_range[0], birth_range[1], pixel_size),
+        np.linspace(pers_range[0], pers_range[1], pixel_size),
     )
+
+    # Auto-compute sigma from grid spacing if not provided
+    if sigma is None:
+        sigma = max(
+            (birth_range[1] - birth_range[0]) / pixel_size,
+            (pers_range[1] - pers_range[0]) / pixel_size,
+        )
+
+    # Accumulate weighted Gaussians
     img = np.zeros_like(B)
     for bi, pi in zip(births, pers):
         img += weight_fn(bi, pi) * np.exp(-((B - bi)**2 + (P - pi)**2) / (2 * sigma**2))
@@ -517,7 +528,7 @@ def delay_embed(returns, window=20, step=5):
 | Concept | What it gives you | Key reference |
 |---------|-------------------|---------------|
 | **Stability Theorem** | Persistence is Lipschitz-continuous w.r.t. input perturbations | Cohen-Steiner, Edelsbrunner, Harer (2007) |
-| **Convergence** | Empirical diagrams converge at rate $O((\log n / n)^{1/d})$ | Chazal et al. (2015) |
+| **Convergence** | Empirical diagrams converge at rate $O((\log n / n)^{1/d})$ | Chazal & Oudot (2008) |
 | **Bootstrap Confidence Sets** | Formal threshold for separating signal from noise in barcodes | Fasy, Lecci, Rinaldo, Wasserman (2014) |
 | **Persistence Landscapes** | Banach-space-valued summary with CLT, mean, variance, hypothesis tests | Bubenik (2015) |
 | **Persistence Images** | Stable finite-dimensional vectorization for any ML pipeline | Adams et al. (2017) |

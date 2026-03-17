@@ -25,20 +25,9 @@ export default function BootstrapExplorer() {
   const innerW = panelWidth - MARGIN.left - MARGIN.right;
   const innerH = SVG_HEIGHT - MARGIN.top - MARGIN.bottom;
 
-  // Look up c_alpha from pre-computed thresholds (nearest key)
   const cAlpha = useMemo(() => {
     const key = alpha.toFixed(2);
-    if (confidenceThresholds[key] !== undefined) return confidenceThresholds[key];
-    // Fallback: linear interpolation between nearest keys
-    const keys = Object.keys(confidenceThresholds).map(Number).sort((a, b) => a - b);
-    for (let i = 0; i < keys.length - 1; i++) {
-      if (alpha >= keys[i] && alpha <= keys[i + 1]) {
-        const t = (alpha - keys[i]) / (keys[i + 1] - keys[i]);
-        return confidenceThresholds[keys[i].toFixed(2)] +
-          t * (confidenceThresholds[keys[i + 1].toFixed(2)] - confidenceThresholds[keys[i].toFixed(2)]);
-      }
-    }
-    return 0.06;
+    return confidenceThresholds[key] ?? 0.06;
   }, [alpha]);
 
   const bandWidth = 2 * cAlpha;
@@ -98,7 +87,7 @@ export default function BootstrapExplorer() {
           className="text-xs font-medium whitespace-nowrap min-w-[140px]"
           style={{ fontFamily: 'var(--font-sans)' }}
         >
-          Confidence level α = {alpha.toFixed(2)}
+          Significance level α = {alpha.toFixed(2)}
         </label>
         <input
           type="range"
