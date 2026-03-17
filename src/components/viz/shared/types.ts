@@ -68,3 +68,4 @@ export interface MapperGraphNode {
   centroidX: number;
   centroidY: number;
 }
+

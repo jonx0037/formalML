@@ -1,0 +1,510 @@
+---
+title: "Sheaf Theory"
+subtitle: "From local data to global consistency — the algebraic geometry of gluing"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "barcodes-bottleneck"
+tags:
+  - "topology"
+  - "tda"
+  - "sheaf-theory"
+  - "algebraic-topology"
+  - "cohomology"
+domain: "topology"
+videoId: null
+notebookPath: "notebooks/sheaf_theory/07_sheaf_theory.ipynb"
+githubUrl: null
+datePublished: 2026-03-16
+estimatedReadTime: 45
+abstract: "Sheaves formalize the passage from local data to global consistency. We develop cellular sheaves on graphs from scratch — assigning vector spaces to nodes and edges with linear restriction maps — then construct the sheaf Laplacian, whose spectrum measures how far a data assignment is from being globally consistent. Sheaf cohomology gives algebraic invariants (H⁰ counts consistent sections, H¹ measures obstructions), and sheaf diffusion provides a dynamical process that drives local observations toward global agreement. Applications to sensor networks, opinion dynamics, and multi-modal fusion demonstrate why sheaves are the natural language for data that lives on a network."
+connections:
+  - topic: "simplicial-complexes"
+    relationship: "cellular sheaves are defined on the face poset of a simplicial complex"
+  - topic: "persistent-homology"
+    relationship: "persistence modules are sheaves on the real line; sheaf cohomology generalizes homology to network-structured data"
+  - topic: "cech-complexes"
+    relationship: "the Nerve Theorem has a sheaf-theoretic proof via Leray's original argument"
+  - topic: "mapper-algorithm"
+    relationship: "Mapper's pullback-and-nerve construction is a special case of a cosheaf"
+  - topic: "barcodes-bottleneck"
+    relationship: "bottleneck distance generalizes to interleaving distance in the sheaf-theoretic setting"
+references:
+  - type: "book"
+    title: "Topological Signal Processing"
+    authors: "Michael Robinson"
+    year: 2014
+    note: "The primary reference for cellular sheaves in data analysis"
+  - type: "paper"
+    title: "Sheaves, Cosheaves and Applications"
+    authors: "Justin Curry"
+    year: 2014
+    url: "https://arxiv.org/abs/1303.3255"
+    note: "Comprehensive treatment of cellular (co)sheaves — Curry's PhD thesis"
+  - type: "paper"
+    title: "Toward a Spectral Theory of Cellular Sheaves"
+    authors: "Jakob Hansen & Robert Ghrist"
+    year: 2019
+    url: "https://doi.org/10.1007/s41468-019-00038-7"
+    note: "Spectral theory of the sheaf Laplacian"
+  - type: "paper"
+    title: "Opinion Dynamics on Discourse Sheaves"
+    authors: "Jakob Hansen & Robert Ghrist"
+    year: 2021
+    url: "https://doi.org/10.1137/20M1341088"
+    note: "Sheaf Laplacian for opinion dynamics — the model in Section 6.2"
+  - type: "paper"
+    title: "Neural Sheaf Diffusion: A Topological Perspective on Heterophily and Oversmoothing in GNNs"
+    authors: "Bodnar, Di Giovanni, Chamberlain, Lio & Bronstein"
+    year: 2022
+    url: "https://arxiv.org/abs/2202.04579"
+    note: "Sheaf diffusion as a graph neural network layer (ICLR 2022)"
+  - type: "book"
+    title: "Elementary Applied Topology"
+    authors: "Robert Ghrist"
+    year: 2014
+    url: "https://www2.math.upenn.edu/~ghrist/notes.html"
+    note: "Chapter 8 on sheaves and cosheaves — an accessible applied introduction"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import CellularSheafExplorer from '../../components/viz/CellularSheafExplorer.tsx';
+import SheafDiffusionSimulator from '../../components/viz/SheafDiffusionSimulator.tsx';
+
+## Overview & Motivation
+
+Across the six topics in this track, a single idea has appeared over and over: **local information assembled into global structure.** [Simplicial complexes](/topics/simplicial-complexes) glue simplices into spaces. [Persistent homology](/topics/persistent-homology) tracks how local connectivity merges into global topology across scales. The [Mapper algorithm](/topics/mapper-algorithm) patches local clusters into a global nerve. [Barcodes and bottleneck distance](/topics/barcodes-bottleneck) give us stable metrics on these global summaries.
+
+**Sheaf theory** is the mathematical framework that makes this local-to-global pattern precise.
+
+A **sheaf** assigns data to the open sets of a topological space (or the cells of a complex) and specifies how local pieces **restrict** to overlaps and **glue** into global sections. When data is consistent across overlaps, it glues into a global section. When it isn't, the *obstruction* to gluing is measured by **sheaf cohomology** — a sequence of vector spaces $H^0, H^1, \ldots$ that generalize the Betti numbers of ordinary homology.
+
+Here is a concrete motivating example. Suppose three temperature sensors are placed around a room. Each sensor reports a local measurement, and on every pair of nearby sensors we have a calibration function that relates their readings. If all calibrations are consistent — sensor A agrees with sensor B, B agrees with C, and A agrees with C through the chain — the local readings glue into a single global temperature field. If they don't agree, the *size* of the inconsistency is a meaningful quantity. Sheaf theory gives us the exact algebraic machinery to define, measure, and minimize this inconsistency.
+
+This capstone topic covers the full sheaf-theoretic toolkit:
+
+1. **Presheaves and Sheaves** on topological spaces — the classical definitions.
+2. **Cellular Sheaves on Graphs** — where the theory becomes computational.
+3. **Sheaf Cohomology** — $H^0$ (global consistency) and $H^1$ (obstruction to gluing).
+4. **The Sheaf Laplacian** — a spectral operator that generalizes the graph Laplacian.
+5. **Cosheaves and Duality** — the dual perspective.
+6. **Applications** — sensor networks, opinion dynamics, multi-modal fusion.
+
+---
+
+## Presheaves and Sheaves
+
+### The Idea: Data Organized by Open Sets
+
+The starting point is deceptively simple: we want to assign **data** to **regions** of a space, in a way that is compatible when regions overlap.
+
+Let $X$ be a topological space with open sets $\mathcal{O}(X)$.
+
+<TheoremBlock type="definition" number={1} title="Presheaf">
+A **presheaf** $\mathcal{F}$ on $X$ assigns:
+- To each open set $U \subseteq X$, a set (or vector space, group, etc.) $\mathcal{F}(U)$, called the **sections over $U$**.
+- To each inclusion $V \subseteq U$, a **restriction map** $\rho_{U,V}: \mathcal{F}(U) \to \mathcal{F}(V)$.
+
+These satisfy two axioms:
+1. **Identity**: $\rho_{U,U} = \text{id}_{\mathcal{F}(U)}$ for every open set $U$.
+2. **Composition**: If $W \subseteq V \subseteq U$, then $\rho_{U,W} = \rho_{V,W} \circ \rho_{U,V}$.
+</TheoremBlock>
+
+In the language of category theory, a presheaf is a contravariant functor from the category of open sets (with inclusions as morphisms) to the category of sets (or vector spaces). The "contravariant" means that restriction maps go in the *opposite* direction of inclusions: a smaller open set receives data from a larger one.
+
+### The Sheaf Condition
+
+A presheaf becomes a **sheaf** when local data can be glued uniquely.
+
+<TheoremBlock type="definition" number={2} title="Sheaf">
+A presheaf $\mathcal{F}$ is a **sheaf** if for every open cover $\{U_i\}$ of an open set $U$:
+
+1. **Locality (Separation)**: If $s, t \in \mathcal{F}(U)$ satisfy $\rho_{U,U_i}(s) = \rho_{U,U_i}(t)$ for all $i$, then $s = t$. (A global section is determined by its local restrictions.)
+
+2. **Gluing**: If sections $s_i \in \mathcal{F}(U_i)$ are **compatible** — meaning $\rho_{U_i, U_i \cap U_j}(s_i) = \rho_{U_j, U_i \cap U_j}(s_j)$ for all $i, j$ — then there exists a section $s \in \mathcal{F}(U)$ with $\rho_{U,U_i}(s) = s_i$ for all $i$.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={1}>
+**Continuous functions as a sheaf.** Let $X = \mathbb{R}$ and define $\mathcal{F}(U) = C(U, \mathbb{R})$, the set of continuous real-valued functions on $U$. The restriction maps are literal restriction of functions: $\rho_{U,V}(f) = f|_V$. This is a sheaf because:
+- **Locality**: If two continuous functions agree on every open set in a cover, they are the same function.
+- **Gluing**: If we have continuous functions on overlapping open sets that agree on overlaps, they glue into a single continuous function on the union.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={2}>
+**Bounded functions are NOT a sheaf.** Define $\mathcal{F}(U)$ = bounded continuous functions on $U \subseteq \mathbb{R}$. This is a presheaf (restricting a bounded function to a smaller domain keeps it bounded), but **gluing fails**: we can glue bounded functions on $(-n, n)$ for each $n$ to get the identity function on all of $\mathbb{R}$, which is unbounded. The global section does not lie in $\mathcal{F}(\mathbb{R})$.
+</TheoremBlock>
+
+![Three overlapping open sets with compatible sections on their intersections, illustrating the gluing axiom](/images/topics/sheaf-theory/sheaf-open-cover.png)
+
+### Stalks and Germs
+
+<TheoremBlock type="definition" number={3} title="Stalk">
+The **stalk** of $\mathcal{F}$ at a point $x \in X$ is the direct limit
+$$\mathcal{F}_x = \varinjlim_{U \ni x} \mathcal{F}(U)$$
+taken over all open neighborhoods of $x$. Elements of the stalk are called **germs** at $x$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Intuitively, a germ at $x$ captures the "infinitesimally local" behavior of a section near $x$. Two sections have the same germ at $x$ if they agree on some neighborhood of $x$, even if they differ elsewhere. For the sheaf of continuous functions, the stalk at $x$ is the ring of germs of continuous functions — an algebraic object that encodes local behavior without committing to any particular domain.
+</TheoremBlock>
+
+The stalk construction is elegant but abstract. For computational purposes, we need a more concrete framework — and that is exactly what cellular sheaves on graphs provide.
+
+---
+
+## Cellular Sheaves on Graphs
+
+The leap from classical sheaves to data science happens when we replace "topological space with open sets" by "graph with vertices and edges." The result is a **cellular sheaf**, where all the abstract machinery collapses to concrete linear algebra.
+
+### Definition
+
+Let $G = (V, E)$ be a graph with vertex set $V$ and edge set $E$. For each edge $e$, fix an orientation (choose a source vertex $u$ and a target vertex $v$, written $e = (u, v)$).
+
+<TheoremBlock type="definition" number={4} title="Cellular Sheaf on a Graph">
+A **cellular sheaf** $\mathcal{F}$ on $G$ assigns:
+- To each vertex $v \in V$, a vector space $\mathcal{F}(v) \cong \mathbb{R}^{d_v}$ (the **vertex stalk**).
+- To each edge $e \in E$, a vector space $\mathcal{F}(e) \cong \mathbb{R}^{d_e}$ (the **edge stalk**).
+- To each incidence $v \trianglelefteq e$ (vertex $v$ is an endpoint of edge $e$), a linear map $\mathcal{F}_{v \trianglelefteq e}: \mathcal{F}(v) \to \mathcal{F}(e)$ (the **restriction map**).
+</TheoremBlock>
+
+The vertex stalks are the "data spaces" at each node, the edge stalks are the "comparison spaces" on each edge, and the restriction maps specify how data at a vertex should transform when compared along an edge.
+
+### Global Sections
+
+<TheoremBlock type="definition" number={5} title="Global Section">
+A **global section** of $\mathcal{F}$ is a choice of vectors $x_v \in \mathcal{F}(v)$ for every vertex $v$ such that for every edge $e = (u, v)$:
+$$\mathcal{F}_{u \trianglelefteq e}(x_u) = \mathcal{F}_{v \trianglelefteq e}(x_v)$$
+The restriction maps agree — the data is **consistent** along every edge.
+</TheoremBlock>
+
+### Examples
+
+<TheoremBlock type="example" number={3}>
+**Constant sheaf on $K_3$.** Take the complete graph on three vertices $\{A, B, C\}$. Set every stalk to $\mathbb{R}^2$ and every restriction map to the identity matrix $I_2$. A global section is any assignment where $x_A = x_B = x_C$ — i.e., the same vector at every vertex. The space of global sections is $\mathbb{R}^2$, or equivalently $\dim H^0 = 2$.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={4}>
+**Rotation sheaf on $K_3$.** Same graph, same stalks $\mathbb{R}^2$, but now the restriction maps are rotation matrices. On each edge, one endpoint maps via the identity and the other via $R(\theta)$, a rotation by angle $\theta$. If $\theta = 0$, this reduces to the constant sheaf. But if $\theta = \pi/3$ (60°), the consistency condition around the triangle requires $R(\theta)^3 = I$, which holds — so global sections exist. If $\theta = \pi/4$ (45°), then $R(\theta)^3 \neq I$, and there are **no nonzero global sections**. The geometry of the restriction maps creates an obstruction to global consistency.
+</TheoremBlock>
+
+The interactive explorer below lets you switch between these sheaf types and adjust the vertex vectors to see when global consistency holds:
+
+<CellularSheafExplorer client:visible />
+
+**What to notice:** With the constant sheaf, set all three vectors to the same direction — the inconsistency drops to zero. With the rotation sheaf, try to find a consistent assignment. For most rotation angles, it is impossible.
+
+### Python Implementation
+
+The `CellularSheaf` class encapsulates the core data structure. Each instance manages vertex and edge stalks, restriction maps, and computes the sheaf Laplacian and cohomology:
+
+```python
+import numpy as np
+from scipy import linalg
+
+class CellularSheaf:
+    """A cellular sheaf on a graph with vector-space stalks."""
+
+    def __init__(self, vertices, edges):
+        self.vertices = list(vertices)
+        self.edges = list(edges)          # list of (u, v) pairs
+        self.vertex_to_idx = {v: i for i, v in enumerate(self.vertices)}
+        self.vertex_stalks = {}           # v -> dimension
+        self.edge_stalks = {}             # (u,v) -> dimension
+        self.restriction_maps = {}        # (v, (u,v)) -> matrix
+
+    def set_vertex_stalk(self, v, dim):
+        self.vertex_stalks[v] = dim
+
+    def set_edge_stalk(self, e, dim):
+        self.edge_stalks[e] = dim
+
+    def set_restriction_map(self, vertex, edge, matrix):
+        self.restriction_maps[(vertex, edge)] = np.array(matrix)
+
+    def coboundary_matrix(self):
+        """Build the coboundary map δ₀: C⁰(F) → C¹(F)."""
+        row_dims = [self.edge_stalks[e] for e in self.edges]
+        col_dims = [self.vertex_stalks[v] for v in self.vertices]
+        total_rows = sum(row_dims)
+        total_cols = sum(col_dims)
+        delta = np.zeros((total_rows, total_cols))
+
+        row_offset = 0
+        for e_idx, (u, v) in enumerate(self.edges):
+            col_u = sum(col_dims[:self.vertex_to_idx[u]])
+            col_v = sum(col_dims[:self.vertex_to_idx[v]])
+            d_e = row_dims[e_idx]
+            # δ₀(x)_e = ρ_{v,e}(x_v) − ρ_{u,e}(x_u)
+            delta[row_offset:row_offset+d_e, col_v:col_v+self.vertex_stalks[v]] = \
+                self.restriction_maps[(v, (u, v))]
+            delta[row_offset:row_offset+d_e, col_u:col_u+self.vertex_stalks[u]] = \
+                -self.restriction_maps[(u, (u, v))]
+            row_offset += d_e
+
+        return delta
+
+    def sheaf_laplacian(self):
+        """L_F = δ₀ᵀ δ₀."""
+        delta = self.coboundary_matrix()
+        return delta.T @ delta
+
+    def sheaf_cohomology(self):
+        """Compute dim H⁰ and dim H¹."""
+        delta = self.coboundary_matrix()
+        rank = np.linalg.matrix_rank(delta, tol=1e-10)
+        dim_C0 = delta.shape[1]
+        dim_C1 = delta.shape[0]
+        H0 = dim_C0 - rank       # dim ker(δ₀)
+        H1 = dim_C1 - rank       # dim coker(δ₀)
+        return H0, H1
+```
+
+---
+
+## Sheaf Cohomology
+
+### The Cochain Complex
+
+The algebraic core of sheaf theory on graphs is a short exact-ish sequence built from the vertex and edge stalks.
+
+<TheoremBlock type="definition" number={6} title="Cochain Spaces and Coboundary Map">
+For a cellular sheaf $\mathcal{F}$ on $G = (V, E)$, define:
+
+- The **0-cochain space**: $C^0(\mathcal{F}) = \bigoplus_{v \in V} \mathcal{F}(v)$ — a vector in $C^0$ is an assignment of a stalk vector to each vertex.
+- The **1-cochain space**: $C^1(\mathcal{F}) = \bigoplus_{e \in E} \mathcal{F}(e)$ — a vector in $C^1$ is an assignment of a stalk vector to each edge.
+- The **coboundary map** $\delta_0: C^0(\mathcal{F}) \to C^1(\mathcal{F})$ is defined by:
+
+$$(\delta_0 x)_e = \mathcal{F}_{v \trianglelefteq e}(x_v) - \mathcal{F}_{u \trianglelefteq e}(x_u) \quad \text{for each edge } e = (u, v)$$
+
+This forms a **cochain complex** $0 \to C^0(\mathcal{F}) \xrightarrow{\delta_0} C^1(\mathcal{F}) \to 0$.
+</TheoremBlock>
+
+The coboundary map $\delta_0$ is a matrix. For a graph with $|V|$ vertices of stalk dimension $d_v$ and $|E|$ edges of stalk dimension $d_e$, it is a $(\sum d_e) \times (\sum d_v)$ matrix assembled from the restriction maps with appropriate signs.
+
+<TheoremBlock type="definition" number={7} title="Sheaf Cohomology">
+The **sheaf cohomology** groups are:
+$$H^0(\mathcal{F}) = \ker(\delta_0) \qquad H^1(\mathcal{F}) = \text{coker}(\delta_0) = C^1(\mathcal{F}) / \text{im}(\delta_0)$$
+</TheoremBlock>
+
+### Interpretation
+
+<TheoremBlock type="theorem" number={1} title="Cohomological Interpretation">
+For a cellular sheaf $\mathcal{F}$ on a connected graph $G$:
+- $H^0(\mathcal{F})$ is the space of **global sections** — vertex assignments that are perfectly consistent along every edge. Its dimension counts the number of independent consistent data assignments.
+- $H^1(\mathcal{F})$ measures **obstructions to gluing** — edge data that cannot be realized as the coboundary of any vertex assignment. A nonzero $H^1$ means there exist local compatibility conditions that cannot be satisfied globally.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+$H^0 = \ker(\delta_0)$ is immediate from the definition: $\delta_0 x = 0$ means $\mathcal{F}_{v \trianglelefteq e}(x_v) = \mathcal{F}_{u \trianglelefteq e}(x_u)$ for every edge, which is precisely the global section condition.
+
+For $H^1$, observe that $\text{im}(\delta_0) \subseteq C^1(\mathcal{F})$ consists of all edge assignments that *arise* as the inconsistency of some vertex assignment. The quotient $C^1 / \text{im}(\delta_0)$ captures edge data that cannot be explained by any vertex assignment — these are the obstructions.
+
+By rank-nullity, $\dim H^0 = \dim C^0 - \text{rank}(\delta_0)$ and $\dim H^1 = \dim C^1 - \text{rank}(\delta_0)$. Both are computable via standard linear algebra. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="example" number={5}>
+**Cohomology of the constant sheaf on $K_3$.** With $\mathcal{F}(v) = \mathcal{F}(e) = \mathbb{R}^2$ and all restriction maps equal to $I_2$, the coboundary matrix $\delta_0$ is $6 \times 6$ (3 edges × 2D, 3 vertices × 2D). Computing rank: $\text{rank}(\delta_0) = 4$, so $\dim H^0 = 6 - 4 = 2$ and $\dim H^1 = 6 - 4 = 2$. The two-dimensional $H^0$ reflects the fact that any constant vector across all three vertices is a global section. The two-dimensional $H^1$ reflects the cycle in $K_3$ — consistent edge data around the triangle is constrained.
+</TheoremBlock>
+
+---
+
+## The Sheaf Laplacian
+
+### Construction
+
+The sheaf Laplacian is the quadratic form that measures total inconsistency.
+
+<TheoremBlock type="definition" number={8} title="Sheaf Laplacian">
+The **sheaf Laplacian** of $\mathcal{F}$ is the positive semidefinite matrix
+$$L_{\mathcal{F}} = \delta_0^T \delta_0$$
+It acts on $C^0(\mathcal{F})$ and has the same dimensions as the total vertex stalk space.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Kernel of the Sheaf Laplacian">
+$\ker(L_{\mathcal{F}}) = \ker(\delta_0) = H^0(\mathcal{F})$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+If $\delta_0 x = 0$ then $L_{\mathcal{F}} x = \delta_0^T(\delta_0 x) = 0$, so $\ker(\delta_0) \subseteq \ker(L_{\mathcal{F}})$. Conversely, if $L_{\mathcal{F}} x = 0$ then $x^T L_{\mathcal{F}} x = \|\delta_0 x\|^2 = 0$, so $\delta_0 x = 0$. $\square$
+</TheoremBlock>
+
+### The Quadratic Form
+
+The sheaf Laplacian has a beautiful interpretation as a sum of local inconsistencies:
+
+$$x^T L_{\mathcal{F}} x = \|\delta_0 x\|^2 = \sum_{e = (u,v) \in E} \|\mathcal{F}_{v \trianglelefteq e}(x_v) - \mathcal{F}_{u \trianglelefteq e}(x_u)\|^2$$
+
+Each term measures how much the vertex data at the endpoints of an edge disagrees after being mapped into the edge stalk. The total is the **Laplacian energy** — a scalar measuring the global inconsistency of the vertex assignment $x$.
+
+<TheoremBlock type="remark">
+When $\mathcal{F}$ is the **constant sheaf** (all stalks $\mathbb{R}^1$, all restriction maps = 1), the sheaf Laplacian reduces to the ordinary **graph Laplacian** $L_G$. The sheaf Laplacian is a strict generalization: it allows higher-dimensional data at each node and nontrivial linear transformations along each edge.
+</TheoremBlock>
+
+### Spectral Properties
+
+The eigenvalues of $L_{\mathcal{F}}$ reveal more than the graph Laplacian alone. Because the restriction maps introduce structure beyond simple connectivity, the sheaf Laplacian spectrum is generally **richer** — more eigenvalues, more information.
+
+![Eigenvalue comparison: the sheaf Laplacian (with rotation maps) has a more spread-out spectrum than the ordinary graph Laplacian on the same graph](/images/topics/sheaf-theory/sheaf-laplacian-spectrum.png)
+
+The smallest eigenvalue $\lambda_1 > 0$ (the **spectral gap**) of $L_{\mathcal{F}}$ restricted to the complement of $H^0$ controls the rate of convergence of sheaf diffusion and the robustness of global consistency to perturbation.
+
+### Sheaf Diffusion
+
+<TheoremBlock type="definition" number={9} title="Sheaf Diffusion">
+The **sheaf diffusion** process on $\mathcal{F}$ is the ODE
+$$\frac{dx}{dt} = -L_{\mathcal{F}} x$$
+starting from an initial vertex assignment $x(0) \in C^0(\mathcal{F})$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="Convergence of Sheaf Diffusion">
+The sheaf diffusion $x(t) = e^{-L_{\mathcal{F}} t} x(0)$ converges as $t \to \infty$ to the orthogonal projection of $x(0)$ onto $\ker(L_{\mathcal{F}}) = H^0(\mathcal{F})$. If $\lambda_1$ is the smallest positive eigenvalue of $L_{\mathcal{F}}$, the convergence rate is $\|x(t) - x_\infty\| \leq e^{-\lambda_1 t} \|x(0) - x_\infty\|$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $L_{\mathcal{F}}$ is symmetric positive semidefinite, it has an orthogonal eigendecomposition $L_{\mathcal{F}} = \sum_i \lambda_i v_i v_i^T$ with $\lambda_i \geq 0$. Writing $x(0) = \sum_i c_i v_i$, we get $x(t) = \sum_i c_i e^{-\lambda_i t} v_i$. As $t \to \infty$, all terms with $\lambda_i > 0$ decay exponentially, leaving only the projection onto the $\lambda = 0$ eigenspace, which is $\ker(L_{\mathcal{F}}) = H^0(\mathcal{F})$. The rate is controlled by $\lambda_1$. $\square$
+</TheoremBlock>
+
+In words: sheaf diffusion drives every node's data toward the nearest globally consistent assignment. The Laplacian energy decays monotonically to zero (or to the minimum achievable with the given sheaf structure).
+
+![Sheaf diffusion convergence: the Laplacian energy decays exponentially over time as node vectors converge to a global section](/images/topics/sheaf-theory/sheaf-diffusion.png)
+
+The simulator below lets you watch sheaf diffusion in real time. Press Play and observe how the node vectors (shown as arrows) align as the energy drops:
+
+<SheafDiffusionSimulator client:visible />
+
+**What to notice:** With the constant sheaf, all vectors converge to their average — the same consensus behavior as the heat equation on a graph. With the rotation sheaf, the convergence target depends on the rotation angle: the system finds the best compromise given the twisted compatibility conditions.
+
+---
+
+## Cosheaves and Duality
+
+A **cosheaf** reverses the direction of the structure maps. Where a sheaf has *restriction* maps from vertices to edges (projecting data down), a cosheaf has *extension* maps from edges to vertices (pushing data up).
+
+<TheoremBlock type="definition" number={10} title="Cellular Cosheaf">
+A **cellular cosheaf** $\mathcal{G}$ on $G = (V, E)$ assigns:
+- To each vertex $v$, a vector space $\mathcal{G}(v) \cong \mathbb{R}^{d_v}$.
+- To each edge $e$, a vector space $\mathcal{G}(e) \cong \mathbb{R}^{d_e}$.
+- To each incidence $v \trianglelefteq e$, a linear **extension map** $\mathcal{G}_{v \trianglelefteq e}: \mathcal{G}(e) \to \mathcal{G}(v)$.
+</TheoremBlock>
+
+The chain complex of a cosheaf runs in the opposite direction: $0 \leftarrow C_0(\mathcal{G}) \xleftarrow{\partial_1} C_1(\mathcal{G}) \leftarrow 0$, and we get **cosheaf homology** $H_0(\mathcal{G})$ and $H_1(\mathcal{G})$.
+
+<TheoremBlock type="theorem" number={4} title="Sheaf–Cosheaf Duality">
+For a cellular sheaf $\mathcal{F}$ on a finite graph, there is a natural dual cosheaf $\mathcal{F}^*$ whose extension maps are the transposes of $\mathcal{F}$'s restriction maps. The duality is:
+$$H^k(\mathcal{F}) \cong H_k(\mathcal{F}^*)^*$$
+Sheaf cohomology and cosheaf homology are dual. In particular, $\dim H^0(\mathcal{F}) = \dim H_0(\mathcal{F}^*)$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+In the [Mapper algorithm](/topics/mapper-algorithm), the construction that pulls back a cover and takes the nerve is naturally a cosheaf: data flows *from* the cover elements (edges in the nerve) *to* the clusters (vertices). This is the precise sense in which Mapper is a cosheaf construction — a fact that becomes visible only through the sheaf-theoretic lens.
+</TheoremBlock>
+
+---
+
+## Applications
+
+### Sensor Network Consistency
+
+A sensor network is a graph where each vertex is a sensor and each edge represents a communication link. Each sensor measures a local quantity (temperature, position, signal strength), and the restriction maps encode the expected relationship between neighboring sensors — for instance, a rotation matrix relating two sensors' coordinate frames.
+
+Sheaf cohomology provides a principled consistency check:
+- **$\dim H^0$** = number of independent consistent readings. If this equals the stalk dimension, the network is fully consistent.
+- **Laplacian energy** = total inconsistency, interpretable as a "calibration error" across the network.
+- **Spectral gap** = robustness of the consistency to noise. A large spectral gap means the network will recover quickly from perturbations via sheaf diffusion.
+
+![Sensor network as a cellular sheaf: the graph structure (left), consistency field (center), and spectral gap vs. noise level (right)](/images/topics/sheaf-theory/sensor-network-sheaf.png)
+
+```python
+# Build a sensor network sheaf with rotation restriction maps
+def build_sensor_sheaf(G, noise_level=0.0):
+    """Construct a sheaf on a sensor graph with noisy rotation maps."""
+    sheaf = CellularSheaf(G.nodes(), G.edges())
+    for v in G.nodes():
+        sheaf.set_vertex_stalk(v, 2)
+    for e in G.edges():
+        sheaf.set_edge_stalk(e, 2)
+        theta = G.edges[e].get('angle', 0.0)
+        theta_noisy = theta + noise_level * np.random.randn()
+        R = np.array([[np.cos(theta_noisy), -np.sin(theta_noisy)],
+                       [np.sin(theta_noisy),  np.cos(theta_noisy)]])
+        sheaf.set_restriction_map(e[0], e, np.eye(2))
+        sheaf.set_restriction_map(e[1], e, R)
+    return sheaf
+```
+
+### Opinion Dynamics on a Social Graph
+
+Hansen and Ghrist (2021) model opinion dynamics as sheaf diffusion. Each person (vertex) holds an **opinion vector** in $\mathbb{R}^d$ — not just a scalar "agree/disagree" but a rich vector encoding positions on multiple issues. The restriction maps encode how people relate to each other: identity maps for people who share a frame of reference, rotation or projection maps for people who interpret the same issue differently.
+
+Sheaf diffusion on this model drives opinions toward **structured consensus** — not the uniform agreement of the standard DeGroot model, but agreement *modulo the restriction maps*. Two people can reach "consistency" while holding different opinion vectors, as long as their opinions are related by the restriction map on the edge connecting them.
+
+![Opinion dynamics via sheaf diffusion: initial opinions (left) converge to structured consensus (right) on a barbell graph with two communities](/images/topics/sheaf-theory/opinion-dynamics-sheaf.png)
+
+```python
+# Sheaf diffusion for opinion dynamics
+def sheaf_opinion_diffusion(sheaf, x0, n_steps=100, alpha=0.1):
+    """Run sheaf diffusion: x_{t+1} = x_t - α L_F x_t."""
+    L = sheaf.sheaf_laplacian()
+    x = x0.copy()
+    trajectory = [x.copy()]
+    for _ in range(n_steps):
+        x = x - alpha * L @ x
+        trajectory.append(x.copy())
+    return np.array(trajectory)
+```
+
+### Multi-Modal Data Fusion
+
+When data arrives from multiple modalities — images, text, sensor readings — each modality lives in a different vector space. A cellular sheaf provides a natural framework for **fusion**: each modality is a vertex stalk, the relationships between modalities are restriction maps, and sheaf diffusion finds the maximally consistent joint representation.
+
+Compared to naive fusion (e.g., concatenation or averaging), sheaf-based fusion exploits the *structure* of inter-modal relationships. If the restriction maps are learned from data (as in Bodnar et al., 2022), the framework becomes a **sheaf neural network** — a graph neural network where the message-passing rule is sheaf diffusion.
+
+---
+
+## The Topology & TDA Track: A Capstone View
+
+<TheoremBlock type="remark">
+With sheaf theory, we can now see how every topic in this track fits into a single algebraic framework. The table below traces the connections:
+
+| Prior Topic | Key Concept | Sheaf-Theoretic Connection |
+|:---|:---|:---|
+| [Simplicial Complexes](/topics/simplicial-complexes) | Face poset | Cellular sheaves are functors on the face poset of a simplicial complex |
+| [Persistent Homology](/topics/persistent-homology) | Filtration & birth/death | Persistence modules are sheaves on the poset $(\mathbb{R}, \leq)$ — the barcode is the indecomposable decomposition |
+| [Čech Complexes & Nerve Theorem](/topics/cech-complexes) | Nerve of a cover | Leray's sheaf-cohomology proof of the Nerve Theorem is the original (1945) argument |
+| [The Mapper Algorithm](/topics/mapper-algorithm) | Pullback cover | Mapper's construction is a cosheaf on the nerve: clusters push data up from edges to vertices |
+| [Barcodes & Bottleneck Distance](/topics/barcodes-bottleneck) | Interleaving distance | The bottleneck distance between persistence diagrams is the interleaving distance between persistence sheaves |
+
+</TheoremBlock>
+
+This is the payoff of the entire track. Each topic introduced a tool; sheaf theory reveals that they are all aspects of a single idea — **local data, organized by combinatorial structure, with restriction maps governing consistency.**
+
+**Where to go from here.** Three frontiers extend the ideas in this track:
+- **Multi-parameter persistence**: when the filtration parameter is two-dimensional, barcode decomposition no longer holds. The resulting persistence modules are sheaves on $\mathbb{R}^2$, and their theory is an active area of algebraic topology.
+- **Sheaf neural networks** (Bodnar et al., 2022): replacing the graph Laplacian in a GNN with the sheaf Laplacian yields architectures that handle heterophily and avoid oversmoothing.
+- **Persistent sheaves**: combining persistence and sheaf structure leads to sheaves parameterized by a filtration, unifying the spectral and homological perspectives.
+
+---
+
+## Exercises
+
+### Foundational
+
+**Exercise 1.** Let $T$ be a tree (connected graph with no cycles) and $\mathcal{F}$ the constant sheaf with all stalks $\mathbb{R}^d$ and all restriction maps $= I_d$. Prove that $H^1(\mathcal{F}) = 0$. *Hint:* What is the rank of the coboundary matrix $\delta_0$ for a tree with $n$ vertices?
+
+**Exercise 2.** Consider a cycle graph $C_4$ (four vertices, four edges) with the **signed sheaf**: all stalks $\mathbb{R}^1$, restriction maps $= +1$ on three edges and $= -1$ on one edge. Compute $\dim H^0$ and $\dim H^1$. What happens if you flip the sign on a second edge?
+
+**Exercise 3.** For the complete graph $K_4$ with the constant sheaf ($\mathbb{R}^2$ stalks, identity maps), compute the sheaf Laplacian $L_{\mathcal{F}}$ as an $8 \times 8$ matrix. Verify that its kernel has dimension 2.
+
+### Intermediate
+
+**Exercise 4.** Let $G$ be a path graph $v_1 - v_2 - v_3$ with vertex stalks $\mathcal{F}(v_i) = \mathbb{R}^3$ and edge stalks $\mathcal{F}(e) = \mathbb{R}^2$. The restriction maps are $2 \times 3$ matrices. Construct a specific example where $\dim H^0 = 1$ (a one-dimensional space of global sections). What constraint does this impose on the restriction maps?
+
+**Exercise 5.** Prove that the convergence rate of sheaf diffusion is exactly $e^{-\lambda_1 t}$, where $\lambda_1$ is the smallest positive eigenvalue of $L_{\mathcal{F}}$. Show that for the constant sheaf on a graph, $\lambda_1$ equals the algebraic connectivity (second-smallest eigenvalue of the graph Laplacian).
+
+**Exercise 6.** Implement the `CellularSheaf` class from Section 2 and verify numerically that $\dim \ker(L_{\mathcal{F}}) = \dim H^0(\mathcal{F})$ for three different sheaves of your choice. Report the sheaf parameters and numerical results.
+
+### Advanced
+
+**Exercise 7.** *Sensor localization as a sheaf problem.* Consider a network of 20 sensors in $\mathbb{R}^2$ where each sensor knows its position relative to its neighbors (with Gaussian noise of standard deviation $\sigma$). Model this as a cellular sheaf where the restriction maps are noisy rotations. Implement sheaf diffusion to estimate the global positions from local measurements. Plot the localization error as a function of $\sigma$ and the spectral gap of $L_{\mathcal{F}}$.
+
+**Exercise 8.** *Neural sheaf diffusion.* Implement a simple sheaf neural network following Bodnar et al. (2022): parameterize the restriction maps as learnable linear maps and train via gradient descent on a node classification task. Use a small graph (e.g., Karate Club) and compare accuracy with a standard GCN. Does the sheaf Laplacian improve performance on heterophilic class boundaries?
