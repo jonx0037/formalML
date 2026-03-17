@@ -24,6 +24,9 @@ The site exists because the gap between textbook formalism and practical ML unde
 |-------|-------|-------|-------------|
 | [Simplicial Complexes](https://www.formalml.com/topics/simplicial-complexes) | Topology & TDA | Foundational | The combinatorial scaffolding that turns point clouds into topology |
 | [Persistent Homology](https://www.formalml.com/topics/persistent-homology) | Topology & TDA | Intermediate | Tracking topological features across scales — the workhorse of TDA |
+| [Čech Complexes & Nerve Theorem](https://www.formalml.com/topics/cech-complexes) | Topology & TDA | Intermediate | The geometrically faithful complex and the theorem that justifies it |
+| [The Mapper Algorithm](https://www.formalml.com/topics/mapper-algorithm) | Topology & TDA | Intermediate | Topological summarization of high-dimensional data via nerve of a cover |
+| [Barcodes & Bottleneck Distance](https://www.formalml.com/topics/barcodes-bottleneck) | Topology & TDA | Intermediate | Stability theory for persistence diagrams and metric comparison |
 
 ## Curriculum Roadmap
 
@@ -68,8 +71,8 @@ See the full interactive roadmap at **[formalml.com/paths](https://www.formalml.
 │   ├── lib/                # Utility modules
 │   └── styles/             # Global CSS, design tokens
 ├── public/                 # Static assets
-├── drafts/                 # Work-in-progress topic drafts
-├── docs/plans/             # Planning documents
+├── docs/plans/             # Planning & handoff documents
+├── notebooks/              # Research notebooks (Jupyter)
 ├── astro.config.mjs        # Astro configuration
 ├── package.json
 └── tsconfig.json
