@@ -1,0 +1,548 @@
+---
+title: "Statistical TDA"
+subtitle: "Doing inference with persistence diagrams — from stability guarantees to hypothesis testing"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "simplicial-complexes"
+  - "barcodes-bottleneck"
+  - "persistent-homology"
+tags:
+  - "topology"
+  - "tda"
+  - "statistics"
+  - "hypothesis-testing"
+  - "bootstrap"
+  - "persistence-landscapes"
+domain: "topology"
+videoId: null
+notebookPath: "notebooks/statistical-tda/statistical-tda.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/statistical-tda.mdx"
+datePublished: 2026-03-16
+estimatedReadTime: 45
+abstract: "Persistence diagrams from finite samples are random objects — some bars represent genuine topological features, others are sampling noise. Statistical TDA provides the tools to tell them apart: stability theorems guarantee robustness, bootstrap confidence sets separate signal from noise, persistence landscapes and images vectorize diagrams for standard statistical methods, and permutation tests enable topological hypothesis testing. We develop the full pipeline from theory to application, including a financial market regime detection case study."
+connections:
+  - topic: "simplicial-complexes"
+    relationship: "persistence diagrams are computed from simplicial filtrations"
+  - topic: "persistent-homology"
+    relationship: "statistical TDA treats persistence diagrams as statistical estimators of the true homology"
+  - topic: "barcodes-bottleneck"
+    relationship: "the Stability Theorem bounds diagram perturbation via bottleneck distance"
+  - topic: "cech-complexes"
+    relationship: "Vietoris-Rips stability corollary uses Hausdorff distance between point clouds"
+  - topic: "mapper-algorithm"
+    relationship: "Mapper is a complementary TDA tool; statistical TDA quantifies confidence in topological features Mapper reveals"
+references:
+  - type: "paper"
+    title: "Stability of Persistence Diagrams"
+    authors: "Cohen-Steiner, Edelsbrunner & Harer"
+    year: 2007
+    note: "The foundational stability theorem"
+  - type: "paper"
+    title: "Confidence Sets for Persistence Diagrams"
+    authors: "Fasy, Lecci, Rinaldo, Wasserman, Balakrishnan & Singh"
+    year: 2014
+    url: "https://doi.org/10.1214/14-AOS1252"
+    note: "Bootstrap confidence sets for separating signal from noise"
+  - type: "paper"
+    title: "Statistical Topological Data Analysis Using Persistence Landscapes"
+    authors: "Bubenik"
+    year: 2015
+    note: "Persistence landscapes — Banach-space-valued summaries with CLT"
+  - type: "paper"
+    title: "Persistence Images: A Stable Vector Representation of Persistent Homology"
+    authors: "Adams, Emerson, Kirby, Neville, Peterson, Shipman et al."
+    year: 2017
+    note: "Finite-dimensional vectorization for ML pipelines"
+  - type: "paper"
+    title: "An Introduction to Topological Data Analysis"
+    authors: "Chazal & Michel"
+    year: 2021
+    url: "https://doi.org/10.3389/frai.2021.667963"
+    note: "Survey covering statistical TDA foundations"
+  - type: "paper"
+    title: "Hypothesis Testing for Topological Data Analysis"
+    authors: "Robinson & Turner"
+    year: 2017
+    note: "Permutation tests for topological summaries"
+  - type: "book"
+    title: "The Structure and Stability of Persistence Modules"
+    authors: "Chazal, de Silva, Glisse & Oudot"
+    year: 2016
+    note: "Comprehensive stability theory for persistence modules"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import StabilityExplorer from '../../components/viz/StabilityExplorer.tsx';
+import BootstrapExplorer from '../../components/viz/BootstrapExplorer.tsx';
+import LandscapeVisualizer from '../../components/viz/LandscapeVisualizer.tsx';
+
+## Overview & Motivation
+
+The previous topics in this track gave us the machinery to compute topological summaries of data: we built [simplicial complexes](/topics/simplicial-complexes) from point clouds, computed [persistent homology](/topics/persistent-homology) to track features across scales, measured distances between persistence diagrams via the [bottleneck distance](/topics/barcodes-bottleneck), and used the [Mapper algorithm](/topics/mapper-algorithm) to produce interpretable graph summaries of high-dimensional datasets.
+
+But a fundamental question remains: **how do we know which topological features are real?**
+
+Persistent homology applied to a finite sample $X_n = \{x_1, \ldots, x_n\} \subset \mathbb{R}^d$ produces a persistence diagram $\text{Dgm}(X_n)$. This diagram is a *random object* — draw a different sample from the same distribution, and you get a different diagram. Some bars in the barcode represent genuine topological features of the underlying space; others are sampling noise. **Statistical TDA** gives us the tools to tell them apart.
+
+We develop four pillars:
+
+1. **Stability & Convergence** — the theoretical foundation: persistence diagrams are stable under perturbations, and empirical diagrams converge to the true diagram as $n \to \infty$.
+2. **Confidence Sets via Bootstrap** — constructing confidence bands around persistence diagrams to determine which features are statistically significant.
+3. **Vectorization** — mapping persistence diagrams into Banach and Hilbert spaces (persistence landscapes, persistence images) where standard statistical tools apply.
+4. **Hypothesis Testing** — permutation tests and two-sample tests on topological summaries.
+
+---
+
+## 1. Stability & Convergence
+
+### The Stability Theorem
+
+The **Stability Theorem** is the theoretical bedrock of statistical TDA. It says that small perturbations of the input data produce small changes in the persistence diagram — making persistence a *robust* summary.
+
+<TheoremBlock type="theorem" number={1} title="Stability (Cohen-Steiner, Edelsbrunner, Harer, 2007)">
+Let $f, g: X \to \mathbb{R}$ be tame functions on a topological space $X$. Then:
+
+$$d_B(\text{Dgm}(f), \text{Dgm}(g)) \leq \|f - g\|_\infty$$
+
+where $d_B$ is the [bottleneck distance](/topics/barcodes-bottleneck) between persistence diagrams.
+</TheoremBlock>
+
+For Vietoris-Rips filtrations built from point clouds, the stability theorem translates to:
+
+<TheoremBlock type="corollary" number={1} title="Vietoris-Rips Stability">
+Let $X, Y \subset \mathbb{R}^d$ be finite point clouds. Then:
+
+$$d_B(\text{Dgm}(\text{VR}(X)), \text{Dgm}(\text{VR}(Y))) \leq 2 \, d_H(X, Y)$$
+
+where $d_H$ is the Hausdorff distance.
+</TheoremBlock>
+
+This means: if two point clouds are close in Hausdorff distance, their persistence diagrams are close in bottleneck distance. The topological summary is **Lipschitz-continuous** with respect to the input.
+
+### Why Stability Matters for Statistics
+
+Stability is what makes TDA *amenable to statistical reasoning*. Without it, we could not:
+
+- Talk about convergence of empirical diagrams to a population diagram
+- Construct confidence intervals
+- Perform hypothesis tests
+
+It tells us that persistence diagrams live in a well-behaved metric space, not some wild combinatorial object that could change arbitrarily under small perturbations.
+
+### Demonstration: Stability Under Perturbation
+
+We sample 100 points from a unit circle with light noise, then add increasing amounts of Gaussian perturbation. The bottleneck distance between the original and perturbed $H_1$ diagrams grows proportionally to the perturbation magnitude — exactly as the Stability Theorem predicts.
+
+![Three panels showing original circle, perturbed circle, and bottleneck distance growth](/images/topics/statistical-tda/stability_demo.png)
+
+The near-linear growth of $d_B$ with perturbation magnitude is the Lipschitz bound in action. The slope is bounded by the constant in the corollary — twice the Hausdorff distance between the original and perturbed point clouds.
+
+Try it yourself — drag the slider to perturb the circle and watch the bottleneck distance respond:
+
+<StabilityExplorer client:visible />
+
+### Convergence of Empirical Persistence Diagrams
+
+The Stability Theorem gives us a deterministic bound. To do *statistics*, we need a probabilistic statement: as the sample size $n \to \infty$, the empirical persistence diagram $\text{Dgm}(X_n)$ converges to the true diagram $\text{Dgm}(\mu)$ of the underlying distribution.
+
+<TheoremBlock type="theorem" number={2} title="Convergence Rate (Chazal & Oudot, 2008)">
+Let $\mu$ be a probability measure on a compact subset of $\mathbb{R}^d$, and let $X_n$ be an i.i.d. sample of size $n$ from $\mu$. Then:
+
+$$d_B(\text{Dgm}(X_n), \text{Dgm}(\mu)) = O\left(\left(\frac{\log n}{n}\right)^{1/d}\right)$$
+
+with high probability. The rate depends on the ambient dimension $d$ — the **curse of dimensionality** appears even in topological inference.
+</TheoremBlock>
+
+This convergence result justifies treating persistence diagrams as statistical estimators. The empirical diagram is a *consistent estimator* of the population diagram, and the convergence rate tells us how many samples we need for a given accuracy.
+
+![Error bar plot showing bottleneck distance decreasing with sample size, matching the theoretical rate](/images/topics/statistical-tda/convergence_demo.png)
+
+The empirical convergence (blue points with error bars) closely tracks the theoretical rate $O((\log n / n)^{1/2})$ (dashed coral line) for data in $\mathbb{R}^2$. With 500 samples, the bottleneck distance to the ground truth drops below 0.05.
+
+---
+
+## 2. Confidence Sets for Persistence Diagrams
+
+### The Problem
+
+Given a persistence diagram $\text{Dgm}(X_n)$ from a finite sample, which features are **statistically significant** and which are **noise**?
+
+A bar $(b, d)$ in the barcode with a large persistence $d - b$ is intuitively "more real" than a short bar. But how large is large enough? We need a formal threshold — a **confidence set** that separates signal from noise.
+
+### The Bootstrap Approach
+
+The key idea from Fasy, Lecci, Rinaldo, Wasserman, et al. (2014) is elegant:
+
+<TheoremBlock type="definition" number={1} title="Bootstrap Confidence Band">
+Given a point cloud $X_n$ and significance level $\alpha$:
+
+1. Compute the persistence diagram $\text{Dgm}(X_n)$.
+2. Draw $B$ bootstrap samples $X_n^{*(1)}, \ldots, X_n^{*(B)}$ from $X_n$ (sampling with replacement).
+3. Compute the persistence diagram for each bootstrap sample: $\text{Dgm}(X_n^{*(b)})$.
+4. Compute the bottleneck distance between each bootstrap diagram and the original: $\delta_b = d_B(\text{Dgm}(X_n), \text{Dgm}(X_n^{*(b)}))$.
+5. The $\alpha$-confidence threshold is $c_\alpha = \text{quantile}_{1-\alpha}(\delta_1, \ldots, \delta_B)$.
+
+The **confidence band** is the strip of width $c_\alpha$ above the diagonal:
+
+$$\mathcal{B}_\alpha = \{(b, d) : d - b \leq 2 c_\alpha\}$$
+
+Points outside this band are **statistically significant** at level $\alpha$. Points inside are **not distinguishable from noise**.
+</TheoremBlock>
+
+The intuition: the bootstrap samples $X_n^{*(b)}$ are perturbations of the original data. The distances $\delta_b$ measure how much the persistence diagram "wobbles" under resampling. Features whose persistence exceeds this wobble are stable — they would appear in most samples from the population.
+
+### Example: Circle with Noise
+
+We apply the bootstrap to 300 points sampled from a noisy circle with $B = 300$ bootstrap resamples. The $H_1$ diagram should show one significant point (the loop) well above the confidence band, with everything else falling inside (noise).
+
+![Three panels: noisy circle point cloud, H1 persistence diagram with salmon confidence band, bootstrap distance histogram](/images/topics/statistical-tda/bootstrap_confidence.png)
+
+The single large blue point represents the circle's loop — its persistence of $\approx 0.70$ far exceeds the significance threshold $2c_\alpha \approx 0.12$. The gray points cluster near the diagonal inside the salmon-colored noise band.
+
+Adjust the confidence level to see how the band width and feature classification change:
+
+<BootstrapExplorer client:visible />
+
+```python
+def bootstrap_confidence_band(X, maxdim=1, n_bootstrap=100, alpha=0.05, seed=None):
+    """
+    Compute a bootstrap confidence band for a persistence diagram.
+
+    Following Fasy, Lecci, Rinaldo, Wasserman et al. (2014):
+    1. Compute the persistence diagram of the original data.
+    2. Draw B bootstrap samples (with replacement) and compute their diagrams.
+    3. Compute bottleneck distances between each bootstrap diagram and the original.
+    4. The confidence threshold c_alpha is the (1-alpha) quantile.
+
+    Parameters
+    ----------
+    X : ndarray of shape (n, d) — input point cloud
+    maxdim : int — maximum homology dimension
+    n_bootstrap : int — number of bootstrap resamples
+    alpha : float — significance level (e.g., 0.05 for 95% confidence)
+    seed : int or None — random seed
+
+    Returns
+    -------
+    dgms : list of ndarrays — persistence diagrams of the original data
+    c_alpha : float — the (1-alpha) quantile of bootstrap bottleneck distances
+    boot_dists : ndarray — bottleneck distances from each bootstrap resample
+    """
+    rng = np.random.default_rng(seed)
+    n = len(X)
+
+    result = ripser(X, maxdim=maxdim)
+    dgms = result['dgms']
+    dgm_orig = dgms[maxdim][np.isfinite(dgms[maxdim][:, 1])]
+
+    boot_dists = np.zeros(n_bootstrap)
+    for b in range(n_bootstrap):
+        indices = rng.choice(n, size=n, replace=True)
+        dgm_boot = ripser(X[indices], maxdim=maxdim)['dgms'][maxdim]
+        dgm_boot = dgm_boot[np.isfinite(dgm_boot[:, 1])]
+        boot_dists[b] = bottleneck(dgm_orig, dgm_boot)
+
+    c_alpha = np.quantile(boot_dists, 1 - alpha)
+    return dgms, c_alpha, boot_dists
+```
+
+---
+
+## 3. Persistence Landscapes & Images
+
+### The Problem with Diagram Space
+
+Persistence diagrams live in a metric space equipped with the bottleneck and Wasserstein distances, but this space is **not a vector space**. We cannot:
+
+- Compute a *mean* persistence diagram (the Frechet mean exists but is NP-hard to compute exactly)
+- Apply linear methods (PCA, regression, kernel SVMs with standard kernels)
+- Perform standard statistical tests that assume a Hilbert or Banach space structure
+
+**Vectorization** solves this by mapping persistence diagrams into function spaces where the full arsenal of statistics and machine learning applies.
+
+### Persistence Landscapes (Bubenik, 2015)
+
+<TheoremBlock type="definition" number={2} title="Persistence Landscape">
+Given a persistence diagram $D = \{(b_i, d_i)\}$, define for each point the **tent function**:
+
+$$\Lambda_i(t) = \max\left(0, \min\left(t - b_i, \; d_i - t\right)\right)$$
+
+This is a piecewise-linear function that rises from 0 at $t = b_i$, peaks at $t = (b_i + d_i)/2$ with height $(d_i - b_i)/2$, and returns to 0 at $t = d_i$.
+
+The **$k$-th persistence landscape** is the $k$-th largest value of the tent functions at each point:
+
+$$\lambda_k(t) = k\text{-max}_{i} \; \Lambda_i(t)$$
+
+where $k\text{-max}$ denotes the $k$-th largest value.
+</TheoremBlock>
+
+Why are persistence landscapes so useful? They inherit all the structure we need for statistics:
+
+<TheoremBlock type="theorem" number={3} title="Statistical Properties of Landscapes (Bubenik, 2015)">
+Persistence landscapes satisfy:
+
+1. **Banach space structure:** Landscapes are elements of $L^p(\mathbb{R})$ for $1 \leq p \leq \infty$.
+2. **Strong law of large numbers:** The sample mean landscape $\bar{\lambda}_n$ converges almost surely to the population mean landscape $\lambda$.
+3. **Central limit theorem:** $\sqrt{n}(\bar{\lambda}_n - \lambda) \xrightarrow{d} \mathcal{N}(0, \Sigma)$.
+4. **Stability:** $\|\lambda_D - \lambda_{D'}\|_\infty \leq d_B(D, D')$.
+</TheoremBlock>
+
+Properties (2) and (3) are what make landscapes a game-changer: we can compute means, variances, and confidence intervals using standard statistical tools — something impossible directly on persistence diagrams.
+
+![Two panels: persistence diagram on the left, stacked landscape layers on the right](/images/topics/statistical-tda/persistence_landscapes.png)
+
+The dominant landscape $\lambda_1(t)$ (darkest blue) corresponds to the circle's loop — the tent function with the tallest peak. The smaller landscapes $\lambda_2$ through $\lambda_5$ capture the noise features near the diagonal.
+
+Toggle between the persistence diagram and its landscape representation:
+
+<LandscapeVisualizer client:visible />
+
+```python
+def persistence_landscape(dgm, k_max=5, t_min=None, t_max=None, n_points=500):
+    """
+    Compute persistence landscapes from a persistence diagram.
+
+    Parameters
+    ----------
+    dgm : ndarray of shape (m, 2) — persistence diagram (birth, death)
+    k_max : int — number of landscape layers to compute
+    t_min, t_max : float — domain bounds (inferred if None)
+    n_points : int — number of evaluation points
+
+    Returns
+    -------
+    t : ndarray of shape (n_points,) — evaluation grid
+    landscapes : ndarray of shape (k_max, n_points) — landscape functions
+    """
+    dgm = dgm[np.isfinite(dgm[:, 1])]
+    births, deaths = dgm[:, 0], dgm[:, 1]
+
+    if t_min is None:
+        t_min = births.min() - 0.05 * (deaths.max() - births.min())
+    if t_max is None:
+        t_max = deaths.max() + 0.05 * (deaths.max() - births.min())
+
+    t = np.linspace(t_min, t_max, n_points)
+
+    # Tent functions: Lambda_i(t) = max(0, min(t - b_i, d_i - t))
+    tent_values = np.zeros((len(dgm), n_points))
+    for i, (b, d) in enumerate(dgm):
+        tent_values[i] = np.maximum(0, np.minimum(t - b, d - t))
+
+    # k-th landscape = k-th largest tent value at each t
+    sorted_tents = np.sort(tent_values, axis=0)[::-1]
+    landscapes = np.zeros((k_max, n_points))
+    for k in range(min(k_max, len(dgm))):
+        landscapes[k] = sorted_tents[k]
+
+    return t, landscapes
+```
+
+### Persistence Images (Adams et al., 2017)
+
+While persistence landscapes map diagrams to function spaces, **persistence images** map them to finite-dimensional vectors — specifically, to pixel grids that can be fed directly to any machine learning model.
+
+<TheoremBlock type="definition" number={3} title="Persistence Image">
+Given a persistence diagram $D = \{(b_i, d_i)\}$, a persistence image is constructed in four steps:
+
+1. **Rotate:** Transform each point $(b, d)$ to $(b, \; d - b)$ — the birth-persistence plane. The diagonal becomes the horizontal axis.
+2. **Weight:** Apply a weighting function $w(b, p)$ that assigns higher weight to points with larger persistence. A common choice is $w(b, p) = p$ (linear ramp).
+3. **Smooth:** Place a 2D Gaussian $\mathcal{N}((b_i, p_i), \sigma^2 I)$ at each weighted point.
+4. **Discretize:** Evaluate the smoothed surface on an $N \times N$ pixel grid to produce a feature vector $\mathbf{v} \in \mathbb{R}^{N^2}$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Stability of Persistence Images">
+Persistence images are stable with respect to the 1-Wasserstein distance:
+
+$$\|\text{PI}(D) - \text{PI}(D')\|_2 \leq C \cdot d_W^1(D, D')$$
+
+where $C$ depends on the bandwidth $\sigma$ and the weighting function.
+</TheoremBlock>
+
+![Three panels: birth-persistence scatter, 2D heatmap persistence image, flattened feature vector](/images/topics/statistical-tda/persistence_image.png)
+
+The left panel shows the persistence diagram rotated to the birth-persistence plane. The middle panel applies Gaussian smoothing to produce a 2D heatmap — the persistence image. The right panel flattens this into a feature vector that can be passed to any ML classifier, regressor, or clustering algorithm.
+
+```python
+def persistence_image(dgm, pixel_size=20, sigma=None, weight_fn=None):
+    """
+    Compute a persistence image from a persistence diagram.
+
+    Parameters
+    ----------
+    dgm : ndarray of shape (m, 2) — persistence diagram (birth, death)
+    pixel_size : int — resolution of the image grid
+    sigma : float — Gaussian bandwidth (auto-computed if None)
+    weight_fn : callable — weight function w(birth, persistence)
+
+    Returns
+    -------
+    img : ndarray of shape (pixel_size, pixel_size) — the persistence image
+    """
+    dgm = dgm[np.isfinite(dgm[:, 1])]
+    births = dgm[:, 0]
+    pers = dgm[:, 1] - dgm[:, 0]
+
+    # Default weight: linear ramp on persistence
+    if weight_fn is None:
+        weight_fn = lambda b, p: p
+
+    # Build grid
+    birth_range = (births.min(), births.max())
+    pers_range = (0, pers.max())
+    B, P = np.meshgrid(
+        np.linspace(birth_range[0], birth_range[1], pixel_size),
+        np.linspace(pers_range[0], pers_range[1], pixel_size),
+    )
+
+    # Auto-compute sigma from grid spacing if not provided
+    if sigma is None:
+        sigma = max(
+            (birth_range[1] - birth_range[0]) / pixel_size,
+            (pers_range[1] - pers_range[0]) / pixel_size,
+        )
+
+    # Accumulate weighted Gaussians
+    img = np.zeros_like(B)
+    for bi, pi in zip(births, pers):
+        img += weight_fn(bi, pi) * np.exp(-((B - bi)**2 + (P - pi)**2) / (2 * sigma**2))
+
+    return img
+```
+
+---
+
+## 4. Hypothesis Testing
+
+### The Central Limit Theorem for Landscapes
+
+Because persistence landscapes live in a Banach space and satisfy a CLT, we can perform **permutation tests** comparing the topological summaries of two datasets.
+
+<TheoremBlock type="definition" number={4} title="Topological Two-Sample Test">
+Given two point clouds $X = \{x_1, \ldots, x_m\}$ and $Y = \{y_1, \ldots, y_n\}$, we test:
+
+$$H_0: \lambda_X = \lambda_Y \quad \text{(same underlying topology)}$$
+$$H_1: \lambda_X \neq \lambda_Y \quad \text{(different topology)}$$
+
+**Procedure:**
+
+1. Compute mean persistence landscapes $\bar{\lambda}_X$ and $\bar{\lambda}_Y$ from bootstrap resamples of each dataset.
+2. Define the test statistic $T = \|\bar{\lambda}_X - \bar{\lambda}_Y\|_2$.
+3. Under $H_0$, permute the labels: pool $X \cup Y$, randomly split into groups of size $m$ and $n$, recompute $T$.
+4. Repeat $B$ times to build the null distribution of $T$.
+5. Compute the $p$-value: $p = \frac{1}{B} \sum_{b=1}^{B} \mathbf{1}[T_b \geq T_\text{obs}]$.
+</TheoremBlock>
+
+### Test 1: Circle vs. Figure-Eight
+
+We test whether a circle ($\beta_1 = 1$) and a figure-eight ($\beta_1 = 2$) have statistically different $H_1$ topology. They should — the circle has one independent loop, the figure-eight has two.
+
+![Three panels: circle point cloud, figure-eight point cloud, null distribution with T_obs far in the right tail](/images/topics/statistical-tda/permutation_test.png)
+
+The observed test statistic $T_\text{obs}$ lands far in the right tail of the null distribution, yielding $p \approx 0.00$ — we reject $H_0$ and conclude the two shapes have statistically different topology. The permutation test correctly detects the topological difference between $\beta_1 = 1$ and $\beta_1 = 2$.
+
+### Sanity Check: Circle vs. Circle
+
+To verify the test isn't trivially rejecting everything, we test two samples from the *same* distribution — both circles with $\beta_1 = 1$. The test should **fail to reject** $H_0$.
+
+![Three panels: two circle point clouds, null distribution with T_obs inside the bulk](/images/topics/statistical-tda/permutation_test_null.png)
+
+Now $T_\text{obs}$ falls well within the null distribution ($p \approx 0.58$), and we correctly fail to reject. The test has good power against genuinely different topologies while maintaining the correct size under the null.
+
+```python
+def landscape_permutation_test(X, Y, maxdim=1, k_max=3, n_perm=500,
+                                n_bootstrap=30, seed=42):
+    """
+    Permutation test on persistence landscapes.
+    Tests H0: same topology vs H1: different topology.
+
+    Returns: p_value, T_obs, T_null
+    """
+    rng = np.random.default_rng(seed)
+    m, n = len(X), len(Y)
+
+    def mean_landscape(data, n_boot, rng_local):
+        all_landscapes = []
+        for _ in range(n_boot):
+            idx = rng_local.choice(len(data), size=len(data), replace=True)
+            dgm = ripser(data[idx], maxdim=maxdim)['dgms'][maxdim]
+            t, L = persistence_landscape(dgm, k_max=k_max, n_points=200)
+            all_landscapes.append(L.ravel())
+        return np.mean(all_landscapes, axis=0)
+
+    def test_statistic(a, b, rng_local):
+        return np.linalg.norm(mean_landscape(a, n_bootstrap, rng_local)
+                              - mean_landscape(b, n_bootstrap, rng_local))
+
+    T_obs = test_statistic(X, Y, rng)
+
+    pooled = np.vstack([X, Y])
+    T_null = np.zeros(n_perm)
+    for p in range(n_perm):
+        perm = rng.permutation(m + n)
+        T_null[p] = test_statistic(pooled[perm[:m]], pooled[perm[m:]], rng)
+
+    return np.mean(T_null >= T_obs), T_obs, T_null
+```
+
+---
+
+## 5. Application: Financial Market Regimes
+
+We tie statistical TDA back to a practical question relevant to quantitative finance:
+
+> **Is the topology of equity return dynamics during market crises statistically different from calm periods?**
+
+We simulate two market regimes — *calm* (low volatility, moderate correlations) and *crisis* (high volatility, high correlations, fat-tailed jumps) — for a basket of 5 correlated assets over 500 trading days each. To create point clouds from time series, we use **delay embedding**: each point is a flattened window of 15 consecutive daily returns across all 5 assets, producing points in $\mathbb{R}^{75}$.
+
+The hypothesis: crisis periods produce return trajectories that are topologically more complex — feedback loops, herding behavior, and volatility clustering create higher-dimensional topological features that are absent during calm markets.
+
+![Four panels: calm cumulative returns, crisis cumulative returns, calm persistence diagram, crisis persistence diagram](/images/topics/statistical-tda/financial_regimes.png)
+
+The difference is visible in the persistence diagrams: the crisis regime (bottom right) shows more spread-out $H_1$ features — evidence of loop-like structures in the return dynamics that reflect correlated drawdowns and recovery cycles.
+
+We apply the landscape permutation test to formally test this difference:
+
+![Null distribution for the calm vs crisis permutation test, with T_obs in the right tail](/images/topics/statistical-tda/financial_permutation_test.png)
+
+The test rejects $H_0$ ($p < 0.05$), confirming that calm and crisis regimes have statistically different topology in their return dynamics. This supports the hypothesis that crisis dynamics — feedback loops, herding, volatility clustering — create topologically distinct patterns that are detectable through persistent homology.
+
+```python
+def delay_embed(returns, window=20, step=5):
+    """
+    Create delay-embedded point cloud from rolling windows.
+    Each point is a flattened window of (window x n_assets) returns.
+    """
+    n, d = returns.shape
+    points = []
+    for i in range(0, n - window, step):
+        points.append(returns[i:i+window].ravel())
+    return np.array(points)
+```
+
+---
+
+## Summary
+
+| Concept | What it gives you | Key reference |
+|---------|-------------------|---------------|
+| **Stability Theorem** | Persistence is Lipschitz-continuous w.r.t. input perturbations | Cohen-Steiner, Edelsbrunner, Harer (2007) |
+| **Convergence** | Empirical diagrams converge at rate $O((\log n / n)^{1/d})$ | Chazal & Oudot (2008) |
+| **Bootstrap Confidence Sets** | Formal threshold for separating signal from noise in barcodes | Fasy, Lecci, Rinaldo, Wasserman (2014) |
+| **Persistence Landscapes** | Banach-space-valued summary with CLT, mean, variance, hypothesis tests | Bubenik (2015) |
+| **Persistence Images** | Stable finite-dimensional vectorization for any ML pipeline | Adams et al. (2017) |
+| **Permutation Tests** | Topological two-sample test: are two datasets' shapes statistically different? | Bubenik (2015), Robinson & Turner (2017) |
+
+### The Statistical TDA Pipeline
+
+The complete pipeline connects the computational tools from earlier topics to the statistical tools developed here:
+
+```
+Point Cloud → Simplicial Filtration → Persistence Diagram → Vectorize → Statistical Inference
+                                             │                              │
+                                      Bootstrap confidence          Permutation test
+                                      sets (signal vs noise)        Regression / Classification
+```
+
+At each stage, stability guarantees that the output is a well-behaved function of the input. The convergence theorem tells us that with enough data, the entire pipeline consistently estimates population-level topological features. And the vectorization step — landscapes or images — bridges the gap between the abstract metric space of diagrams and the concrete vector spaces where statistics lives.
