@@ -94,10 +94,8 @@ Each topic in `src/content/topics/` is an MDX file with YAML frontmatter definin
 
 ## Editorial Voice
 
-<!-- TODO: Jonathan — fill in 3-5 bullet points describing the writing voice
-     you want for formalML articles. Examples of what to capture:
-     - Tone (conversational? academic? somewhere between?)
-     - Use of "we" vs "you" vs passive voice
-     - How to handle assumed reader knowledge
-     - Attitude toward jargon and notation
--->
+- **Tone:** Informed peer, not lecturer. Think "a sharp colleague explaining something at a whiteboard" — conversational enough to use contractions and the occasional aside, but precise enough that no claim is hand-wavy. The prose should read well *as prose*, not just as a vehicle for equations.
+- **Pronouns:** Default to "we" as the collaborative mathematical "we" (we define, we observe, we can now see that…). Use "you" sparingly and only for direct reader instructions — "you can verify this by…" or "try dragging the slider to see…". Avoid passive voice for derivations; if someone is doing the math, say who.
+- **Assumed reader knowledge:** The reader has taken linear algebra and multivariable calculus and has seen some probability. They may or may not have a CS degree. Don't explain what a matrix is; do explain why a specific decomposition matters here. When a topic's difficulty level is foundational, assume even less — just vectors and basic operations.
+- **Jargon and notation:** Introduce notation explicitly on first use in every topic — even standard stuff like $\|\mathbf{x}\|$. Never let a symbol appear without a plain-English gloss nearby. Jargon is fine once defined, but prefer the concrete name over the abstract one when both exist (say "the gap between the closest points" before saying "the margin").
+- **Attitude toward the reader:** Respect without flattery. Don't say "simply," "obviously," or "it's easy to see." If something is genuinely straightforward, the exposition will make that self-evident. If something is hard, say so — "this step is where the real work happens" is more useful than pretending it's trivial.
