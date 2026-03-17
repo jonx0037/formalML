@@ -1,0 +1,583 @@
+---
+title: "The Spectral Theorem"
+subtitle: "From eigenvalues to geometry — why symmetric matrices are the best-behaved objects in linear algebra"
+status: "published"
+difficulty: "foundational"
+prerequisites: []
+tags:
+  - "linear-algebra"
+  - "eigenvalues"
+  - "spectral-theory"
+  - "machine-learning"
+  - "optimization"
+domain: "linear-algebra"
+videoId: null
+notebookPath: "notebooks/spectral-theorem/01_spectral_theorem.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/spectral-theorem.mdx"
+datePublished: 2026-03-17
+estimatedReadTime: 35
+abstract: "The Spectral Theorem guarantees that every real symmetric matrix admits an orthogonal eigendecomposition A = QΛQᵀ with real eigenvalues and orthonormal eigenvectors. This foundational result underpins PCA, spectral clustering, kernel methods, and optimization via Hessians. We develop the theorem from first principles — proving the three key lemmas (real eigenvalues, orthogonal eigenvectors, invariant complements), giving the full inductive proof, establishing the Rayleigh quotient and Courant–Fischer variational characterization, classifying quadratic forms via definiteness, implementing power iteration and the QR algorithm, and applying the theorem to spectral clustering and PCA."
+connections:
+  - topic: "svd"
+    relationship: "the SVD generalizes the Spectral Theorem to rectangular matrices; for symmetric A, the SVD and spectral decomposition coincide"
+  - topic: "pca-low-rank"
+    relationship: "PCA is the Spectral Theorem applied to the sample covariance matrix"
+  - topic: "tensor-decompositions"
+    relationship: "symmetric tensor decomposition is the higher-order analog of the Spectral Theorem"
+  - topic: "sheaf-theory"
+    relationship: "the Sheaf Laplacian is symmetric PSD; the Spectral Theorem guarantees its eigendecomposition"
+references:
+  - type: "book"
+    title: "Introduction to Linear Algebra"
+    authors: "Strang"
+    year: 2016
+    note: "Primary pedagogical reference"
+  - type: "book"
+    title: "Matrix Analysis"
+    authors: "Horn & Johnson"
+    year: 2013
+    note: "Rigorous proofs and spectral theory"
+  - type: "book"
+    title: "Numerical Linear Algebra"
+    authors: "Trefethen & Bau"
+    year: 1997
+    note: "QR algorithm and numerical methods"
+  - type: "book"
+    title: "Linear Algebra Done Right"
+    authors: "Axler"
+    year: 2024
+    note: "Clean theoretical development"
+  - type: "paper"
+    title: "A tutorial on spectral clustering"
+    authors: "von Luxburg"
+    year: 2007
+    url: "https://doi.org/10.1007/s11222-007-9033-z"
+    note: "Spectral clustering application"
+  - type: "paper"
+    title: "Normalized cuts and image segmentation"
+    authors: "Shi & Malik"
+    year: 2000
+    note: "Normalized graph Laplacian for clustering"
+  - type: "paper"
+    title: "On spectral clustering: Analysis and an algorithm"
+    authors: "Ng, Jordan & Weiss"
+    year: 2001
+    note: "Normalized spectral clustering algorithm"
+  - type: "paper"
+    title: "Toward a spectral theory of cellular sheaves"
+    authors: "Hansen & Ghrist"
+    year: 2019
+    url: "https://doi.org/10.1007/s41468-019-00038-7"
+    note: "Sheaf Laplacian spectral theory — cross-track connection"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import EigenDecompositionExplorer from '../../components/viz/EigenDecompositionExplorer.tsx';
+import RayleighQuotientSurface from '../../components/viz/RayleighQuotientSurface.tsx';
+import SpectralClusteringDemo from '../../components/viz/SpectralClusteringDemo.tsx';
+
+## Overview & Motivation
+
+Every machine learning algorithm that touches a covariance matrix, a kernel matrix, a graph Laplacian, or a Hessian is secretly relying on a single theorem: **the Spectral Theorem**.
+
+The Spectral Theorem says that every real symmetric matrix $A \in \mathbb{R}^{n \times n}$ can be diagonalized by an orthogonal matrix:
+
+$$A = Q \Lambda Q^T$$
+
+where $Q$ is orthogonal ($Q^T Q = I$) and $\Lambda = \text{diag}(\lambda_1, \ldots, \lambda_n)$ is the diagonal matrix of real eigenvalues. This is not just a convenience — it's a structural guarantee that underpins:
+
+- **PCA**: the sample covariance matrix $\hat{\Sigma} = \frac{1}{n-1} X^T X$ is symmetric, so its eigenvectors are orthogonal principal directions.
+- **Spectral clustering**: the graph Laplacian $L = D - W$ is symmetric positive semidefinite, so its smallest eigenvectors encode cluster structure.
+- **Optimization**: the Hessian $\nabla^2 f$ is symmetric, and its eigenvalues determine convexity.
+- **Kernel methods**: kernel matrices $K_{ij} = k(x_i, x_j)$ are symmetric PSD by construction.
+- **The Sheaf Laplacian**: from the [Sheaf Theory](/topics/sheaf-theory) topic on the Topology & TDA track, $L_\mathcal{F} = \delta_0^T \delta_0$ is symmetric PSD, and the Spectral Theorem is what makes its eigendecomposition well-defined and interpretable.
+
+This topic develops the Spectral Theorem from first principles, proves it, implements it, and applies it to spectral clustering — building the algebraic foundation that the rest of the Linear Algebra track depends on.
+
+### What We Cover
+
+1. **Eigenvalues & Eigenvectors** — characteristic polynomials, eigenspaces, diagonalization.
+2. **Symmetric Matrices & Orthogonality** — real eigenvalues, orthogonal eigenvectors, the key lemmas.
+3. **The Spectral Theorem** — the full statement and proof, geometric interpretation.
+4. **The Rayleigh Quotient** — variational characterization of eigenvalues, the Courant–Fischer min-max theorem.
+5. **Quadratic Forms & Definiteness** — positive definiteness, Sylvester's criterion.
+6. **Spectral Decomposition in Practice** — power iteration, the QR algorithm.
+7. **Application: Spectral Clustering** — from similarity graph to clusters via the graph Laplacian's eigenvectors.
+8. **Application: PCA Preview** — the Spectral Theorem applied to the covariance matrix.
+
+---
+
+## Eigenvalues & Eigenvectors
+
+### The Eigenvalue Problem
+
+Given a square matrix $A \in \mathbb{R}^{n \times n}$, a scalar $\lambda \in \mathbb{C}$ is an **eigenvalue** of $A$ if there exists a nonzero vector $v \in \mathbb{C}^n$ such that:
+
+$$Av = \lambda v$$
+
+The vector $v$ is the **eigenvector** corresponding to $\lambda$. Geometrically, $A$ acts on $v$ by simply scaling it — $v$ is a direction that $A$ preserves.
+
+<TheoremBlock type="definition" number={1} title="Eigenvalue and Eigenvector">
+Let $A \in \mathbb{R}^{n \times n}$. A scalar $\lambda$ is an **eigenvalue** of $A$ if there exists a nonzero vector $v$ such that $Av = \lambda v$. The vector $v$ is an **eigenvector** corresponding to $\lambda$.
+</TheoremBlock>
+
+### The Characteristic Polynomial
+
+Rearranging $Av = \lambda v$ gives $(A - \lambda I)v = 0$, which has a nonzero solution if and only if:
+
+$$p(\lambda) = \det(A - \lambda I) = 0$$
+
+<TheoremBlock type="definition" number={2} title="Characteristic Polynomial">
+The **characteristic polynomial** of $A$ is $p(\lambda) = \det(A - \lambda I)$. For an $n \times n$ matrix, it has degree $n$, so by the Fundamental Theorem of Algebra there are exactly $n$ eigenvalues (counted with algebraic multiplicity) in $\mathbb{C}$.
+</TheoremBlock>
+
+### Eigenspaces and Multiplicity
+
+<TheoremBlock type="definition" number={3} title="Eigenspace, Algebraic and Geometric Multiplicity">
+The **eigenspace** for eigenvalue $\lambda$ is $E_\lambda = \ker(A - \lambda I)$ — the set of all eigenvectors for $\lambda$ plus the zero vector. The **algebraic multiplicity** $a(\lambda)$ is the multiplicity of $\lambda$ as a root of $p(\lambda)$. The **geometric multiplicity** $g(\lambda) = \dim E_\lambda$ is the dimension of the eigenspace. Always $1 \leq g(\lambda) \leq a(\lambda)$.
+</TheoremBlock>
+
+When $g(\lambda) < a(\lambda)$ for some $\lambda$, the matrix is **defective** and cannot be diagonalized. A central result of this topic is that **symmetric matrices are never defective**.
+
+![Eigenvector geometry: the unit circle maps to an ellipse whose axes are eigenvectors](/images/topics/spectral-theorem/eigenvector-geometry.png)
+
+---
+
+## Symmetric Matrices & Orthogonality
+
+A matrix $A \in \mathbb{R}^{n \times n}$ is **symmetric** if $A = A^T$, meaning $a_{ij} = a_{ji}$ for all $i, j$. Symmetric matrices appear everywhere in ML:
+
+- Covariance matrices: $\hat{\Sigma} = \frac{1}{n-1} X^T X$
+- Graph Laplacians: $L = D - W$
+- Hessians: $\nabla^2 f(x)$ (by equality of mixed partials)
+- Kernel matrices: $K_{ij} = k(x_i, x_j)$
+- Gram matrices: $G_{ij} = \langle v_i, v_j \rangle$
+
+The three lemmas below are the building blocks of the Spectral Theorem.
+
+### Real Eigenvalues
+
+<TheoremBlock type="lemma" number={1} title="Real Eigenvalues of Symmetric Matrices">
+Every eigenvalue of a real symmetric matrix is real.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $A = A^T$ and suppose $Av = \lambda v$ with $v \neq 0$, where $\lambda \in \mathbb{C}$ and $v \in \mathbb{C}^n$. Consider:
+
+$$\bar{v}^T A v = \bar{v}^T (\lambda v) = \lambda \, \bar{v}^T v = \lambda \|v\|^2$$
+
+Now take the conjugate transpose of $\bar{v}^T A v$. Since $A$ is real symmetric:
+
+$$\overline{\bar{v}^T A v} = v^T A \bar{v} = v^T \overline{\lambda v} = \bar{\lambda} \, v^T \bar{v} = \bar{\lambda} \|v\|^2$$
+
+But $\overline{\bar{v}^T A v} = \overline{\lambda \|v\|^2} = \bar{\lambda} \|v\|^2$, giving us $\lambda \|v\|^2 = \bar{\lambda} \|v\|^2$. Since $\|v\|^2 > 0$, we conclude $\lambda = \bar{\lambda}$, i.e., $\lambda \in \mathbb{R}$.
+</TheoremBlock>
+
+### Orthogonal Eigenvectors
+
+<TheoremBlock type="lemma" number={2} title="Orthogonal Eigenvectors for Distinct Eigenvalues">
+Eigenvectors of a real symmetric matrix corresponding to distinct eigenvalues are orthogonal.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $Av_1 = \lambda_1 v_1$ and $Av_2 = \lambda_2 v_2$ with $\lambda_1 \neq \lambda_2$. Then:
+
+$$\lambda_1 (v_1 \cdot v_2) = (\lambda_1 v_1)^T v_2 = (Av_1)^T v_2 = v_1^T A^T v_2 = v_1^T A v_2 = v_1^T (\lambda_2 v_2) = \lambda_2 (v_1 \cdot v_2)$$
+
+So $(\lambda_1 - \lambda_2)(v_1 \cdot v_2) = 0$. Since $\lambda_1 \neq \lambda_2$, we must have $v_1 \cdot v_2 = 0$.
+</TheoremBlock>
+
+### Invariant Complements
+
+<TheoremBlock type="lemma" number={3} title="Invariant Complements">
+If $A$ is real symmetric and $W$ is an $A$-invariant subspace (meaning $Aw \in W$ for all $w \in W$), then $W^\perp$ is also $A$-invariant.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $u \in W^\perp$ and $w \in W$. Then $\langle Au, w \rangle = \langle u, A^T w \rangle = \langle u, Aw \rangle = 0$ since $Aw \in W$ and $u \perp W$. So $Au \perp w$ for all $w \in W$, meaning $Au \in W^\perp$.
+</TheoremBlock>
+
+This lemma is the engine of the inductive proof: once we find one eigenvector, we can restrict $A$ to its orthogonal complement and repeat.
+
+---
+
+## The Spectral Theorem
+
+### Statement
+
+<TheoremBlock type="theorem" number={1} title="Spectral Theorem for Real Symmetric Matrices">
+Let $A \in \mathbb{R}^{n \times n}$ be symmetric. Then there exists an orthogonal matrix $Q \in \mathbb{R}^{n \times n}$ (with $Q^T Q = QQ^T = I$) and a diagonal matrix $\Lambda = \text{diag}(\lambda_1, \ldots, \lambda_n)$ with $\lambda_1 \leq \cdots \leq \lambda_n$ such that:
+
+$$A = Q \Lambda Q^T = \sum_{i=1}^{n} \lambda_i \, q_i q_i^T$$
+
+where $q_1, \ldots, q_n$ are the columns of $Q$ — an orthonormal basis of eigenvectors.
+</TheoremBlock>
+
+The second form — the **spectral decomposition** — writes $A$ as a sum of rank-1 projection matrices $q_i q_i^T$, each scaled by its eigenvalue. This is the form that directly gives PCA its interpretation.
+
+### Proof
+
+<TheoremBlock type="proof">
+**By induction on $n$.**
+
+**Base case ($n = 1$).** Every $1 \times 1$ matrix $[a]$ is trivially diagonalized: $Q = [1]$, $\Lambda = [a]$.
+
+**Inductive step.** Assume the theorem holds for all symmetric matrices of size $(n-1) \times (n-1)$. Let $A$ be $n \times n$ and symmetric.
+
+**Step 1.** $A$ has at least one eigenvalue $\lambda_1 \in \mathbb{R}$ (by Lemma 1, all eigenvalues are real; and the characteristic polynomial has degree $n \geq 1$, so it has at least one root). Let $q_1$ be a corresponding unit eigenvector: $Aq_1 = \lambda_1 q_1$, $\|q_1\| = 1$.
+
+**Step 2.** Let $W = \text{span}(q_1)$. By Lemma 3, $W^\perp$ is $A$-invariant. Choose any orthonormal basis for $W^\perp$ and let $U \in \mathbb{R}^{n \times (n-1)}$ be the matrix whose columns are this basis.
+
+**Step 3.** Define $B = U^T A U \in \mathbb{R}^{(n-1) \times (n-1)}$. Then $B$ is symmetric: $B^T = U^T A^T U = U^T A U = B$.
+
+**Step 4.** By the inductive hypothesis, $B = P \Lambda' P^T$ for some orthogonal $P \in \mathbb{R}^{(n-1) \times (n-1)}$ and diagonal $\Lambda'$.
+
+**Step 5.** Set $Q = \begin{bmatrix} q_1 & UP \end{bmatrix}$. Then $Q$ is orthogonal, and:
+
+$$Q^T A Q = \begin{bmatrix} q_1^T \\ P^T U^T \end{bmatrix} A \begin{bmatrix} q_1 & UP \end{bmatrix} = \begin{bmatrix} \lambda_1 & 0 \\ 0 & \Lambda' \end{bmatrix}$$
+
+So $A = Q \Lambda Q^T$ where $\Lambda = \text{diag}(\lambda_1, \Lambda')$.
+</TheoremBlock>
+
+### Geometric Interpretation
+
+The Spectral Theorem says that every symmetric linear transformation is, in the right coordinate system, just a **stretch along orthogonal axes**. The eigenvectors $q_i$ define the axes, and the eigenvalues $\lambda_i$ define the stretch factors.
+
+This is why:
+- Covariance matrices define ellipsoidal level sets (axes = principal components).
+- Graph Laplacians have smooth eigenvectors that partition the graph.
+- Hessians at critical points tell you whether you're at a min, max, or saddle — by the signs of the eigenvalues along orthogonal curvature directions.
+
+Try it yourself — drag the sliders to change the matrix entries and watch the eigenvectors and ellipse update in real time:
+
+<EigenDecompositionExplorer client:visible />
+
+![Spectral decomposition as a sum of rank-1 matrices](/images/topics/spectral-theorem/spectral-decomposition-rank1.png)
+
+### The Hermitian Extension
+
+The Spectral Theorem extends to **Hermitian** (complex self-adjoint) matrices. A matrix $A \in \mathbb{C}^{n \times n}$ with $A = A^* = \bar{A}^T$ has:
+
+$$A = U \Lambda U^*$$
+
+where $U$ is **unitary** ($U^* U = I$) and $\Lambda$ is real diagonal. The proof is identical, replacing transposes with conjugate transposes. Every real symmetric matrix is Hermitian, so the real version is a special case.
+
+### Numerical Verification
+
+We can verify the Spectral Theorem in code. Here `np.linalg.eigh` is the dedicated function for symmetric/Hermitian matrices — it guarantees real eigenvalues and orthonormal eigenvectors:
+
+```python
+import numpy as np
+
+A = np.array([
+    [5, 2, 0, 1],
+    [2, 4, 1, 0],
+    [0, 1, 3, 2],
+    [1, 0, 2, 6]
+], dtype=float)
+
+# eigh is specifically for symmetric matrices
+eigenvalues, Q = np.linalg.eigh(A)
+Lambda = np.diag(eigenvalues)
+
+# Verify A = Q Lambda Q^T
+print(f"||A - Q Lambda Q^T||_F = {np.linalg.norm(A - Q @ Lambda @ Q.T):.2e}")
+# Output: 1.01e-14
+
+# Spectral decomposition: A = sum lambda_i q_i q_i^T
+A_spectral = sum(eigenvalues[i] * np.outer(Q[:, i], Q[:, i]) for i in range(A.shape[0]))
+print(f"||A - sum lambda_i q_i q_i^T||_F = {np.linalg.norm(A - A_spectral):.2e}")
+# Output: 1.03e-14
+```
+
+---
+
+## The Rayleigh Quotient
+
+### Definition
+
+<TheoremBlock type="definition" number={4} title="Rayleigh Quotient">
+The **Rayleigh quotient** of a symmetric matrix $A$ at a nonzero vector $x$ is:
+
+$$R(x) = \frac{x^T A x}{x^T x}$$
+
+On the unit sphere $\|x\| = 1$, this simplifies to $R(x) = x^T A x$. Its critical points are the eigenvectors, and its critical values are the eigenvalues.
+</TheoremBlock>
+
+The Rayleigh quotient is the bridge between eigenvalues and optimization. Its value tells you "how much $A$ stretches in the direction $x$" — and the eigenvectors are the directions where this stretch is extremal.
+
+### Extremal Characterization
+
+<TheoremBlock type="proposition" number={1} title="Extremal Characterization of Eigenvalues">
+For a symmetric matrix $A$ with eigenvalues $\lambda_1 \leq \lambda_2 \leq \cdots \leq \lambda_n$:
+
+$$\lambda_1 = \min_{\|x\|=1} x^T A x, \qquad \lambda_n = \max_{\|x\|=1} x^T A x$$
+
+The minimum is attained at $q_1$ (the eigenvector for $\lambda_1$) and the maximum at $q_n$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write $x = \sum_{i=1}^n c_i q_i$ with $\sum c_i^2 = 1$ (since $\{q_i\}$ is an ONB). Then:
+
+$$x^T A x = \left(\sum_i c_i q_i\right)^T \left(\sum_j c_j \lambda_j q_j\right) = \sum_i c_i^2 \lambda_i \geq \lambda_1 \sum_i c_i^2 = \lambda_1$$
+
+Equality holds when $c_1 = 1$ and all other $c_i = 0$, i.e., $x = q_1$. The maximum case is analogous.
+</TheoremBlock>
+
+The interactive visualization below shows the Rayleigh quotient $R(\theta) = x^T A x$ as $x$ traces the unit circle. The polar plot reveals how the quadratic form bulges in the eigenvector directions, and the Cartesian plot shows the extrema at $\lambda_1$ and $\lambda_2$:
+
+<RayleighQuotientSurface client:visible />
+
+![Rayleigh quotient polar plot and R(θ) curve](/images/topics/spectral-theorem/rayleigh-quotient.png)
+
+### The Courant–Fischer Min-Max Theorem
+
+<TheoremBlock type="theorem" number={2} title="Courant–Fischer Min-Max Theorem">
+For a symmetric matrix $A$ with eigenvalues $\lambda_1 \leq \cdots \leq \lambda_n$:
+
+$$\lambda_k = \min_{\dim V = k} \max_{x \in V, \|x\|=1} x^T A x = \max_{\dim V = n-k+1} \min_{x \in V, \|x\|=1} x^T A x$$
+</TheoremBlock>
+
+This characterizes the $k$-th eigenvalue as a min-max over subspaces. It is the theoretical foundation of PCA: the $k$-th principal component maximizes variance subject to orthogonality with the first $k-1$ components — exactly the Courant–Fischer characterization applied to the covariance matrix.
+
+---
+
+## Quadratic Forms & Definiteness
+
+### Quadratic Forms
+
+<TheoremBlock type="definition" number={5} title="Quadratic Form and Definiteness">
+A **quadratic form** on $\mathbb{R}^n$ is a function $Q(x) = x^T A x$ for a symmetric matrix $A$. The **definiteness** of $A$ is determined by the signs of its eigenvalues:
+
+| Condition | Name | Eigenvalues | Geometry |
+|-----------|------|-------------|----------|
+| $x^T A x > 0$ for all $x \neq 0$ | **Positive definite** (PD) | All $\lambda_i > 0$ | Bowl |
+| $x^T A x \geq 0$ for all $x$ | **Positive semidefinite** (PSD) | All $\lambda_i \geq 0$ | Bowl with flat directions |
+| $x^T A x < 0$ for all $x \neq 0$ | **Negative definite** (ND) | All $\lambda_i < 0$ | Inverted bowl |
+| $x^T A x \leq 0$ for all $x$ | **Negative semidefinite** (NSD) | All $\lambda_i \leq 0$ | Inverted bowl with flat |
+| Signs mixed | **Indefinite** | Some $> 0$, some $< 0$ | Saddle |
+</TheoremBlock>
+
+**Why definiteness matters for ML:** A covariance matrix is always PSD ($x^T \hat{\Sigma} x = \text{Var}(\text{linear combination}) \geq 0$). A graph Laplacian is PSD. A kernel matrix is PSD by Mercer's theorem. The Hessian at a local minimum is PSD.
+
+### Sylvester's Criterion
+
+<TheoremBlock type="theorem" number={3} title="Sylvester's Criterion">
+A symmetric matrix $A$ is positive definite if and only if all its leading principal minors are positive:
+
+$$a_{11} > 0, \quad \det \begin{pmatrix} a_{11} & a_{12} \\ a_{21} & a_{22} \end{pmatrix} > 0, \quad \det \begin{pmatrix} a_{11} & a_{12} & a_{13} \\ a_{21} & a_{22} & a_{23} \\ a_{31} & a_{32} & a_{33} \end{pmatrix} > 0, \quad \ldots$$
+</TheoremBlock>
+
+This gives a determinant-based test that avoids computing eigenvalues — useful for theoretical arguments and small matrices.
+
+![Quadratic form surfaces: PD (bowl), ND (inverted bowl), PSD (degenerate), indefinite (saddle)](/images/topics/spectral-theorem/quadratic-forms.png)
+
+---
+
+## Spectral Decomposition in Practice
+
+### `eig` vs. `eigh`
+
+Two functions for eigendecomposition:
+
+| Function | For | Algorithm | Guarantees |
+|----------|-----|-----------|------------|
+| `np.linalg.eig(A)` | General square matrices | QR iteration (LAPACK `dgeev`) | May return complex values |
+| `np.linalg.eigh(A)` | Symmetric/Hermitian | Divide-and-conquer (LAPACK `dsyevd`) | Real eigenvalues; orthonormal eigenvectors |
+
+**Always use `eigh` for symmetric matrices.** It is faster ($O(n^3/3)$ vs. $O(n^3)$), more numerically stable, and guarantees the Spectral Theorem's output format.
+
+### Power Iteration
+
+The **power method** is the simplest eigenvalue algorithm: repeatedly multiply by $A$ and normalize. This converges to the dominant eigenvector at a rate proportional to $|\lambda_{n-1}/\lambda_n|$ — the ratio of the two largest eigenvalues.
+
+```python
+def power_iteration(A, max_iter=100, tol=1e-10):
+    """Power iteration for the dominant eigenpair of a symmetric matrix."""
+    n = A.shape[0]
+    x = np.random.randn(n)
+    x = x / np.linalg.norm(x)
+
+    lam = 0.0
+    for _ in range(max_iter):
+        y = A @ x
+        lam_new = x @ y  # Rayleigh quotient
+        x_new = y / np.linalg.norm(y)
+
+        if abs(lam_new - lam) < tol:
+            lam = lam_new
+            x = x_new
+            break
+
+        lam = lam_new
+        x = x_new
+
+    return lam, x
+```
+
+![Power iteration convergence: geometric rate controlled by the eigenvalue ratio](/images/topics/spectral-theorem/power-iteration.png)
+
+### The QR Algorithm
+
+The industry-standard eigenvalue algorithm is the **QR algorithm**: repeatedly factor $A_k = Q_k R_k$ and form $A_{k+1} = R_k Q_k$. This is a similarity transformation ($A_{k+1} = Q_k^T A_k Q_k$), so eigenvalues are preserved — but $A_k$ converges to diagonal form.
+
+```python
+def qr_algorithm(A, max_iter=200, tol=1e-12):
+    """Basic QR algorithm (without shifts) for a symmetric matrix."""
+    Ak = A.copy()
+
+    for k in range(max_iter):
+        Q, R = np.linalg.qr(Ak)
+        Ak = R @ Q  # similarity transform: same eigenvalues
+
+        off_diag = np.linalg.norm(Ak - np.diag(np.diag(Ak)))
+        if off_diag < tol:
+            break
+
+    return np.sort(np.diag(Ak))
+```
+
+With shifts, deflation, and Householder reductions, the production QR algorithm achieves $O(n^3)$ complexity. The basic version above converges at a rate determined by the eigenvalue ratios — similar to power iteration, but for all eigenvalues simultaneously.
+
+![QR algorithm convergence: the off-diagonal norm decays to zero as A_k approaches diagonal form](/images/topics/spectral-theorem/qr-algorithm.png)
+
+---
+
+## Application: Spectral Clustering
+
+Spectral clustering is the flagship application of the Spectral Theorem in unsupervised learning. The idea: transform data using the eigenvectors of a graph Laplacian, then cluster in the transformed space.
+
+### Why Spectral Clustering?
+
+Standard k-means clustering fails on non-convex clusters (e.g., nested circles or interleaving moons). Spectral clustering handles these by:
+
+1. Building a similarity graph from the data.
+2. Computing the graph Laplacian (a symmetric PSD matrix).
+3. Using the Spectral Theorem to find its smallest eigenvectors.
+4. Clustering in the eigenvector embedding space.
+
+### The Graph Laplacian
+
+Given a weighted adjacency matrix $W$ (with $W_{ij} = \exp(-\|x_i - x_j\|^2 / (2\sigma^2))$ for Gaussian similarity), the **unnormalized graph Laplacian** is:
+
+$$L = D - W$$
+
+where $D = \text{diag}(d_1, \ldots, d_n)$ with $d_i = \sum_j W_{ij}$.
+
+Key properties (all from the Spectral Theorem):
+- $L$ is symmetric (since $W$ is symmetric).
+- $L$ is PSD: $x^T L x = \frac{1}{2} \sum_{i,j} W_{ij}(x_i - x_j)^2 \geq 0$.
+- The number of zero eigenvalues of $L$ equals the number of connected components.
+- The eigenvectors for the smallest eigenvalues encode cluster structure.
+
+### The Algorithm
+
+1. Build the similarity matrix $W$ (e.g., Gaussian kernel with bandwidth $\sigma$).
+2. Compute $L = D - W$.
+3. Compute the $k$ smallest eigenvectors of $L$: $v_1, \ldots, v_k$.
+4. Form the matrix $U \in \mathbb{R}^{n \times k}$ with columns $v_1, \ldots, v_k$.
+5. Run k-means on the rows of $U$.
+
+### Interactive Demo
+
+Step through the spectral clustering pipeline on a two-moons dataset. Watch how the Laplacian's eigenvectors transform a non-convex clustering problem into a linearly separable one:
+
+<SpectralClusteringDemo client:visible />
+
+### Implementation
+
+```python
+from scipy.spatial.distance import pdist, squareform
+from sklearn.cluster import KMeans
+
+def spectral_clustering(X, k, sigma=1.0):
+    """Spectral clustering using the unnormalized graph Laplacian."""
+    # Step 1: Similarity matrix (Gaussian kernel)
+    dists = squareform(pdist(X, 'sqeuclidean'))
+    W = np.exp(-dists / (2 * sigma**2))
+    np.fill_diagonal(W, 0)
+
+    # Step 2: Graph Laplacian
+    D = np.diag(W.sum(axis=1))
+    L = D - W
+
+    # Step 3: Smallest k eigenvectors (skip constant eigenvector)
+    eigenvalues, eigenvectors = np.linalg.eigh(L)
+    U = eigenvectors[:, 1:k+1]
+
+    # Step 4: Normalize rows
+    row_norms = np.linalg.norm(U, axis=1, keepdims=True)
+    U_norm = U / np.where(row_norms < 1e-10, 1, row_norms)
+
+    # Step 5: K-means on the embedding
+    labels = KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(U_norm)
+    return labels
+```
+
+The graph Laplacian is symmetric PSD, so the Spectral Theorem guarantees real eigenvalues, orthogonal eigenvectors, and a well-defined spectral gap — exactly the properties that make spectral clustering work.
+
+![Spectral clustering demo: two moons and nested circles](/images/topics/spectral-theorem/spectral-clustering-demo.png)
+
+---
+
+## Application: PCA Preview
+
+**Principal Component Analysis** is the Spectral Theorem applied to the sample covariance matrix. The full development lives on the [PCA & Low-Rank Approximation](/topics/pca-low-rank) topic page — here we establish the connection.
+
+### The Covariance Matrix Is Symmetric PSD
+
+Given centered data $X \in \mathbb{R}^{n \times d}$ (rows = observations, columns = features), the sample covariance matrix is:
+
+$$\hat{\Sigma} = \frac{1}{n-1} X^T X$$
+
+This is symmetric ($\hat{\Sigma}^T = \hat{\Sigma}$) and PSD ($v^T \hat{\Sigma} v = \frac{1}{n-1} \|Xv\|^2 \geq 0$).
+
+### PCA as the Spectral Theorem
+
+By the Spectral Theorem, $\hat{\Sigma} = Q \Lambda Q^T$ with $Q$ orthogonal and $\Lambda$ diagonal (non-negative). The columns of $Q$ are the **principal components** — orthogonal directions of maximum variance. The eigenvalues are the variances along these directions.
+
+```python
+# PCA via eigendecomposition of the covariance matrix
+X_centered = X - X.mean(axis=0)
+Sigma_hat = (X_centered.T @ X_centered) / (n - 1)
+
+eigenvalues, Q = np.linalg.eigh(Sigma_hat)
+# eigh returns ascending order; PCA wants descending
+idx = np.argsort(eigenvalues)[::-1]
+eigenvalues, Q = eigenvalues[idx], Q[:, idx]
+
+# Project onto first k principal components
+X_pca = X_centered @ Q[:, :k]
+```
+
+The Courant–Fischer theorem (Theorem 2) guarantees this is the optimal rank-$k$ variance-preserving projection.
+
+### The SVD Connection
+
+PCA is also connected to the Singular Value Decomposition (the next topic in this track). If $X = U \Sigma V^T$ is the SVD, then $\hat{\Sigma} = \frac{1}{n-1} V \Sigma^2 V^T$, so the right singular vectors of $X$ are the eigenvectors of $\hat{\Sigma}$. The SVD generalizes the Spectral Theorem to rectangular matrices — the subject of the [next topic](/topics/svd).
+
+![PCA preview: 3D data, projection onto principal components, and scree plot](/images/topics/spectral-theorem/pca-preview.png)
+
+---
+
+## Connections & Further Reading
+
+The Spectral Theorem is the algebraic foundation that supports the entire Linear Algebra track and connects back to the Topology & TDA track.
+
+| Topic | Connection |
+|-------|-----------|
+| **[Singular Value Decomposition](/topics/svd)** | The SVD generalizes the Spectral Theorem to rectangular matrices. For symmetric $A$, the SVD reduces to the spectral decomposition. |
+| **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** | PCA is the Spectral Theorem applied to $\hat{\Sigma}$. The Eckart–Young theorem follows from the spectral decomposition. |
+| **[Tensor Decompositions](/topics/tensor-decompositions)** | The CP decomposition generalizes eigendecomposition to tensors. Symmetric tensor decomposition is the higher-order analog of the Spectral Theorem. |
+| **[Sheaf Theory](/topics/sheaf-theory)** | The Sheaf Laplacian $L_\mathcal{F} = \delta_0^T \delta_0$ is symmetric PSD. The Spectral Theorem guarantees its eigendecomposition. $\ker(L_\mathcal{F}) = H^0$ is read from the zero eigenvalues. |
+
+### The Linear Algebra Track
+
+The Spectral Theorem is the root of the track: everything that follows either extends it (SVD → rectangular matrices, tensors → higher order) or applies it (PCA → optimal projection).
+
+```
+Spectral Theorem (this topic)
+    ├── Singular Value Decomposition
+    │       └── PCA & Low-Rank Approximation
+    └── Tensor Decompositions
+```
