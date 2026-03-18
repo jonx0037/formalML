@@ -1,0 +1,556 @@
+---
+title: "Singular Value Decomposition"
+subtitle: "From rectangular matrices to the geometry of linear maps — the most useful factorization in data science"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "spectral-theorem"
+tags:
+  - "linear-algebra"
+  - "singular-values"
+  - "matrix-factorization"
+  - "dimensionality-reduction"
+  - "machine-learning"
+domain: "linear-algebra"
+videoId: null
+notebookPath: "notebooks/singular-value-decomposition/02_singular_value_decomposition.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/svd.mdx"
+datePublished: 2026-03-17
+estimatedReadTime: 35
+abstract: "The Singular Value Decomposition (SVD) factorizes any matrix A = UΣVᵀ into orthogonal rotations and diagonal stretching — generalizing the Spectral Theorem from symmetric square matrices to all matrices. The singular values σ₁ ≥ ⋯ ≥ σᵣ > 0 measure the importance of each dimension, and the Eckart–Young–Mirsky theorem guarantees that the truncated SVD is the optimal low-rank approximation in both Frobenius and spectral norms. We prove the SVD via the Spectral Theorem applied to AᵀA, give the geometric rotate–stretch–rotate interpretation, derive the four fundamental subspaces and the pseudoinverse, implement truncated SVD for image compression and Latent Semantic Analysis, introduce the randomized SVD algorithm, and establish the SVD–PCA connection that makes the SVD the computational backbone of principal component analysis."
+connections:
+  - topic: "spectral-theorem"
+    relationship: "the SVD proof relies on the Spectral Theorem applied to AᵀA; for symmetric A, the SVD reduces to the spectral decomposition"
+  - topic: "pca-low-rank"
+    relationship: "PCA is the SVD of the centered data matrix; the Eckart–Young theorem makes the truncated SVD the optimal low-rank projection"
+  - topic: "tensor-decompositions"
+    relationship: "the CP decomposition generalizes the SVD outer product form to tensors; HOSVD extends the SVD to multilinear algebra"
+  - topic: "persistent-homology"
+    relationship: "SVD of boundary matrices reveals Betti numbers; singular values quantify topological feature strength"
+  - topic: "sheaf-theory"
+    relationship: "the coboundary map δ₀ in the Sheaf Laplacian has an SVD whose singular values are the square roots of the Sheaf Laplacian eigenvalues"
+  - topic: "mapper-algorithm"
+    relationship: "Mapper often uses SVD-based dimensionality reduction (PCA, LSA) as the filter function"
+references:
+  - type: "book"
+    title: "Introduction to Linear Algebra"
+    authors: "Strang"
+    year: 2016
+    note: "Chapter 7: SVD development and four fundamental subspaces"
+  - type: "book"
+    title: "Matrix Analysis"
+    authors: "Horn & Johnson"
+    year: 2013
+    note: "Rigorous SVD existence and uniqueness proofs"
+  - type: "book"
+    title: "Numerical Linear Algebra"
+    authors: "Trefethen & Bau"
+    year: 1997
+    note: "Golub–Kahan bidiagonalization and computational SVD"
+  - type: "book"
+    title: "Matrix Computations"
+    authors: "Golub & Van Loan"
+    year: 2013
+    note: "The definitive reference for SVD algorithms"
+  - type: "paper"
+    title: "Finding structure with randomness: Probabilistic algorithms for constructing approximate matrix decompositions"
+    authors: "Halko, Martinsson & Tropp"
+    year: 2011
+    url: "https://doi.org/10.1137/090771806"
+    note: "Randomized SVD algorithm"
+  - type: "paper"
+    title: "The approximation of one matrix by another of lower rank"
+    authors: "Eckart & Young"
+    year: 1936
+    note: "Original Eckart–Young low-rank approximation theorem"
+  - type: "paper"
+    title: "Indexing by Latent Semantic Analysis"
+    authors: "Deerwester, Dumais, Furnas, Landauer & Harshman"
+    year: 1990
+    note: "Original LSA paper"
+  - type: "paper"
+    title: "Toward a spectral theory of cellular sheaves"
+    authors: "Hansen & Ghrist"
+    year: 2019
+    url: "https://doi.org/10.1007/s41468-019-00038-7"
+    note: "Sheaf Laplacian spectral theory — cross-track connection"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import SVDGeometryExplorer from '../../components/viz/SVDGeometryExplorer.tsx';
+import EckartYoungExplorer from '../../components/viz/EckartYoungExplorer.tsx';
+import ImageCompressionDemo from '../../components/viz/ImageCompressionDemo.tsx';
+
+## Overview & Motivation
+
+The [Spectral Theorem](/topics/spectral-theorem) told us that every symmetric matrix decomposes into orthogonal eigenvectors and real eigenvalues. That's powerful — but it only works for square, symmetric matrices. Most matrices we meet in practice are neither.
+
+A data matrix with $n$ observations in $d$ features is $n \times d$. A term-document matrix in NLP is $|\text{vocab}| \times |\text{docs}|$. An image is $\text{rows} \times \text{cols}$. None of these are square. None are symmetric. The Spectral Theorem says nothing about them directly.
+
+The **Singular Value Decomposition** fills this gap. Every matrix — any shape, any rank — has an SVD:
+
+$$A = U \Sigma V^T$$
+
+where $U$ and $V$ are orthogonal and $\Sigma$ is diagonal with non-negative entries. The diagonal entries $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_r > 0$ are the **singular values**, and they measure how much the matrix stretches space in each direction. The columns of $V$ are the input directions, and the columns of $U$ are the output directions.
+
+This decomposition is the single most useful factorization in applied mathematics. It powers:
+
+- **PCA**: the principal components of a centered data matrix $X$ are exactly the right singular vectors of $X$.
+- **Low-rank approximation**: the truncated SVD $A_k$ is the *best* rank-$k$ approximation to $A$ (Eckart–Young theorem).
+- **The pseudoinverse**: $A^+ = V \Sigma^+ U^T$ solves least-squares problems.
+- **Image compression**: keeping only the top $k$ singular values compresses an image with provably minimal error.
+- **Latent Semantic Analysis**: SVD on a term-document matrix discovers hidden topic dimensions.
+- **Condition numbers**: $\kappa(A) = \sigma_1 / \sigma_r$ measures numerical sensitivity.
+
+### What We Cover
+
+1. **From the Spectral Theorem to the SVD** — why $A^T A$ and $A A^T$ are the key.
+2. **The SVD: Statement and Proof** — existence, the four forms, the outer product expansion.
+3. **Geometric Interpretation** — the SVD as rotate–stretch–rotate; the four fundamental subspaces; the pseudoinverse.
+4. **Low-Rank Approximation** — the Eckart–Young–Mirsky theorem and truncated SVD.
+5. **Computing the SVD in Practice** — `numpy.linalg.svd`, the `Vt` pitfall, randomized SVD.
+6. **Image Compression** — truncated SVD on grayscale images.
+7. **Latent Semantic Analysis** — SVD on term-document matrices for concept discovery.
+8. **The SVD–PCA Connection** — right singular vectors are principal components.
+
+---
+
+## From the Spectral Theorem to the SVD
+
+### The Key Insight: $A^T A$ and $A A^T$
+
+Let $A \in \mathbb{R}^{m \times n}$ be any matrix (not necessarily square or symmetric). Consider the two products:
+
+- $A^T A \in \mathbb{R}^{n \times n}$ — symmetric and PSD, since $x^T (A^T A) x = \|Ax\|^2 \geq 0$.
+- $A A^T \in \mathbb{R}^{m \times m}$ — symmetric and PSD, since $y^T (A A^T) y = \|A^T y\|^2 \geq 0$.
+
+By the [Spectral Theorem](/topics/spectral-theorem), both $A^T A$ and $A A^T$ have orthogonal eigendecompositions with real non-negative eigenvalues. The SVD arises from the observation that **these two eigendecompositions are intimately linked**.
+
+### Shared Eigenvalues
+
+<TheoremBlock type="proposition" number={1} title="Shared eigenvalues of $A^T A$ and $A A^T$">
+$A^T A$ and $A A^T$ have the same nonzero eigenvalues.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Suppose $A^T A v = \lambda v$ with $\lambda \neq 0$. Set $u = Av / \|Av\|$. Then:
+
+$$A A^T u = A A^T \frac{Av}{\|Av\|} = \frac{A(A^T A v)}{\|Av\|} = \frac{A(\lambda v)}{\|Av\|} = \lambda \frac{Av}{\|Av\|} = \lambda u$$
+
+So $u$ is an eigenvector of $A A^T$ with the same eigenvalue $\lambda$. The converse direction is symmetric: if $A A^T u = \lambda u$ with $\lambda \neq 0$, then $v = A^T u / \|A^T u\|$ satisfies $A^T A v = \lambda v$.
+</TheoremBlock>
+
+### Singular Values
+
+<TheoremBlock type="definition" number={1} title="Singular values and singular vectors">
+The **singular values** of $A$ are the square roots of the nonzero eigenvalues of $A^T A$ (equivalently, of $A A^T$):
+
+$$\sigma_i = \sqrt{\lambda_i(A^T A)}$$
+
+ordered as $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_r > 0$ where $r = \text{rank}(A)$. The corresponding eigenvectors of $A^T A$ are the **right singular vectors** $v_i$, and the eigenvectors of $A A^T$ are the **left singular vectors** $u_i$. They satisfy $A v_i = \sigma_i u_i$.
+</TheoremBlock>
+
+---
+
+## The SVD: Statement and Proof
+
+<TheoremBlock type="theorem" number={1} title="Singular Value Decomposition">
+Let $A \in \mathbb{R}^{m \times n}$ with $\text{rank}(A) = r$. Then there exist:
+
+- An orthogonal matrix $U \in \mathbb{R}^{m \times m}$ (columns are left singular vectors),
+- An orthogonal matrix $V \in \mathbb{R}^{n \times n}$ (columns are right singular vectors),
+- A diagonal matrix $\Sigma \in \mathbb{R}^{m \times n}$ with entries $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_r > 0$ on the diagonal and zeros elsewhere,
+
+such that $A = U \Sigma V^T$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Via the Spectral Theorem applied to $A^T A$.**
+
+**Step 1.** $A^T A \in \mathbb{R}^{n \times n}$ is symmetric and PSD (we showed this above). By the [Spectral Theorem](/topics/spectral-theorem), there exists an orthogonal matrix $V = [v_1 \mid \cdots \mid v_n]$ and non-negative eigenvalues $\lambda_1 \geq \cdots \geq \lambda_n \geq 0$ such that $A^T A = V \text{diag}(\lambda_1, \ldots, \lambda_n) V^T$. Exactly $r$ of these eigenvalues are positive (since $\text{rank}(A^T A) = \text{rank}(A) = r$). Set $\sigma_i = \sqrt{\lambda_i}$ for $i = 1, \ldots, r$.
+
+**Step 2.** For $i = 1, \ldots, r$, define $u_i = A v_i / \sigma_i$. We verify that $\{u_1, \ldots, u_r\}$ is orthonormal:
+
+$$u_i^T u_j = \frac{(A v_i)^T (A v_j)}{\sigma_i \sigma_j} = \frac{v_i^T (A^T A) v_j}{\sigma_i \sigma_j} = \frac{v_i^T (\lambda_j v_j)}{\sigma_i \sigma_j} = \frac{\lambda_j \, v_i^T v_j}{\sigma_i \sigma_j} = \frac{\lambda_j \, \delta_{ij}}{\sigma_i \sigma_j}$$
+
+For $i = j$: $u_i^T u_i = \lambda_i / \sigma_i^2 = 1$. For $i \neq j$: $u_i^T u_j = 0$.
+
+**Step 3.** Extend $\{u_1, \ldots, u_r\}$ to an orthonormal basis $\{u_1, \ldots, u_m\}$ of $\mathbb{R}^m$ (Gram–Schmidt on any complementary vectors). Set $U = [u_1 \mid \cdots \mid u_m]$.
+
+**Step 4.** We have $A v_i = \sigma_i u_i$ for $i \leq r$ and $A v_i = 0$ for $i > r$ (since $v_i \in \ker(A)$ when $\lambda_i = 0$). In matrix form, this gives $AV = U \Sigma$, hence $A = U \Sigma V^T$.
+</TheoremBlock>
+
+### Forms of the SVD
+
+<TheoremBlock type="definition" number={2} title="Forms of the SVD">
+| Form | $U$ | $\Sigma$ | $V^T$ | Size |
+|------|-----|----------|-------|------|
+| **Full** | $m \times m$ | $m \times n$ | $n \times n$ | All singular vectors |
+| **Thin** | $m \times k$ | $k \times k$ | $k \times n$ | $k = \min(m,n)$ singular vectors |
+| **Compact** | $m \times r$ | $r \times r$ | $r \times n$ | Only $r = \text{rank}(A)$ singular vectors |
+| **Truncated** | $m \times k$ | $k \times k$ | $k \times n$ | Only the top $k$ singular vectors |
+</TheoremBlock>
+
+The **outer product form** expands the compact SVD as a sum of rank-1 matrices:
+
+$$A = \sum_{i=1}^{r} \sigma_i \, u_i v_i^T$$
+
+Each term $\sigma_i \, u_i v_i^T$ is a rank-1 matrix, weighted by the singular value $\sigma_i$. This is the representation that makes the Eckart–Young theorem transparent.
+
+```python
+import numpy as np
+
+A = np.array([
+    [1, 2, 0],
+    [0, 1, 3],
+    [2, 0, 1],
+    [1, 1, 1]
+], dtype=float)
+
+# Compute the thin SVD
+U, sigma, Vt = np.linalg.svd(A, full_matrices=False)
+print(f"U shape: {U.shape}")   # (4, 3) — thin
+print(f"Σ: {sigma.round(4)}")  # [3.8826, 2.2465, 1.6966]
+print(f"Vt shape: {Vt.shape}") # (3, 3)
+
+# Verify: A = U @ diag(sigma) @ Vt
+A_reconstructed = U @ np.diag(sigma) @ Vt
+print(f"||A - UΣVᵀ||_F = {np.linalg.norm(A - A_reconstructed):.2e}")
+
+# Outer product form: A = sum sigma_i * u_i * v_i^T
+A_outer = sum(sigma[i] * np.outer(U[:, i], Vt[i, :])
+              for i in range(len(sigma)))
+print(f"||A - Σ σᵢ uᵢvᵢᵀ||_F = {np.linalg.norm(A - A_outer):.2e}")
+```
+
+---
+
+## Geometric Interpretation
+
+### Rotate–Stretch–Rotate
+
+The SVD tells us that **every linear map is a rotation, followed by an axis-aligned stretch, followed by another rotation**. This is the geometric content of $A = U \Sigma V^T$:
+
+1. **$V^T$** rotates the input space to align the right singular vectors with the coordinate axes.
+2. **$\Sigma$** stretches each axis by the corresponding singular value $\sigma_i$.
+3. **$U$** rotates the result to align with the left singular vectors in the output space.
+
+Drag the sliders below to explore this decomposition for any 2×2 matrix. Watch how the unit circle transforms through each step. Toggle "Make symmetric" to see how the SVD reduces to the [Spectral Theorem](/topics/spectral-theorem) when $A = A^T$.
+
+<SVDGeometryExplorer client:visible />
+
+![SVD geometry: unit circle → rotate → stretch → rotate](/images/topics/svd/svd_geometry.png)
+
+### The Four Fundamental Subspaces
+
+<TheoremBlock type="definition" number={3} title="The four fundamental subspaces">
+The SVD reveals all four fundamental subspaces of $A \in \mathbb{R}^{m \times n}$ with rank $r$:
+
+| Subspace | Symbol | Basis from SVD | Dimension |
+|----------|--------|---------------|-----------|
+| Column space (range) | $\mathcal{C}(A)$ | $u_1, \ldots, u_r$ | $r$ |
+| Left null space | $\mathcal{N}(A^T)$ | $u_{r+1}, \ldots, u_m$ | $m - r$ |
+| Row space | $\mathcal{C}(A^T)$ | $v_1, \ldots, v_r$ | $r$ |
+| Null space | $\mathcal{N}(A)$ | $v_{r+1}, \ldots, v_n$ | $n - r$ |
+
+These four subspaces satisfy $\mathcal{C}(A) \perp \mathcal{N}(A^T)$ and $\mathcal{C}(A^T) \perp \mathcal{N}(A)$.
+</TheoremBlock>
+
+### The Pseudoinverse
+
+<TheoremBlock type="definition" number={4} title="Moore–Penrose pseudoinverse">
+For $A = U \Sigma V^T$ with rank $r$, the **pseudoinverse** is:
+
+$$A^+ = V \Sigma^+ U^T = \sum_{i=1}^{r} \frac{1}{\sigma_i} v_i u_i^T$$
+
+where $\Sigma^+$ is obtained by transposing $\Sigma$ and inverting the nonzero diagonal entries. $A^+$ satisfies $A^+ A = V_r V_r^T$ (projection onto the row space) and $A A^+ = U_r U_r^T$ (projection onto the column space). For the least-squares problem $\min_x \|Ax - b\|_2$, the minimum-norm solution is $x^* = A^+ b$.
+</TheoremBlock>
+
+---
+
+## Low-Rank Approximation
+
+### The Truncated SVD
+
+Given the outer product form $A = \sum_{i=1}^{r} \sigma_i \, u_i v_i^T$, we can approximate $A$ by keeping only the first $k$ terms:
+
+$$A_k = \sum_{i=1}^{k} \sigma_i \, u_i v_i^T = U_k \Sigma_k V_k^T$$
+
+This is the **rank-$k$ truncated SVD**. It throws away the smallest $r - k$ singular values and their associated directions. The question is: how good is this approximation?
+
+The answer is: **optimal**.
+
+### The Eckart–Young–Mirsky Theorem
+
+<TheoremBlock type="theorem" number={2} title="Eckart–Young–Mirsky Theorem">
+Let $A \in \mathbb{R}^{m \times n}$ with singular values $\sigma_1 \geq \cdots \geq \sigma_r > 0$. For any $k \leq r$, the rank-$k$ truncated SVD $A_k$ is the best rank-$k$ approximation to $A$ in both the Frobenius and spectral norms:
+
+$$\min_{\text{rank}(B) \leq k} \|A - B\|_F = \|A - A_k\|_F = \sqrt{\sigma_{k+1}^2 + \cdots + \sigma_r^2}$$
+
+$$\min_{\text{rank}(B) \leq k} \|A - B\|_2 = \|A - A_k\|_2 = \sigma_{k+1}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Frobenius norm.** We use three facts: (1) the Frobenius norm is unitarily invariant, $\|UAV^T\|_F = \|A\|_F$; (2) the Frobenius norm of a diagonal matrix is the root-sum-of-squares of its entries; (3) $A - A_k$ has the SVD $\sum_{i=k+1}^{r} \sigma_i u_i v_i^T$, so $\|A - A_k\|_F = \sqrt{\sigma_{k+1}^2 + \cdots + \sigma_r^2}$.
+
+Now suppose $B$ has rank $\leq k$. Then $\ker(B)$ has dimension $\geq n - k$. The subspace $\text{span}\{v_1, \ldots, v_{k+1}\}$ has dimension $k+1$. Since $(n - k) + (k + 1) = n + 1 > n$, these subspaces must intersect — there exists a unit vector $z \in \ker(B) \cap \text{span}\{v_1, \ldots, v_{k+1}\}$.
+
+Write $z = \sum_{i=1}^{k+1} \alpha_i v_i$ with $\sum \alpha_i^2 = 1$. Then $Bz = 0$, so:
+
+$$\|A - B\|_F^2 \geq \|(A - B)z\|^2 = \|Az\|^2 = \left\|\sum_{i=1}^{k+1} \alpha_i \sigma_i u_i\right\|^2 = \sum_{i=1}^{k+1} \alpha_i^2 \sigma_i^2 \geq \sigma_{k+1}^2$$
+
+Since $\|A - A_k\|_2 = \sigma_{k+1}$, this shows $A_k$ achieves the minimum in spectral norm. For the Frobenius norm bound, apply the same dimension argument iteratively to show that $\|A - B\|_F^2 \geq \sum_{i=k+1}^{r} \sigma_i^2$.
+</TheoremBlock>
+
+### Explained Variance
+
+<TheoremBlock type="definition" number={5} title="Explained variance ratio">
+The fraction of total "energy" retained by the rank-$k$ approximation is:
+
+$$\text{Explained variance ratio}(k) = \frac{\sum_{i=1}^{k} \sigma_i^2}{\sum_{i=1}^{r} \sigma_i^2}$$
+
+This ratio tells us how much of the matrix's structure we capture with $k$ components.
+</TheoremBlock>
+
+Drag the rank slider below to see how the Eckart–Young theorem plays out on a 16×12 matrix. Watch the difference heatmap shrink as you increase rank, and track the Frobenius error dropping.
+
+<EckartYoungExplorer client:visible />
+
+![Eckart-Young: singular value spectrum, error decay, and explained variance](/images/topics/svd/svd_eckart_young.png)
+
+---
+
+## Computing the SVD in Practice
+
+### NumPy and SciPy
+
+Two main functions for computing the SVD in Python:
+
+```python
+import numpy as np
+from scipy.sparse.linalg import svds
+
+# Dense SVD (full or thin)
+U, sigma, Vt = np.linalg.svd(A, full_matrices=False)  # thin SVD
+
+# CAUTION: numpy returns Vt (V-transpose), NOT V.
+# This is the single most common SVD bug in practice.
+# To reconstruct: A ≈ U @ np.diag(sigma) @ Vt
+# NOT: A ≈ U @ np.diag(sigma) @ V
+
+# Sparse SVD (for large matrices, top k components only)
+U_k, sigma_k, Vt_k = svds(A_sparse, k=50)
+```
+
+<TheoremBlock type="remark">
+**The `Vt` pitfall.** `numpy.linalg.svd` returns $V^T$, not $V$. Nearly every SVD tutorial, homework solution, and production codebase has been bitten by this at least once. The variable name in numpy is literally `Vt` — use it. If you see code that does `U @ np.diag(sigma) @ V`, that's a bug.
+</TheoremBlock>
+
+### The Golub–Kahan Algorithm (Sketch)
+
+The standard algorithm for computing the SVD in practice (used internally by LAPACK, which numpy calls) works in two phases:
+
+1. **Bidiagonalization:** Reduce $A$ to upper bidiagonal form $B = U_1^T A V_1$ using Householder reflections. This costs $O(mn^2)$ for $m \geq n$.
+2. **Diagonalization:** Apply the implicit QR algorithm to $B$ (iteratively chasing off-diagonal entries to zero). Each iteration costs $O(n)$, and convergence is typically cubic.
+
+The total cost is $O(mn^2)$ for the thin SVD of an $m \times n$ matrix with $m \geq n$.
+
+### Randomized SVD
+
+For very large matrices where we only need the top $k$ singular values, the randomized SVD of Halko, Martinsson, and Tropp (2011) is dramatically faster:
+
+```python
+def randomized_svd(A, k, p=10):
+    """
+    Randomized SVD: compute rank-k approximation of A.
+
+    Parameters:
+        A: (m, n) matrix
+        k: target rank
+        p: oversampling parameter (default 10)
+
+    Returns:
+        U_k, sigma_k, Vt_k: truncated SVD components
+    """
+    m, n = A.shape
+    l = k + p  # oversampled rank
+
+    # Step 1: Random projection to find approximate range of A
+    Omega = np.random.randn(n, l)       # random test matrix
+    Y = A @ Omega                        # project A onto random subspace
+    Q, _ = np.linalg.qr(Y)              # orthonormal basis for range(Y)
+
+    # Step 2: Form the small matrix B = Q^T A (l × n)
+    B = Q.T @ A
+
+    # Step 3: Compute exact SVD of the small matrix B
+    U_tilde, sigma, Vt = np.linalg.svd(B, full_matrices=False)
+
+    # Step 4: Recover U = Q @ U_tilde
+    U = Q @ U_tilde
+
+    # Truncate to rank k
+    return U[:, :k], sigma[:k], Vt[:k, :]
+```
+
+The key insight: $Y = A \Omega$ is an $m \times l$ matrix whose columns approximately span the column space of $A$. The QR factorization gives us an orthonormal basis $Q$, and then we only need to SVD the small $l \times n$ matrix $Q^T A$. Total cost: $O(mn \cdot l)$ instead of $O(mn^2)$.
+
+---
+
+## Application: Image Compression
+
+A grayscale image is a matrix of pixel intensities. The SVD decomposes it into rank-1 "image layers," each capturing structure at a different scale. The leading singular values correspond to large-scale gradients and shapes; the trailing ones encode fine textures and noise.
+
+The rank-$k$ truncated SVD stores only $k(m + n + 1)$ numbers instead of $mn$ — a compression ratio of $mn / k(m + n + 1)$. For a $512 \times 512$ image with $k = 50$, that's a 5× compression with the Eckart–Young guarantee of optimality.
+
+Drag the rank slider to watch the image sharpen as you add more singular values:
+
+<ImageCompressionDemo client:visible />
+
+![Image compression: original and truncated SVD reconstructions at various ranks](/images/topics/svd/svd_image_compression.png)
+
+```python
+# SVD image compression
+from PIL import Image
+import numpy as np
+
+img = np.array(Image.open('photo.png').convert('L'), dtype=float)
+U, sigma, Vt = np.linalg.svd(img, full_matrices=False)
+
+# Reconstruct at rank k
+k = 50
+img_k = U[:, :k] @ np.diag(sigma[:k]) @ Vt[:k, :]
+
+# Statistics
+storage_original = img.shape[0] * img.shape[1]
+storage_compressed = k * (img.shape[0] + img.shape[1] + 1)
+energy = np.sum(sigma[:k]**2) / np.sum(sigma**2)
+
+print(f"Rank-{k}: {storage_compressed/storage_original:.1%} of original")
+print(f"Energy retained: {energy:.1%}")
+print(f"Frobenius error: {np.sqrt(np.sum(sigma[k:]**2)):.2f}")
+```
+
+---
+
+## Application: Latent Semantic Analysis
+
+In natural language processing, a **term-document matrix** $A$ has rows indexed by vocabulary terms and columns indexed by documents, with entries measuring word frequency (often TF-IDF weighted). This matrix is large, sparse, and noisy. The truncated SVD discovers **latent semantic dimensions** — hidden topic structure that explains word co-occurrence patterns.
+
+The idea: if "car" and "automobile" never appear in the same document but both co-occur with "engine," "highway," and "driving," the SVD discovers that they belong to the same latent dimension. Documents that use different words but discuss the same topic will have similar representations in the SVD coordinate system.
+
+The procedure is simple:
+
+1. Build the term-document matrix $A \in \mathbb{R}^{|V| \times |D|}$ (often TF-IDF weighted).
+2. Compute the rank-$k$ truncated SVD: $A_k = U_k \Sigma_k V_k^T$.
+3. The rows of $\Sigma_k V_k^T$ give $k$-dimensional document embeddings.
+4. The rows of $U_k \Sigma_k$ give $k$-dimensional term embeddings.
+5. Cosine similarity in the reduced space measures semantic similarity.
+
+```python
+from sklearn.feature_extraction.text import TfidfVectorizer
+from scipy.sparse.linalg import svds
+
+# Build TF-IDF matrix
+corpus = [
+    "the cat sat on the mat",
+    "the dog chased the cat",
+    "the cat and dog played",
+    "linear algebra is beautiful",
+    "matrices and vectors are fundamental",
+    "eigenvalues describe matrix behavior",
+]
+vectorizer = TfidfVectorizer()
+A = vectorizer.fit_transform(corpus)
+
+# Truncated SVD for LSA
+k = 2
+U, sigma, Vt = svds(A.T, k=k)  # transpose: docs as rows
+
+# svds returns singular values in ascending order — reverse to descending
+idx = np.argsort(sigma)[::-1]
+U, sigma, Vt = U[:, idx], sigma[idx], Vt[idx, :]
+
+# Document embeddings in concept space
+doc_embeddings = Vt.T * sigma  # (n_docs, k)
+
+# Cosine similarity between documents
+from sklearn.metrics.pairwise import cosine_similarity
+sim = cosine_similarity(doc_embeddings)
+print("Document similarity (in SVD concept space):")
+print(sim.round(3))
+```
+
+This is **Latent Semantic Analysis** (Deerwester et al., 1990) — the original word embedding technique, and still one of the clearest examples of why the SVD matters for machine learning.
+
+![LSA: document embeddings in the first two SVD dimensions](/images/topics/svd/svd_lsa_embedding.png)
+
+---
+
+## The SVD–PCA Connection
+
+PCA computes the directions of maximum variance in a centered data matrix $X \in \mathbb{R}^{n \times d}$ (rows = observations). The standard approach is to eigendecompose the sample covariance matrix $\hat{\Sigma} = \frac{1}{n-1} X^T X$. But the SVD provides a numerically superior alternative.
+
+Let $X = U \Sigma V^T$ be the thin SVD. Then:
+
+$$\hat{\Sigma} = \frac{1}{n-1} X^T X = \frac{1}{n-1} V \Sigma^T U^T U \Sigma V^T = V \left(\frac{\Sigma^2}{n-1}\right) V^T$$
+
+This is exactly the spectral decomposition of $\hat{\Sigma}$. We read off:
+
+- **Principal components**: the columns of $V$ (right singular vectors of $X$).
+- **Eigenvalues of $\hat{\Sigma}$**: $\lambda_i = \sigma_i^2 / (n-1)$.
+- **Projected data**: $X V_k = U_k \Sigma_k$ (the principal component scores).
+
+The SVD approach is numerically superior because it avoids forming $X^T X$ — which squares the condition number. If $\kappa(X) = 10^4$, then $\kappa(X^T X) = 10^8$, and eigendecomposition of $X^T X$ may lose 8 digits of precision. The SVD of $X$ itself keeps full precision.
+
+```python
+# PCA via SVD vs. covariance eigendecomposition
+X = np.random.randn(100, 5)
+X -= X.mean(axis=0)  # center the data
+
+# Method 1: eigendecomposition of covariance matrix
+Sigma_hat = (X.T @ X) / (X.shape[0] - 1)
+eigenvalues, Q = np.linalg.eigh(Sigma_hat)
+eigenvalues = eigenvalues[::-1]  # descending
+Q = Q[:, ::-1]
+
+# Method 2: SVD of data matrix
+U, sigma, Vt = np.linalg.svd(X, full_matrices=False)
+pca_eigenvalues = sigma**2 / (X.shape[0] - 1)
+
+# They match
+print(f"Eigenvalues (eigh):  {eigenvalues.round(6)}")
+print(f"Eigenvalues (SVD):   {pca_eigenvalues.round(6)}")
+print(f"Max difference:      {np.max(np.abs(eigenvalues - pca_eigenvalues)):.2e}")
+
+# Principal components match (up to sign)
+print(f"\nPC directions match: {np.allclose(np.abs(Q), np.abs(Vt.T))}")
+```
+
+The full PCA development, including the scree plot heuristic and the connection to the Eckart–Young theorem for optimal projection, appears on the [PCA & Low-Rank Approximation](/topics/pca-low-rank) topic page.
+
+![SVD-PCA connection: singular values vs. covariance eigenvalues](/images/topics/svd/svd_pca_connection.png)
+
+---
+
+## Connections & Further Reading
+
+The SVD sits at the center of the Linear Algebra track, connecting backward to the Spectral Theorem and forward to PCA and tensor methods. It also has deep connections to the Topology & TDA track.
+
+| Topic | Connection |
+|-------|-----------|
+| **[The Spectral Theorem](/topics/spectral-theorem)** | The SVD proof relies on the Spectral Theorem applied to $A^T A$. For symmetric $A$, the SVD reduces to the spectral decomposition — singular values are absolute eigenvalues, and $U = V$ (up to sign). |
+| **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** | PCA is the SVD of the centered data matrix. Principal components are right singular vectors. The Eckart–Young theorem makes the truncated SVD the optimal low-rank projection. |
+| **[Tensor Decompositions](/topics/tensor-decompositions)** | The CP decomposition generalizes the SVD outer product form $A = \sum \sigma_i u_i v_i^T$ to tensors: $\mathcal{T} = \sum \lambda_i \, a_i \otimes b_i \otimes c_i$. HOSVD extends the SVD to multilinear algebra. |
+| **[Persistent Homology](/topics/persistent-homology)** | The boundary matrices $\partial_k$ in a simplicial complex have an SVD. The rank of $\partial_k$ determines Betti numbers, and the singular values quantify topological feature strength. |
+| **[Sheaf Theory](/topics/sheaf-theory)** | The coboundary map $\delta_0$ in the [Sheaf Laplacian](/topics/sheaf-theory) has an SVD whose singular values are the square roots of the Sheaf Laplacian's eigenvalues — connecting SVD to sheaf cohomology. |
+| **[The Mapper Algorithm](/topics/mapper-algorithm)** | [Mapper](/topics/mapper-algorithm) often uses SVD-based dimensionality reduction (PCA or LSA) as the filter function that maps high-dimensional data to a lower-dimensional lens space. |
+
+### The Linear Algebra Track
+
+```
+Spectral Theorem
+    ├── Singular Value Decomposition (this topic)
+    │       └── PCA & Low-Rank Approximation
+    └── Tensor Decompositions
+```
