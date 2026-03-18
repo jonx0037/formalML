@@ -85,7 +85,7 @@ export default function EckartYoungExplorer() {
       ? (containerWidth - barWidth - 40) / 3
       : containerWidth - 16;
     const maxCells = Math.max(ROWS, COLS);
-    return Math.min(Math.floor((Math.min(available, HEATMAP_SIZE) - HEAT_MARGIN.left - HEAT_MARGIN.right) / maxCells), 14);
+    return Math.max(1, Math.min(Math.floor((Math.min(available, HEATMAP_SIZE) - HEAT_MARGIN.left - HEAT_MARGIN.right) / maxCells), 14));
   }, [containerWidth, barWidth]);
 
   const heatW = cellSize * COLS + HEAT_MARGIN.left + HEAT_MARGIN.right;
@@ -206,11 +206,13 @@ export default function EckartYoungExplorer() {
     [cellSize],
   );
 
+  // Original matrix range is constant — memoize once
+  const [origMin, origMax] = useMemo(() => {
+    const flat = originalMatrix.flat();
+    return [Math.min(...flat), Math.max(...flat)];
+  }, []);
+
   useEffect(() => {
-    // Compute value ranges
-    const origFlat = originalMatrix.flat();
-    const origMin = Math.min(...origFlat);
-    const origMax = Math.max(...origFlat);
     const diffFlat = diffMatrix.flat();
     const diffExtent = Math.max(Math.abs(Math.min(...diffFlat)), Math.abs(Math.max(...diffFlat)), 0.01);
 
@@ -221,7 +223,7 @@ export default function EckartYoungExplorer() {
     renderHeatmap(heatOrigRef, originalMatrix, 'Original A', (v) => origColor(v));
     renderHeatmap(heatApproxRef, approxMatrix, `Rank-${rank} Aₖ`, (v) => approxColor(v));
     renderHeatmap(heatDiffRef, diffMatrix, 'Difference A − Aₖ', (v) => diffColor(v));
-  }, [rank, approxMatrix, diffMatrix, renderHeatmap]);
+  }, [rank, approxMatrix, diffMatrix, renderHeatmap, origMin, origMax]);
 
   // ─── Render ───
 

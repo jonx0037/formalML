@@ -41,8 +41,14 @@ export function reconstructPixelRaw(i: number, j: number, rank: number): number 
   return val;
 }
 
-/** Compute the full raw image (before display scaling). */
-function computeRawImage(): { pixels: number[][]; min: number; max: number } {
+// ─── Lazy initialization ───
+// The full-rank image computation is O(N³) and deferred until first access,
+// so the module import itself is cheap.
+
+let _rawImage: { pixels: number[][]; min: number; max: number } | null = null;
+
+function getRawImage() {
+  if (_rawImage) return _rawImage;
   let min = Infinity;
   let max = -Infinity;
   const pixels: number[][] = [];
@@ -56,26 +62,28 @@ function computeRawImage(): { pixels: number[][]; min: number; max: number } {
     }
     pixels.push(row);
   }
-  return { pixels, min, max };
+  _rawImage = { pixels, min, max };
+  return _rawImage;
 }
 
-const rawImage = computeRawImage();
-
 /** Raw pixel range (used for display scaling). */
-export const pixelMin = rawImage.min;
-export const pixelMax = rawImage.max;
+export function getPixelRange(): { min: number; max: number } {
+  const { min, max } = getRawImage();
+  return { min, max };
+}
 
 /** Map a raw pixel value to display range [0, 255]. */
 export function toDisplayValue(raw: number): number {
-  const range = pixelMax - pixelMin;
+  const { min, max } = getPixelRange();
+  const range = max - min;
   if (range < 1e-10) return 128;
-  return Math.max(0, Math.min(255, Math.round(255 * (raw - pixelMin) / range)));
+  return Math.max(0, Math.min(255, Math.round(255 * (raw - min) / range)));
 }
 
-/** Pre-computed original image as display values (0–255). */
-export const originalPixels: number[][] = rawImage.pixels.map((row) =>
-  row.map(toDisplayValue),
-);
+/** Original image as display values (0–255). Computed lazily on first access. */
+export function getOriginalPixels(): number[][] {
+  return getRawImage().pixels.map((row) => row.map(toDisplayValue));
+}
 
 // ─── Energy statistics ───
 

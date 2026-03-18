@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  IMAGE_SIZE, singularValues, originalPixels, reconstructPixelRaw,
+  IMAGE_SIZE, singularValues, getOriginalPixels, reconstructPixelRaw,
   toDisplayValue, energyRetained,
 } from '../../data/svd-image-data';
 
@@ -44,10 +44,8 @@ export default function ImageCompressionDemo() {
     const storageTruncated = rank * (IMAGE_SIZE + IMAGE_SIZE + 1);
     const energy = energyRetained(rank);
 
-    // Relative error (Frobenius)
-    const tailEnergy = singularValues.slice(rank).reduce((s, v) => s + v * v, 0);
-    const totalEnergy = singularValues.reduce((s, v) => s + v * v, 0);
-    const relativeError = totalEnergy > 0 ? Math.sqrt(tailEnergy / totalEnergy) : 0;
+    // Relative error (Frobenius): sqrt(1 - energy retained)
+    const relativeError = Math.sqrt(1 - energy);
 
     return {
       compressionRatio: storageTruncated > 0 ? storageOriginal / storageTruncated : Infinity,
@@ -70,6 +68,10 @@ export default function ImageCompressionDemo() {
     return Math.min(SPECTRUM_WIDTH, containerWidth - 16);
   }, [containerWidth]);
 
+  // ─── Compute original pixels lazily (only when component mounts) ───
+
+  const originalPixels = useMemo(() => getOriginalPixels(), []);
+
   // ─── Render original image to canvas ───
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export default function ImageCompressionDemo() {
       }
     }
     ctx.putImageData(imgData, 0, 0);
-  }, []);
+  }, [originalPixels]);
 
   // ─── Render compressed image to canvas ───
 

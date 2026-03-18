@@ -120,17 +120,6 @@ function unitCircle(): [number, number][] {
   });
 }
 
-/** Apply a 2×2 matrix [[a,b],[c,d]] to a list of points. */
-function applyMatrix(
-  pts: [number, number][],
-  a: number,
-  b: number,
-  c: number,
-  d: number,
-): [number, number][] {
-  return pts.map(([x, y]) => [a * x + b * y, c * x + d * y]);
-}
-
 // ─── Component ───
 
 export default function SVDGeometryExplorer() {
@@ -145,7 +134,6 @@ export default function SVDGeometryExplorer() {
 
   // Effective matrix (symmetric toggle forces c = b)
   const effC = symmetric ? mb : mc;
-  const effD = symmetric ? md : md;
 
   // ─── SVD computation ───
 
@@ -201,8 +189,7 @@ export default function SVDGeometryExplorer() {
     // Panel 4: After UΣVᵀ = A — final output
 
     // Compute transformed point sets
-    const afterVt = applyMatrix(circle, v1[0], v2[0], v1[1], v2[1]); // Vᵀ rotation (V cols as rows)
-    // Wait: Vᵀ has rows = v1, v2. So Vᵀ * x = [v1·x, v2·x]
+    // Vᵀ has rows = v1, v2. So Vᵀ * x = [v1·x, v2·x]
     const afterVtCorrect = circle.map(([x, y]) => [
       v1[0] * x + v1[1] * y,
       v2[0] * x + v2[1] * y,
