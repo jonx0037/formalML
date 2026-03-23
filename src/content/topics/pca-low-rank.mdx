@@ -1,0 +1,724 @@
+---
+title: "PCA & Low-Rank Approximation"
+subtitle: "From variance maximization to modern dimensionality reduction — the mathematical theory behind the most widely used unsupervised learning method"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "svd"
+tags:
+  - "linear-algebra"
+  - "principal-component-analysis"
+  - "dimensionality-reduction"
+  - "low-rank-approximation"
+  - "kernel-methods"
+  - "machine-learning"
+domain: "linear-algebra"
+videoId: null
+notebookPath: "notebooks/pca-low-rank/03_pca_low_rank.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/pca-low-rank.mdx"
+datePublished: 2026-03-22
+estimatedReadTime: 40
+abstract: "Principal Component Analysis (PCA) finds the orthogonal directions of maximum variance in a dataset, providing the optimal linear dimensionality reduction in the least-squares sense. We derive PCA from first principles via the Rayleigh quotient (Spectral Theorem), connect it to the SVD through the Eckart–Young–Mirsky theorem (optimal low-rank approximation), develop the scree plot and parallel analysis for choosing dimensionality, and extend classical PCA to four modern variants: Kernel PCA for nonlinear manifolds, Probabilistic PCA for missing data and generative modeling, Robust PCA (Principal Component Pursuit) for separating low-rank structure from sparse corruption, and Sparse PCA for interpretable loadings. The mathematical foundation is the Spectral Theorem applied to the sample covariance matrix, computed via the SVD for numerical stability."
+connections:
+  - topic: "svd"
+    relationship: "PCA is the SVD of the centered data matrix; the Eckart–Young theorem makes the truncated SVD the optimal low-rank projection; the SVD avoids squaring the condition number when computing PCA"
+  - topic: "spectral-theorem"
+    relationship: "PCA eigendecomposition is the Spectral Theorem applied to the sample covariance matrix; the Rayleigh quotient and Courant–Fischer theorem give the variance-maximization formulation"
+  - topic: "tensor-decompositions"
+    relationship: "Tucker decomposition generalizes PCA to multi-way arrays; Multilinear PCA (MPCA) applies PCA along each tensor mode"
+  - topic: "persistent-homology"
+    relationship: "PCA is a standard preprocessing step for TDA — reducing dimensionality before computing persistent homology"
+  - topic: "mapper-algorithm"
+    relationship: "Mapper frequently uses PCA (via SVD) as a filter function — projecting data onto the first 1–2 principal components before the covering step"
+  - topic: "sheaf-theory"
+    relationship: "the Sheaf Laplacian eigendecomposition (Spectral Theorem) combined with PCA on the resulting feature vectors provides multi-scale structural analysis"
+references:
+  - type: "book"
+    title: "Introduction to Linear Algebra"
+    authors: "Strang"
+    year: 2016
+    note: "Chapter 7: SVD and PCA connection"
+  - type: "book"
+    title: "Pattern Recognition and Machine Learning"
+    authors: "Bishop"
+    year: 2006
+    note: "Chapter 12: Probabilistic PCA and EM derivation"
+  - type: "book"
+    title: "The Elements of Statistical Learning"
+    authors: "Hastie, Tibshirani & Friedman"
+    year: 2009
+    note: "Chapter 14.5: PCA, Sparse PCA, kernel PCA"
+  - type: "book"
+    title: "Matrix Analysis"
+    authors: "Horn & Johnson"
+    year: 2013
+    note: "Rayleigh quotient, Courant–Fischer, and Eckart–Young proofs"
+  - type: "paper"
+    title: "Probabilistic Principal Component Analysis"
+    authors: "Tipping & Bishop"
+    year: 1999
+    url: "https://doi.org/10.1111/1467-9868.00196"
+    note: "Original PPCA paper"
+  - type: "paper"
+    title: "Robust Principal Component Analysis?"
+    authors: "Candès, Li, Ma & Wright"
+    year: 2011
+    url: "https://doi.org/10.1145/1970392.1970395"
+    note: "Principal Component Pursuit"
+  - type: "paper"
+    title: "Sparse Principal Component Analysis"
+    authors: "Zou, Hastie & Tibshirani"
+    year: 2006
+    url: "https://doi.org/10.1198/106186006X113430"
+    note: "SPCA formulation and algorithm"
+  - type: "paper"
+    title: "Nonlinear Component Analysis as a Kernel Eigenvalue Problem"
+    authors: "Schölkopf, Smola & Müller"
+    year: 1998
+    url: "https://doi.org/10.1162/089976698300017467"
+    note: "Original Kernel PCA paper"
+  - type: "paper"
+    title: "A generalization of principal component analysis to the exponential family"
+    authors: "Collins, Dasgupta & Schapire"
+    year: 2001
+    note: "Exponential family PCA"
+  - type: "paper"
+    title: "A parallel analysis criterion for determining the number of common factors or principal components"
+    authors: "Horn"
+    year: 1965
+    note: "Parallel analysis for dimensionality selection"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import PCAGeometryExplorer from '../../components/viz/PCAGeometryExplorer.tsx';
+import ScreePlotExplorer from '../../components/viz/ScreePlotExplorer.tsx';
+import KernelPCAExplorer from '../../components/viz/KernelPCAExplorer.tsx';
+import RobustPCADemo from '../../components/viz/RobustPCADemo.tsx';
+
+## Overview & Motivation
+
+The [SVD](/topics/svd) established that the right singular vectors of a centered data matrix $X$ are the principal components, and that the Eckart–Young–Mirsky theorem makes the truncated SVD the optimal low-rank approximation. This topic develops PCA as a standalone framework — starting from the variance-maximization problem, connecting it to the SVD and the [Spectral Theorem](/topics/spectral-theorem), and extending it to the modern variants that handle nonlinear, corrupted, and high-dimensional data.
+
+**Principal Component Analysis (PCA)** finds the orthogonal directions of maximum variance in a dataset $X \in \mathbb{R}^{n \times d}$ (rows = observations, columns = features). It answers a simple question: *if we could keep only $k < d$ directions, which $k$ directions capture the most information?*
+
+The answer is the top $k$ eigenvectors of the sample covariance matrix $\hat{\Sigma} = \frac{1}{n-1} X^T X$ — equivalently, the top $k$ right singular vectors of $X$. This topic covers:
+
+- **Variance maximization**: PCA as a constrained optimization problem (Rayleigh quotient).
+- **Optimal projection**: the Eckart–Young connection — PCA is the best $k$-dimensional linear projection.
+- **The scree plot**: heuristics for choosing $k$ (elbow, Kaiser, parallel analysis).
+- **Kernel PCA**: extending PCA to nonlinear manifolds via the kernel trick.
+- **Probabilistic PCA**: a latent variable model that handles missing data and provides a generative framework.
+- **Robust PCA**: separating low-rank structure from sparse corruption (Principal Component Pursuit).
+- **Sparse PCA**: interpretable principal components via $\ell_1$-penalized loadings.
+
+### What We Cover
+
+1. **PCA from First Principles** — the Rayleigh quotient and sequential variance maximization.
+2. **PCA via the SVD** — the correspondence table and numerical superiority.
+3. **Geometric Interpretation** — optimal projection and the dual view (variance = error minimization).
+4. **The Scree Plot** — dimensionality selection (elbow, Kaiser, parallel analysis).
+5. **Low-Rank Approximation** — the Eckart–Young connection and effective rank.
+6. **Computing PCA in Practice** — scikit-learn classes and the standardization question.
+7. **The Biplot** — visualizing observations and variables together.
+8. **Kernel PCA** — nonlinear dimensionality reduction via the kernel trick.
+9. **Probabilistic PCA** — the latent variable model and EM for missing data.
+10. **Robust PCA** — Principal Component Pursuit for low-rank + sparse decomposition.
+11. **Sparse PCA** — interpretable loadings via $\ell_1$ regularization.
+
+---
+
+## PCA from First Principles: Variance Maximization
+
+### The Setup
+
+Let $X \in \mathbb{R}^{n \times d}$ be a centered data matrix ($n$ observations, $d$ features, column means subtracted). The sample covariance matrix is:
+
+$$\hat{\Sigma} = \frac{1}{n-1} X^T X \in \mathbb{R}^{d \times d}$$
+
+This matrix is symmetric and positive semi-definite. By the [Spectral Theorem](/topics/spectral-theorem), it has an orthogonal eigendecomposition:
+
+$$\hat{\Sigma} = Q \Lambda Q^T$$
+
+with eigenvalues $\lambda_1 \geq \lambda_2 \geq \cdots \geq \lambda_d \geq 0$ and orthonormal eigenvectors $q_1, \ldots, q_d$.
+
+### The Variance-Maximization Problem
+
+The **first principal component** is the unit vector $w_1$ that maximizes the variance of the projection $Xw_1$:
+
+$$w_1 = \arg\max_{\|w\| = 1} \text{Var}(Xw) = \arg\max_{\|w\| = 1} w^T \hat{\Sigma} w$$
+
+This is a **Rayleigh quotient** problem. By the Spectral Theorem (specifically, the Courant–Fischer minimax principle), the maximum is achieved at $w_1 = q_1$ (the top eigenvector), and the maximum variance is $\lambda_1$.
+
+<PCAGeometryExplorer client:visible />
+
+<TheoremBlock type="proposition" number={1} title="Sequential variance maximization">
+The $k$-th principal component is the unit vector $w_k$ that maximizes $w^T \hat{\Sigma} w$ subject to $\|w\| = 1$ and $w \perp w_1, \ldots, w_{k-1}$. The solution is $w_k = q_k$ (the $k$-th eigenvector of $\hat{\Sigma}$), and the maximum variance is $\lambda_k$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**By induction on the Spectral Theorem's eigenvalue ordering.**
+
+After deflation, we project $\hat{\Sigma}$ onto the orthogonal complement of $\text{span}(q_1, \ldots, q_{k-1})$. Any vector $w$ in this subspace can be written as $w = \sum_{j=k}^{d} c_j q_j$ with $\sum c_j^2 = 1$. Then:
+
+$$w^T \hat{\Sigma} w = \sum_{j=k}^{d} c_j^2 \lambda_j \leq \lambda_k \sum_{j=k}^{d} c_j^2 = \lambda_k$$
+
+with equality when $c_k = 1$ and $c_j = 0$ for $j > k$, i.e., $w = q_k$. This is the restricted Rayleigh quotient, and the bound follows from the Spectral Theorem's eigenvalue ordering $\lambda_k \geq \lambda_{k+1} \geq \cdots \geq \lambda_d$. $\square$
+</TheoremBlock>
+
+### The Principal Components
+
+The **principal components** (or PC scores) are the projections of the data onto the eigenvectors:
+
+$$Z = XQ \in \mathbb{R}^{n \times d}$$
+
+where $Z_{ij} = x_i^T q_j$ is the $i$-th observation's coordinate along the $j$-th principal direction. The columns of $Z$ are uncorrelated with variances $\lambda_1, \ldots, \lambda_d$:
+
+$$\frac{1}{n-1} Z^T Z = \frac{1}{n-1} Q^T X^T X Q = Q^T \hat{\Sigma} Q = \Lambda$$
+
+This diagonalization — transforming correlated features into uncorrelated components ordered by variance — is the essence of PCA.
+
+![PCA variance maximization: data cloud with principal directions and PC scores](/images/topics/pca-low-rank/pca-variance-maximization.png)
+
+---
+
+## PCA via the SVD
+
+### The SVD Connection
+
+The [SVD topic §8](/topics/svd) established the fundamental connection. We now develop it fully.
+
+Let $X = U \Sigma V^T$ be the [SVD](/topics/svd) of the centered data matrix. Then:
+
+$$\hat{\Sigma} = \frac{1}{n-1} X^T X = \frac{1}{n-1} V \Sigma^T \Sigma V^T = V \left(\frac{\Sigma^2}{n-1}\right) V^T$$
+
+Comparing with the Spectral Theorem decomposition $\hat{\Sigma} = Q \Lambda Q^T$:
+
+<TheoremBlock type="theorem" number={1} title="PCA via SVD">
+Let $X \in \mathbb{R}^{n \times d}$ be a centered data matrix with SVD $X = U \Sigma V^T$. The principal components are the columns of $V$, the PC scores are the columns of $U\Sigma$, and the $i$-th eigenvalue of the sample covariance matrix is $\lambda_i = \sigma_i^2 / (n - 1)$.
+</TheoremBlock>
+
+| PCA quantity | Spectral Theorem | SVD |
+|---|---|---|
+| Principal directions | Eigenvectors $q_i$ of $\hat{\Sigma}$ | Right singular vectors $v_i$ of $X$ |
+| Eigenvalues (variances) | $\lambda_i$ | $\sigma_i^2 / (n - 1)$ |
+| PC scores | $Z = XQ$ | $Z = U\Sigma$ |
+| Explained variance ratio | $\lambda_i / \sum \lambda_j$ | $\sigma_i^2 / \sum \sigma_j^2$ |
+
+### Numerical Superiority of the SVD
+
+Forming $X^T X$ explicitly squares the condition number: $\kappa(X^T X) = \kappa(X)^2$. For ill-conditioned data, the smallest eigenvalues can be lost to floating-point roundoff. The SVD computes the same decomposition directly on $X$, preserving numerical accuracy. This is why **every serious PCA implementation uses the SVD internally**.
+
+<TheoremBlock type="definition" number={1} title="Condition number for PCA">
+The condition number of PCA is $\kappa = \sigma_1 / \sigma_d$ (the ratio of the largest to smallest singular value of $X$). When $\kappa$ is large, the data is ill-conditioned for PCA — the smallest principal components are unreliable.
+</TheoremBlock>
+
+```python
+import numpy as np
+
+# PCA via eigendecomposition vs. SVD: verify the connection
+np.random.seed(42)
+n, d = 500, 3
+cov_true = np.array([[3.0, 1.5, 0.5], [1.5, 2.0, 0.3], [0.5, 0.3, 0.5]])
+X = np.random.multivariate_normal(np.zeros(d), cov_true, n)
+X_centered = X - X.mean(axis=0)
+
+# Method 1: Spectral Theorem on covariance
+Sigma_hat = (X_centered.T @ X_centered) / (n - 1)
+evals_eig, Q = np.linalg.eigh(Sigma_hat)
+idx = np.argsort(evals_eig)[::-1]
+evals_eig, Q = evals_eig[idx], Q[:, idx]
+
+# Method 2: SVD of centered data
+U, sigma, Vt = np.linalg.svd(X_centered, full_matrices=False)
+evals_svd = sigma**2 / (n - 1)
+
+# Eigenvalues match: λ_i = σ_i² / (n-1)
+for i in range(d):
+    print(f"  λ_{i+1}: eigendecomp = {evals_eig[i]:.6f}  SVD = {evals_svd[i]:.6f}")
+
+# Condition numbers: SVD avoids squaring
+print(f"\n  κ(X) = {sigma[0]/sigma[-1]:.2f}")
+print(f"  κ(X^T X) = {evals_eig[0]/evals_eig[-1]:.2f}  ≈  κ(X)² = {(sigma[0]/sigma[-1])**2:.2f}")
+```
+
+---
+
+## Geometric Interpretation
+
+### PCA as Optimal Linear Projection
+
+PCA finds the $k$-dimensional subspace that best preserves the data's variance. Equivalently, it finds the projection that minimizes reconstruction error.
+
+<TheoremBlock type="theorem" number={2} title="PCA as optimal projection">
+Let $X \in \mathbb{R}^{n \times d}$ be centered data with SVD $X = U \Sigma V^T$. The $k$-dimensional affine subspace that minimizes the total squared reconstruction error is spanned by the top $k$ right singular vectors $v_1, \ldots, v_k$:
+
+$$\min_{\text{rank-}k\text{ subspace } W} \sum_{i=1}^{n} \|x_i - \text{proj}_W(x_i)\|^2 = \sum_{j=k+1}^{d} \sigma_j^2 = (n-1) \sum_{j=k+1}^{d} \lambda_j$$
+
+This is the [Eckart–Young–Mirsky theorem](/topics/svd) applied to the centered data matrix.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The reconstruction error for a rank-$k$ projection $P$ is $\|X - XP\|_F^2 = \|X(I - P)\|_F^2$. We need to show this is minimized when $P = V_k V_k^T$.
+
+Expand using the SVD $X = U \Sigma V^T$:
+
+$$\|X(I - P)\|_F^2 = \|U \Sigma V^T (I - P)\|_F^2 = \|\Sigma V^T (I - P)\|_F^2$$
+
+where the last equality uses the unitary invariance of the Frobenius norm ($\|UA\|_F = \|A\|_F$ for orthogonal $U$).
+
+Since $I - P$ projects onto the orthogonal complement of the $k$-dimensional subspace, the minimum is achieved when $P$ projects onto the span of the top $k$ right singular vectors. The error equals $\sum_{j=k+1}^{d} \sigma_j^2$ — the sum of the squared singular values we discard. This is exactly the Eckart–Young theorem. $\square$
+</TheoremBlock>
+
+### The Dual View: Variance Maximization = Error Minimization
+
+PCA simultaneously:
+1. **Maximizes** the variance of the projected data: $\sum_{j=1}^{k} \lambda_j$.
+2. **Minimizes** the reconstruction error: $\sum_{j=k+1}^{d} \lambda_j$.
+
+Since total variance $= \sum_{j=1}^{d} \lambda_j$ is constant, maximizing (1) is equivalent to minimizing (2). This dual view is central to understanding dimensionality reduction.
+
+<TheoremBlock type="theorem" number={3} title="Optimal projection subspace">
+Among all $k$-dimensional subspaces $W \subseteq \mathbb{R}^d$, the one that minimizes the total squared distance from the data to its projections is the span of the top $k$ principal components:
+
+$$W^* = \text{span}(v_1, \ldots, v_k) = \arg\min_{\dim(W) = k} \sum_{i=1}^{n} \|x_i - P_W x_i\|^2$$
+
+where $P_W$ is the orthogonal projection onto $W$.
+</TheoremBlock>
+
+### The Reconstruction Formula
+
+Given the top $k$ principal components $V_k = [v_1, \ldots, v_k]$ and PC scores $Z_k = X V_k$, the rank-$k$ reconstruction is:
+
+$$\hat{X}_k = Z_k V_k^T = X V_k V_k^T$$
+
+The projection matrix $P_k = V_k V_k^T$ is the orthogonal projector onto the principal subspace.
+
+![PCA geometry: projection, reconstruction, and the dual view](/images/topics/pca-low-rank/pca-geometry.png)
+
+---
+
+## The Scree Plot and Dimensionality Selection
+
+### The Scree Plot
+
+The **scree plot** displays the eigenvalues (or singular values, or explained variance ratios) in descending order. The goal is to identify the "elbow" — the point where the eigenvalues transition from large (signal) to small (noise).
+
+<TheoremBlock type="definition" number={2} title="Explained variance ratio">
+The explained variance ratio for $k$ components is:
+
+$$\text{EVR}(k) = \frac{\sum_{i=1}^{k} \lambda_i}{\sum_{i=1}^{d} \lambda_i} = \frac{\sum_{i=1}^{k} \sigma_i^2}{\sum_{i=1}^{d} \sigma_i^2}$$
+
+where $\lambda_i$ are eigenvalues of the covariance matrix and $\sigma_i$ are singular values of the centered data matrix.
+</TheoremBlock>
+
+### Selection Criteria
+
+Several heuristics exist for choosing the number of components $k$:
+
+| Method | Rule | When to use |
+|--------|------|-------------|
+| **Elbow method** | Choose $k$ at the "bend" in the scree plot | Visual; subjective but widely used |
+| **Kaiser criterion** | Keep components with $\lambda_i > 1$ (for standardized data) | Only for correlation-matrix PCA |
+| **Explained variance threshold** | Choose smallest $k$ s.t. $\text{EVR}(k) \geq \tau$ (e.g., $\tau = 0.95$) | When a target variance fraction is needed |
+| **Parallel analysis** | Compare eigenvalues to those from random data of the same dimensions | Most statistically principled |
+
+### Parallel Analysis
+
+**Parallel analysis** (Horn, 1965) generates many random datasets of the same size ($n \times d$) from i.i.d. standard normals, computes their eigenvalues, and retains only those components whose observed eigenvalues exceed the 95th percentile of the random eigenvalues. This controls for the "eigenvalue inflation" that occurs in finite samples.
+
+<ScreePlotExplorer client:visible />
+
+```python
+from sklearn.datasets import load_wine
+from sklearn.preprocessing import StandardScaler
+
+# Load and standardize the Wine dataset (13 features)
+wine = load_wine()
+X_wine = StandardScaler().fit_transform(wine.data)
+n, d = X_wine.shape
+
+# PCA via SVD
+U, sigma, Vt = np.linalg.svd(X_wine, full_matrices=False)
+eigenvalues = sigma**2 / (n - 1)
+evr = eigenvalues / eigenvalues.sum()
+cumulative_evr = np.cumsum(evr)
+
+# Parallel analysis: compare to eigenvalues from random data
+n_permutations = 100
+random_eigenvalues = np.zeros((n_permutations, d))
+for j in range(n_permutations):
+    X_random = np.random.randn(n, d)
+    _, s_rand, _ = np.linalg.svd(X_random, full_matrices=False)
+    random_eigenvalues[j] = s_rand**2 / (n - 1)
+
+random_95th = np.percentile(random_eigenvalues, 95, axis=0)
+k_parallel = np.sum(eigenvalues > random_95th)
+
+# Selection results
+k_kaiser = np.sum(eigenvalues > 1.0)
+k_95 = np.searchsorted(cumulative_evr, 0.95) + 1
+
+print(f"Kaiser criterion (λ > 1): k = {k_kaiser}")
+print(f"95% variance threshold:   k = {k_95}")
+print(f"Parallel analysis:        k = {k_parallel}")
+```
+
+![Scree plot with selection criteria on the Wine dataset](/images/topics/pca-low-rank/pca-scree-plot.png)
+
+---
+
+## Low-Rank Approximation as Optimal Projection
+
+### The Eckart–Young Connection
+
+The [Eckart–Young–Mirsky theorem](/topics/svd) states that the best rank-$k$ approximation to $A$ is the truncated SVD $A_k$. Applied to the centered data matrix $X$:
+
+$$X_k = U_k \Sigma_k V_k^T = \text{(PC scores)}_k \times \text{(principal directions)}_k^T$$
+
+This is exactly the PCA reconstruction: project onto the top $k$ PCs, then reconstruct. The Eckart–Young theorem guarantees this is **optimal** among all rank-$k$ approximations.
+
+### Effective Rank
+
+<TheoremBlock type="definition" number={3} title="Effective rank">
+The effective rank of a matrix measures how many singular values contribute meaningfully. Two common definitions:
+
+- **Hard threshold**: $r_\varepsilon = |\{i : \sigma_i > \varepsilon \cdot \sigma_1\}|$ for some tolerance $\varepsilon$.
+- **Entropy-based** (Roy & Vetterli, 2007): $\text{erank}(A) = \exp\left(-\sum_{i} p_i \log p_i\right)$ where $p_i = \sigma_i^2 / \|A\|_F^2$.
+
+When the effective rank is much smaller than $\min(m, n)$, the data is approximately low-rank and PCA is highly effective.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The entropy-based effective rank has a nice information-theoretic interpretation: it measures the "uniformity" of the singular value distribution. When all singular values are equal, $\text{erank}(A) = \min(m,n)$ (full rank). When one singular value dominates, $\text{erank}(A) \approx 1$.
+</TheoremBlock>
+
+![Low-rank approximation: singular value spectrum, error decay, and explained variance ratio](/images/topics/pca-low-rank/pca-low-rank.png)
+
+---
+
+## Computing PCA in Practice
+
+### scikit-learn
+
+| Class | When to use | Algorithm |
+|-------|-------------|-----------|
+| `PCA(n_components=k)` | Moderate data; exact PCA | Full SVD via LAPACK or randomized SVD (auto) |
+| `PCA(svd_solver='randomized')` | Large $d$, small $k$ | Halko–Martinsson–Tropp randomized SVD |
+| `IncrementalPCA(n_components=k)` | Out-of-core / streaming | Incremental SVD update |
+| `TruncatedSVD(n_components=k)` | Sparse matrices (text, graphs) | ARPACK or randomized |
+
+<TheoremBlock type="remark">
+`PCA` centers the data automatically. `TruncatedSVD` does **not** center — use it for sparse data where centering would destroy sparsity (e.g., TF-IDF matrices in LSA).
+</TheoremBlock>
+
+### Standardize or Not?
+
+- **Standardize** (scale to unit variance) when features have different units or very different scales. PCA on the **correlation matrix** $R = D^{-1/2} \hat{\Sigma} D^{-1/2}$ where $D = \text{diag}(\hat{\Sigma})$.
+- **Don't standardize** when features are commensurable (same units, similar scales) — PCA on the **covariance matrix** preserves the natural scaling.
+
+The Kaiser criterion ($\lambda > 1$) only makes sense when PCA is computed on the correlation matrix (standardized data), because the average eigenvalue of a $d \times d$ correlation matrix is exactly 1.
+
+---
+
+## Application: High-Dimensional Data Visualization
+
+### The Biplot
+
+The **biplot** (Gabriel, 1971) simultaneously displays observations (PC scores) and variables (loadings) in the principal component space. It is the standard visualization for PCA results:
+
+- **Observations** are plotted as points using PC scores $(z_{i1}, z_{i2})$.
+- **Variables** are plotted as arrows (loading vectors) showing each original feature's contribution to the PCs.
+- **Arrow length** indicates the feature's variance explained by the displayed PCs.
+- **Arrow angle** between two features approximates their correlation (small angle ≈ high positive correlation; 90° ≈ uncorrelated; 180° ≈ high negative correlation).
+
+### Interpreting Loadings
+
+The **loadings** are the entries of the principal component vectors $v_j$. The loading $v_{jk}$ tells us how much feature $k$ contributes to PC $j$. Large loadings (in absolute value) indicate features that are important for that component.
+
+![PCA biplot: score plot with loading arrows on the Wine dataset](/images/topics/pca-low-rank/pca-biplot.png)
+
+---
+
+## Kernel PCA
+
+### The Limitation of Linear PCA
+
+Linear PCA finds directions of maximum variance in the original feature space. But many real datasets have **nonlinear** structure — data lying on a curved manifold (Swiss roll), concentric circles, or a spiral. Linear PCA cannot "unfold" these structures.
+
+### The Kernel Trick
+
+**Kernel PCA** (Schölkopf, Smola & Müller, 1998) applies PCA in a high-dimensional (possibly infinite-dimensional) feature space $\phi(x) \in \mathcal{H}$ without ever computing $\phi$ explicitly:
+
+1. Compute the $n \times n$ kernel matrix $K_{ij} = \kappa(x_i, x_j)$ where $\kappa$ is a kernel function.
+2. Center the kernel matrix: $\tilde{K} = K - \frac{1}{n} \mathbf{1} K - \frac{1}{n} K \mathbf{1} + \frac{1}{n^2} \mathbf{1} K \mathbf{1}$.
+3. Eigendecompose: $\tilde{K} = \alpha \Lambda \alpha^T$ (Spectral Theorem, since $\tilde{K}$ is symmetric PSD).
+4. The kernel PC scores are $Z_k = \alpha_k \sqrt{\lambda_k}$ for the top $k$ eigenvectors.
+
+<TheoremBlock type="definition" number={4} title="Common kernels for Kernel PCA">
+
+| Kernel | Formula | Effect |
+|--------|---------|--------|
+| Linear | $\kappa(x, y) = x^T y$ | Standard PCA |
+| RBF (Gaussian) | $\kappa(x, y) = \exp(-\gamma \|x - y\|^2)$ | Smooth nonlinear embedding |
+| Polynomial | $\kappa(x, y) = (x^T y + c)^p$ | Polynomial feature interactions |
+
+The RBF kernel with bandwidth $\gamma$ is the most commonly used; it implicitly maps to an infinite-dimensional feature space.
+</TheoremBlock>
+
+<KernelPCAExplorer client:visible />
+
+```python
+from sklearn.decomposition import PCA, KernelPCA
+from sklearn.datasets import make_circles
+
+# Concentric circles: linear PCA fails, kernel PCA succeeds
+X_circles, y_circles = make_circles(n_samples=500, factor=0.3, noise=0.05)
+
+# Linear PCA cannot separate the two rings
+Z_linear = PCA(n_components=2).fit_transform(X_circles)
+
+# RBF Kernel PCA separates them
+Z_rbf = KernelPCA(n_components=2, kernel='rbf', gamma=10).fit_transform(X_circles)
+
+# The bandwidth γ controls locality:
+#   Small γ → global (nearly linear)
+#   Large γ → local (sharp boundaries)
+for gamma in [0.1, 2, 10, 50]:
+    kpca = KernelPCA(n_components=2, kernel='rbf', gamma=gamma)
+    Z = kpca.fit_transform(X_circles)
+    print(f"  γ = {gamma:5.1f}: separation quality varies")
+```
+
+![Kernel PCA: unfolding nonlinear structure on circles and Swiss roll](/images/topics/pca-low-rank/kernel-pca.png)
+
+---
+
+## Probabilistic PCA
+
+### PCA as a Latent Variable Model
+
+**Probabilistic PCA** (Tipping & Bishop, 1999) recasts PCA as a generative model:
+
+$$x = Wz + \mu + \varepsilon$$
+
+where:
+- $z \sim \mathcal{N}(0, I_k)$ is a $k$-dimensional latent variable.
+- $W \in \mathbb{R}^{d \times k}$ is the loading matrix.
+- $\mu \in \mathbb{R}^d$ is the data mean.
+- $\varepsilon \sim \mathcal{N}(0, \sigma^2 I_d)$ is isotropic Gaussian noise.
+
+<TheoremBlock type="theorem" number={4} title="MLE for Probabilistic PCA">
+The maximum likelihood estimates are:
+
+$$\hat{W}_{\text{ML}} = U_k (\Lambda_k - \sigma^2 I)^{1/2} R$$
+
+where $U_k$ contains the top $k$ eigenvectors of $\hat{\Sigma}$, $\Lambda_k = \text{diag}(\lambda_1, \ldots, \lambda_k)$, $R$ is an arbitrary rotation, and:
+
+$$\hat{\sigma}^2_{\text{ML}} = \frac{1}{d - k} \sum_{j=k+1}^{d} \lambda_j$$
+
+The noise variance $\hat{\sigma}^2$ is the average of the discarded eigenvalues — the "lost" variance is modeled as isotropic noise.
+</TheoremBlock>
+
+### Why Probabilistic PCA?
+
+1. **Missing data**: the EM algorithm naturally handles incomplete observations.
+2. **Model comparison**: the marginal likelihood allows Bayesian model selection for $k$.
+3. **Generative model**: we can sample new data points from $p(x)$.
+4. **Mixture of PPCA**: captures multimodal structure (cluster-specific PCA).
+
+```python
+def ppca_em(X, k, n_iter=100, missing_mask=None):
+    """Probabilistic PCA via EM. missing_mask[i,j]=True means X[i,j] is missing."""
+    n, d = X.shape
+    mu = np.nanmean(X, axis=0) if missing_mask is not None else X.mean(axis=0)
+    W = np.random.randn(d, k) * 0.1
+    sigma2 = 1.0
+
+    for iteration in range(n_iter):
+        # E-step: posterior p(z|x) = N(M^{-1} W^T (x - mu), sigma^2 M^{-1})
+        M = W.T @ W + sigma2 * np.eye(k)
+        M_inv = np.linalg.inv(M)
+
+        Ez = np.zeros((n, k))
+        Ezz = np.zeros((n, k, k))
+
+        for i in range(n):
+            if missing_mask is not None and np.any(missing_mask[i]):
+                obs = ~missing_mask[i]
+                W_obs = W[obs, :]
+                x_obs = X[i, obs] - mu[obs]
+                M_obs = W_obs.T @ W_obs + sigma2 * np.eye(k)
+                Ez[i] = np.linalg.solve(M_obs, W_obs.T @ x_obs)
+                Ezz[i] = sigma2 * np.linalg.inv(M_obs) + np.outer(Ez[i], Ez[i])
+            else:
+                xi = X[i] - mu
+                Ez[i] = M_inv @ W.T @ xi
+                Ezz[i] = sigma2 * M_inv + np.outer(Ez[i], Ez[i])
+
+        # M-step: update W and sigma^2
+        S1 = np.zeros((d, k))
+        S2 = np.zeros((k, k))
+        for i in range(n):
+            xi = X[i] - mu
+            if missing_mask is not None and np.any(missing_mask[i]):
+                obs = ~missing_mask[i]
+                S1[obs] += np.outer(xi[obs], Ez[i])
+            else:
+                S1 += np.outer(xi, Ez[i])
+            S2 += Ezz[i]
+
+        W = S1 @ np.linalg.inv(S2)
+        # ... (noise variance update continues)
+
+    return W, sigma2, mu
+```
+
+![Probabilistic PCA: eigenvalue spectrum and missing data recovery](/images/topics/pca-low-rank/probabilistic-pca.png)
+
+---
+
+## Robust PCA: Principal Component Pursuit
+
+### The Problem
+
+Standard PCA is sensitive to **gross corruption**: a few large outliers or structured noise can distort the principal components. **Robust PCA** (Candès, Li, Ma & Wright, 2011) separates the data matrix into a low-rank component $L$ and a sparse component $S$:
+
+$$X = L + S$$
+
+where $L$ captures the "clean" low-rank structure and $S$ captures sparse corruption (outliers, anomalies).
+
+### Principal Component Pursuit
+
+<TheoremBlock type="theorem" number={5} title="Principal Component Pursuit">
+Under mild incoherence conditions, the solution to:
+
+$$\min_{L, S} \|L\|_* + \lambda \|S\|_1 \quad \text{subject to} \quad L + S = X$$
+
+recovers the true $L$ and $S$ exactly, where $\|L\|_*$ is the nuclear norm (sum of singular values) and $\|S\|_1$ is the entry-wise $\ell_1$ norm. The default parameter is $\lambda = 1 / \sqrt{\max(m, n)}$.
+</TheoremBlock>
+
+The nuclear norm promotes low rank; the $\ell_1$ norm promotes sparsity. This convex relaxation can be solved efficiently by the **Alternating Direction Method of Multipliers (ADMM)**.
+
+<RobustPCADemo client:visible />
+
+### Applications
+
+- **Video surveillance**: $L$ = static background, $S$ = moving foreground objects.
+- **Face recognition**: $L$ = faces under normal lighting, $S$ = shadows and occlusions.
+- **Financial data**: $L$ = systematic market factors, $S$ = idiosyncratic shocks or anomalies.
+
+```python
+def robust_pca_admm(X, lam=None, mu=None, tol=1e-7, max_iter=500):
+    """Robust PCA via ADMM (Principal Component Pursuit).
+
+    Solves: min ||L||_* + λ||S||_1  s.t. L + S = X
+    """
+    m, n = X.shape
+    if lam is None:
+        lam = 1.0 / np.sqrt(max(m, n))
+    if mu is None:
+        mu = m * n / (4.0 * np.sum(np.abs(X)))
+
+    L = np.zeros_like(X)
+    S = np.zeros_like(X)
+    Y = np.zeros_like(X)  # dual variable
+
+    def soft_threshold(Z, threshold):
+        return np.sign(Z) * np.maximum(np.abs(Z) - threshold, 0)
+
+    def svd_threshold(Z, threshold):
+        U, sigma, Vt = np.linalg.svd(Z, full_matrices=False)
+        sigma_thresh = np.maximum(sigma - threshold, 0)
+        return U @ np.diag(sigma_thresh) @ Vt, np.sum(sigma_thresh > 0)
+
+    for iteration in range(max_iter):
+        # Update L (nuclear norm proximal operator)
+        L, rank_L = svd_threshold(X - S + Y / mu, 1.0 / mu)
+
+        # Update S (L1 proximal operator)
+        S = soft_threshold(X - L + Y / mu, lam / mu)
+
+        # Update dual variable
+        residual = X - L - S
+        Y = Y + mu * residual
+
+        if np.linalg.norm(residual, 'fro') / np.linalg.norm(X, 'fro') < tol:
+            break
+
+    return L, S
+```
+
+![Robust PCA: original, low-rank, and sparse decomposition](/images/topics/pca-low-rank/robust-pca.png)
+
+---
+
+## Sparse PCA
+
+### The Interpretability Problem
+
+Standard PCA components are linear combinations of **all** features — every loading is typically nonzero. In high-dimensional settings ($d \gg n$), this makes PCs hard to interpret: what does a component that loads on all 10,000 genes actually mean?
+
+### Sparse PCA Formulation
+
+**Sparse PCA** adds an $\ell_1$ penalty to the loadings to encourage sparsity:
+
+$$\max_{\|w\| = 1} \, w^T \hat{\Sigma} w - \alpha \|w\|_1$$
+
+where $\alpha > 0$ controls the sparsity–variance trade-off. Larger $\alpha$ → fewer nonzero loadings → more interpretable but less variance explained.
+
+<TheoremBlock type="definition" number={5} title="Sparse PCA trade-off">
+Sparse PCA sacrifices optimality (in variance explained) for interpretability (in sparsity of loadings). The trade-off is controlled by the regularization parameter $\alpha$:
+
+- $\alpha = 0$: standard PCA (dense loadings, maximum variance).
+- $\alpha \to \infty$: trivial solution (zero loadings).
+- Intermediate $\alpha$: sparse loadings that explain most of the variance.
+
+Several algorithms exist: SCoTLASS (Jolliffe et al., 2003), SPCA (Zou et al., 2006), and the coordinate descent approach in scikit-learn's `SparsePCA`.
+</TheoremBlock>
+
+```python
+from sklearn.decomposition import SparsePCA, PCA
+
+# Compare standard PCA vs. Sparse PCA on the Wine dataset
+wine = load_wine()
+X_std = StandardScaler().fit_transform(wine.data)
+
+pca = PCA(n_components=3).fit(X_std)
+spca = SparsePCA(n_components=3, alpha=1.0, random_state=42).fit(X_std)
+
+# Standard PCA: all 13 features contribute to each component
+print("Standard PCA loadings (PC 1):")
+print(f"  Nonzero: {np.sum(np.abs(pca.components_[0]) > 0.01)}/13")
+
+# Sparse PCA: only a few features per component
+print("Sparse PCA loadings (PC 1):")
+print(f"  Nonzero: {np.sum(np.abs(spca.components_[0]) > 0.01)}/13")
+```
+
+![Sparse PCA: loading sparsity patterns across regularization strengths](/images/topics/pca-low-rank/sparse-pca.png)
+
+---
+
+## Connections & Further Reading
+
+PCA stands at the crossroads of the Linear Algebra track and the rest of the formalML curriculum.
+
+| Topic | PCA Connection |
+|-------|---------------|
+| **[The Spectral Theorem](/topics/spectral-theorem)** | PCA eigendecomposition is the Spectral Theorem applied to $\hat{\Sigma}$. The Rayleigh quotient and Courant–Fischer theorem give the variance-maximization formulation. |
+| **[Singular Value Decomposition](/topics/svd)** | PCA is the SVD of the centered data matrix. The Eckart–Young theorem makes PCA the optimal low-rank projection. The SVD avoids squaring the condition number. |
+| **Tensor Decompositions** *(coming soon)* | Tucker decomposition generalizes PCA to multi-way arrays. Multilinear PCA (MPCA) applies PCA along each tensor mode. |
+| **[Persistent Homology](/topics/persistent-homology)** | PCA is often a preprocessing step for TDA: reduce dimensionality before computing persistent homology. The explained variance ratio guides the choice of dimensionality. |
+| **[The Mapper Algorithm](/topics/mapper-algorithm)** | [Mapper](/topics/mapper-algorithm) frequently uses PCA (via SVD) as a filter function — projecting data onto the first 1–2 principal components before the covering step. |
+| **[Sheaf Theory](/topics/sheaf-theory)** | The Sheaf Laplacian's eigendecomposition ([Spectral Theorem](/topics/spectral-theorem)) combined with PCA on the resulting feature vectors provides multi-scale structural analysis. |
+
+### The Linear Algebra Track Dependency Graph
+
+```
+Spectral Theorem
+├── Singular Value Decomposition
+│   └── PCA & Low-Rank Approximation (this topic)
+└── Tensor Decompositions
+```
+
+PCA is the SVD applied to centered data. The Spectral Theorem provides the eigendecomposition of the covariance matrix. Tensor Decompositions (next) generalize both to multilinear algebra.

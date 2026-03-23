@@ -12,7 +12,6 @@ export const tracks = [
     description:
       'Spectral theory, matrix decompositions, and the algebraic backbone of nearly every ML method.',
     planned: [
-      'PCA & Low-Rank Approximation',
       'Tensor Decompositions',
     ],
   },
