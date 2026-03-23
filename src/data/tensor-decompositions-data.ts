@@ -1,6 +1,7 @@
-// Pre-computed tensor decomposition data for interactive visualizations.
-// All tensors are constructed FROM known factors so decompositions are exact
-// by construction — no iterative algorithms needed at runtime.
+// Deterministically generated tensor decomposition data for interactive visualizations.
+// All tensors are constructed FROM known factors with a fixed seeded RNG so
+// decompositions are exact by construction; small iterative algorithms (e.g. SVD)
+// are run once at module initialization / first use in the browser.
 
 // ─── Interfaces ───
 

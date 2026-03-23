@@ -352,7 +352,7 @@ export default function CPDecompositionExplorer() {
           <input
             type="range"
             min={1}
-            max={5}
+            max={results.length}
             step={1}
             value={rank}
             onChange={onRankChange}
