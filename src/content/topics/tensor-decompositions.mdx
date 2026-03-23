@@ -1,0 +1,667 @@
+---
+title: "Tensor Decompositions"
+subtitle: "From multi-way arrays to modern factorization — generalizing the SVD and PCA to higher-order data"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "spectral-theorem"
+  - "svd"
+  - "pca-low-rank"
+tags:
+  - "linear-algebra"
+  - "tensor-decomposition"
+  - "cp-decomposition"
+  - "tucker-decomposition"
+  - "hosvd"
+  - "tensor-train"
+  - "multilinear-algebra"
+domain: "linear-algebra"
+videoId: null
+notebookPath: "notebooks/tensor-decompositions/04_tensor_decompositions.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/tensor-decompositions.mdx"
+datePublished: 2026-03-22
+estimatedReadTime: 55
+abstract: "Tensor decompositions generalize matrix factorizations to multi-way arrays, preserving multi-mode structure while achieving compression, denoising, and interpretable factor extraction. We develop five decomposition methods: CP (CANDECOMP/PARAFAC) with Kruskal's essential uniqueness theorem and Alternating Least Squares, the Tucker decomposition as multilinear PCA with its connection to mode-wise dimensionality reduction, the HOSVD (Higher-Order SVD) as the natural generalization of the matrix SVD with approximation bounds, the Tensor Train (TT) format that scales linearly in the number of modes breaking the exponential curse of dimensionality, and the t-SVD (tensor SVD via the Fourier domain) which provides the first exact Eckart–Young optimality theorem for tensors. The mathematical foundation draws on the Spectral Theorem (eigendecomposition of mode-n scatter matrices), the SVD (applied independently to each mode unfolding or Fourier-domain frontal slice), and PCA (Tucker as multilinear PCA along each tensor mode)."
+connections:
+  - topic: "spectral-theorem"
+    relationship: "The eigendecomposition of mode-n scatter matrices is the Spectral Theorem applied along each mode. The HOSVD computes it independently per mode. The Courant–Fischer minimax principle governs optimality of each mode's singular vectors."
+  - topic: "svd"
+    relationship: "The HOSVD applies the matrix SVD to each mode unfolding. The t-SVD applies it to each Fourier-domain frontal slice. The TT-SVD is a sequence of matrix SVDs. The Eckart–Young theorem generalizes to the t-SVD."
+  - topic: "pca-low-rank"
+    relationship: "Tucker decomposition is multilinear PCA. MPCA applies PCA along each tensor mode. The scree plot generalizes to per-mode singular value spectra. Kernel PCA extends to kernel tensor decompositions."
+  - topic: "persistent-homology"
+    relationship: "Persistent homology on tensor factor scores reveals topological structure in the latent factor space. Mode-n singular value filtrations provide multi-scale persistence."
+  - topic: "mapper-algorithm"
+    relationship: "Mapper applied to CP factor scores produces topological summaries of tensor data. Mode-specific Mapper graphs using individual factor matrices as filter functions reveal per-mode topological structure."
+  - topic: "barcodes-bottleneck"
+    relationship: "The bottleneck distance quantifies stability of topological features across tensor decomposition parameters (rank, regularization). Persistence barcodes of tensor factor spaces provide topological signatures."
+  - topic: "sheaf-theory"
+    relationship: "Sheaf Laplacian eigendecomposition on sensor networks produces multi-relational data naturally represented as tensors. Tucker decomposition of the sheaf cohomology tensor extracts multi-scale features."
+references:
+  - type: "book"
+    title: "Tensor Decompositions and Applications"
+    authors: "Kolda & Bader"
+    year: 2009
+    note: "Comprehensive survey — CP, Tucker, properties, algorithms (SIAM Review)"
+  - type: "book"
+    title: "Introduction to Linear Algebra"
+    authors: "Strang"
+    year: 2016
+    note: "Chapter 7: Matrix SVD foundations that tensor methods generalize"
+  - type: "book"
+    title: "Matrix Analysis"
+    authors: "Horn & Johnson"
+    year: 2013
+    note: "Spectral theorem, Eckart–Young, and matrix norm properties used in tensor proofs"
+  - type: "paper"
+    title: "A Multilinear Singular Value Decomposition"
+    authors: "De Lathauwer, De Moor & Vandewalle"
+    year: 2000
+    url: "https://doi.org/10.1137/S0895479896305696"
+    note: "Original HOSVD paper — defines the higher-order SVD and its properties"
+  - type: "paper"
+    title: "Three-way arrays: rank and uniqueness of trilinear decompositions"
+    authors: "Kruskal"
+    year: 1977
+    url: "https://doi.org/10.1016/0024-3795(77)90069-6"
+    note: "Kruskal's essential uniqueness theorem for CP"
+  - type: "paper"
+    title: "Tensor-Train Decomposition"
+    authors: "Oseledets"
+    year: 2011
+    url: "https://doi.org/10.1137/090752286"
+    note: "TT-SVD algorithm and approximation bounds"
+  - type: "paper"
+    title: "Factorization strategies for third-order tensors"
+    authors: "Kilmer & Martin"
+    year: 2011
+    url: "https://doi.org/10.1016/j.laa.2010.11.011"
+    note: "t-product, t-SVD, and Eckart–Young theorem for tensors"
+  - type: "paper"
+    title: "MPCA: Multilinear Principal Component Analysis of Tensor Objects"
+    authors: "Lu, Plataniotis & Venetsanopoulos"
+    year: 2008
+    url: "https://doi.org/10.1109/TNN.2008.2004293"
+    note: "MPCA formulation connecting Tucker to PCA"
+  - type: "paper"
+    title: "Tensor Decompositions for Signal Processing Applications"
+    authors: "Cichocki, Mandic, De Lathauwer, Zhou, Zhao, Caiafa & Phan"
+    year: 2015
+    url: "https://doi.org/10.1016/j.sigpro.2014.01.012"
+    note: "Signal processing applications and modern tensor network methods"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import TensorUnfoldingExplorer from '../../components/viz/TensorUnfoldingExplorer.tsx';
+import CPDecompositionExplorer from '../../components/viz/CPDecompositionExplorer.tsx';
+import TuckerCoreExplorer from '../../components/viz/TuckerCoreExplorer.tsx';
+import StorageScalingExplorer from '../../components/viz/StorageScalingExplorer.tsx';
+import TSVDExplorer from '../../components/viz/tSVDExplorer.tsx';
+
+## Overview & Motivation
+
+Matrices are two-way arrays: rows and columns. But many datasets are naturally multi-way. A color image is a 3-way array (height × width × RGB channels). A video is 4-way (height × width × channels × time). A recommender system logs users × items × context × time. EEG data has channels × time × trials. In each case, flattening the data into a matrix and applying the [SVD](/topics/svd) or [PCA](/topics/pca-low-rank) destroys multi-way structure that the decomposition should preserve.
+
+**Tensor decompositions** generalize matrix factorizations to multi-way arrays — or **tensors** — preserving the multi-way structure while achieving compression, denoising, and interpretable factor extraction. The two classical decompositions are:
+
+- **CP (CANDECOMP/PARAFAC):** Decomposes a tensor into a sum of rank-1 terms (outer products of vectors). This is the natural generalization of the matrix rank-1 decomposition from the [SVD topic](/topics/svd).
+- **Tucker decomposition:** Decomposes a tensor into a core tensor multiplied by a factor matrix along each mode. This generalizes PCA: each factor matrix captures the principal subspace along one mode, and the core tensor captures multi-mode interactions.
+
+Beyond these classical methods, we develop three modern decompositions:
+
+- **HOSVD (Higher-Order SVD):** A specific Tucker decomposition computed by applying the matrix SVD along each mode. It provides the tensor analog of the [Spectral Theorem](/topics/spectral-theorem)'s eigendecomposition.
+- **Tensor Train (TT):** A chain-structured decomposition that avoids the exponential blow-up of Tucker, scaling *linearly* in the number of modes. Also known as Matrix Product States (MPS) in quantum physics.
+- **t-SVD (tensor SVD via the Fourier domain):** An algebraically exact generalization of the matrix SVD to order-3 tensors, complete with an Eckart–Young optimality theorem — the only tensor decomposition that achieves this.
+
+### What We Cover
+
+1. **Tensor Fundamentals** — definitions, fibers, slices, mode-$n$ products, and unfoldings.
+2. **CP Decomposition** — rank-1 outer product form, Kruskal's uniqueness theorem, and ALS.
+3. **Tucker Decomposition** — multilinear rank, connection to PCA, and existence theorem.
+4. **HOSVD** — higher-order SVD, all-orthogonality, and approximation bounds.
+5. **Tensor Train** — TT format, TT-SVD algorithm, and storage scaling.
+6. **The t-SVD** — t-product, t-SVD, tubal rank, and the Eckart–Young theorem for tensors.
+7. **Multilinear PCA** — from PCA to MPCA and the connection to Tucker.
+8. **Applications** — recommender systems, video surveillance, neuroimaging, quantum chemistry, and TDA connections.
+9. **Computational Notes** — Python libraries, complexity, and numerical considerations.
+
+---
+
+## 1. Tensor Fundamentals
+
+### What Is a Tensor?
+
+<TheoremBlock type="definition" number={1} title="Tensor and order">
+An *order-$N$ tensor* (or *$N$-way array*) is an element of $\mathbb{R}^{I_1 \times I_2 \times \cdots \times I_N}$. Each index dimension $I_n$ corresponds to a **mode** (or **way**). We denote tensors by boldface calligraphic letters: $\mathcal{X} \in \mathbb{R}^{I_1 \times I_2 \times \cdots \times I_N}$.
+
+| Order | Object | Example |
+|-------|--------|---------|
+| 0 | Scalar | Temperature at one sensor |
+| 1 | Vector $\in \mathbb{R}^{I_1}$ | Time series from one sensor |
+| 2 | Matrix $\in \mathbb{R}^{I_1 \times I_2}$ | Sensors × time |
+| 3 | 3-way tensor $\in \mathbb{R}^{I_1 \times I_2 \times I_3}$ | Sensors × time × subjects |
+| $N$ | $N$-way tensor | Sensors × time × subjects × conditions × ... |
+
+Entries are accessed by $N$ indices: $\mathcal{X}_{i_1, i_2, \ldots, i_N}$.
+</TheoremBlock>
+
+### Fibers and Slices
+
+A **fiber** is a vector obtained by fixing all but one index: $\mathcal{X}_{:, j, k}$ is a mode-1 fiber (a column of the tensor), $\mathcal{X}_{i, :, k}$ is a mode-2 fiber, and $\mathcal{X}_{i, j, :}$ is a mode-3 fiber.
+
+A **slice** is a matrix obtained by fixing all but two indices: $\mathcal{X}_{:, :, k}$ is a frontal slice, $\mathcal{X}_{:, j, :}$ is a lateral slice, and $\mathcal{X}_{i, :, :}$ is a horizontal slice.
+
+### The Mode-$n$ Product
+
+<TheoremBlock type="definition" number={2} title="Mode-n product">
+The *mode-$n$ product* of a tensor $\mathcal{X} \in \mathbb{R}^{I_1 \times \cdots \times I_N}$ with a matrix $U \in \mathbb{R}^{J \times I_n}$ is:
+
+$$(\mathcal{X} \times_n U)_{i_1, \ldots, i_{n-1}, j, i_{n+1}, \ldots, i_N} = \sum_{i_n=1}^{I_n} \mathcal{X}_{i_1, \ldots, i_N} \, U_{j, i_n}$$
+
+The result is in $\mathbb{R}^{I_1 \times \cdots \times I_{n-1} \times J \times I_{n+1} \times \cdots \times I_N}$: mode $n$ changes from size $I_n$ to size $J$; all other modes are unchanged.
+</TheoremBlock>
+
+Mode products along different modes commute: $(\mathcal{X} \times_m A) \times_n B = (\mathcal{X} \times_n B) \times_m A$ for $m \neq n$. Along the same mode, they compose: $(\mathcal{X} \times_n A) \times_n B = \mathcal{X} \times_n (BA)$.
+
+### Mode-$n$ Unfolding (Matricization)
+
+<TheoremBlock type="definition" number={3} title="Mode-n unfolding">
+The *mode-$n$ unfolding* (or *matricization*) of $\mathcal{X} \in \mathbb{R}^{I_1 \times \cdots \times I_N}$, denoted $X_{(n)} \in \mathbb{R}^{I_n \times \prod_{m \neq n} I_m}$, arranges the mode-$n$ fibers as the rows of a matrix. Each mode-$n$ fiber becomes a row of $X_{(n)}$.
+</TheoremBlock>
+
+The unfolding connects tensor operations to matrix operations. In particular, the mode-$n$ product satisfies:
+
+$$Y = \mathcal{X} \times_n U \quad \Longleftrightarrow \quad Y_{(n)} = U \, X_{(n)}$$
+
+This identity — the **matricization–mode product identity** — is the bridge between tensor algebra and the matrix tools from the [SVD](/topics/svd) and [Spectral Theorem](/topics/spectral-theorem) topics.
+
+<TensorUnfoldingExplorer client:visible />
+
+![Tensor fundamentals: fibers, slices, and mode-n unfoldings for a 4×3×2 tensor](/images/topics/tensor-decompositions/tensor-fundamentals.png)
+
+---
+
+## 2. CP Decomposition (CANDECOMP/PARAFAC)
+
+### Definition and Rank
+
+The CP decomposition expresses a tensor as a sum of rank-1 terms — the direct generalization of the matrix SVD's outer-product expansion $A = \sum_{r=1}^R \sigma_r u_r v_r^T$.
+
+<TheoremBlock type="definition" number={4} title="CP decomposition and tensor rank">
+An order-$N$ tensor $\mathcal{X} \in \mathbb{R}^{I_1 \times \cdots \times I_N}$ has a **CP decomposition** of rank $R$:
+
+$$\mathcal{X} = \sum_{r=1}^{R} \lambda_r \, a_r^{(1)} \circ a_r^{(2)} \circ \cdots \circ a_r^{(N)} = \sum_{r=1}^{R} \lambda_r \bigcirc_{n=1}^{N} a_r^{(n)}$$
+
+where $\circ$ denotes the outer product, each $a_r^{(n)} \in \mathbb{R}^{I_n}$ is a unit-norm factor vector, and $\lambda_r \in \mathbb{R}$ is a weight. The **tensor rank** (or **CP rank**) $\text{rank}(\mathcal{X})$ is the minimum $R$ for which such a decomposition exists.
+</TheoremBlock>
+
+**Comparison with the matrix SVD:**
+
+| Property | Matrix SVD | Tensor CP |
+|----------|-----------|-----------|
+| Factors | $u_r, v_r$ (two sets of vectors) | $a_r^{(1)}, \ldots, a_r^{(N)}$ ($N$ sets) |
+| Weights | $\sigma_r \geq 0$, ordered | $\lambda_r \in \mathbb{R}$, unordered in general |
+| Orthogonality | $u_i^T u_j = v_i^T v_j = \delta_{ij}$ | **Not guaranteed** |
+| Uniqueness | Up to sign | **Essential uniqueness** under mild conditions (Kruskal) |
+| Best rank-$k$ | Always exists (Eckart–Young) | **May not exist** for tensors of order $\geq 3$ |
+
+The last two rows are the fundamental surprises of tensor algebra. The CP decomposition is **more unique** than the SVD (no rotation ambiguity) but **less well-behaved** (best rank-$k$ approximation may not exist).
+
+### Kruskal's Uniqueness Theorem
+
+<TheoremBlock type="definition" number={5} title="Kruskal rank">
+The *Kruskal rank* (or *$k$-rank*) of a matrix $A \in \mathbb{R}^{I \times R}$, denoted $k_A$, is the maximum value $k$ such that every subset of $k$ columns of $A$ is linearly independent. Note: $k_A \leq \text{rank}(A)$, with equality when $A$ has full column rank.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={1} title="Kruskal's uniqueness theorem (1977)">
+Let $\mathcal{X} = \sum_{r=1}^{R} \lambda_r \, a_r^{(1)} \circ a_r^{(2)} \circ a_r^{(3)}$ be a rank-$R$ CP decomposition of an order-3 tensor, with factor matrices $A^{(n)} = [a_1^{(n)} \mid \cdots \mid a_R^{(n)}]$. If
+
+$$k_{A^{(1)}} + k_{A^{(2)}} + k_{A^{(3)}} \geq 2R + 2$$
+
+then the decomposition is **essentially unique**: any other rank-$R$ decomposition is identical up to permutation and scaling of the rank-1 terms.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Proof sketch.** The condition $k_1 + k_2 + k_3 \geq 2R + 2$ ensures that the Khatri–Rao products $A^{(n)} \odot A^{(m)}$ have full column rank $R$. The key observation is that if two CP decompositions represent the same tensor, then:
+
+$$\sum_{r=1}^{R} \lambda_r \, a_r^{(1)} \circ a_r^{(2)} \circ a_r^{(3)} = \sum_{r=1}^{R} \mu_r \, b_r^{(1)} \circ b_r^{(2)} \circ b_r^{(3)}$$
+
+Unfolding along mode 1 gives $A^{(1)} \text{diag}(\lambda) (A^{(3)} \odot A^{(2)})^T = B^{(1)} \text{diag}(\mu) (B^{(3)} \odot B^{(2)})^T$. The Kruskal rank condition guarantees that the Khatri–Rao product has rank $R$, making this system of equations solvable only when $B^{(n)} = A^{(n)} \Pi D^{(n)}$ for a permutation matrix $\Pi$ and diagonal scaling matrices $D^{(n)}$ with $\prod_n D^{(n)} = I$. $\square$
+</TheoremBlock>
+
+This is a remarkable result with no matrix analog. The matrix SVD is unique only up to rotation within eigenspaces of equal singular values — any orthogonal transformation $U' = UQ$, $V' = VQ$ gives the same matrix $U \Sigma V^T$. But under the Kruskal condition, CP factors are **essentially unique**: the individual rank-1 components are identifiable, not just the subspace they span.
+
+### Alternating Least Squares (ALS)
+
+The standard algorithm for computing the CP decomposition is **Alternating Least Squares (ALS)**. The idea: fix all factor matrices except one, then solve the resulting least-squares problem for that one. Cycle through all modes repeatedly until convergence.
+
+For mode $n$, the least-squares subproblem is:
+
+$$A^{(n)} \leftarrow X_{(n)} \left( A^{(N)} \odot \cdots \odot A^{(n+1)} \odot A^{(n-1)} \odot \cdots \odot A^{(1)} \right) \left( \bigodot_{m \neq n} A^{(m)T} A^{(m)} \right)^{-1}$$
+
+where $\odot$ denotes the Khatri–Rao (columnwise Kronecker) product.
+
+```python
+def cp_als(tensor, rank, max_iter=200, tol=1e-8, seed=42):
+    """Alternating Least Squares for CP decomposition."""
+    rng = np.random.RandomState(seed)
+    N = tensor.ndim
+    shape = tensor.shape
+
+    # Random initialization
+    factors = [rng.randn(shape[n], rank) for n in range(N)]
+    for n in range(N):
+        factors[n] /= np.linalg.norm(factors[n], axis=0, keepdims=True)
+    weights = np.ones(rank)
+
+    for iteration in range(max_iter):
+        for n in range(N):
+            # Khatri-Rao product of all factors except n
+            V = khatri_rao_except(factors, n)
+            Xn = unfold(tensor, n)
+
+            # Normal equations: A^(n) = Xn @ V @ (V^T V)^{-1}
+            VtV = np.ones((rank, rank))
+            for m in range(N):
+                if m != n:
+                    VtV *= factors[m].T @ factors[m]
+            factors[n] = Xn @ V @ np.linalg.pinv(VtV)
+
+            # Normalize columns
+            norms = np.linalg.norm(factors[n], axis=0)
+            weights = norms
+            factors[n] /= np.maximum(norms, 1e-12)
+
+        # Check convergence
+        recon = reconstruct_cp(weights, factors)
+        error = np.linalg.norm(tensor - recon) / np.linalg.norm(tensor)
+        if iteration > 0 and abs(prev_error - error) < tol:
+            break
+        prev_error = error
+
+    return weights, factors, error
+```
+
+<CPDecompositionExplorer client:visible />
+
+![CP decomposition: convergence, factor matrices, and rank-1 components for a 10×8×6 tensor](/images/topics/tensor-decompositions/cp-decomposition.png)
+
+---
+
+## 3. Tucker Decomposition
+
+### Definition and Multilinear Rank
+
+The Tucker decomposition generalizes the matrix factorization $A = U \Sigma V^T$ by allowing a *different* rank reduction along each mode.
+
+<TheoremBlock type="definition" number={6} title="Tucker decomposition">
+An order-$N$ tensor $\mathcal{X} \in \mathbb{R}^{I_1 \times \cdots \times I_N}$ has a **Tucker decomposition**:
+
+$$\mathcal{X} = \mathcal{G} \times_1 U^{(1)} \times_2 U^{(2)} \cdots \times_N U^{(N)} = [\![\mathcal{G}; U^{(1)}, U^{(2)}, \ldots, U^{(N)}]\!]$$
+
+where $\mathcal{G} \in \mathbb{R}^{R_1 \times R_2 \times \cdots \times R_N}$ is the **core tensor** and each $U^{(n)} \in \mathbb{R}^{I_n \times R_n}$ is a **factor matrix** (typically with orthonormal columns). The tuple $(R_1, R_2, \ldots, R_N)$ is the **multilinear rank**.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={7} title="Multilinear rank">
+The *multilinear rank* of $\mathcal{X}$ is the tuple $(\text{rank}(X_{(1)}), \text{rank}(X_{(2)}), \ldots, \text{rank}(X_{(N)}))$, where $X_{(n)}$ is the mode-$n$ unfolding. Unlike the matrix rank (a single number), the multilinear rank is an $N$-tuple that can differ across modes.
+</TheoremBlock>
+
+**Comparison: Tucker vs. CP:**
+
+| Property | Tucker | CP |
+|----------|--------|-----|
+| Core | Full core tensor $\mathcal{G}$ with interactions | Superdiagonal: $\mathcal{G}_{r_1, \ldots, r_N} \neq 0$ only if $r_1 = \cdots = r_N$ |
+| Parameters | $\prod_n R_n + \sum_n I_n R_n$ | $R(1 + \sum_n I_n)$ |
+| Uniqueness | Up to rotation within each mode (like matrix SVD) | Essentially unique (Kruskal) |
+
+The CP decomposition is a special case of Tucker where the core tensor is superdiagonal and $R_1 = R_2 = \cdots = R_N = R$.
+
+### Connection to PCA
+
+The Tucker decomposition is precisely **multilinear PCA**. The factor matrix $U^{(n)}$ captures the principal subspace of the mode-$n$ unfolding $X_{(n)}$ — that is, [PCA](/topics/pca-low-rank) applied independently along each mode. The core tensor $\mathcal{G}$ captures the multi-mode interactions between these subspaces.
+
+### Existence and Computation
+
+<TheoremBlock type="theorem" number={2} title="Tucker decomposition existence">
+Every tensor $\mathcal{X} \in \mathbb{R}^{I_1 \times \cdots \times I_N}$ admits a Tucker decomposition with multilinear rank $(R_1, \ldots, R_N)$ where $R_n = \text{rank}(X_{(n)})$. This decomposition is computed by setting $U^{(n)}$ to the left singular vectors of $X_{(n)}$ and $\mathcal{G} = \mathcal{X} \times_1 U^{(1)T} \times_2 U^{(2)T} \cdots \times_N U^{(N)T}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By the [SVD](/topics/svd), each mode-$n$ unfolding has a decomposition $X_{(n)} = U^{(n)} \Sigma^{(n)} V^{(n)T}$. The first $R_n$ columns of $U^{(n)}$ span the column space of $X_{(n)}$, which contains all mode-$n$ fibers. Since the mode-$n$ fibers are the rows of $X_{(n)}$, the tensor can be reconstructed from its projections onto these $R_n$-dimensional subspaces along each mode. The core tensor $\mathcal{G} = \mathcal{X} \times_1 U^{(1)T} \cdots \times_N U^{(N)T}$ stores the coordinates in these subspaces, and reconstruction follows from $\mathcal{X} = \mathcal{G} \times_1 U^{(1)} \cdots \times_N U^{(N)}$ by the properties of the mode-$n$ product. $\square$
+</TheoremBlock>
+
+<TuckerCoreExplorer client:visible />
+
+![Tucker decomposition: core tensor and factor matrices for a 20×15×10 tensor](/images/topics/tensor-decompositions/tucker-decomposition.png)
+
+---
+
+## 4. Higher-Order SVD (HOSVD)
+
+### Definition
+
+The HOSVD (De Lathauwer, De Moor & Vandewalle, 2000) is a specific Tucker decomposition obtained by applying the matrix [SVD](/topics/svd) independently to each mode-$n$ unfolding.
+
+**Algorithm (HOSVD):**
+1. For each mode $n = 1, \ldots, N$: compute the (truncated) SVD of the mode-$n$ unfolding $X_{(n)} = U^{(n)} \Sigma^{(n)} V^{(n)T}$.
+2. Set the factor matrix to $U^{(n)}$ (left singular vectors of $X_{(n)}$).
+3. Compute the core tensor: $\mathcal{S} = \mathcal{X} \times_1 U^{(1)T} \times_2 U^{(2)T} \cdots \times_N U^{(N)T}$.
+
+```python
+def hosvd(tensor, ranks=None):
+    """Compute the (truncated) HOSVD."""
+    N = tensor.ndim
+    if ranks is None:
+        ranks = tensor.shape
+
+    factors = []
+    singular_values = []
+    for n in range(N):
+        Xn = unfold(tensor, n)
+        U, s, Vt = np.linalg.svd(Xn, full_matrices=False)
+        factors.append(U[:, :ranks[n]])
+        singular_values.append(s[:ranks[n]])
+
+    core = tensor.copy()
+    for n in range(N):
+        core = np.tensordot(factors[n].T, core, axes=([1], [n]))
+        core = np.moveaxis(core, 0, n)
+
+    return core, factors, singular_values
+```
+
+### Properties
+
+<TheoremBlock type="theorem" number={3} title="HOSVD properties (De Lathauwer et al., 2000)">
+The HOSVD satisfies:
+
+1. **All-orthogonality:** Each factor matrix $U^{(n)}$ has orthonormal columns.
+2. **Ordering:** The mode-$n$ singular values are non-negative and can be ordered: $\sigma_1^{(n)} \geq \sigma_2^{(n)} \geq \cdots \geq 0$.
+3. **Multi-mode interactions:** $\mathcal{S}_{r_1, \ldots, r_N}$ quantifies the interaction between the $r_n$-th pattern along each mode.
+</TheoremBlock>
+
+**Key difference from the matrix SVD:** The truncated HOSVD is **not** the best rank-$(R_1, \ldots, R_N)$ Tucker approximation. The HOOI (Higher-Order Orthogonal Iteration) refines it to a local optimum.
+
+**Approximation bound:** Let $\hat{\mathcal{X}}$ be the truncated HOSVD and $\mathcal{X}^*$ the best Tucker approximation. Then:
+
+$$\|\mathcal{X} - \hat{\mathcal{X}}\|_F^2 \leq N \|\mathcal{X} - \mathcal{X}^*\|_F^2$$
+
+This $\sqrt{N}$ suboptimality factor is the price for the HOSVD's simplicity — it computes each mode's SVD independently rather than jointly optimizing all modes.
+
+![HOSVD: mode-n singular value spectra for a 20×15×10 tensor](/images/topics/tensor-decompositions/hosvd-spectra.png)
+
+---
+
+## 5. Tensor Train Decomposition
+
+### The Curse of Dimensionality in Tucker
+
+The Tucker decomposition has a fundamental scaling problem. For an order-$N$ tensor with multilinear rank $(R, R, \ldots, R)$, the core tensor has $R^N$ entries — **exponential in the number of modes**. For a 10-way tensor with $R = 5$, the core alone has $5^{10} \approx 10$ million entries.
+
+### The Tensor Train Format
+
+<TheoremBlock type="definition" number={8} title="Tensor Train decomposition">
+An order-$N$ tensor $\mathcal{X} \in \mathbb{R}^{I_1 \times \cdots \times I_N}$ has a **Tensor Train decomposition** with **TT-ranks** $(r_0, r_1, \ldots, r_N)$ where $r_0 = r_N = 1$:
+
+$$\mathcal{X}_{i_1, i_2, \ldots, i_N} = G_1(i_1) \cdot G_2(i_2) \cdots G_N(i_N)$$
+
+where each $G_k(i_k) \in \mathbb{R}^{r_{k-1} \times r_k}$ is a matrix obtained by fixing the "physical" index $i_k$ in the 3-way core tensor $\mathcal{G}_k \in \mathbb{R}^{r_{k-1} \times I_k \times r_k}$.
+</TheoremBlock>
+
+**Storage comparison:** For an order-$N$ tensor with all modes of size $I$ and rank $r$:
+
+| Format | Storage | $N=5, I=10, r=3$ | $N=10, I=10, r=3$ |
+|--------|---------|-------|--------|
+| Full tensor | $I^N$ | 100,000 | $10^{10}$ |
+| Tucker | $r^N + NIr$ | 393 | 59,349 + 300 |
+| CP | $NI r$ | 150 | 300 |
+| Tensor Train | $\sim N I r^2$ | 450 | 900 |
+
+Tucker's core grows exponentially; TT grows linearly. The TT format trades a slightly larger per-mode cost ($r^2$ vs. $r$) for freedom from the exponential core.
+
+<StorageScalingExplorer client:visible />
+
+### TT-SVD Algorithm
+
+<TheoremBlock type="theorem" number={4} title="TT-SVD (Oseledets, 2011)">
+Every tensor admits a TT decomposition. The **TT-SVD algorithm** computes it via a sequence of reshapes and SVDs:
+
+1. Start with $C_1 = \text{reshape}(\mathcal{X}, [I_1, \, I_2 \cdots I_N])$.
+2. Compute the SVD: $C_1 = U_1 \Sigma_1 V_1^T$. Truncate to rank $r_1$. Set $G_1 = \text{reshape}(U_1, [1, I_1, r_1])$.
+3. Set $C_2 = \text{reshape}(\Sigma_1 V_1^T, [r_1 \cdot I_2, \, I_3 \cdots I_N])$.
+4. Repeat: SVD, truncate, reshape.
+
+**Approximation bound:**
+
+$$\|\mathcal{X} - \hat{\mathcal{X}}_{\text{TT}}\|_F^2 \leq \sum_{k=1}^{N-1} \|\mathcal{X} - \mathcal{X}_k^*\|_F^2$$
+
+where $\mathcal{X}_k^*$ is the best rank-$r_k$ approximation of the $k$-th intermediate matrix.
+</TheoremBlock>
+
+The TT-SVD is a sequence of matrix SVDs — each application of the [Eckart–Young theorem](/topics/svd) controls one bond dimension. The total error accumulates at most additively, not multiplicatively.
+
+```python
+def tt_svd(tensor, max_rank=None, tol=1e-10):
+    """TT-SVD algorithm for Tensor Train decomposition."""
+    N = tensor.ndim
+    shape = tensor.shape
+    if max_rank is None:
+        max_rank = max(shape)
+
+    cores = []
+    C = tensor.copy().reshape(shape[0], -1)
+    r_prev = 1
+
+    for k in range(N - 1):
+        C = C.reshape(r_prev * shape[k], -1)
+        U, s, Vt = np.linalg.svd(C, full_matrices=False)
+        r_k = min(max_rank, len(s))
+        if tol > 0:
+            r_k = min(r_k, max(1, (s > tol * s[0]).sum()))
+        cores.append(U[:, :r_k].reshape(r_prev, shape[k], r_k))
+        C = np.diag(s[:r_k]) @ Vt[:r_k, :]
+        r_prev = r_k
+
+    cores.append(C.reshape(r_prev, shape[-1], 1))
+    return cores
+```
+
+![Tensor Train: TT-rank profile, storage scaling, and bond singular values](/images/topics/tensor-decompositions/tensor-train.png)
+
+---
+
+## 6. The t-SVD (Tensor SVD via the Fourier Domain)
+
+### Motivation
+
+Can we define a tensor factorization with an **exact Eckart–Young theorem**? For order-3 tensors, the answer is yes. The **t-SVD** (Kilmer & Martin, 2011) defines a new algebra on 3-way tensors under which the SVD generalizes directly.
+
+### The t-Product
+
+<TheoremBlock type="definition" number={9} title="t-product">
+Let $\mathcal{A} \in \mathbb{R}^{I_1 \times I_2 \times I_3}$ and $\mathcal{B} \in \mathbb{R}^{I_2 \times J \times I_3}$. The **t-product** $\mathcal{C} = \mathcal{A} * \mathcal{B}$ is computed by:
+
+1. DFT along mode 3: $\hat{\mathcal{A}} = \text{fft}(\mathcal{A}, [], 3)$, $\hat{\mathcal{B}} = \text{fft}(\mathcal{B}, [], 3)$.
+2. Multiply frontal slices: $\hat{\mathcal{C}}^{(k)} = \hat{\mathcal{A}}^{(k)} \hat{\mathcal{B}}^{(k)}$ for each $k = 1, \ldots, I_3$.
+3. Inverse DFT: $\mathcal{C} = \text{ifft}(\hat{\mathcal{C}}, [], 3)$.
+</TheoremBlock>
+
+The t-product transforms a tensor multiplication problem into $I_3$ independent matrix multiplications in the Fourier domain. This is exactly the structure we need to inherit the matrix SVD's properties.
+
+### The t-SVD
+
+<TheoremBlock type="definition" number={10} title="t-SVD">
+Every $\mathcal{A} \in \mathbb{R}^{I_1 \times I_2 \times I_3}$ has a **t-SVD**: $\mathcal{A} = \mathcal{U} * \mathcal{S} * \mathcal{V}^T$ where $\mathcal{U}$ and $\mathcal{V}$ are orthogonal (in the t-product sense) and $\mathcal{S}$ is f-diagonal (only the diagonal tubes $\mathcal{S}_{i,i,:}$ may be nonzero).
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={11} title="Tubal rank">
+The **tubal rank** of $\mathcal{A}$ is the number of nonzero singular tubes in $\mathcal{S}$ — equivalently, the maximum rank across all Fourier-domain frontal slices.
+</TheoremBlock>
+
+### Optimal Approximation
+
+<TheoremBlock type="theorem" number={5} title="Eckart–Young theorem for t-SVD (Kilmer & Martin, 2011)">
+The truncated t-SVD $\mathcal{A}_k$ is the best tubal-rank-$k$ approximation in the Frobenius norm:
+
+$$\mathcal{A}_k = \arg\min_{\text{tubal-rank}(\mathcal{B}) \leq k} \|\mathcal{A} - \mathcal{B}\|_F$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By Parseval's theorem, $\|\mathcal{A}\|_F^2 = \frac{1}{I_3} \sum_{j=1}^{I_3} \|\hat{\mathcal{A}}^{(j)}\|_F^2$. The tubal-rank-$k$ constraint corresponds to rank-$k$ constraints on each Fourier-domain frontal slice $\hat{\mathcal{A}}^{(j)}$.
+
+By the matrix [Eckart–Young theorem](/topics/svd) applied independently to each $\hat{\mathcal{A}}^{(j)}$, the optimal rank-$k$ approximation of $\hat{\mathcal{A}}^{(j)}$ keeps its top $k$ singular values and truncates the rest. The truncated t-SVD does exactly this: it applies rank-$k$ truncation to each Fourier-domain slice.
+
+Since the Fourier transform preserves the Frobenius norm (Parseval), minimizing $\|\mathcal{A} - \mathcal{B}\|_F^2 = \frac{1}{I_3} \sum_j \|\hat{\mathcal{A}}^{(j)} - \hat{\mathcal{B}}^{(j)}\|_F^2$ decomposes into $I_3$ independent matrix problems, each solved optimally by the truncated SVD. The inverse DFT recovers the optimal tensor approximation. $\square$
+</TheoremBlock>
+
+This is the only tensor decomposition with an exact Eckart–Young theorem. The CP decomposition's best rank-$k$ approximation may not even exist (the infimum is not achieved). The Tucker/HOSVD approximation is within $\sqrt{N}$ of optimal. The t-SVD achieves exact optimality by working in the Fourier domain, where the tensor problem decomposes into independent matrix problems.
+
+```python
+def t_svd_truncated(tensor, rank):
+    """Truncated t-SVD (best tubal-rank-k approximation)."""
+    I1, I2, I3 = tensor.shape
+    T_hat = fft(tensor, axis=2)
+
+    recon_hat = np.zeros_like(T_hat)
+    singular_values = []
+    for k in range(I3):
+        u, s, vt = np.linalg.svd(T_hat[:, :, k], full_matrices=False)
+        r = min(rank, len(s))
+        recon_hat[:, :, k] = (u[:, :r] * s[:r]) @ vt[:r, :]
+        singular_values.append(s)
+
+    return np.real(ifft(recon_hat, axis=2)), singular_values
+```
+
+<TSVDExplorer client:visible />
+
+![t-SVD: Eckart–Young curve, Fourier-domain singular values, and frontal slice comparison](/images/topics/tensor-decompositions/t-svd.png)
+
+---
+
+## 7. Multilinear PCA
+
+### From PCA to MPCA
+
+[PCA](/topics/pca-low-rank) operates on vectors: each observation $x_i \in \mathbb{R}^d$ is a point, and PCA finds the $k$-dimensional subspace of maximum variance. But when each observation is naturally a matrix or tensor, vectorizing destroys spatial structure and inflates dimensionality.
+
+**Multilinear PCA (MPCA)** (Lu, Plataniotis & Venetsanopoulos, 2008) applies dimensionality reduction along each mode of a tensor dataset without vectorization.
+
+### Formulation
+
+Given tensor observations $\{\mathcal{X}_i\}_{i=1}^n$ with $\mathcal{X}_i \in \mathbb{R}^{I_1 \times \cdots \times I_N}$, MPCA seeks $N$ projection matrices $\{U^{(k)} \in \mathbb{R}^{I_k \times P_k}\}_{k=1}^N$ maximizing the total scatter of the projected tensors. This is solved by alternating optimization: fix all projections except $U^{(k)}$, project, unfold along mode $k$, and apply standard PCA.
+
+### Connection to Tucker and HOSVD
+
+MPCA is equivalent to computing the Tucker decomposition of the dataset tensor (observations stacked along an extra mode). The HOSVD initialization gives the starting point, and HOOI refines it. The PCA along each mode is the [Spectral Theorem](/topics/spectral-theorem) applied to the mode-$k$ scatter matrix.
+
+![MPCA: original and reconstructed 16×16 images using multilinear PCA](/images/topics/tensor-decompositions/mpca.png)
+
+---
+
+## 8. Applications
+
+### 8.1 Recommender Systems (CP)
+
+A user × item × context tensor captures interaction data. The CP decomposition extracts latent factors — user preferences, item characteristics, and contextual effects — as separate vectors. Kruskal's uniqueness theorem guarantees the factors are meaningful, not arbitrary rotations. This contrasts with matrix factorization (users × items), where PCA/SVD factors are unique only up to rotation.
+
+### 8.2 Video Surveillance (t-SVD and Robust Tensors)
+
+A height × width × frames tensor represents video. The low-tubal-rank component captures the static background (via the t-SVD), while the sparse component captures moving foreground. This extends the matrix [Robust PCA](/topics/pca-low-rank) framework from 2D to 3D, preserving temporal correlations across frames.
+
+![Video background/foreground separation via t-SVD on a synthetic 20×20×30 video tensor](/images/topics/tensor-decompositions/video-separation-tsvd.png)
+
+### 8.3 Neuroimaging (Tucker/HOSVD)
+
+EEG data (channels × time × trials × subjects) decomposes via Tucker into spatial, temporal, trial-level, and subject-level factors simultaneously. Each factor matrix captures the dominant patterns along its mode, and the core tensor reveals how spatial patterns interact with temporal dynamics across trials and subjects.
+
+### 8.4 Quantum Chemistry (Tensor Train)
+
+The wave function of an $N$-electron system lives in a $d^N$-dimensional space. TT/MPS compresses this to $\mathcal{O}(N d r^2)$ parameters, making quantum chemistry computations tractable for systems with tens of electrons — a problem where the Tucker core's $d^N$ scaling is completely infeasible.
+
+### 8.5 Topological Data Analysis
+
+[Persistent homology](/topics/persistent-homology) applied to tensor factor scores reveals topological structure in the latent factor space. The [Mapper algorithm](/topics/mapper-algorithm) applied to CP factor scores produces topological summaries of tensor data. The [bottleneck distance](/topics/barcodes-bottleneck) quantifies stability of topological features across tensor decomposition parameters (rank, regularization).
+
+---
+
+## 9. Computational Notes
+
+### Python Libraries
+
+| Library | Decompositions | When to use |
+|---------|---------------|-------------|
+| `tensorly` | CP, Tucker, TT, Robust, Non-negative | General-purpose tensor decompositions |
+| `numpy.einsum` | Contractions, mode products | Low-level tensor operations |
+| `scipy.fft` | t-SVD implementation | Fourier-domain tensor computations |
+| `opt_einsum` | Optimized contractions | Large-scale tensor networks |
+| `TensorNetwork` (Google) | TT, MERA, general networks | Quantum-inspired tensor methods |
+
+### Complexity
+
+| Method | Time complexity | Space |
+|--------|----------------|-------|
+| CP-ALS (order 3) | $\mathcal{O}(I^3 R + I^2 R^2)$ per iteration | $\mathcal{O}(IR)$ |
+| Tucker-HOOI (order 3) | $\mathcal{O}(I^3 R + I R^3)$ per iteration | $\mathcal{O}(R^3 + IR)$ |
+| HOSVD (order 3) | $\mathcal{O}(I^3 R)$ (three SVDs) | $\mathcal{O}(R^3 + IR)$ |
+| TT-SVD (order $N$) | $\mathcal{O}(N I r^2 \prod_k I_k)$ | $\mathcal{O}(NIr^2)$ |
+| t-SVD | $\mathcal{O}(I_1 I_2 I_3 \log I_3 + I_3 I_1^2 I_2)$ | $\mathcal{O}(I_1 I_2 I_3)$ |
+
+### Numerical Considerations
+
+- **CP rank determination:** The tensor rank is NP-hard to compute. Use CORCONDIA (core consistency diagnostic) in practice.
+- **Degeneracy in CP-ALS:** Factor vectors may become nearly collinear with opposite-sign weights. Regularization or non-negative constraints help.
+- **HOSVD as initialization:** Always use HOSVD initialization over random initialization for Tucker decompositions.
+- **TT-rounding:** After arithmetic in TT format, TT-ranks grow. Re-compress via sequential SVDs — analogous to matrix low-rank truncation from the [SVD topic](/topics/svd).
+
+### Einstein Summation
+
+The `np.einsum` function provides a compact notation for tensor operations:
+
+```python
+# Mode-2 product: X ×_2 B
+result = np.einsum('ijk,lj->ilk', X, B)
+
+# Tensor inner product: <A, C>
+inner = np.einsum('ijk,ijk->', A, C)
+
+# CP reconstruction: sum of outer products
+recon = np.einsum('r,ir,jr,kr->ijk', weights, A, B, C)
+```
+
+---
+
+## 10. Connections & Further Reading
+
+### The Tower of Factorization
+
+The Linear Algebra track has built a tower of factorization:
+
+1. **[The Spectral Theorem](/topics/spectral-theorem):** Symmetric matrices decompose into orthogonal eigenvectors.
+2. **[The SVD](/topics/svd):** Any matrix decomposes into orthogonal singular vectors with optimal truncation (Eckart–Young).
+3. **[PCA](/topics/pca-low-rank):** The SVD of centered data yields dimensionality reduction, with extensions to nonlinear, probabilistic, robust, and sparse settings.
+4. **Tensor Decompositions (this topic):** Multi-way arrays decompose via CP (unique factors), Tucker/HOSVD (multi-mode PCA), Tensor Train (scalable to high order), and t-SVD (optimal truncation restored).
+
+Each level generalizes the previous, and the [Topology & TDA track](/paths#topology) provides tools for analyzing the topological structure of the resulting factor spaces.
+
+### Connection Table
+
+| Topic | Connection to Tensor Decompositions |
+|-------|-------------------------------------|
+| **[The Spectral Theorem](/topics/spectral-theorem)** *(prerequisite)* | The eigendecomposition of the mode-$n$ scatter matrices is the Spectral Theorem. The HOSVD applies it independently along each mode. |
+| **[Singular Value Decomposition](/topics/svd)** *(prerequisite)* | The HOSVD applies the matrix SVD to each mode unfolding. The t-SVD applies it to each Fourier-domain frontal slice. The TT-SVD is a sequence of matrix SVDs. |
+| **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** *(prerequisite)* | Tucker decomposition is multilinear PCA. MPCA applies PCA along each tensor mode. The scree plot generalizes to per-mode singular value spectra. |
+| **[Persistent Homology](/topics/persistent-homology)** *(cross-track)* | Persistent homology on tensor factor scores reveals topological structure in the latent factor space. Mode-$n$ singular value filtrations provide multi-scale persistence. |
+| **[The Mapper Algorithm](/topics/mapper-algorithm)** *(cross-track)* | Mapper applied to CP factor scores produces topological summaries of tensor data. |
+| **[Barcodes & Bottleneck Distance](/topics/barcodes-bottleneck)** *(cross-track)* | The bottleneck distance quantifies stability of topological features across tensor decomposition parameters. |
+| **[Sheaf Theory](/topics/sheaf-theory)** *(cross-track)* | Sheaf Laplacian eigendecomposition on sensor networks produces multi-relational data naturally represented as tensors. Tucker decomposition of the sheaf cohomology tensor extracts multi-scale features. |
+
+### Summary Table
+
+| Decomposition | Formula | Key property | Optimal approx? | Storage (order $N$, size $I$, rank $r$) |
+|---------------|---------|-------------|-----------------|----------------------------------------|
+| **CP** | $\sum_r \lambda_r \bigcirc_n a_r^{(n)}$ | Essentially unique (Kruskal) | **No** (may not exist) | $\mathcal{O}(NIr)$ |
+| **Tucker** | $\mathcal{G} \times_1 U^{(1)} \cdots \times_N U^{(N)}$ | Multi-mode subspaces | HOSVD: within $\sqrt{N}$ | $\mathcal{O}(r^N + NIr)$ |
+| **HOSVD** | Tucker via mode-wise SVD | Orthogonal factors, ordered | Within $\sqrt{N}$ of optimal | $\mathcal{O}(r^N + NIr)$ |
+| **Tensor Train** | $G_1(i_1) \cdots G_N(i_N)$ | Linear in $N$ | Error bounded | $\mathcal{O}(NIr^2)$ |
+| **t-SVD** | $\mathcal{U} * \mathcal{S} * \mathcal{V}^T$ | Eckart–Young analog | **Yes** (tubal rank) | $\mathcal{O}(I^2 I_3)$ |

@@ -11,9 +11,7 @@ export const tracks = [
     label: 'Linear Algebra',
     description:
       'Spectral theory, matrix decompositions, and the algebraic backbone of nearly every ML method.',
-    planned: [
-      'Tensor Decompositions',
-    ],
+    planned: [],
   },
   {
     domain: 'probability',
