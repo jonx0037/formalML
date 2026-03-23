@@ -19,7 +19,6 @@ export const tracks = [
     description:
       'Measure-theoretic foundations through PAC learning and concentration inequalities.',
     planned: [
-      'Measure-Theoretic Probability',
       'Concentration Inequalities',
       'PAC Learning Framework',
       'Bayesian Nonparametrics',

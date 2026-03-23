@@ -69,3 +69,15 @@ export interface MapperGraphNode {
   centroidY: number;
 }
 
+// ─── Measure-Theoretic Probability Types ───
+
+export interface ConvergencePath {
+  values: number[];
+  label: string;
+}
+
+export interface MartingalePath {
+  values: number[];
+  regime?: number[]; // for regime-switching process
+}
+

@@ -1,0 +1,843 @@
+---
+title: "Measure-Theoretic Probability"
+subtitle: "From sigma-algebras to martingales — the rigorous foundations that underpin modern statistics and machine learning"
+status: "published"
+difficulty: "intermediate"
+prerequisites: []
+tags:
+  - "probability"
+  - "measure-theory"
+  - "convergence"
+  - "conditional-expectation"
+  - "martingales"
+  - "machine-learning"
+domain: "probability"
+videoId: null
+notebookPath: "notebooks/measure-theoretic-probability/01_measure_theoretic_probability.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/measure-theoretic-probability.mdx"
+datePublished: 2026-03-23
+estimatedReadTime: 50
+abstract: "Measure-theoretic probability provides the rigorous foundations for modern statistics and machine learning. We develop the theory from first principles: sigma-algebras and measurable spaces, measures and Kolmogorov's axioms, the Lebesgue integral via simple functions, the Monotone and Dominated Convergence Theorems, the four modes of convergence and their hierarchy, the Laws of Large Numbers and Central Limit Theorem, product measures and Fubini's theorem, conditional expectation via the Radon-Nikodym theorem with its L2 projection interpretation, and a preview of martingale theory with connections to financial applications including GARCH volatility modeling and regime detection."
+connections:
+  - topic: "pca-low-rank"
+    relationship: "The sample covariance matrix converges to the population covariance by the Law of Large Numbers; L2 theory guarantees convergence of eigenvalues."
+references:
+  - type: "book"
+    title: "Probability: Theory and Examples"
+    authors: "Durrett"
+    year: 2019
+    note: "Primary reference — standard graduate probability textbook"
+  - type: "book"
+    title: "Probability and Measure"
+    authors: "Billingsley"
+    year: 2012
+    note: "Careful measure-theoretic development"
+  - type: "book"
+    title: "Probability with Martingales"
+    authors: "Williams"
+    year: 1991
+    note: "Excellent introduction to martingale theory"
+  - type: "book"
+    title: "Real Analysis"
+    authors: "Folland"
+    year: 2013
+    note: "Standard reference for Lebesgue integration and Lp spaces"
+  - type: "book"
+    title: "Measure Theory and Probability Theory"
+    authors: "Athreya & Lahiri"
+    year: 2006
+    note: "Balanced between measure theory and probability"
+  - type: "book"
+    title: "A Probability Path"
+    authors: "Resnick"
+    year: 2014
+    note: "Transition from undergraduate to measure-theoretic probability"
+  - type: "book"
+    title: "Stochastic Calculus for Finance"
+    authors: "Shreve"
+    year: 2004
+    note: "Martingale theory applied to financial mathematics"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import SigmaAlgebraExplorer from '../../components/viz/SigmaAlgebraExplorer.tsx';
+import ConvergenceModesDemo from '../../components/viz/ConvergenceModesDemo.tsx';
+import ConditionalExpectationProjection from '../../components/viz/ConditionalExpectationProjection.tsx';
+import MartingalePathSimulator from '../../components/viz/MartingalePathSimulator.tsx';
+
+## Overview & Motivation
+
+Why do we need measure theory for probability? The short answer: because naive probability breaks down in continuous settings.
+
+Consider a "uniform" random variable $X$ on $[0, 1]$. We want $P(X \in A)$ for subsets $A \subseteq [0, 1]$. For intervals, this is simple: $P(X \in [a, b]) = b - a$. But what about arbitrary subsets? Can we assign a "length" (probability) to *every* subset of $[0, 1]$ while preserving countable additivity?
+
+The answer, due to Vitali (1905), is **no** — there exist non-measurable sets. This forces us to restrict our attention to a carefully chosen collection of "well-behaved" subsets: a **sigma-algebra**.
+
+This is not an abstract curiosity. Every time we write $E[X]$, compute a conditional expectation $E[X \mid \mathcal{G}]$, invoke the law of large numbers, or price a financial derivative, we are relying on measure-theoretic machinery. The Lebesgue integral replaces the Riemann integral because it handles limits of random variables correctly (via the Monotone and Dominated Convergence Theorems). Conditional expectation, defined as a Radon–Nikodym derivative, is the mathematical backbone of filtering, Bayesian inference, and martingale theory. And martingales themselves are the language of fair pricing in mathematical finance.
+
+### What We Cover
+
+1. **Sigma-algebras & Measurable Spaces** — the sets we can assign probabilities to, and why we need them.
+2. **Measures & Probability Measures** — Kolmogorov's axioms, Lebesgue measure, and the Cantor set.
+3. **Measurable Functions & Random Variables** — formalizing "random quantities" as measurable maps.
+4. **The Lebesgue Integral & Expectation** — building the integral from simple functions, with full proofs of MCT and DCT.
+5. **Convergence of Random Variables** — the four modes, their hierarchy, the Laws of Large Numbers, and the CLT.
+6. **Product Measures & Fubini's Theorem** — integrating over product spaces and why $E[XY] = E[X]E[Y]$ for independent variables.
+7. **Conditional Expectation & Radon–Nikodym** — the deepest idea: conditional expectation as an $L^2$ projection.
+8. **A Preview of Martingales** — filtrations, adapted processes, and connections to finance.
+
+### Connections
+
+This topic connects to the rest of the formalML curriculum in several directions:
+
+- **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** — the sample covariance $\hat{\Sigma} = \frac{1}{n-1} X^T X$ converges to the population covariance $\Sigma$ by the Law of Large Numbers; $L^2$ theory guarantees convergence of eigenvalues.
+- **Concentration Inequalities** *(coming soon)* — builds directly on the $L^p$ spaces and convergence theory developed here, quantifying *rates* of convergence beyond the LLN.
+- **PAC Learning Framework** *(coming soon)* — uses measure-theoretic probability to formalize learnability.
+- **Bayesian Nonparametrics** *(coming soon)* — requires conditional expectation and the Radon–Nikodym theorem for prior specifications on infinite-dimensional spaces.
+
+---
+
+## Sigma-Algebras and Measurable Spaces
+
+### Why We Need Sigma-Algebras
+
+The fundamental question of probability is: *given a sample space $\Omega$, which subsets can we assign probabilities to?*
+
+For finite $\Omega$, the answer is easy: every subset. The power set $2^\Omega$ works. But for uncountable $\Omega$ — like $\mathbb{R}$ or $[0, 1]$ — the power set is too large. Vitali's 1905 construction shows that no translation-invariant, countably additive measure can be defined on *all* subsets of $[0, 1]$. We must restrict to a smaller collection of sets that is still rich enough to do calculus.
+
+The right structure is a **sigma-algebra**: a collection of subsets closed under complements and countable unions. This is precisely what we need for probability — we want to say "the probability of $A$ or $B$" (unions), "the probability of not $A$" (complements), and we want these operations to work for countable sequences of events.
+
+<TheoremBlock type="definition" number={1} title="Sigma-algebra">
+A *sigma-algebra* (or *$\sigma$-algebra*) on a set $\Omega$ is a collection $\mathcal{F} \subseteq 2^\Omega$ satisfying:
+
+1. $\Omega \in \mathcal{F}$ (the whole space is measurable),
+2. If $A \in \mathcal{F}$, then $A^c \in \mathcal{F}$ (closure under complements),
+3. If $A_1, A_2, \ldots \in \mathcal{F}$, then $\bigcup_{n=1}^\infty A_n \in \mathcal{F}$ (closure under countable unions).
+
+The pair $(\Omega, \mathcal{F})$ is a **measurable space**.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Properties (2) and (3) together imply closure under countable *intersections* (by De Morgan's laws: $\bigcap A_n = (\bigcup A_n^c)^c$), and property (1) with (2) gives $\emptyset \in \mathcal{F}$.
+</TheoremBlock>
+
+### Examples on a Finite Set
+
+Let $\Omega = \{1, 2, 3\}$. Three sigma-algebras on $\Omega$:
+
+- **Trivial:** $\mathcal{F}_0 = \{\emptyset, \Omega\}$ — we can only say "something happens" or "nothing happens."
+- **Partial:** $\mathcal{F}_1 = \{\emptyset, \{1\}, \{2, 3\}, \Omega\}$ — we can distinguish element 1 from the rest.
+- **Power set:** $\mathcal{F}_2 = 2^\Omega$ — we can distinguish every element.
+
+The trivial sigma-algebra carries the least information; the power set carries the most. This idea — **sigma-algebras as information** — is the conceptual key to conditional expectation and filtrations.
+
+### Generated Sigma-Algebras and the Borel Sets
+
+Given any collection $\mathcal{C}$ of subsets of $\Omega$, there is a smallest sigma-algebra containing $\mathcal{C}$, written $\sigma(\mathcal{C})$. It is the intersection of all sigma-algebras containing $\mathcal{C}$ — and since the power set $2^\Omega$ is always a sigma-algebra, this intersection is non-empty.
+
+<TheoremBlock type="definition" number={2} title="Borel sigma-algebra">
+The *Borel sigma-algebra* on $\mathbb{R}$, denoted $\mathcal{B}(\mathbb{R})$, is the sigma-algebra generated by the open intervals:
+
+$$\mathcal{B}(\mathbb{R}) = \sigma\bigl(\{(a, b) : a < b, \; a, b \in \mathbb{R}\}\bigr)$$
+
+Equivalently, $\mathcal{B}(\mathbb{R}) = \sigma(\text{open sets})$. The Borel sigma-algebra contains all open sets, closed sets, countable intersections of open sets ($G_\delta$ sets), countable unions of closed sets ($F_\sigma$ sets), and much more. It is the standard sigma-algebra for probability on $\mathbb{R}$.
+</TheoremBlock>
+
+The Borel sets on $\mathbb{R}^d$ are defined analogously: $\mathcal{B}(\mathbb{R}^d) = \sigma(\text{open sets in } \mathbb{R}^d)$.
+
+Here is a Python implementation that verifies the sigma-algebra axioms on finite sets and computes generated sigma-algebras by closure:
+
+```python
+def is_sigma_algebra(omega, F):
+    """Verify whether F is a sigma-algebra on omega."""
+    omega_set = frozenset(omega)
+    F_sets = {frozenset(s) for s in F}
+
+    # Axiom 1: omega in F
+    if omega_set not in F_sets:
+        return False, "Omega not in F"
+
+    # Axiom 2: closure under complements
+    for A in F_sets:
+        complement = omega_set - A
+        if complement not in F_sets:
+            return False, f"Complement of {set(A)} not in F"
+
+    # Axiom 3: closure under (finite, here) unions
+    for A in F_sets:
+        for B in F_sets:
+            if A | B not in F_sets:
+                return False, f"Union {set(A)} ∪ {set(B)} not in F"
+
+    return True, "Valid sigma-algebra"
+```
+
+![Hasse diagrams of three sigma-algebras on a three-element set, ordered by inclusion. The trivial sigma-algebra has 2 elements, the partial has 4, and the power set has 8.](/images/topics/measure-theoretic-probability/sigma-algebra-lattices.png)
+
+<SigmaAlgebraExplorer client:visible />
+
+---
+
+## Measures and Probability Measures
+
+### Definition of a Measure
+
+A sigma-algebra tells us *which* subsets are measurable. A measure tells us *how big* they are.
+
+<TheoremBlock type="definition" number={3} title="Measure">
+Let $(\Omega, \mathcal{F})$ be a measurable space. A *measure* is a function $\mu : \mathcal{F} \to [0, \infty]$ satisfying:
+
+1. $\mu(\emptyset) = 0$ (the empty set has zero measure),
+2. **Countable additivity:** If $A_1, A_2, \ldots \in \mathcal{F}$ are pairwise disjoint, then
+$$\mu\left(\bigcup_{n=1}^\infty A_n\right) = \sum_{n=1}^\infty \mu(A_n)$$
+
+The triple $(\Omega, \mathcal{F}, \mu)$ is a **measure space**.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Countable additivity is the crucial axiom. Finite additivity ($\mu(A \cup B) = \mu(A) + \mu(B)$ for disjoint $A, B$) is too weak — it cannot guarantee that limits of measurable operations behave well.
+</TheoremBlock>
+
+### Fundamental Properties
+
+<TheoremBlock type="proposition" number={1} title="Monotonicity of measures">
+If $A \subseteq B$, then $\mu(A) \leq \mu(B)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write $B = A \cup (B \setminus A)$ with $A$ and $B \setminus A$ disjoint. Then $\mu(B) = \mu(A) + \mu(B \setminus A) \geq \mu(A)$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Continuity from below">
+If $A_1 \subseteq A_2 \subseteq \cdots$ and $A = \bigcup_{n=1}^\infty A_n$, then $\mu(A) = \lim_{n \to \infty} \mu(A_n)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Define $B_1 = A_1$ and $B_n = A_n \setminus A_{n-1}$ for $n \geq 2$. Then the $B_n$ are pairwise disjoint, $A = \bigsqcup B_n$, and $A_n = \bigsqcup_{k=1}^n B_k$. By countable additivity:
+
+$$\mu(A) = \sum_{n=1}^\infty \mu(B_n) = \lim_{N \to \infty} \sum_{n=1}^N \mu(B_n) = \lim_{N \to \infty} \mu(A_N)$$
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={3} title="Continuity from above">
+If $A_1 \supseteq A_2 \supseteq \cdots$, $\mu(A_1) < \infty$, and $A = \bigcap_{n=1}^\infty A_n$, then $\mu(A) = \lim_{n \to \infty} \mu(A_n)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply continuity from below to $A_1 \setminus A_n \uparrow A_1 \setminus A$, then use $\mu(A_1 \setminus A_n) = \mu(A_1) - \mu(A_n)$ (valid since $\mu(A_1) < \infty$).
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={4} title="Inclusion-exclusion">
+For any $A, B \in \mathcal{F}$:
+
+$$\mu(A \cup B) = \mu(A) + \mu(B) - \mu(A \cap B)$$
+</TheoremBlock>
+
+![Continuity from below and above illustrated with nested sets — the measure of the limit equals the limit of the measures.](/images/topics/measure-theoretic-probability/measure-continuity.png)
+
+### Lebesgue Measure
+
+<TheoremBlock type="definition" number={4} title="Lebesgue measure">
+*Lebesgue measure* $\lambda$ on $(\mathbb{R}, \mathcal{B}(\mathbb{R}))$ is the unique measure satisfying:
+
+$$\lambda([a, b]) = b - a \quad \text{for all } a \leq b$$
+
+Key properties:
+- Translation invariance: $\lambda(A + x) = \lambda(A)$ for all $x \in \mathbb{R}$.
+- Scaling: $\lambda(cA) = |c| \cdot \lambda(A)$.
+- Countable sets have measure zero: $\lambda(\mathbb{Q}) = 0$.
+- The Cantor set has measure zero but is uncountable.
+</TheoremBlock>
+
+The Cantor set is a remarkable object: it is closed, uncountable, has Lebesgue measure zero, and is totally disconnected. We construct it by iteratively removing middle thirds from $[0, 1]$. At each step, the total length removed is $\sum_{k=0}^{n-1} 2^k / 3^{k+1}$, which converges to $1$ — leaving a set of measure zero that still contains uncountably many points (every number in $[0, 1]$ with a ternary expansion using only digits 0 and 2).
+
+![The Cantor set construction: iterative removal of middle thirds, with the total removed measure converging to 1.](/images/topics/measure-theoretic-probability/cantor-set-construction.png)
+
+### Probability Measures and Kolmogorov's Axioms
+
+<TheoremBlock type="definition" number={5} title="Probability measure">
+A *probability measure* is a measure $P$ on $(\Omega, \mathcal{F})$ with $P(\Omega) = 1$. The triple $(\Omega, \mathcal{F}, P)$ is a **probability space**.
+
+Kolmogorov's axioms (1933) are precisely the axioms for a probability measure:
+1. $P(A) \geq 0$ for all $A \in \mathcal{F}$ (non-negativity).
+2. $P(\Omega) = 1$ (normalization).
+3. $P(\bigsqcup A_n) = \sum P(A_n)$ for pairwise disjoint $(A_n)$ (countable additivity).
+</TheoremBlock>
+
+Every familiar probability distribution defines a probability measure on $(\mathbb{R}, \mathcal{B}(\mathbb{R}))$. The uniform distribution on $[0, 1]$ is simply Lebesgue measure restricted to $[0, 1]$. A Gaussian $N(\mu, \sigma^2)$ defines $P(A) = \int_A \frac{1}{\sigma\sqrt{2\pi}} e^{-(x-\mu)^2/(2\sigma^2)} dx$ for Borel sets $A$.
+
+---
+
+## Measurable Functions and Random Variables
+
+### Measurable Functions
+
+<TheoremBlock type="definition" number={6} title="Measurable function">
+Let $(\Omega, \mathcal{F})$ and $(S, \mathcal{S})$ be measurable spaces. A function $f : \Omega \to S$ is *$(\mathcal{F}, \mathcal{S})$-measurable* if the preimage of every measurable set is measurable:
+
+$$f^{-1}(B) := \{\omega \in \Omega : f(\omega) \in B\} \in \mathcal{F} \quad \text{for all } B \in \mathcal{S}$$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+It suffices to check preimages of a *generating* collection. For $S = \mathbb{R}$ with $\mathcal{S} = \mathcal{B}(\mathbb{R})$, it is enough to verify $f^{-1}((-\infty, a]) \in \mathcal{F}$ for all $a \in \mathbb{R}$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={5} title="Preservation of measurability">
+If $f$ and $g$ are measurable functions $\Omega \to \mathbb{R}$, then so are $f + g$, $fg$, $f/g$ (where $g \neq 0$), $\max(f, g)$, $\min(f, g)$, $|f|$, $f^+$, and $f^-$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={6} title="Limits of measurable functions">
+If $f_1, f_2, \ldots$ are measurable, then $\sup_n f_n$, $\inf_n f_n$, $\limsup_n f_n$, and $\liminf_n f_n$ are all measurable. In particular, if $f_n \to f$ pointwise, then $f$ is measurable.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For $\sup_n f_n$: we have $\{\sup_n f_n \leq a\} = \bigcap_{n=1}^\infty \{f_n \leq a\}$, which is a countable intersection of measurable sets.
+</TheoremBlock>
+
+Proposition 6 is one of the key advantages of measurable functions over continuous functions: pointwise limits of measurable functions are measurable, while pointwise limits of continuous functions need not be continuous.
+
+### Random Variables
+
+<TheoremBlock type="definition" number={7} title="Random variable">
+A *random variable* on a probability space $(\Omega, \mathcal{F}, P)$ is a measurable function $X : (\Omega, \mathcal{F}) \to (\mathbb{R}, \mathcal{B}(\mathbb{R}))$.
+</TheoremBlock>
+
+This is the measure-theoretic formalization of "a quantity whose value depends on the outcome of a random experiment." The measurability condition $X^{-1}(B) \in \mathcal{F}$ ensures that $P(X \in B)$ is well-defined for every Borel set $B$.
+
+A **random vector** $X : \Omega \to \mathbb{R}^d$ is $(\mathcal{F}, \mathcal{B}(\mathbb{R}^d))$-measurable. Component-wise: $X = (X_1, \ldots, X_d)$ is a random vector if and only if each $X_i$ is a random variable.
+
+### Distributions and Independence
+
+<TheoremBlock type="definition" number={8} title="Law / distribution / pushforward">
+The *distribution* (or *law*) of a random variable $X$ is the probability measure $\mu_X$ on $(\mathbb{R}, \mathcal{B}(\mathbb{R}))$ defined by:
+
+$$\mu_X(B) = P(X \in B) = P(X^{-1}(B)) \quad \text{for all } B \in \mathcal{B}(\mathbb{R})$$
+
+This is the *pushforward* of $P$ by $X$, written $\mu_X = P \circ X^{-1}$ or $X_\# P$.
+
+The **cumulative distribution function** (CDF) $F_X(x) = P(X \leq x) = \mu_X((-\infty, x])$ uniquely determines $\mu_X$.
+</TheoremBlock>
+
+![The pushforward measure: if X is standard normal, then Y = X² has a chi-squared(1) distribution. The transformation maps the density through the change-of-variables formula.](/images/topics/measure-theoretic-probability/pushforward-measure.png)
+
+<TheoremBlock type="definition" number={9} title="Independence">
+Events $A_1, \ldots, A_n \in \mathcal{F}$ are *independent* if:
+
+$$P\left(\bigcap_{i \in S} A_i\right) = \prod_{i \in S} P(A_i) \quad \text{for every subset } S \subseteq \{1, \ldots, n\}$$
+
+Random variables $X_1, \ldots, X_n$ are *independent* if the sigma-algebras $\sigma(X_1), \ldots, \sigma(X_n)$ are independent, where $\sigma(X_i) = \{X_i^{-1}(B) : B \in \mathcal{B}(\mathbb{R})\}$.
+
+Equivalently, $X_1, \ldots, X_n$ are independent if and only if the joint CDF factors: $F_{X_1, \ldots, X_n}(x_1, \ldots, x_n) = F_{X_1}(x_1) \cdots F_{X_n}(x_n)$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+**Pairwise vs. mutual independence.** Pairwise independence does *not* imply mutual independence. A classical counterexample: let $X, Y$ be independent Rademacher ($\pm 1$ with equal probability) and $Z = XY$. Then each pair is independent, but $\{X = 1, Y = 1, Z = 1\}$ has probability $1/4 \neq 1/8$.
+</TheoremBlock>
+
+---
+
+## The Lebesgue Integral and Expectation
+
+### Simple Functions and the Construction
+
+The Lebesgue integral is built in three stages: simple functions → non-negative functions → general functions.
+
+<TheoremBlock type="definition" number={10} title="Simple function">
+A *simple function* is a measurable function $\phi : \Omega \to \mathbb{R}$ taking finitely many values. We can write:
+
+$$\phi = \sum_{i=1}^n a_i \mathbf{1}_{A_i}$$
+
+where $a_1, \ldots, a_n$ are distinct values and $A_i = \phi^{-1}(\{a_i\}) \in \mathcal{F}$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={11} title="Lebesgue integral of simple functions">
+For a non-negative simple function $\phi = \sum a_i \mathbf{1}_{A_i}$:
+
+$$\int_\Omega \phi \, d\mu = \sum_{i=1}^n a_i \, \mu(A_i)$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={12} title="Lebesgue integral (non-negative functions)">
+For a measurable $f : \Omega \to [0, \infty]$:
+
+$$\int_\Omega f \, d\mu = \sup\left\{\int_\Omega \phi \, d\mu : 0 \leq \phi \leq f, \; \phi \text{ simple}\right\}$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={13} title="Lebesgue integral (general functions)">
+For measurable $f : \Omega \to \mathbb{R}$, write $f = f^+ - f^-$ where $f^+ = \max(f, 0)$ and $f^- = \max(-f, 0)$. Then $f$ is *integrable* (written $f \in L^1(\mu)$) if both $\int f^+ d\mu < \infty$ and $\int f^- d\mu < \infty$, and:
+
+$$\int_\Omega f \, d\mu = \int_\Omega f^+ d\mu - \int_\Omega f^- d\mu$$
+</TheoremBlock>
+
+### Riemann vs. Lebesgue
+
+The Riemann integral partitions the *domain* into small intervals and sums $f(x_i^*) \Delta x_i$. The Lebesgue integral partitions the *range* into small intervals and sums $y_i \cdot \mu(\{f \in [y_i, y_{i+1})\})$.
+
+This "horizontal slicing" is why the Lebesgue integral handles limits better: it does not care about the geometric arrangement of the domain, only about the measure of level sets.
+
+![Riemann integration partitions the domain (vertical slicing), while Lebesgue integration partitions the range (horizontal slicing). The Lebesgue approach handles irregular functions where Riemann fails.](/images/topics/measure-theoretic-probability/riemann-vs-lebesgue.png)
+
+### The Monotone Convergence Theorem
+
+<TheoremBlock type="theorem" number={1} title="Monotone Convergence Theorem (MCT)">
+Let $0 \leq f_1 \leq f_2 \leq \cdots$ be measurable functions with $f_n \uparrow f$ pointwise. Then:
+
+$$\int_\Omega f \, d\mu = \lim_{n \to \infty} \int_\Omega f_n \, d\mu$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Step 1.** Since $f_n \leq f$ for all $n$, we have $\int f_n \, d\mu \leq \int f \, d\mu$, so $\lim_n \int f_n \, d\mu \leq \int f \, d\mu$.
+
+**Step 2.** We need to show $\int f \, d\mu \leq \lim_n \int f_n \, d\mu$. Since $\int f \, d\mu$ is the supremum over simple functions $\phi \leq f$, it suffices to show that for any non-negative simple $\phi \leq f$, we have $\int \phi \, d\mu \leq \lim_n \int f_n \, d\mu$.
+
+**Step 3.** Fix such a $\phi$ and let $0 < \alpha < 1$. Define $A_n = \{f_n \geq \alpha \phi\}$. Since $f_n \uparrow f \geq \phi > \alpha \phi$ on $\{\phi > 0\}$, we have $A_n \uparrow \Omega$ (up to a $\mu$-null set where $\phi = 0$).
+
+**Step 4.** Then $\int f_n \, d\mu \geq \int_{A_n} f_n \, d\mu \geq \alpha \int_{A_n} \phi \, d\mu$. By continuity from below (applied to the measures $\mu_\phi(A) = \int_A \phi \, d\mu$), as $n \to \infty$:
+
+$$\lim_n \int f_n \, d\mu \geq \alpha \int_\Omega \phi \, d\mu$$
+
+Since $\alpha < 1$ was arbitrary, let $\alpha \uparrow 1$ to get $\lim_n \int f_n \, d\mu \geq \int \phi \, d\mu$. Taking the supremum over $\phi$ gives the result.
+</TheoremBlock>
+
+### Fatou's Lemma and the Dominated Convergence Theorem
+
+<TheoremBlock type="lemma" number={1} title="Fatou's Lemma">
+If $f_n \geq 0$ are measurable, then:
+
+$$\int_\Omega \liminf_{n \to \infty} f_n \, d\mu \leq \liminf_{n \to \infty} \int_\Omega f_n \, d\mu$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Define $g_n = \inf_{k \geq n} f_k$. Then $g_n \uparrow \liminf f_n$ and $g_n \leq f_n$, so $\int g_n \leq \int f_n$. Apply the MCT to $(g_n)$:
+
+$$\int \liminf f_n = \lim_n \int g_n = \liminf_n \int g_n \leq \liminf_n \int f_n$$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Dominated Convergence Theorem (DCT)">
+Let $f_n \to f$ pointwise (or $\mu$-a.e.), and suppose there exists an integrable $g$ with $|f_n| \leq g$ for all $n$. Then $f$ is integrable and:
+
+$$\lim_{n \to \infty} \int_\Omega f_n \, d\mu = \int_\Omega f \, d\mu$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $|f_n| \leq g$ and $f_n \to f$ pointwise, $|f| \leq g$, so $f \in L^1$. Apply Fatou's lemma to $g + f_n \geq 0$:
+
+$$\int g + \int f = \int (g + f) \leq \liminf \int (g + f_n) = \int g + \liminf \int f_n$$
+
+So $\int f \leq \liminf \int f_n$. Similarly, applying Fatou to $g - f_n \geq 0$:
+
+$$\int g - \int f \leq \int g + \liminf \int (-f_n) = \int g - \limsup \int f_n$$
+
+So $\limsup \int f_n \leq \int f$. Together: $\int f \leq \liminf \int f_n \leq \limsup \int f_n \leq \int f$.
+</TheoremBlock>
+
+The DCT is the workhorse of probability theory. Whenever we want to exchange a limit and an integral — which happens constantly in proving convergence results — we look for a dominating function. Without one, the exchange can fail dramatically, as the next example shows.
+
+![Dominated Convergence Theorem in action: with a dominating function, the integral of the limit equals the limit of the integrals. Without one, the integral can diverge.](/images/topics/measure-theoretic-probability/dominated-convergence.png)
+
+### Expectation and $L^p$ Spaces
+
+<TheoremBlock type="definition" number={14} title="Expectation">
+The *expectation* of a random variable $X$ on $(\Omega, \mathcal{F}, P)$ is:
+
+$$E[X] = \int_\Omega X \, dP$$
+
+provided the integral exists. The variance is $\text{Var}(X) = E[(X - E[X])^2] = E[X^2] - (E[X])^2$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={15} title="L^p space">
+For $1 \leq p < \infty$, the space $L^p(\Omega, \mathcal{F}, \mu)$ consists of all measurable $f$ with $\int |f|^p d\mu < \infty$, with norm:
+
+$$\|f\|_p = \left(\int_\Omega |f|^p \, d\mu\right)^{1/p}$$
+
+For $p = \infty$: $\|f\|_\infty = \inf\{M : \mu(\{|f| > M\}) = 0\}$ (essential supremum).
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="L^p is a Banach space">
+$L^p$ (with functions identified up to $\mu$-a.e. equality) is a complete normed space.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={4} title="Hölder's inequality">
+If $1/p + 1/q = 1$ with $1 \leq p, q \leq \infty$, then:
+
+$$\int_\Omega |fg| \, d\mu \leq \|f\|_p \|g\|_q$$
+
+The case $p = q = 2$ is the Cauchy–Schwarz inequality: $|E[XY]| \leq \sqrt{E[X^2]} \sqrt{E[Y^2]}$. The space $L^2$ is a Hilbert space with inner product $\langle f, g \rangle = \int fg \, d\mu$.
+</TheoremBlock>
+
+---
+
+## Convergence of Random Variables
+
+The four modes of convergence — almost sure, in probability, in $L^p$, and in distribution — form a hierarchy that is central to asymptotic statistics and the theoretical foundations of machine learning.
+
+### The Four Modes
+
+<TheoremBlock type="definition" number={16} title="Almost sure convergence">
+$X_n \xrightarrow{\text{a.s.}} X$ if:
+
+$$P\left(\omega : X_n(\omega) \to X(\omega)\right) = 1$$
+
+That is, for almost every outcome $\omega$, the sequence of numbers $X_1(\omega), X_2(\omega), \ldots$ converges to $X(\omega)$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={17} title="Convergence in probability">
+$X_n \xrightarrow{P} X$ if for every $\varepsilon > 0$:
+
+$$\lim_{n \to \infty} P(|X_n - X| > \varepsilon) = 0$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={18} title="Convergence in L^p">
+$X_n \xrightarrow{L^p} X$ if:
+
+$$\lim_{n \to \infty} E[|X_n - X|^p] = 0$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={19} title="Convergence in distribution">
+$X_n \xrightarrow{d} X$ if $F_{X_n}(x) \to F_X(x)$ at every continuity point $x$ of $F_X$.
+</TheoremBlock>
+
+### The Hierarchy
+
+The implications between these modes form two chains:
+
+$$L^p \implies \text{in probability} \implies \text{in distribution}$$
+
+$$\text{a.s.} \implies \text{in probability} \implies \text{in distribution}$$
+
+And the converses are generally *false*, with important exceptions.
+
+<TheoremBlock type="theorem" number={5} title="L^p implies convergence in probability">
+$X_n \xrightarrow{L^p} X \implies X_n \xrightarrow{P} X$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By Markov's inequality: $P(|X_n - X| > \varepsilon) \leq \frac{E[|X_n - X|^p]}{\varepsilon^p} \to 0$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={6} title="Almost sure implies convergence in probability">
+$X_n \xrightarrow{\text{a.s.}} X \implies X_n \xrightarrow{P} X$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Define $A_n = \{|X_n - X| > \varepsilon\}$. Almost sure convergence gives $P(\limsup A_n) = 0$ (by Borel–Cantelli-type reasoning). Since $P(A_n) \leq P(\bigcup_{k \geq n} A_k) \to P(\limsup A_n) = 0$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={7} title="Convergence in probability implies convergence in distribution">
+$X_n \xrightarrow{P} X \implies X_n \xrightarrow{d} X$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any continuity point $x$ of $F_X$ and $\varepsilon > 0$:
+
+$$F_{X_n}(x) = P(X_n \leq x) \leq P(X \leq x + \varepsilon) + P(|X_n - X| > \varepsilon)$$
+
+Letting $n \to \infty$ then $\varepsilon \downarrow 0$ gives $\limsup F_{X_n}(x) \leq F_X(x)$. A similar lower bound gives the result.
+</TheoremBlock>
+
+### Counterexamples
+
+The converses fail in illuminating ways:
+
+- **In probability does not imply a.s.:** The "typewriter sequence" is the classic counterexample. Consider $[0, 1]$ with Lebesgue measure, and define $f_n = \mathbf{1}_{[k/m, (k+1)/m]}$ where $n$ enumerates pairs $(m, k)$ by cycling through intervals of decreasing width. Then $f_n \to 0$ in probability (the interval width shrinks), but for every $\omega \in [0, 1]$, infinitely many $f_n(\omega) = 1$.
+
+- **In distribution does not imply in probability:** Let $X \sim N(0,1)$ and $Y_n = -X$. Then $Y_n \xrightarrow{d} X$ (since $-X \sim N(0,1)$ too), but $P(|Y_n - X| > 1) = P(|2X| > 1) > 0$ for all $n$.
+
+![The four modes of convergence illustrated: almost sure convergence shows paths settling down, convergence in probability shows the probability of large deviations shrinking, the SLLN shows running averages converging, and the CLT shows histograms approaching the bell curve.](/images/topics/measure-theoretic-probability/convergence-modes.png)
+
+![The typewriter sequence: the indicator function cycles through intervals of decreasing width, converging in probability to zero but failing to converge almost surely at any point.](/images/topics/measure-theoretic-probability/typewriter-sequence.png)
+
+<ConvergenceModesDemo client:visible />
+
+### The Laws of Large Numbers
+
+<TheoremBlock type="theorem" number={8} title="Weak Law of Large Numbers (WLLN)">
+Let $X_1, X_2, \ldots$ be i.i.d. with $E[X_1] = \mu$ and $\text{Var}(X_1) = \sigma^2 < \infty$. Then:
+
+$$\bar{X}_n = \frac{1}{n}\sum_{i=1}^n X_i \xrightarrow{P} \mu$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By Chebyshev's inequality: $P(|\bar{X}_n - \mu| > \varepsilon) \leq \frac{\text{Var}(\bar{X}_n)}{\varepsilon^2} = \frac{\sigma^2}{n\varepsilon^2} \to 0$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={9} title="Strong Law of Large Numbers (SLLN)">
+Let $X_1, X_2, \ldots$ be i.i.d. with $E[|X_1|] < \infty$ and $E[X_1] = \mu$. Then:
+
+$$\bar{X}_n \xrightarrow{\text{a.s.}} \mu$$
+</TheoremBlock>
+
+The SLLN is strictly stronger than the WLLN: it requires only a finite first moment (not second moment), and the convergence is almost sure. The proof uses the fourth-moment method or truncation arguments and is considerably more involved than the WLLN proof.
+
+### The Central Limit Theorem
+
+<TheoremBlock type="theorem" number={10} title="Central Limit Theorem (CLT)">
+Let $X_1, X_2, \ldots$ be i.i.d. with $E[X_1] = \mu$ and $\text{Var}(X_1) = \sigma^2 \in (0, \infty)$. Then:
+
+$$\frac{\bar{X}_n - \mu}{\sigma / \sqrt{n}} = \frac{\sum_{i=1}^n (X_i - \mu)}{\sigma \sqrt{n}} \xrightarrow{d} N(0, 1)$$
+</TheoremBlock>
+
+The CLT is the deepest result in elementary probability. Its measure-theoretic proof uses characteristic functions: $\varphi_{Z_n}(t) \to e^{-t^2/2}$, plus Lévy's continuity theorem (convergence of characteristic functions if and only if convergence in distribution).
+
+Notice the distinction: the SLLN gives almost sure convergence of $\bar{X}_n$ to $\mu$ (a constant), while the CLT gives convergence *in distribution* of the *rescaled* fluctuations $\sqrt{n}(\bar{X}_n - \mu)/\sigma$ to a Gaussian. These are complementary, not competing, results.
+
+---
+
+## Product Measures and Fubini's Theorem
+
+Given measurable spaces $(\Omega_1, \mathcal{F}_1)$ and $(\Omega_2, \mathcal{F}_2)$, the **product sigma-algebra** $\mathcal{F}_1 \otimes \mathcal{F}_2$ is the sigma-algebra on $\Omega_1 \times \Omega_2$ generated by the measurable rectangles $\{A_1 \times A_2 : A_1 \in \mathcal{F}_1, A_2 \in \mathcal{F}_2\}$.
+
+<TheoremBlock type="theorem" number={11} title="Product Measure">
+If $(\Omega_1, \mathcal{F}_1, \mu_1)$ and $(\Omega_2, \mathcal{F}_2, \mu_2)$ are $\sigma$-finite measure spaces, there exists a unique measure $\mu_1 \otimes \mu_2$ on $(\Omega_1 \times \Omega_2, \mathcal{F}_1 \otimes \mathcal{F}_2)$ satisfying:
+
+$$(\mu_1 \otimes \mu_2)(A_1 \times A_2) = \mu_1(A_1) \cdot \mu_2(A_2)$$
+</TheoremBlock>
+
+For probability spaces, this gives the joint distribution of independent random variables: if $X$ and $Y$ are independent with laws $\mu_X$ and $\mu_Y$, then $(X, Y)$ has law $\mu_X \otimes \mu_Y$.
+
+<TheoremBlock type="theorem" number={12} title="Tonelli's Theorem">
+If $f : \Omega_1 \times \Omega_2 \to [0, \infty]$ is $(\mathcal{F}_1 \otimes \mathcal{F}_2)$-measurable and $\mu_1, \mu_2$ are $\sigma$-finite, then:
+
+$$\int_{\Omega_1 \times \Omega_2} f \, d(\mu_1 \otimes \mu_2) = \int_{\Omega_1}\left(\int_{\Omega_2} f(\omega_1, \omega_2) \, d\mu_2\right) d\mu_1 = \int_{\Omega_2}\left(\int_{\Omega_1} f(\omega_1, \omega_2) \, d\mu_1\right) d\mu_2$$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={13} title="Fubini's Theorem">
+If additionally $f$ is integrable (i.e., $\int |f| \, d(\mu_1 \otimes \mu_2) < \infty$), then the same iterated-integral equalities hold for signed $f$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Tonelli works for non-negative functions without integrability assumptions. Fubini requires integrability but allows signed functions. The standard workflow: use Tonelli to check $\int |f| < \infty$, then apply Fubini.
+</TheoremBlock>
+
+**Probabilistic consequence.** For independent random variables $X, Y$ with densities $f_X, f_Y$:
+
+$$E[g(X, Y)] = \int \int g(x, y) f_X(x) f_Y(y) \, dx \, dy$$
+
+and the order of integration can be swapped freely. This is why we can factor joint expectations of independent variables: $E[XY] = E[X]E[Y]$.
+
+```python
+import numpy as np
+from scipy import integrate
+
+# Verify Fubini: ∫∫ x²e^{-y} dx dy over [0,1]×[0,∞)
+# Iterated integral 1: ∫₀¹ x² dx · ∫₀^∞ e^{-y} dy = (1/3)(1) = 1/3
+result_1 = integrate.dblquad(lambda y, x: x**2 * np.exp(-y), 0, 1, 0, np.inf)
+
+# Iterated integral 2 (reversed order)
+result_2 = integrate.dblquad(lambda x, y: x**2 * np.exp(-y), 0, np.inf, 0, 1)
+
+print(f"Order 1: {result_1[0]:.6f}")  # 0.333333
+print(f"Order 2: {result_2[0]:.6f}")  # 0.333333
+```
+
+---
+
+## Conditional Expectation and Radon–Nikodym
+
+### Absolute Continuity and the Radon–Nikodym Theorem
+
+<TheoremBlock type="definition" number={20} title="Absolute continuity">
+A measure $\nu$ is *absolutely continuous* with respect to $\mu$ (written $\nu \ll \mu$) if $\mu(A) = 0 \implies \nu(A) = 0$ for all $A \in \mathcal{F}$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={14} title="Radon–Nikodym Theorem">
+Let $\mu$ and $\nu$ be $\sigma$-finite measures on $(\Omega, \mathcal{F})$ with $\nu \ll \mu$. Then there exists a measurable function $f : \Omega \to [0, \infty)$, unique $\mu$-a.e., such that:
+
+$$\nu(A) = \int_A f \, d\mu \quad \text{for all } A \in \mathcal{F}$$
+
+The function $f$ is the **Radon–Nikodym derivative** $\frac{d\nu}{d\mu}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof (due to von Neumann) uses the Riesz Representation Theorem on $L^2(\mu + \nu)$. The functional $\Lambda(g) = \int g \, d\nu$ is bounded on $L^2(\mu + \nu)$, so by Riesz there exists $h$ with $\int g \, d\nu = \int gh \, d(\mu + \nu)$. Taking $g = \mathbf{1}_A$ and rearranging yields $f = h / (1 - h)$.
+</TheoremBlock>
+
+If $X$ has density $f_X$ with respect to Lebesgue measure $\lambda$, then $\mu_X \ll \lambda$ with $\frac{d\mu_X}{d\lambda} = f_X$. The probability density function *is* a Radon–Nikodym derivative.
+
+**Application to finance.** The Radon–Nikodym theorem enables *change of measure* — the foundation of risk-neutral pricing. If $P$ is the real-world measure and $Q$ is the risk-neutral measure:
+
+$$E_Q[X] = E_P\left[\frac{dQ}{dP} X\right]$$
+
+This is the mathematical core of the Fundamental Theorem of Asset Pricing.
+
+### Conditional Expectation
+
+The measure-theoretic definition of conditional expectation is one of the deepest ideas in probability. We cannot define $E[X \mid \mathcal{G}]$ as a single number — it is a *random variable* that is $\mathcal{G}$-measurable, capturing the "best prediction of $X$ given the information in $\mathcal{G}$."
+
+<TheoremBlock type="definition" number={21} title="Conditional expectation">
+Let $X \in L^1(\Omega, \mathcal{F}, P)$ and let $\mathcal{G} \subseteq \mathcal{F}$ be a sub-sigma-algebra. The *conditional expectation* $E[X \mid \mathcal{G}]$ is the (a.s. unique) $\mathcal{G}$-measurable random variable satisfying:
+
+$$\int_G E[X \mid \mathcal{G}] \, dP = \int_G X \, dP \quad \text{for all } G \in \mathcal{G}$$
+</TheoremBlock>
+
+**Existence.** This follows from the Radon–Nikodym theorem. Define $\nu(G) = \int_G X \, dP$ on $\mathcal{G}$. Then $\nu \ll P|_\mathcal{G}$, and $E[X \mid \mathcal{G}] = \frac{d\nu}{dP|_\mathcal{G}}$.
+
+### Properties of Conditional Expectation
+
+<TheoremBlock type="proposition" number={7} title="Properties of conditional expectation">
+Let $X, Y \in L^1$ and $\mathcal{G}, \mathcal{H}$ be sub-sigma-algebras with $\mathcal{H} \subseteq \mathcal{G} \subseteq \mathcal{F}$.
+
+1. **Linearity:** $E[aX + bY \mid \mathcal{G}] = aE[X \mid \mathcal{G}] + bE[Y \mid \mathcal{G}]$.
+2. **Tower property:** $E\bigl[E[X \mid \mathcal{G}] \bigm| \mathcal{H}\bigr] = E[X \mid \mathcal{H}]$.
+3. **Taking out what is known:** If $Y$ is $\mathcal{G}$-measurable and $XY \in L^1$, then $E[XY \mid \mathcal{G}] = Y \cdot E[X \mid \mathcal{G}]$.
+4. **Independence:** If $X$ is independent of $\mathcal{G}$, then $E[X \mid \mathcal{G}] = E[X]$.
+5. **Trivial conditioning:** $E[X \mid \{\emptyset, \Omega\}] = E[X]$.
+6. **Full conditioning:** $E[X \mid \mathcal{F}] = X$.
+7. **Jensen's inequality:** If $\varphi$ is convex, then $\varphi(E[X \mid \mathcal{G}]) \leq E[\varphi(X) \mid \mathcal{G}]$.
+</TheoremBlock>
+
+<TheoremBlock type="proof" title="Tower property">
+We must show that $E[X \mid \mathcal{H}]$ satisfies the defining property for $E[E[X \mid \mathcal{G}] \mid \mathcal{H}]$. For any $H \in \mathcal{H}$:
+
+Since $\mathcal{H} \subseteq \mathcal{G}$, we have $H \in \mathcal{G}$, so by the definition of $E[X \mid \mathcal{G}]$:
+
+$$\int_H E[X \mid \mathcal{G}] \, dP = \int_H X \, dP$$
+
+And by the definition of $E[X \mid \mathcal{H}]$: $\int_H E[X \mid \mathcal{H}] \, dP = \int_H X \, dP$.
+
+So $\int_H E[X \mid \mathcal{G}] \, dP = \int_H E[X \mid \mathcal{H}] \, dP$ for all $H \in \mathcal{H}$, which means $E[X \mid \mathcal{H}]$ satisfies the defining property for $E[E[X \mid \mathcal{G}] \mid \mathcal{H}]$. By a.s. uniqueness, they are equal.
+</TheoremBlock>
+
+### Conditional Expectation as $L^2$ Projection
+
+Here is the connection that ties conditional expectation to the Linear Algebra track. The conditional expectation $E[X \mid \mathcal{G}]$ is the **orthogonal projection** of $X$ onto $L^2(\Omega, \mathcal{G}, P)$ — the subspace of $\mathcal{G}$-measurable square-integrable random variables.
+
+<TheoremBlock type="theorem" number={15} title="L^2 projection characterization">
+If $X \in L^2(\Omega, \mathcal{F}, P)$, then $E[X \mid \mathcal{G}]$ is the unique element $Y \in L^2(\mathcal{G})$ minimizing:
+
+$$E[(X - Y)^2] = \|X - Y\|_2^2$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify the orthogonality condition. For any $Z \in L^2(\mathcal{G})$:
+
+$$\langle X - E[X \mid \mathcal{G}], Z \rangle = E[(X - E[X \mid \mathcal{G}])Z] = E[XZ] - E[E[X \mid \mathcal{G}] \cdot Z]$$
+
+By the "taking out what is known" property: $E[E[X \mid \mathcal{G}] \cdot Z] = E[E[XZ \mid \mathcal{G}]] = E[XZ]$ (using the tower property at the last step). So $\langle X - E[X \mid \mathcal{G}], Z \rangle = 0$ — the residual is orthogonal to every $\mathcal{G}$-measurable function.
+</TheoremBlock>
+
+This connects directly to PCA: PCA projects data onto a low-dimensional subspace that minimizes mean squared error. Conditional expectation is the *infinite-dimensional* analog — projecting onto the subspace of functions measurable with respect to a sub-sigma-algebra.
+
+For jointly normal $(X, Y)$ with correlation $\rho$, the conditional expectation takes the familiar regression form: $E[Y \mid X = x] = \mu_Y + \rho \frac{\sigma_Y}{\sigma_X}(x - \mu_X)$. The variance reduction is $1 - \rho^2$ — exactly the fraction of variance "explained" by the conditioning.
+
+![Conditional expectation as L² projection: the left panel shows a bivariate normal scatter with the regression line (the conditional expectation), and the right panel shows the MSE curve with its minimum at the optimal slope.](/images/topics/measure-theoretic-probability/conditional-expectation-projection.png)
+
+```python
+import numpy as np
+
+# Conditional expectation as L² projection for jointly normal (X, Y)
+np.random.seed(42)
+n = 5000
+rho = 0.7
+mu_x, mu_y, sigma_x, sigma_y = 2.0, 3.0, 1.0, 1.0
+
+# Generate bivariate normal
+Z1, Z2 = np.random.randn(n), np.random.randn(n)
+X = mu_x + sigma_x * Z1
+Y = mu_y + sigma_y * (rho * Z1 + np.sqrt(1 - rho**2) * Z2)
+
+# E[Y | X = x] = mu_y + rho * (sigma_y / sigma_x) * (x - mu_x)
+slope = rho * sigma_y / sigma_x
+Y_hat = mu_y + slope * (X - mu_x)
+
+# Verify: MSE is minimized at the conditional expectation
+mse_optimal = np.mean((Y - Y_hat)**2)
+mse_mean_only = np.mean((Y - mu_y)**2)
+variance_reduction = 1 - mse_optimal / mse_mean_only
+
+print(f"MSE (conditional): {mse_optimal:.4f}")    # ≈ σ_y²(1-ρ²) = 0.51
+print(f"MSE (unconditional): {mse_mean_only:.4f}")  # ≈ σ_y² = 1.0
+print(f"Variance reduction: {variance_reduction:.4f}")  # ≈ ρ² = 0.49
+```
+
+<ConditionalExpectationProjection client:visible />
+
+---
+
+## A Preview of Martingales
+
+### Filtrations and Adapted Processes
+
+<TheoremBlock type="definition" number={22} title="Filtration">
+A *filtration* on $(\Omega, \mathcal{F})$ is an increasing sequence of sub-sigma-algebras:
+
+$$\mathcal{F}_0 \subseteq \mathcal{F}_1 \subseteq \mathcal{F}_2 \subseteq \cdots \subseteq \mathcal{F}$$
+
+Each $\mathcal{F}_n$ represents the information available at time $n$. The filtration models the flow of information over time.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={23} title="Adapted process">
+A sequence of random variables $(X_n)_{n \geq 0}$ is *adapted* to a filtration $(\mathcal{F}_n)$ if $X_n$ is $\mathcal{F}_n$-measurable for each $n$. In words: at time $n$, we can observe $X_n$ (it depends only on information available at time $n$).
+
+The *natural filtration* of $(X_n)$ is $\mathcal{F}_n = \sigma(X_0, X_1, \ldots, X_n)$ — the sigma-algebra generated by the first $n+1$ observations. This is the minimal filtration to which $(X_n)$ is adapted.
+</TheoremBlock>
+
+### Martingales
+
+<TheoremBlock type="definition" number={24} title="Martingale">
+An adapted, integrable process $(M_n)_{n \geq 0}$ is a *martingale* with respect to $(\mathcal{F}_n)$ if:
+
+$$E[M_{n+1} \mid \mathcal{F}_n] = M_n \quad \text{for all } n \geq 0$$
+
+If $\leq$ replaces $=$, we have a **supermartingale** (expected to decrease). If $\geq$, a **submartingale** (expected to increase).
+</TheoremBlock>
+
+The martingale condition says: *given everything we know now, our best prediction of tomorrow's value is today's value.* The process has "no drift" — no systematic tendency to increase or decrease.
+
+### Examples
+
+**Random walk.** Let $Z_1, Z_2, \ldots$ be i.i.d. with $E[Z_i] = 0$. Then $M_n = \sum_{i=1}^n Z_i$ is a martingale:
+
+$$E[M_{n+1} \mid \mathcal{F}_n] = E[M_n + Z_{n+1} \mid \mathcal{F}_n] = M_n + E[Z_{n+1} \mid \mathcal{F}_n] = M_n + E[Z_{n+1}] = M_n$$
+
+using the "taking out what is known" property and independence.
+
+**Pólya urn.** Start with 1 red and 1 blue ball. At each step, draw a ball, then replace it with 2 balls of the same color. Let $M_n$ = fraction of red balls after $n$ draws. Then $(M_n)$ is a martingale — and by the martingale convergence theorem, $M_n$ converges almost surely to a $\text{Beta}(1, 1) = \text{Uniform}(0, 1)$ random variable.
+
+**Likelihood ratio.** If $P$ and $Q$ are probability measures with $Q \ll P$, and $X_1, X_2, \ldots$ are i.i.d. under $P$, then the likelihood ratio $L_n = \prod_{i=1}^n \frac{dQ}{dP}(X_i)$ is a $P$-martingale. This connects to sequential hypothesis testing and the Radon–Nikodym derivative from the previous section.
+
+### Financial Interpretation
+
+In mathematical finance, a martingale models a **fair game** — a process where no betting strategy can generate a positive expected profit.
+
+- A **discounted asset price** is a martingale under the *risk-neutral measure* $Q$ (Fundamental Theorem of Asset Pricing).
+- The **Efficient Market Hypothesis** (weak form) asserts that prices, conditioned on historical information, should be martingales.
+- In **regime detection**, the question is whether the martingale property holds uniformly or whether the drift switches between regimes. GARCH(1,1) captures time-varying conditional variance ($\text{Var}(X_t \mid \mathcal{F}_{t-1})$ is $\mathcal{F}_{t-1}$-measurable), while the Statistical Jump Model detects changes in the conditional distribution itself.
+
+![Martingale examples: a simple random walk (martingale), a random walk with drift (submartingale), a Pólya urn process (martingale converging a.s.), and regime-switching volatility.](/images/topics/measure-theoretic-probability/martingale-examples.png)
+
+<MartingalePathSimulator client:visible />
+
+---
+
+## Connections & Further Reading
+
+### Cross-Track and Within-Track Connections
+
+| Target | Track | Relationship |
+|--------|-------|-------------|
+| [PCA & Low-Rank Approximation](/topics/pca-low-rank) | Linear Algebra | $\hat{\Sigma} = \frac{1}{n-1} X^T X$ converges to $\Sigma$ by LLN; $L^2$ theory guarantees convergence of eigenvalues |
+| **Concentration Inequalities** *(coming soon)* | Probability & Statistics | Builds on $L^p$ spaces and convergence theory to quantify rates of convergence beyond LLN |
+| **PAC Learning Framework** *(coming soon)* | Probability & Statistics | Uses measure-theoretic probability to formalize learnability |
+| **Bayesian Nonparametrics** *(coming soon)* | Probability & Statistics | Requires conditional expectation, Radon–Nikodym, and product measures for priors on infinite-dimensional spaces |
+
+### Financial Applications
+
+| Application | Connection |
+|------------|-----------|
+| GARCH(1,1) | Conditional variance $\text{Var}(X_t \mid \mathcal{F}_{t-1})$ is filtration-adapted |
+| Statistical Jump Model | Regime probabilities are conditional expectations given observed filtration |
+| Option pricing (Black–Scholes) | Discounted prices are $Q$-martingales; $dQ/dP$ is state price density |
+| Efficient Market Hypothesis | Prices form martingale w.r.t. public information filtration |
+
+### Notation Reference
+
+| Symbol | Meaning |
+|--------|---------|
+| $(\Omega, \mathcal{F}, P)$ | Probability space |
+| $\mathcal{B}(\mathbb{R})$ | Borel sigma-algebra on $\mathbb{R}$ |
+| $\lambda$ | Lebesgue measure |
+| $\mathbf{1}_A$ | Indicator function of set $A$ |
+| $f^+ = \max(f, 0)$ | Positive part |
+| $L^p(\mu)$ | Space of $p$-integrable functions |
+| $E[X \mid \mathcal{G}]$ | Conditional expectation |
+| $\frac{d\nu}{d\mu}$ | Radon–Nikodym derivative |
+| $\xrightarrow{\text{a.s.}}$, $\xrightarrow{P}$, $\xrightarrow{L^p}$, $\xrightarrow{d}$ | Modes of convergence |
