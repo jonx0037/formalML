@@ -161,7 +161,7 @@ export function projectSimplex(v: number[]): number[] {
   for (let j = 0; j <= rho; j++) cumSumRho += sorted[j];
   const tau = (cumSumRho - 1) / (rho + 1);
 
-  return v.map((vi) => Math.max(vi - tau, 1e-10));
+  return v.map((vi) => Math.max(vi - tau, 0));
 }
 
 // ── Exponentiated gradient (mirror descent with neg-entropy) ───────────
@@ -173,8 +173,9 @@ export function projectSimplex(v: number[]): number[] {
  */
 export function expGradientStep(x: number[], grad: number[], eta: number): number[] {
   const unnormalized = x.map((xi, i) => xi * Math.exp(-eta * grad[i]));
-  const sum = unnormalized.reduce((s, v) => s + v, 0);
-  return unnormalized.map((v) => Math.max(v / sum, 1e-10));
+  const floored = unnormalized.map((v) => Math.max(v, 1e-10));
+  const sum = floored.reduce((s, v) => s + v, 0);
+  return floored.map((v) => v / sum);
 }
 
 // ── Vector utilities ───────────────────────────────────────────────────

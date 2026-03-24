@@ -83,6 +83,21 @@ export default function StepSizeExplorer() {
   const panelHeight = 300;
   const domain: [number, number] = [-4, 4];
 
+  // ─── Memoized contour data (only recomputes when problem changes, not on drag) ───
+  const contourData = useMemo(() => {
+    const gridSize = 100;
+    const values = new Float64Array(gridSize * gridSize);
+    for (let j = 0; j < gridSize; j++) {
+      for (let i = 0; i < gridSize; i++) {
+        const cx = domain[0] + (domain[1] - domain[0]) * i / (gridSize - 1);
+        const cy = domain[0] + (domain[1] - domain[0]) * j / (gridSize - 1);
+        values[j * gridSize + i] = problem.f([cx, cy]);
+      }
+    }
+    const contourGenerator = d3.contours().size([gridSize, gridSize]).thresholds(15);
+    return contourGenerator(values);
+  }, [problem]);
+
   // ─── Left panel: contour plot + trajectories ───
   useEffect(() => {
     const svg = d3.select(leftSvgRef.current);
@@ -139,19 +154,8 @@ export default function StepSizeExplorer() {
 
     const plotArea = g.append('g').attr('clip-path', `url(#${clipId})`);
 
-    // ── Contours ──
+    // ── Contours (precomputed in useMemo) ──
     const gridSize = 100;
-    const values = new Float64Array(gridSize * gridSize);
-    for (let j = 0; j < gridSize; j++) {
-      for (let i = 0; i < gridSize; i++) {
-        const cx = domain[0] + (domain[1] - domain[0]) * i / (gridSize - 1);
-        const cy = domain[0] + (domain[1] - domain[0]) * j / (gridSize - 1);
-        values[j * gridSize + i] = problem.f([cx, cy]);
-      }
-    }
-
-    const contourGenerator = d3.contours().size([gridSize, gridSize]).thresholds(15);
-    const contourData = contourGenerator(values);
 
     const geoTransform = d3.geoTransform({
       point(px: number, py: number) {
@@ -215,21 +219,10 @@ export default function StepSizeExplorer() {
     }
 
     // ── Optimum star ──
-    const starOuter = 7;
-    const starInner = 3;
-    let starPath = '';
-    for (let i = 0; i < 10; i++) {
-      const angle = Math.PI / 2 + (i * Math.PI) / 5;
-      const r = i % 2 === 0 ? starOuter : starInner;
-      const px = Math.cos(angle) * r;
-      const py = -Math.sin(angle) * r;
-      starPath += (i === 0 ? 'M' : 'L') + `${px},${py}`;
-    }
-    starPath += 'Z';
-
+    const starGen = d3.symbol().type(d3.symbolStar).size(60);
     plotArea
       .append('path')
-      .attr('d', starPath)
+      .attr('d', starGen() as string)
       .attr('transform', `translate(${xScale(0)},${yScale(0)})`)
       .attr('fill', '#ef4444')
       .attr('stroke', '#fff')
@@ -261,7 +254,7 @@ export default function StepSizeExplorer() {
 
     dragCircle.call(drag);
   }, [
-    containerWidth, panelWidth, panelHeight, problem,
+    containerWidth, panelWidth, panelHeight, problem, contourData,
     fixedTrajectory, exactTrajectory, armijoTrajectory,
     showFixed, showExact, showArmijo, x0, instanceId,
   ]);

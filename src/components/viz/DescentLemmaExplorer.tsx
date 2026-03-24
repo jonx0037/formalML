@@ -54,7 +54,8 @@ function sampleFunction(fn: (x: number) => number): { x: number; y: number }[] {
 export default function DescentLemmaExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
-  const clipId = useId();
+  const rawClipId = useId();
+  const clipId = rawClipId.replace(/:/g, '');
 
   // ─── State ───
   const [xPos, setXPos] = useState(1.5);
@@ -77,7 +78,7 @@ export default function DescentLemmaExplorer() {
     const yMin = Math.min(...ys);
     const yMax = Math.max(...ys, qMax);
     const pad = (yMax - yMin) * 0.15 || 1;
-    return [yMin - pad, Math.min(yMax + pad, 20)] as [number, number];
+    return [yMin - pad, yMax + pad] as [number, number];
   }, [samples, fn, df, xPos, L]);
 
   // ─── Panel dimensions ───
@@ -255,8 +256,11 @@ export default function DescentLemmaExplorer() {
       .attr('stroke-dasharray', '6,3');
 
     // ── Next iterate marker ──
+    // Use the true GD next iterate; if off-domain, show at the quadratic bound minimum
     const nextXClamped = clamp(nextX, X_DOMAIN[0], X_DOMAIN[1]);
-    const nextY = fn(nextXClamped);
+    const nextY = nextX >= X_DOMAIN[0] && nextX <= X_DOMAIN[1]
+      ? fn(nextX)
+      : qFn(nextXClamped);
 
     clipped
       .append('circle')

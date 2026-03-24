@@ -69,12 +69,13 @@ export default function MirrorDescentExplorer() {
       mirrorPath.push(xm.slice());
     }
 
-    // Projected GD
+    // Projected GD — scale step to make PGD visually comparable to mirror descent
+    const PGD_STEP_SCALE = 0.1;
     let xp = [...x0];
     const projPath = [xp.slice()];
     for (let k = 0; k < 40; k++) {
       const g = gradF();
-      const xRaw = xp.map((xi, i) => xi - eta * 0.1 * g[i]);
+      const xRaw = xp.map((xi, i) => xi - eta * PGD_STEP_SCALE * g[i]);
       xp = projectSimplex(xRaw);
       projPath.push(xp.slice());
     }

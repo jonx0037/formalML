@@ -10,6 +10,7 @@ const MARGIN = { top: 30, right: 15, bottom: 30, left: 45 };
 const PANEL_HEIGHT = 320;
 const GRID_RES = 100;
 const DOMAIN: [number, number] = [-4, 4];
+const START_POINT: [number, number] = [3, 3];
 
 // ─── Colors ───
 
@@ -39,19 +40,19 @@ export default function AccelerationExplorer() {
   // ─── Vanilla GD trajectory ───
   const gdTrajectory = useMemo(() => {
     const problem = makeQuadratic(kappa);
-    return runGDTrajectory(problem, [3, 3], 1 / problem.L, 150);
+    return runGDTrajectory(problem, START_POINT, 1 / problem.L, 150);
   }, [kappa]);
 
   // ─── Nesterov trajectory ───
   const nesterovTrajectory = useMemo(() => {
     const problem = makeQuadratic(kappa);
     const eta = 1 / problem.L;
-    let x = [3, 3];
-    let xPrev = [3, 3];
+    let x = [...START_POINT];
+    let xPrev = [...START_POINT];
     let t = 1;
-    const xPath: number[][] = [[3, 3]];
+    const xPath: number[][] = [[...START_POINT]];
     const yPath: number[][] = [];
-    const objectives: number[] = [problem.f([3, 3])];
+    const objectives: number[] = [problem.f(START_POINT)];
     for (let k = 0; k < 150; k++) {
       const { xNew, yNew, tNew } = nesterovStep(problem.grad, x, xPrev, t, eta);
       yPath.push(yNew);
