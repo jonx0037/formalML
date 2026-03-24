@@ -81,3 +81,20 @@ export interface MartingalePath {
   regime?: number[]; // for regime-switching process
 }
 
+// ─── Concentration Inequalities Types ───
+
+export interface TailBound {
+  name: string;
+  values: number[];
+  color: string;
+  dashed: boolean;
+}
+
+export interface ConcentrationConfig {
+  n: number;
+  epsilon: number;
+  delta: number;
+  hypothesisClassSize: number;
+  lossBound: number;
+}
+

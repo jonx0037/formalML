@@ -1,0 +1,729 @@
+---
+title: "Concentration Inequalities"
+subtitle: "Quantitative convergence rates — from Markov's inequality to sub-Gaussian theory and generalization bounds"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "measure-theoretic-probability"
+tags:
+  - "probability"
+  - "concentration-inequalities"
+  - "sub-gaussian"
+  - "hoeffding"
+  - "generalization-bounds"
+  - "machine-learning"
+domain: "probability"
+videoId: null
+notebookPath: "notebooks/concentration-inequalities/02_concentration_inequalities.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/concentration-inequalities.mdx"
+datePublished: 2026-03-23
+estimatedReadTime: 35
+abstract: "Concentration inequalities provide quantitative bounds on how random variables deviate from their expectations, bridging the qualitative convergence theorems of measure-theoretic probability to the sample complexity results of statistical learning theory. We develop the theory progressively: Markov and Chebyshev inequalities with polynomial rates, the Chernoff method via moment generating functions for exponential bounds, Hoeffding's inequality for bounded random variables with full proof, sub-Gaussian and sub-exponential random variable theory with maximal inequalities, Bernstein's variance-adaptive inequality, McDiarmid's bounded differences inequality for general functions of independent variables, and applications to machine learning including generalization bounds, uniform convergence via the union bound, and sample complexity for finite hypothesis classes."
+connections:
+  - topic: "measure-theoretic-probability"
+    relationship: "Direct prerequisite — provides Lp spaces, expectation, independence, the convergence hierarchy, and the Lebesgue integral machinery used throughout."
+  - topic: "pca-low-rank"
+    relationship: "Matrix concentration inequalities (extensions of the scalar theory developed here) bound the gap between sample and population covariance eigenvalues."
+references:
+  - type: "book"
+    title: "Concentration Inequalities: A Nonasymptotic Theory of Independence"
+    authors: "Boucheron, Lugosi & Massart"
+    year: 2013
+    note: "Definitive reference — covers all topics in this page and much more"
+  - type: "book"
+    title: "High-Dimensional Probability"
+    authors: "Vershynin"
+    year: 2018
+    note: "Excellent treatment of sub-Gaussian/sub-exponential theory"
+  - type: "book"
+    title: "High-Dimensional Statistics: A Non-Asymptotic Viewpoint"
+    authors: "Wainwright"
+    year: 2019
+    note: "Connects concentration to statistical estimation and testing"
+  - type: "book"
+    title: "Understanding Machine Learning: From Theory to Algorithms"
+    authors: "Shalev-Shwartz & Ben-David"
+    year: 2014
+    note: "Chapters 2-4 use these inequalities for PAC learning"
+  - type: "book"
+    title: "Probability: Theory and Examples"
+    authors: "Durrett"
+    year: 2019
+    note: "Chapter 2 covers the classical large deviations perspective"
+  - type: "paper"
+    title: "Probability Inequalities for Sums of Bounded Random Variables"
+    authors: "Hoeffding"
+    year: 1963
+    url: "https://doi.org/10.1080/01621459.1963.10500830"
+    note: "The original paper — still beautifully clear"
+  - type: "paper"
+    title: "On the Method of Bounded Differences"
+    authors: "McDiarmid"
+    year: 1989
+    note: "Original presentation of the bounded differences inequality"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import TailBoundExplorer from '../../components/viz/TailBoundExplorer.tsx';
+import ConcentrationRateDemo from '../../components/viz/ConcentrationRateDemo.tsx';
+import SubGaussianClassifier from '../../components/viz/SubGaussianClassifier.tsx';
+import GeneralizationBoundCalculator from '../../components/viz/GeneralizationBoundCalculator.tsx';
+
+## Overview & Motivation
+
+The [Measure-Theoretic Probability](/topics/measure-theoretic-probability) topic established that sample averages converge to population means. The Weak Law of Large Numbers tells us $\bar{X}_n \xrightarrow{P} \mu$. The Strong Law strengthens this to almost sure convergence. But neither law answers the question a practitioner actually asks: **how many samples do we need?**
+
+Suppose we train a classifier on $n$ samples and observe an empirical error rate of 5%. How confident are we that the true error is close to 5%? The law of large numbers says "eventually" — but "eventually" is not a sample size. We need **quantitative bounds on tail probabilities**: explicit formulas relating $n$, the error tolerance $\varepsilon$, and the failure probability $\delta$.
+
+This is exactly what concentration inequalities provide. They answer questions of the form:
+
+$$P\left(|\bar{X}_n - \mu| \geq \varepsilon\right) \leq f(n, \varepsilon)$$
+
+where $f$ decreases (typically exponentially) in $n$ and $\varepsilon$. Inverting these bounds gives us **sample complexity**: the number of samples sufficient to guarantee $|\bar{X}_n - \mu| < \varepsilon$ with probability at least $1 - \delta$.
+
+**The progression of tightness.** We develop a hierarchy of increasingly powerful bounds:
+
+1. **Markov's inequality** uses only the mean — the weakest bound but the most general.
+2. **Chebyshev's inequality** adds the variance — a polynomial ($1/n$) rate.
+3. **Chernoff bounds** exploit the full moment generating function — exponential ($e^{-cn}$) rates.
+4. **Hoeffding's inequality** provides a clean, usable exponential bound for bounded random variables.
+5. **Sub-Gaussian theory** abstracts the pattern: a random variable concentrates like a Gaussian if its MGF is controlled by a quadratic.
+6. **Bernstein's inequality** refines the bound when the variance is small relative to the range.
+7. **McDiarmid's inequality** extends concentration from sums to arbitrary functions of independent variables.
+
+Each step trades generality for tightness. By the end, we will have the precise tools to prove **generalization bounds** — the theoretical guarantee that a machine learning model's training error approximates its true error — and derive **sample complexity** results for finite hypothesis classes.
+
+---
+
+## Basic Tail Bounds: Markov and Chebyshev
+
+### The Tail Probability Question
+
+Given a random variable $X$ with known moments (mean, variance, etc.), what can we say about the probability that $X$ deviates far from its expected value? This is the **tail probability** question, and it is the foundation of all concentration inequalities.
+
+We begin with the simplest possible bound, which uses only the first moment.
+
+### Markov's Inequality
+
+<TheoremBlock type="theorem" number={1} title="Markov's Inequality">
+Let $X \geq 0$ be a non-negative random variable with $E[X] < \infty$. Then for any $t > 0$:
+
+$$P(X \geq t) \leq \frac{E[X]}{t}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We write:
+
+$$E[X] = \int_0^\infty X \, dP \geq \int_{\{X \geq t\}} X \, dP \geq \int_{\{X \geq t\}} t \, dP = t \cdot P(X \geq t)$$
+
+The first inequality follows because $X \geq 0$ (so restricting the domain of integration decreases the integral). The second inequality follows because on the set $\{X \geq t\}$, we have $X \geq t$. Dividing both sides by $t > 0$ completes the proof. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Markov's inequality is remarkably general — it requires only non-negativity and finite mean. But this generality comes at a cost: the bound is often loose. For example, if $X \sim \text{Exp}(1)$ (so $E[X] = 1$), Markov gives $P(X \geq 5) \leq 1/5 = 0.20$, while the true value is $e^{-5} \approx 0.0067$.
+</TheoremBlock>
+
+### Chebyshev's Inequality
+
+We can obtain a tighter bound by exploiting the variance. The idea is simple: apply Markov's inequality to $|X - \mu|^2$.
+
+<TheoremBlock type="theorem" number={2} title="Chebyshev's Inequality">
+Let $X$ have finite mean $\mu = E[X]$ and finite variance $\sigma^2 = \text{Var}(X)$. Then for any $t > 0$:
+
+$$P(|X - \mu| \geq t) \leq \frac{\sigma^2}{t^2}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $(X - \mu)^2 \geq 0$, we apply Markov's inequality to $Y = (X - \mu)^2$ with threshold $t^2$:
+
+$$P(|X - \mu| \geq t) = P((X - \mu)^2 \geq t^2) \leq \frac{E[(X - \mu)^2]}{t^2} = \frac{\sigma^2}{t^2} \quad \square$$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={1} title="Chebyshev for Sample Means">
+If $X_1, \ldots, X_n$ are i.i.d. with mean $\mu$ and variance $\sigma^2$, then:
+
+$$P\left(|\bar{X}_n - \mu| \geq \varepsilon\right) \leq \frac{\sigma^2}{n\varepsilon^2}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The sample mean $\bar{X}_n$ has mean $\mu$ and variance $\sigma^2/n$. Apply Chebyshev. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+This gives our first **sample complexity** bound: to guarantee $P(|\bar{X}_n - \mu| \geq \varepsilon) \leq \delta$, we need $n \geq \sigma^2 / (\varepsilon^2 \delta)$. This is the WLLN proof we saw in the previous topic, now made quantitative. But the polynomial rate $O(1/n)$ is far from optimal — we will soon see exponential bounds.
+</TheoremBlock>
+
+### One-Sided Variants
+
+<TheoremBlock type="proposition" number={1} title="Cantelli's Inequality (One-sided Chebyshev)">
+Let $X$ have finite mean $\mu$ and variance $\sigma^2$. Then for any $t > 0$:
+
+$$P(X - \mu \geq t) \leq \frac{\sigma^2}{\sigma^2 + t^2}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any $s > 0$, we have:
+
+$$P(X - \mu \geq t) = P(X - \mu + s \geq t + s) \leq \frac{E[(X - \mu + s)^2]}{(t + s)^2} = \frac{\sigma^2 + s^2}{(t+s)^2}$$
+
+by Markov applied to $(X - \mu + s)^2$. Minimizing over $s$ gives $s^* = \sigma^2/t$, yielding the result. $\square$
+</TheoremBlock>
+
+![Tail bound comparison — Markov, Chebyshev, and the true tail for several distributions, showing the gap between polynomial bounds and true exponential tail decay](/images/topics/concentration-inequalities/tail-bound-comparison.png)
+
+The figure above demonstrates how loose the basic tail bounds are compared to the true tail probability. In the next section, we introduce the key idea that bridges the gap: the **Chernoff method**.
+
+<TailBoundExplorer client:visible />
+
+```python
+# Tail Bound Comparison: Markov vs Chebyshev vs True Tail
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+
+t_vals = np.linspace(0.5, 8, 200)
+mu, sigma2 = 1.0, 1.0  # Exp(1): mean=1, var=1
+
+true_tail = np.exp(-t_vals)                           # P(X >= t) = e^{-t}
+markov_bound = np.minimum(mu / t_vals, 1.0)           # E[X] / t
+chebyshev_bound = np.minimum(sigma2 / (t_vals - mu)**2, 1.0)  # Var / (t - mu)^2
+
+# Chebyshev is only meaningful for t > mu
+chebyshev_bound[t_vals <= mu] = 1.0
+
+plt.semilogy(t_vals, true_tail, 'k-', linewidth=2.5, label='True tail')
+plt.semilogy(t_vals, markov_bound, '--', color='#D97706', linewidth=2, label='Markov')
+plt.semilogy(t_vals[t_vals > mu], chebyshev_bound[t_vals > mu],
+             '--', color='#534AB7', linewidth=2, label='Chebyshev')
+plt.xlabel('t'); plt.ylabel('P(X >= t)')
+plt.title('Exponential(1): Tail Bounds vs True Tail')
+plt.legend()
+```
+
+---
+
+## The Chernoff Method and Moment Generating Functions
+
+### The Key Idea: Exponentiate and Apply Markov
+
+The breakthrough from polynomial to exponential tail bounds comes from a remarkably simple trick: instead of applying Markov directly to $X$, apply it to $e^{\lambda X}$ for an optimized parameter $\lambda > 0$.
+
+<TheoremBlock type="definition" number={1} title="Moment Generating Function">
+The *moment generating function* (MGF) of a random variable $X$ is:
+
+$$M_X(\lambda) = E[e^{\lambda X}], \quad \lambda \in \mathbb{R}$$
+
+whenever the expectation exists. The MGF is also called the *Laplace transform* of the distribution of $X$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The MGF encodes all moments of $X$: $E[X^k] = M_X^{(k)}(0)$. This is why exploiting the MGF gives stronger bounds than using any finite number of moments.
+</TheoremBlock>
+
+### The Chernoff Bound
+
+<TheoremBlock type="theorem" number={3} title="Chernoff Bound">
+For any random variable $X$ and any $t \in \mathbb{R}$:
+
+$$P(X \geq t) \leq \inf_{\lambda > 0} e^{-\lambda t} M_X(\lambda)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any $\lambda > 0$, the function $x \mapsto e^{\lambda x}$ is strictly increasing, so:
+
+$$P(X \geq t) = P(e^{\lambda X} \geq e^{\lambda t}) \leq \frac{E[e^{\lambda X}]}{e^{\lambda t}} = e^{-\lambda t} M_X(\lambda)$$
+
+where the inequality is Markov applied to the non-negative random variable $e^{\lambda X}$. Since this holds for all $\lambda > 0$, we take the infimum. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The optimization over $\lambda$ is the "Chernoff" step. Different choices of $\lambda$ give different trade-offs between the $e^{-\lambda t}$ decay and the MGF growth. The optimal $\lambda^*$ satisfies $M_X'(\lambda^*) / M_X(\lambda^*) = t$, which is the equation for the *Legendre transform* (or *rate function*) of the log-MGF.
+</TheoremBlock>
+
+### Application to Sums of Independent Variables
+
+For a sum $S_n = X_1 + \cdots + X_n$ of independent random variables, the MGF factorizes:
+
+$$M_{S_n}(\lambda) = \prod_{i=1}^n M_{X_i}(\lambda)$$
+
+This is because independence gives $E[e^{\lambda S_n}] = E[\prod_i e^{\lambda X_i}] = \prod_i E[e^{\lambda X_i}]$. The log-MGF (cumulant generating function) therefore *adds*:
+
+$$\psi_{S_n}(\lambda) = \sum_{i=1}^n \psi_{X_i}(\lambda)$$
+
+This additivity is why the Chernoff method is particularly powerful for sums of independent variables.
+
+<TheoremBlock type="proposition" number={2} title="Chernoff for Bernoulli Sums">
+Let $X_1, \ldots, X_n$ be i.i.d. $\text{Ber}(p)$ and $S_n = \sum_{i=1}^n X_i$. For any $t > np$:
+
+$$P(S_n \geq t) \leq \left(\frac{np}{t}\right)^t \left(\frac{n - np}{n - t}\right)^{n-t}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The MGF of $\text{Ber}(p)$ is $M_{X_i}(\lambda) = 1 - p + pe^{\lambda}$. So $M_{S_n}(\lambda) = (1 - p + pe^{\lambda})^n$. The Chernoff bound gives $P(S_n \geq t) \leq \inf_{\lambda > 0} e^{-\lambda t}(1 - p + pe^{\lambda})^n$. Taking the derivative in $\lambda$ and setting it to zero gives $e^{\lambda^*} = \frac{t(1-p)}{(n-t)p}$. Substituting yields the result after algebraic simplification. $\square$
+</TheoremBlock>
+
+### The Log-MGF and Cramér's Theorem (Preview)
+
+<TheoremBlock type="definition" number={2} title="Cumulant Generating Function">
+The *cumulant generating function* (CGF, or log-MGF) of $X$ is:
+
+$$\psi_X(\lambda) = \log M_X(\lambda) = \log E[e^{\lambda X}]$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={3} title="Rate Function (Legendre–Fenchel Transform)">
+The *rate function* of $X$ is:
+
+$$\psi_X^*(t) = \sup_{\lambda \in \mathbb{R}} \left(\lambda t - \psi_X(\lambda)\right)$$
+
+This is the Legendre–Fenchel transform (convex conjugate) of $\psi_X$. The Chernoff bound becomes:
+
+$$P(X \geq t) \leq e^{-\psi_X^*(t)}$$
+</TheoremBlock>
+
+The rate function $\psi_X^*(t)$ measures how "surprising" it is to observe $X \geq t$. This connects to large deviations theory and information-theoretic quantities like the KL divergence.
+
+![The Chernoff method — optimizing the exponential tilt parameter λ, comparing Chernoff vs Chebyshev bounds for a Binomial distribution, and the rate function (Legendre transform)](/images/topics/concentration-inequalities/chernoff-method.png)
+
+```python
+# Chernoff Method: Optimizing the Exponential Tilt
+p, n = 0.3, 100
+t_target = 40  # P(S_n >= 40) where np = 30
+
+lambdas = np.linspace(0.01, 2.0, 200)
+chernoff_bounds = []
+for lam in lambdas:
+    mgf = (1 - p + p * np.exp(lam))**n
+    bound = np.exp(-lam * t_target) * mgf
+    chernoff_bounds.append(bound)
+
+chernoff_bounds = np.array(chernoff_bounds)
+opt_idx = np.argmin(chernoff_bounds)
+
+# The optimal λ* minimizes the Chernoff bound
+print(f"Optimal λ = {lambdas[opt_idx]:.3f}")
+print(f"Chernoff bound = {chernoff_bounds[opt_idx]:.2e}")
+print(f"True probability = {1 - stats.binom.cdf(39, n, p):.2e}")
+```
+
+---
+
+## Hoeffding's Inequality
+
+The Chernoff method is powerful but requires computing the MGF of each distribution. Hoeffding's inequality provides a **distribution-free** exponential bound for bounded random variables, avoiding the need to compute the specific MGF.
+
+### Hoeffding's Lemma
+
+The key technical ingredient is a bound on the MGF of a bounded, zero-mean random variable.
+
+<TheoremBlock type="lemma" number={1} title="Hoeffding's Lemma">
+Let $X$ be a random variable with $E[X] = 0$ and $a \leq X \leq b$ almost surely. Then for all $\lambda > 0$:
+
+$$E[e^{\lambda X}] \leq \exp\left(\frac{\lambda^2 (b - a)^2}{8}\right)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $a \leq X \leq b$, we can write $X = \alpha b + (1 - \alpha) a$ where $\alpha = \frac{X - a}{b - a} \in [0, 1]$. By convexity of $e^{\lambda x}$:
+
+$$e^{\lambda X} \leq \frac{X - a}{b - a} e^{\lambda b} + \frac{b - X}{b - a} e^{\lambda a}$$
+
+Taking expectations and using $E[X] = 0$ (so $E[X - a] = -a$ and $E[b - X] = b$):
+
+$$E[e^{\lambda X}] \leq \frac{-a}{b - a} e^{\lambda b} + \frac{b}{b - a} e^{\lambda a}$$
+
+Let $h = \lambda(b - a)$, $p = \frac{-a}{b - a}$. Then the right side equals $e^{g(h)}$ where:
+
+$$g(h) = -ph + \log(1 - p + pe^h)$$
+
+We have $g(0) = 0$, $g'(0) = 0$, and $g''(h) \leq 1/4$ for all $h$ (since $g''(h) = \frac{pe^h(1-p+pe^h) - p^2 e^{2h}}{(1-p+pe^h)^2}$ is maximized at $p = 1/2$). By Taylor's theorem with the mean-value form of the remainder:
+
+$$g(h) \leq \frac{h^2}{8} = \frac{\lambda^2(b-a)^2}{8} \quad \square$$
+</TheoremBlock>
+
+### Hoeffding's Inequality
+
+<TheoremBlock type="theorem" number={4} title="Hoeffding's Inequality">
+Let $X_1, \ldots, X_n$ be independent random variables with $a_i \leq X_i \leq b_i$ almost surely. Let $S_n = \sum_{i=1}^n X_i$. Then for any $t > 0$:
+
+$$P(S_n - E[S_n] \geq t) \leq \exp\left(-\frac{2t^2}{\sum_{i=1}^n (b_i - a_i)^2}\right)$$
+
+and by a symmetric argument:
+
+$$P(|S_n - E[S_n]| \geq t) \leq 2\exp\left(-\frac{2t^2}{\sum_{i=1}^n (b_i - a_i)^2}\right)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply the Chernoff method: for any $\lambda > 0$, by independence:
+
+$$E\left[e^{\lambda(S_n - E[S_n])}\right] = \prod_{i=1}^n E\left[e^{\lambda(X_i - E[X_i])}\right]$$
+
+Each $Y_i = X_i - E[X_i]$ satisfies $E[Y_i] = 0$ and $a_i - E[X_i] \leq Y_i \leq b_i - E[X_i]$, with range $b_i - a_i$. By Hoeffding's Lemma:
+
+$$E\left[e^{\lambda Y_i}\right] \leq \exp\left(\frac{\lambda^2(b_i - a_i)^2}{8}\right)$$
+
+So:
+
+$$P(S_n - E[S_n] \geq t) \leq \exp\left(-\lambda t + \frac{\lambda^2}{8}\sum_{i=1}^n(b_i - a_i)^2\right)$$
+
+Minimizing over $\lambda$ gives $\lambda^* = \frac{4t}{\sum_i (b_i - a_i)^2}$, yielding:
+
+$$P(S_n - E[S_n] \geq t) \leq \exp\left(-\frac{2t^2}{\sum_{i=1}^n (b_i - a_i)^2}\right) \quad \square$$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={2} title="Hoeffding for Sample Means">
+If $X_1, \ldots, X_n$ are i.i.d. with $a \leq X_i \leq b$, then:
+
+$$P(|\bar{X}_n - \mu| \geq \varepsilon) \leq 2\exp\left(-\frac{2n\varepsilon^2}{(b-a)^2}\right)$$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Inverting: to achieve $P(|\bar{X}_n - \mu| \geq \varepsilon) \leq \delta$, we need:
+
+$$n \geq \frac{(b-a)^2}{2\varepsilon^2}\log\frac{2}{\delta}$$
+
+Compare to Chebyshev's $n \geq \sigma^2/(\varepsilon^2\delta)$: Hoeffding's dependence on $\delta$ is $\log(1/\delta)$ instead of $1/\delta$ — exponentially better for small $\delta$.
+</TheoremBlock>
+
+![Hoeffding's inequality — empirical verification showing the bound vs Monte Carlo estimates, sample complexity comparison, and tightness across different distributions](/images/topics/concentration-inequalities/hoeffding-inequality.png)
+
+```python
+# Hoeffding's Inequality: Empirical Verification
+np.random.seed(42)
+n_values = np.arange(10, 501, 5)
+eps = 0.2
+a, b = 0, 1  # Uniform[0,1]
+mu, sigma2 = 0.5, 1/12
+n_mc = 50000
+
+empirical_probs = []
+for n in n_values:
+    samples = np.random.uniform(0, 1, (n_mc, n))
+    means = samples.mean(axis=1)
+    empirical_probs.append(np.mean(np.abs(means - mu) >= eps))
+
+hoeffding_bound = 2 * np.exp(-2 * n_values * eps**2 / (b - a)**2)
+chebyshev_bound = np.minimum(sigma2 / (n_values * eps**2), 1.0)
+
+# The Hoeffding bound is a valid upper bound at every n
+# Chebyshev is always looser (higher) than Hoeffding
+```
+
+<ConcentrationRateDemo client:visible />
+
+---
+
+## Sub-Gaussian Random Variables
+
+Hoeffding's inequality works for bounded random variables, but many important random variables are unbounded (e.g., Gaussian). We need a framework that captures the *tail behavior* rather than relying on boundedness. This leads to the theory of **sub-Gaussian** random variables — a class defined by having tails that decay at least as fast as a Gaussian's.
+
+### Motivation
+
+A standard Gaussian $Z \sim N(0, 1)$ has MGF $E[e^{\lambda Z}] = e^{\lambda^2/2}$. The Chernoff method gives:
+
+$$P(Z \geq t) \leq e^{-t^2/2}$$
+
+This Gaussian tail bound has the form $e^{-ct^2}$. Many distributions — even non-Gaussian ones — exhibit this same qualitative behavior. Sub-Gaussian theory captures this commonality.
+
+### Definition and Equivalent Characterizations
+
+<TheoremBlock type="definition" number={4} title="Sub-Gaussian Random Variable">
+A random variable $X$ with $E[X] = 0$ is *sub-Gaussian with parameter $\sigma$* (written $X \sim \text{subG}(\sigma^2)$) if its MGF satisfies:
+
+$$E[e^{\lambda X}] \leq e^{\sigma^2 \lambda^2 / 2} \quad \text{for all } \lambda \in \mathbb{R}$$
+
+The parameter $\sigma$ is called the *sub-Gaussian proxy variance* (or sub-Gaussian norm).
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={3} title="Equivalent Characterizations of Sub-Gaussian">
+For a mean-zero random variable $X$, the following are equivalent (up to universal constants in the parameters):
+
+1. **MGF condition:** $E[e^{\lambda X}] \leq e^{\sigma^2 \lambda^2 / 2}$ for all $\lambda$.
+2. **Tail condition:** $P(|X| \geq t) \leq 2e^{-t^2/(2\sigma^2)}$ for all $t \geq 0$.
+3. **Moment condition:** $\|X\|_p = (E[|X|^p])^{1/p} \leq \sigma\sqrt{p}$ for all $p \geq 1$.
+4. **$\psi_2$-norm:** $\|X\|_{\psi_2} = \inf\{t > 0 : E[e^{X^2/t^2}] \leq 2\} < \infty$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+These characterizations are not equivalent with the *same* constant — they are equivalent up to universal multiplicative factors. The MGF condition is the cleanest for proving concentration bounds. The tail condition is most intuitive.
+</TheoremBlock>
+
+### Key Examples
+
+**Example 1 (Gaussian).** $Z \sim N(0, \sigma^2)$ is $\text{subG}(\sigma^2)$ — the defining example.
+
+**Example 2 (Rademacher).** $X = \pm 1$ with equal probability. Then $E[e^{\lambda X}] = \cosh(\lambda) \leq e^{\lambda^2/2}$, so $X \sim \text{subG}(1)$.
+
+**Example 3 (Bounded).** If $a \leq X \leq b$ and $E[X] = 0$, then $X \sim \text{subG}((b-a)^2/4)$ by Hoeffding's Lemma.
+
+**Example 4 (Not sub-Gaussian).** $X \sim \text{Exp}(1) - 1$ is *not* sub-Gaussian: its MGF $E[e^{\lambda X}] = e^{-\lambda}/(1 - \lambda)$ diverges at $\lambda = 1$, so it cannot be bounded by a quadratic for all $\lambda$.
+
+### Concentration for Sums of Sub-Gaussians
+
+<TheoremBlock type="theorem" number={5} title="Sub-Gaussian Sum">
+If $X_1, \ldots, X_n$ are independent with $X_i \sim \text{subG}(\sigma_i^2)$, then $\sum_{i=1}^n X_i \sim \text{subG}\left(\sum_{i=1}^n \sigma_i^2\right)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By independence:
+
+$$E\left[\exp\left(\lambda \sum_i X_i\right)\right] = \prod_i E[e^{\lambda X_i}] \leq \prod_i e^{\sigma_i^2 \lambda^2/2} = \exp\left(\frac{\lambda^2}{2}\sum_i \sigma_i^2\right) \quad \square$$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={3} title="Sub-Gaussian Sample Means">
+If $X_1, \ldots, X_n$ are i.i.d. $\text{subG}(\sigma^2)$, then:
+
+$$P\left(|\bar{X}_n| \geq \varepsilon\right) \leq 2\exp\left(-\frac{n\varepsilon^2}{2\sigma^2}\right)$$
+</TheoremBlock>
+
+### Maximal Inequality
+
+<TheoremBlock type="theorem" number={6} title="Sub-Gaussian Maximum">
+If $X_1, \ldots, X_n$ are (not necessarily independent) sub-Gaussian with parameter $\sigma^2$, then:
+
+$$E\left[\max_{1 \leq i \leq n} X_i\right] \leq \sigma\sqrt{2\log n}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any $\lambda > 0$:
+
+$$E\left[\max_i X_i\right] \leq \frac{1}{\lambda}\log E\left[e^{\lambda \max_i X_i}\right] \leq \frac{1}{\lambda}\log\left(\sum_{i=1}^n E[e^{\lambda X_i}]\right) \leq \frac{1}{\lambda}\log(ne^{\sigma^2\lambda^2/2}) = \frac{\log n}{\lambda} + \frac{\sigma^2\lambda}{2}$$
+
+where we used $\max_i X_i \leq \frac{1}{\lambda}\log\sum_i e^{\lambda X_i}$ (log-sum-exp) and Jensen's inequality. Optimizing: $\lambda^* = \sqrt{2\log n}/\sigma$ gives the result. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The $\sqrt{\log n}$ rate is ubiquitous in high-dimensional statistics. It tells us that the maximum of $n$ sub-Gaussian variables grows only logarithmically — a fundamental reason why many statistical procedures work in high dimensions.
+</TheoremBlock>
+
+![Sub-Gaussian theory — MGF comparison across distributions, tail decay rates, and the maximal inequality showing the sqrt(2 log n) scaling](/images/topics/concentration-inequalities/sub-gaussian-theory.png)
+
+<SubGaussianClassifier client:visible />
+
+---
+
+## Sub-Exponential Random Variables and Bernstein's Inequality
+
+### Beyond Sub-Gaussian: Heavier Tails
+
+Not all useful random variables are sub-Gaussian. The centered exponential $X - E[X]$ where $X \sim \text{Exp}(\lambda)$, or the square $Z^2$ of a Gaussian, have tails that decay as $e^{-ct}$ rather than $e^{-ct^2}$. These are **sub-exponential** random variables.
+
+<TheoremBlock type="definition" number={5} title="Sub-Exponential Random Variable">
+A random variable $X$ with $E[X] = 0$ is *sub-exponential with parameters $(\nu^2, b)$* if:
+
+$$E[e^{\lambda X}] \leq \exp\left(\frac{\nu^2 \lambda^2}{2}\right) \quad \text{for all } |\lambda| < \frac{1}{b}$$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The MGF condition looks like the sub-Gaussian condition, but it only holds for $|\lambda| < 1/b$ rather than all $\lambda$. This restricted domain reflects the heavier tails.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={4} title="Sub-Gaussian ⊂ Sub-Exponential">
+Every sub-Gaussian random variable is sub-exponential (with $b = 0$, formally). The converse is false: $Z^2 - 1$ where $Z \sim N(0,1)$ is sub-exponential but not sub-Gaussian.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={5} title="Product Rule (Sub-Gaussian squares)">
+If $X \sim \text{subG}(\sigma^2)$, then $X^2 - E[X^2]$ is sub-exponential with parameters $(\nu^2, b)$ depending on $\sigma$.
+</TheoremBlock>
+
+### Bernstein's Inequality
+
+Bernstein's inequality is sharper than Hoeffding when the variance is small relative to the range. It interpolates between sub-Gaussian behavior (for small deviations) and sub-exponential behavior (for large deviations).
+
+<TheoremBlock type="theorem" number={7} title="Bernstein's Inequality">
+Let $X_1, \ldots, X_n$ be independent mean-zero random variables with $|X_i| \leq M$ almost surely. Let $\sigma^2 = \frac{1}{n}\sum_{i=1}^n E[X_i^2]$. Then:
+
+$$P\left(\frac{1}{n}\sum_{i=1}^n X_i \geq t\right) \leq \exp\left(-\frac{n t^2 / 2}{\sigma^2 + Mt/3}\right)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For bounded $X_i$ with $|X_i| \leq M$, we have $E[|X_i|^k] \leq \frac{k!}{2} \sigma_i^2 M^{k-2}$ for $k \geq 2$ (Bernstein's moment condition). This gives:
+
+$$E[e^{\lambda X_i}] = \sum_{k=0}^\infty \frac{\lambda^k E[X_i^k]}{k!} \leq 1 + \frac{\lambda^2\sigma_i^2}{2}\sum_{k=0}^\infty (M|\lambda|)^k = 1 + \frac{\lambda^2\sigma_i^2/2}{1 - M|\lambda|}$$
+
+for $|\lambda| < 1/M$. Using $1 + x \leq e^x$ and the Chernoff method, then optimizing $\lambda$, we obtain the result. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The denominator $\sigma^2 + Mt/3$ creates two regimes:
+- **Small deviations** ($t \ll \sigma^2/M$): the bound behaves as $\exp(-nt^2/(2\sigma^2))$ — sub-Gaussian with the *variance*, not the range.
+- **Large deviations** ($t \gg \sigma^2/M$): the bound behaves as $\exp(-nt/(2M/3))$ — sub-exponential, linear in $t$.
+
+When $\sigma^2 \ll (b-a)^2$, Bernstein is much tighter than Hoeffding in the small-deviation regime.
+</TheoremBlock>
+
+![Bernstein's inequality — sub-Gaussian vs sub-exponential tail decay, Bernstein vs Hoeffding comparison when variance is small, and the two-regime analysis](/images/topics/concentration-inequalities/bernstein-inequality.png)
+
+---
+
+## McDiarmid's Inequality
+
+### From Sums to General Functions
+
+Hoeffding's inequality applies to sums $\bar{X}_n = \frac{1}{n}\sum_i X_i$. But in machine learning, we often care about more general functions of independent random variables — for instance, the empirical risk $\hat{R}(h) = \frac{1}{n}\sum_{i=1}^n \ell(h(X_i), Y_i)$, or the supremum of an empirical process $\sup_{h \in \mathcal{H}} |\hat{R}(h) - R(h)|$.
+
+McDiarmid's inequality extends concentration to *any* function $f(X_1, \ldots, X_n)$ that doesn't depend too much on any single coordinate.
+
+### The Bounded Differences Condition
+
+<TheoremBlock type="definition" number={6} title="Bounded Differences Property">
+A function $f : \mathcal{X}^n \to \mathbb{R}$ satisfies the *bounded differences property* with constants $c_1, \ldots, c_n$ if for every $i$ and every $x_1, \ldots, x_n, x_i' \in \mathcal{X}$:
+
+$$\sup_{x_1, \ldots, x_n, x_i'} |f(x_1, \ldots, x_i, \ldots, x_n) - f(x_1, \ldots, x_i', \ldots, x_n)| \leq c_i$$
+
+In words: changing any single input $x_i$ to $x_i'$ changes $f$ by at most $c_i$.
+</TheoremBlock>
+
+### McDiarmid's Inequality
+
+<TheoremBlock type="theorem" number={8} title="McDiarmid's Inequality">
+Let $X_1, \ldots, X_n$ be independent random variables, and let $f$ satisfy the bounded differences property with constants $c_1, \ldots, c_n$. Then:
+
+$$P(f(X_1, \ldots, X_n) - E[f(X_1, \ldots, X_n)] \geq t) \leq \exp\left(-\frac{2t^2}{\sum_{i=1}^n c_i^2}\right)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof uses a **martingale difference** decomposition. Define:
+
+$$D_i = E[f \mid X_1, \ldots, X_i] - E[f \mid X_1, \ldots, X_{i-1}]$$
+
+Then $f - E[f] = \sum_{i=1}^n D_i$ is a telescoping sum of martingale differences ($E[D_i \mid X_1, \ldots, X_{i-1}] = 0$).
+
+The bounded differences condition implies $|D_i| \leq c_i$ almost surely. Each $D_i$ is conditionally bounded and mean-zero given $X_1, \ldots, X_{i-1}$, so Hoeffding's Lemma applies conditionally:
+
+$$E[e^{\lambda D_i} \mid X_1, \ldots, X_{i-1}] \leq e^{\lambda^2 c_i^2 / 8}$$
+
+The remainder follows the same Chernoff optimization as Hoeffding's inequality, yielding the stated bound with constant $2$ instead of $8$ by tighter analysis of the conditional ranges. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+McDiarmid's inequality is sometimes called the "method of bounded differences." It subsumes Hoeffding's inequality: for $f(x_1, \ldots, x_n) = \frac{1}{n}\sum_i x_i$ with $x_i \in [a, b]$, each $c_i = (b-a)/n$, and the bound reduces to Hoeffding.
+</TheoremBlock>
+
+### Application: Concentration of Empirical Risk
+
+**Example 5 (Empirical Risk).** Let $(X_1, Y_1), \ldots, (X_n, Y_n)$ be i.i.d. training samples, $h$ a fixed hypothesis, and $\ell$ a loss function bounded by $M$. Define the empirical risk:
+
+$$\hat{R}(h) = \frac{1}{n}\sum_{i=1}^n \ell(h(X_i), Y_i)$$
+
+Changing any single sample $(X_i, Y_i)$ changes $\hat{R}(h)$ by at most $M/n$. By McDiarmid:
+
+$$P(|\hat{R}(h) - R(h)| \geq \varepsilon) \leq 2\exp(-2n\varepsilon^2/M^2)$$
+
+This is the concentration result that enables **generalization bounds**: the empirical risk concentrates around the true risk at an exponential rate.
+
+![McDiarmid's inequality — empirical risk concentration, bounded differences for various functions, and sample complexity for PAC-style bounds](/images/topics/concentration-inequalities/mcdiarmid-inequality.png)
+
+---
+
+## Applications to Machine Learning
+
+### Generalization Bounds for a Fixed Hypothesis
+
+The simplest generalization bound follows directly from Hoeffding's inequality (or McDiarmid). Given a hypothesis $h$, its true risk $R(h) = E[\ell(h(X), Y)]$ and empirical risk $\hat{R}(h) = \frac{1}{n}\sum_{i=1}^n \ell(h(X_i), Y_i)$, if the loss is bounded by $M$:
+
+<TheoremBlock type="theorem" number={9} title="Fixed-Hypothesis Generalization Bound">
+With probability at least $1 - \delta$:
+
+$$|R(h) - \hat{R}(h)| \leq M\sqrt{\frac{\log(2/\delta)}{2n}}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply Hoeffding's Corollary 2 with $\varepsilon = M\sqrt{\frac{\log(2/\delta)}{2n}}$ and solve $2e^{-2n\varepsilon^2/M^2} = \delta$. $\square$
+</TheoremBlock>
+
+### The Union Bound and Finite Hypothesis Classes
+
+For a finite hypothesis class $\mathcal{H} = \{h_1, \ldots, h_K\}$, we want uniform convergence: $\sup_{h \in \mathcal{H}} |\hat{R}(h) - R(h)| \leq \varepsilon$ simultaneously for all $h$. The **union bound** (Boole's inequality) and Hoeffding give:
+
+<TheoremBlock type="theorem" number={10} title="Uniform Convergence for Finite H">
+With probability at least $1 - \delta$:
+
+$$\sup_{h \in \mathcal{H}} |R(h) - \hat{R}(h)| \leq M\sqrt{\frac{\log(2|\mathcal{H}|/\delta)}{2n}}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By the union bound:
+
+$$P(\exists h : |R(h) - \hat{R}(h)| \geq \varepsilon) \leq \sum_{k=1}^K P(|\hat{R}(h_k) - R(h_k)| \geq \varepsilon) \leq 2Ke^{-2n\varepsilon^2/M^2}$$
+
+Set this equal to $\delta$ and solve for $\varepsilon$. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The price of uniformity is $\log|\mathcal{H}|$ — logarithmic in the size of the hypothesis class. This is remarkably mild: even with $|\mathcal{H}| = 10^{100}$ hypotheses, we only need $\log(10^{100}) \approx 230$ additional samples' worth of concentration.
+</TheoremBlock>
+
+### Sample Complexity
+
+<TheoremBlock type="corollary" number={4} title="Sample Complexity for Finite H">
+To achieve $\sup_{h \in \mathcal{H}} |R(h) - \hat{R}(h)| \leq \varepsilon$ with probability $\geq 1 - \delta$, it suffices to have:
+
+$$n \geq \frac{M^2}{2\varepsilon^2}\log\frac{2|\mathcal{H}|}{\delta}$$
+</TheoremBlock>
+
+This is the **PAC-style sample complexity** bound. The dependence on the key parameters is:
+- **$1/\varepsilon^2$**: quadratic in the accuracy — fundamental to most concentration-based bounds.
+- **$\log|\mathcal{H}|$**: logarithmic in the hypothesis class size — the key insight that makes learning tractable.
+- **$\log(1/\delta)$**: logarithmic in the confidence — exponentially better than Chebyshev's $1/\delta$.
+
+<GeneralizationBoundCalculator client:visible />
+
+### The Bridge to PAC Learning
+
+This section has developed the concentration machinery that the **PAC Learning Framework** *(coming soon)* will use extensively. The key ingredients flowing forward are:
+
+1. **Hoeffding's inequality** for bounding the gap between empirical and true risk.
+2. **The union bound** for extending single-hypothesis bounds to finite classes.
+3. **Sub-Gaussian theory** as the abstract framework for tail control.
+4. **McDiarmid's inequality** for concentration of general functions (needed for Rademacher complexity).
+
+The PAC learning framework formalizes this: a hypothesis class $\mathcal{H}$ is *PAC-learnable* if there exists an algorithm that, given $n \geq n(\varepsilon, \delta, \mathcal{H})$ i.i.d. samples, outputs a hypothesis $\hat{h}$ with $R(\hat{h}) - \inf_{h \in \mathcal{H}} R(h) \leq \varepsilon$ with probability $\geq 1 - \delta$. The sample complexity $n(\varepsilon, \delta, \mathcal{H})$ depends on the "complexity" of $\mathcal{H}$ — measured by VC dimension, Rademacher complexity, or covering numbers — all of which rely on the concentration inequalities developed here.
+
+![ML applications — generalization gap vs sample size, the price of uniform convergence, sample complexity landscape, and the concentration inequality hierarchy](/images/topics/concentration-inequalities/ml-applications.png)
+
+```python
+# Generalization Bounds: Union Bound + Hoeffding for Finite H
+np.random.seed(42)
+n_vals = np.arange(50, 2001, 20)
+true_risk = 0.3
+n_mc = 5000
+
+# Empirical generalization gaps (Monte Carlo)
+gen_gaps_95 = []
+for n in n_vals:
+    emp_risks = np.random.binomial(n, true_risk, n_mc) / n
+    gaps = np.abs(emp_risks - true_risk)
+    gen_gaps_95.append(np.percentile(gaps, 95))
+
+# Hoeffding bound for 95% confidence (delta = 0.05)
+hoeffding_95 = np.sqrt(np.log(2 / 0.05) / (2 * n_vals))
+
+# Sample complexity: n >= log(2|H|/delta) / (2 * eps^2)
+# For |H| = 100, delta = 0.05:
+n_needed = lambda eps: np.log(2 * 100 / 0.05) / (2 * eps**2)
+```
+
+---
+
+## Connections & Further Reading
+
+### Connections Map
+
+| Topic | Domain | Relationship |
+|--------|-------|-------------|
+| [Measure-Theoretic Probability](/topics/measure-theoretic-probability) | Probability & Statistics | Prerequisite — provides $L^p$ spaces, convergence modes, and the expectation operator used throughout |
+| [PCA & Low-Rank Approximation](/topics/pca-low-rank) | Linear Algebra | Matrix concentration inequalities bound the gap between sample and population covariance eigenvalues |
+| **PAC Learning Framework** *(coming soon)* | Probability & Statistics | Direct downstream — uses Hoeffding + union bound for sample complexity; Rademacher complexity uses McDiarmid |
+| **Bayesian Nonparametrics** *(coming soon)* | Probability & Statistics | Concentration bounds for posterior contraction rates |
+
+### Key Notation Summary
+
+| Symbol | Meaning |
+|--------|---------|
+| $M_X(\lambda) = E[e^{\lambda X}]$ | Moment generating function |
+| $\psi_X(\lambda) = \log M_X(\lambda)$ | Cumulant generating function (log-MGF) |
+| $\psi_X^*(t)$ | Rate function (Legendre–Fenchel transform) |
+| $\text{subG}(\sigma^2)$ | Sub-Gaussian with proxy variance $\sigma^2$ |
+| $\|\cdot\|_{\psi_2}$ | Sub-Gaussian (Orlicz) norm |
+| $R(h) = E[\ell(h(X), Y)]$ | True risk |
+| $\hat{R}(h)$ | Empirical risk |
+| $\mathcal{H}$ | Hypothesis class |
