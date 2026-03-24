@@ -3,12 +3,9 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   type Point,
   type ConvexSetDef,
-  type PolygonDef,
-  isInsideSet,
   segmentMembership,
   computeConvexHull,
   clampPoint,
-  ellipseBoundary,
 } from './shared/convexGeometry';
 import * as d3 from 'd3';
 

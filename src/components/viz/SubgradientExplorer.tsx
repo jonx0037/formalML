@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 
@@ -113,6 +113,7 @@ type FuncKey = keyof typeof FUNCTIONS;
 // ─── Component ───
 
 export default function SubgradientExplorer() {
+  const instanceId = useId();
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const leftSvgRef = useRef<SVGSVGElement>(null);
   const rightSvgRef = useRef<SVGSVGElement>(null);
@@ -231,14 +232,14 @@ export default function SubgradientExplorer() {
     // Clip path
     g.append('defs')
       .append('clipPath')
-      .attr('id', 'left-clip')
+      .attr('id', `subgrad-left-${instanceId.replace(/:/g, '')}`)
       .append('rect')
       .attr('x', 0)
       .attr('y', 0)
       .attr('width', w)
       .attr('height', h);
 
-    const plotArea = g.append('g').attr('clip-path', 'url(#left-clip)');
+    const plotArea = g.append('g').attr('clip-path', `url(#subgrad-left-${instanceId.replace(/:/g, '')})`);
 
     // Function curve
     const line = d3
@@ -350,14 +351,14 @@ export default function SubgradientExplorer() {
     // Clip path
     g.append('defs')
       .append('clipPath')
-      .attr('id', 'right-clip')
+      .attr('id', `subgrad-right-${instanceId.replace(/:/g, '')}`)
       .append('rect')
       .attr('x', 0)
       .attr('y', 0)
       .attr('width', w)
       .attr('height', h);
 
-    const plotArea = g.append('g').attr('clip-path', 'url(#right-clip)');
+    const plotArea = g.append('g').attr('clip-path', `url(#subgrad-right-${instanceId.replace(/:/g, '')})`);
 
     // Subdifferential: draw the lower and upper curves, with vertical segments at kinks
     // Split into segments based on where lower !== upper (kink regions)

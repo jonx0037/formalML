@@ -2,7 +2,6 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   type Point,
   type EllipseDef,
-  closestBoundaryPoint,
   dist,
   ellipseNormal,
   ellipseBoundary,
@@ -180,23 +179,12 @@ export default function SeparatingHyperplaneExplorer() {
 
       if (showHalfspaces) {
         // Halfspace shading for supporting mode
-        // The normal points outward; shade the interior side (opposite normal) and exterior side
-        const clipId1 = 'support-half-inner';
-        const clipId2 = 'support-half-outer';
-
-        // Build polygon vertices for each half
         const corners = [
           { x: -4, y: -3 },
           { x: 4, y: -3 },
           { x: 4, y: 3 },
           { x: -4, y: 3 },
         ];
-
-        // Classify corners by which side of the hyperplane they fall on
-        // The hyperplane passes through boundaryPoint with normal direction `normal`
-        // dot(p - boundaryPoint, normal) > 0 => exterior side
-        const exteriorPoly: Point[] = [];
-        const interiorPoly: Point[] = [];
 
         // Use a polygon clipping approach: intersect rectangle with half-planes
         const rectPoly = [...corners];
@@ -345,11 +333,7 @@ export default function SeparatingHyperplaneExplorer() {
     const { set1, set2 } = separationResult;
 
     // Halfspace shading (drawn first, behind everything)
-    if (
-      showHalfspaces &&
-      !separationResult.overlapping &&
-      !separationResult.overlapping
-    ) {
+    if (showHalfspaces && !separationResult.overlapping) {
       const { midpoint, normal } = separationResult as {
         midpoint: Point;
         normal: Point;

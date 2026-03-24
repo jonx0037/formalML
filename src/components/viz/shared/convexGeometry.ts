@@ -85,6 +85,9 @@ export function segmentInsideSet(
 /**
  * Return arrays of [t, inside] for the segment from p1 to p2,
  * useful for coloring segments green (inside) vs red (outside).
+ *
+ * Uses adaptive refinement around inside/outside transitions
+ * to avoid missing short violation intervals.
  */
 export function segmentMembership(
   p1: Point,
@@ -92,13 +95,46 @@ export function segmentMembership(
   set: ConvexSetDef,
   samples = 200,
 ): { t: number; inside: boolean }[] {
-  const result: { t: number; inside: boolean }[] = [];
+  const pointAt = (t: number) => ({
+    x: p1.x + t * (p2.x - p1.x),
+    y: p1.y + t * (p2.y - p1.y),
+  });
+
+  // Initial coarse pass
+  const coarse: { t: number; inside: boolean }[] = [];
   for (let i = 0; i <= samples; i++) {
     const t = i / samples;
-    const pt = { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
-    result.push({ t, inside: isInsideSet(pt, set) });
+    coarse.push({ t, inside: isInsideSet(pointAt(t), set) });
   }
-  return result;
+
+  // Adaptive refinement: add extra samples around transitions
+  const refined: { t: number; inside: boolean }[] = [];
+  for (let i = 0; i < coarse.length; i++) {
+    refined.push(coarse[i]);
+    if (i < coarse.length - 1 && coarse[i].inside !== coarse[i + 1].inside) {
+      // Binary search for the transition point
+      let lo = coarse[i].t;
+      let hi = coarse[i + 1].t;
+      for (let iter = 0; iter < 8; iter++) {
+        const mid = (lo + hi) / 2;
+        const midInside = isInsideSet(pointAt(mid), set);
+        if (midInside === coarse[i].inside) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      // Insert samples at the refined transition
+      const tMid = (lo + hi) / 2;
+      refined.push({ t: lo, inside: coarse[i].inside });
+      refined.push({ t: tMid, inside: isInsideSet(pointAt(tMid), set) });
+      refined.push({ t: hi, inside: coarse[i + 1].inside });
+    }
+  }
+
+  // Sort by t and deduplicate
+  refined.sort((a, b) => a.t - b.t);
+  return refined;
 }
 
 /** Compute the closest point on the boundary of a convex set to a given point. */
