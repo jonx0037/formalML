@@ -21,6 +21,11 @@ const HYPOTHESIS_INFO: Record<HypothesisClass, { label: string; vcDim: number }>
 
 const MAX_POINTS = 6;
 
+const COLORS = {
+  positive: '#0F6E56',
+  negative: '#DC2626',
+} as const;
+
 // ─── Realizability checks ───
 
 /** Thresholds on x-axis: positive if x <= threshold */
@@ -169,7 +174,10 @@ export default function ShatteringExplorer() {
   const [hClass, setHClass] = useState<HypothesisClass>('thresholds');
 
   const isDesktop = (containerWidth || 0) > 640;
-  const canvasSize = isDesktop ? Math.min(Math.floor(containerWidth * 0.5), 360) : Math.min(containerWidth - 32, 360);
+  const canvasSize = Math.max(
+    100,
+    isDesktop ? Math.min(Math.floor(containerWidth * 0.5), 360) : Math.min(containerWidth - 32, 360),
+  );
 
   // Generate all 2^m labelings and check realizability
   const labelings = useMemo(() => {
@@ -232,7 +240,7 @@ export default function ShatteringExplorer() {
     points.forEach(p => {
       sel.append('circle')
         .attr('cx', p.x * canvasSize).attr('cy', p.y * canvasSize)
-        .attr('r', 8).style('fill', '#0F6E56').style('stroke', '#fff').style('stroke-width', 2)
+        .attr('r', 8).style('fill', COLORS.positive).style('stroke', '#fff').style('stroke-width', 2)
         .style('cursor', 'pointer');
     });
 
@@ -323,14 +331,14 @@ export default function ShatteringExplorer() {
             </div>
             <div style={{ padding: '8px', borderRadius: '4px', background: 'var(--color-muted-bg)', textAlign: 'center' }}>
               <div style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>Realized</div>
-              <div style={{ fontSize: '18px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#0F6E56' }}>
+              <div style={{ fontSize: '18px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: COLORS.positive }}>
                 {totalLabelings > 0 ? realizedCount : '—'}
               </div>
               <div style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>|H_C|</div>
             </div>
-            <div style={{ padding: '8px', borderRadius: '4px', background: isShattered ? 'rgba(15,110,86,0.1)' : 'var(--color-muted-bg)', textAlign: 'center', border: isShattered ? '1px solid #0F6E56' : '1px solid transparent' }}>
+            <div style={{ padding: '8px', borderRadius: '4px', background: isShattered ? 'rgba(15,110,86,0.1)' : 'var(--color-muted-bg)', textAlign: 'center', border: isShattered ? `1px solid ${COLORS.positive}` : '1px solid transparent' }}>
               <div style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>Shattered?</div>
-              <div style={{ fontSize: '18px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: isShattered ? '#0F6E56' : '#DC2626' }}>
+              <div style={{ fontSize: '18px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: isShattered ? COLORS.positive : COLORS.negative }}>
                 {totalLabelings > 0 ? (isShattered ? '✓' : '✗') : '—'}
               </div>
               <div style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>
@@ -383,7 +391,7 @@ function LabelingThumbnail({
       width={size}
       height={size}
       style={{
-        border: `1px solid ${realizable ? '#0F6E56' : 'var(--color-border)'}`,
+        border: `1px solid ${realizable ? COLORS.positive : 'var(--color-border)'}`,
         borderRadius: '4px',
         background: realizable ? 'rgba(15,110,86,0.05)' : 'var(--color-muted-bg)',
         opacity: realizable ? 1 : 0.4,
@@ -395,7 +403,7 @@ function LabelingThumbnail({
           cx={p.x * (size - 12) + 6}
           cy={p.y * (size - 12) + 6}
           r={4}
-          fill={labeling[i] ? '#0F6E56' : '#DC2626'}
+          fill={labeling[i] ? COLORS.positive : COLORS.negative}
           stroke="#fff"
           strokeWidth={0.5}
         />
@@ -408,7 +416,7 @@ function LabelingThumbnail({
         style={{
           fontSize: '9px',
           fontFamily: 'var(--font-mono)',
-          fill: realizable ? '#0F6E56' : '#DC2626',
+          fill: realizable ? COLORS.positive : COLORS.negative,
           fontWeight: 700,
         }}
       >

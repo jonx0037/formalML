@@ -4,6 +4,13 @@ import { useResizeObserver } from './shared/useResizeObserver';
 
 const MARGIN = { top: 30, right: 16, bottom: 40, left: 56 };
 
+const COLORS = {
+  sauerShelah: '#0F6E56',
+  simplified: '#D97706',
+  ratio: '#534AB7',
+  phaseTransition: '#DC2626',
+} as const;
+
 /** Compute binomial coefficient C(n,k) using multiplicative formula */
 function choose(n: number, k: number): number {
   if (k < 0 || k > n) return 0;
@@ -96,20 +103,20 @@ export default function GrowthFunctionVisualizer() {
 
     // Sauer-Shelah exact (teal)
     sel.append('path').datum(sauerShelah.map(v => clip(v))).attr('d', expLine)
-      .style('fill', 'none').style('stroke', '#0F6E56').style('stroke-width', 2.5);
+      .style('fill', 'none').style('stroke', COLORS.sauerShelah).style('stroke-width', 2.5);
 
     // Simplified (em/d)^d (amber dashed)
     sel.append('path').datum(simplified.map(v => clip(v))).attr('d', expLine)
-      .style('fill', 'none').style('stroke', '#D97706').style('stroke-width', 1.5).style('stroke-dasharray', '4 3');
+      .style('fill', 'none').style('stroke', COLORS.simplified).style('stroke-width', 1.5).style('stroke-dasharray', '4 3');
 
     // Phase transition annotation
     if (showTransition && vcDim <= mMax) {
       sel.append('line')
         .attr('x1', xScale(vcDim)).attr('x2', xScale(vcDim))
         .attr('y1', yScale(1)).attr('y2', yScale(yMax))
-        .style('stroke', '#DC2626').style('stroke-dasharray', '3 2').style('opacity', 0.6);
+        .style('stroke', COLORS.phaseTransition).style('stroke-dasharray', '3 2').style('opacity', 0.6);
       sel.append('text').attr('x', xScale(vcDim) + 4).attr('y', MARGIN.top + 14)
-        .style('font-size', '9px').style('font-family', 'var(--font-mono)').style('fill', '#DC2626')
+        .style('font-size', '9px').style('font-family', 'var(--font-mono)').style('fill', COLORS.phaseTransition)
         .text(`m = d = ${vcDim}`);
     }
 
@@ -118,8 +125,8 @@ export default function GrowthFunctionVisualizer() {
     const lx = panelW - MARGIN.right - 100;
     [
       { label: '2^m', color: 'var(--color-text-secondary)', dash: true },
-      { label: 'Sauer–Shelah', color: '#0F6E56', dash: false },
-      { label: '(em/d)^d', color: '#D97706', dash: true },
+      { label: 'Sauer–Shelah', color: COLORS.sauerShelah, dash: false },
+      { label: '(em/d)^d', color: COLORS.simplified, dash: true },
     ].forEach(({ label, color, dash }, i) => {
       const line = sel.append('line').attr('x1', lx).attr('x2', lx + 14).attr('y1', ly + i * 12).attr('y2', ly + i * 12)
         .style('stroke', color).style('stroke-width', 1.5);
@@ -167,16 +174,16 @@ export default function GrowthFunctionVisualizer() {
     // Ratio curve
     const lineGen = d3.line<number>().x((_, i) => xScale(mRange[i])).y(d => yScale(Math.max(0, Math.min(d, 1.05))));
     sel.append('path').datum(ratio).attr('d', lineGen)
-      .style('fill', 'none').style('stroke', '#534AB7').style('stroke-width', 2.5);
+      .style('fill', 'none').style('stroke', COLORS.ratio).style('stroke-width', 2.5);
 
     // Phase transition
     if (showTransition && vcDim <= mMax) {
       sel.append('line')
         .attr('x1', xScale(vcDim)).attr('x2', xScale(vcDim))
         .attr('y1', yScale(0)).attr('y2', yScale(1.05))
-        .style('stroke', '#DC2626').style('stroke-dasharray', '3 2').style('opacity', 0.6);
+        .style('stroke', COLORS.phaseTransition).style('stroke-dasharray', '3 2').style('opacity', 0.6);
       sel.append('text').attr('x', xScale(vcDim) + 4).attr('y', MARGIN.top + 14)
-        .style('font-size', '9px').style('font-family', 'var(--font-mono)').style('fill', '#DC2626')
+        .style('font-size', '9px').style('font-family', 'var(--font-mono)').style('fill', COLORS.phaseTransition)
         .text(`m = d = ${vcDim}`);
     }
 
@@ -229,7 +236,7 @@ export default function GrowthFunctionVisualizer() {
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}>
           <input type="checkbox" checked={showTransition} onChange={e => setShowTransition(e.target.checked)}
-            style={{ accentColor: '#DC2626' }} />
+            style={{ accentColor: COLORS.phaseTransition }} />
           Show phase transition at m = d
         </label>
       </div>

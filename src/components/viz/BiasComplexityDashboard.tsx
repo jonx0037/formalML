@@ -4,6 +4,13 @@ import { useResizeObserver } from './shared/useResizeObserver';
 
 const MARGIN = { top: 30, right: 16, bottom: 40, left: 56 };
 
+const COLORS = {
+  approximation: '#2563EB',
+  estimation: '#DC2626',
+  total: '#0F6E56',
+  optimal: '#D97706',
+} as const;
+
 /** Estimation error from the VC bound: sqrt((8d log(2en/d) + 8 log(4/δ)) / n) */
 function estimationError(d: number, n: number, delta: number): number {
   if (d <= 0 || n <= 0) return 0;
@@ -68,9 +75,9 @@ export default function BiasComplexityDashboard() {
       if (dashed) path.style('stroke-dasharray', '6 3');
     };
 
-    drawLine(approx, '#2563EB');       // Approximation (blue)
-    drawLine(estim, '#DC2626');        // Estimation (red)
-    drawLine(total, '#0F6E56');        // Total (teal)
+    drawLine(approx, COLORS.approximation);
+    drawLine(estim, COLORS.estimation);
+    drawLine(total, COLORS.total);
 
     // Optimal d* line
     sel.append('line')
@@ -81,20 +88,20 @@ export default function BiasComplexityDashboard() {
     // Optimal d* marker
     sel.append('circle')
       .attr('cx', xScale(optD)).attr('cy', yScale(optVal))
-      .attr('r', 5).style('fill', '#D97706').style('stroke', '#fff').style('stroke-width', 1.5);
+      .attr('r', 5).style('fill', COLORS.optimal).style('stroke', '#fff').style('stroke-width', 1.5);
 
     sel.append('text')
       .attr('x', xScale(optD) + 8).attr('y', yScale(yMax) + 16)
-      .style('font-size', '10px').style('font-family', 'var(--font-mono)').style('fill', '#D97706').style('font-weight', '600')
+      .style('font-size', '10px').style('font-family', 'var(--font-mono)').style('fill', COLORS.optimal).style('font-weight', '600')
       .text(`d* = ${optD}`);
 
     // Legend
     const legendY = MARGIN.top + 4;
     const legendX = MARGIN.left + 12;
     const items = [
-      { label: 'Approximation', color: '#2563EB' },
-      { label: 'Estimation (VC)', color: '#DC2626' },
-      { label: 'Total', color: '#0F6E56' },
+      { label: 'Approximation', color: COLORS.approximation },
+      { label: 'Estimation (VC)', color: COLORS.estimation },
+      { label: 'Total', color: COLORS.total },
     ];
     items.forEach(({ label, color }, i) => {
       sel.append('line').attr('x1', legendX).attr('x2', legendX + 16).attr('y1', legendY + i * 14).attr('y2', legendY + i * 14)

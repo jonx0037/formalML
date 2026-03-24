@@ -24,9 +24,9 @@ function agnosticSampleComplexity(eps: number, H: number, delta: number): number
 
 /** VC bound epsilon given n: sqrt((8d log(2en/d) + 8 log(4/delta)) / n) */
 function vcBoundEpsilon(n: number, d: number, delta: number): number {
-  if (n <= 0 || d <= 0) return Infinity;
+  if (n <= 0 || d <= 0 || Math.E * n <= d) return Infinity;
   const val = (8 * d * Math.log(2 * Math.E * n / d) + 8 * Math.log(4 / delta)) / n;
-  return val > 0 ? Math.sqrt(val) : 0;
+  return val > 0 ? Math.sqrt(val) : Infinity;
 }
 
 /** VC bound: invert for sample complexity via binary search */
@@ -42,8 +42,9 @@ function vcSampleComplexity(eps: number, d: number, delta: number): number {
 
 /** Rademacher bound epsilon given n: 4 sqrt(2d log(en/d)/n) + 3 sqrt(log(2/delta)/(2n)) */
 function rademacherBoundEpsilon(n: number, d: number, delta: number): number {
-  if (n <= 0 || d <= 0) return Infinity;
-  const term1 = 4 * Math.sqrt(2 * d * Math.log(Math.E * n / d) / n);
+  if (n <= 0 || d <= 0 || Math.E * n <= d) return Infinity;
+  const logArg = Math.E * n / d;
+  const term1 = 4 * Math.sqrt(2 * d * Math.log(logArg) / n);
   const term2 = 3 * Math.sqrt(Math.log(2 / delta) / (2 * n));
   return term1 + term2;
 }
@@ -252,7 +253,7 @@ export default function PACBoundComparator() {
           <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>
             δ (failure prob): <strong style={{ color: 'var(--color-text)' }}>{delta.toFixed(4)}</strong>
           </div>
-          <input type="range" min={-3} max={Math.log10(0.5).toFixed(2)} step={0.05} value={logDelta}
+          <input type="range" min={-3} max={-0.3} step={0.05} value={logDelta}
             onChange={e => setLogDelta(parseFloat(e.target.value))}
             style={{ width: '100%', accentColor: 'var(--color-accent)' }} />
         </div>
