@@ -1,0 +1,666 @@
+---
+title: "Gradient Descent & Convergence"
+subtitle: "The workhorse of continuous optimization: convergence rates under smoothness and strong convexity, acceleration, coordinate descent, mirror descent, and stochastic variants"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "convex-analysis"
+tags:
+  - "optimization"
+  - "gradient-descent"
+  - "convergence-rates"
+  - "acceleration"
+  - "stochastic-optimization"
+  - "coordinate-descent"
+  - "mirror-descent"
+domain: "optimization"
+videoId: null
+notebookPath: "notebooks/gradient-descent/02_gradient_descent.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/gradient-descent.mdx"
+datePublished: 2026-03-24
+estimatedReadTime: 50
+abstract: "Gradient descent is the computational engine behind modern optimization and machine learning. We develop the algorithm from its geometric core — the negative gradient as the direction of steepest descent — and build a complete convergence theory in two stages. For L-smooth convex functions, the Descent Lemma yields an O(1/k) sublinear rate; adding μ-strong convexity tightens this to a linear rate governed by the condition number κ = L/μ. We then extend the framework in three directions: Nesterov's accelerated gradient achieves the optimal O(1/k²) rate through a momentum mechanism, coordinate descent exploits problem structure by updating one variable at a time, and mirror descent replaces Euclidean geometry with Bregman divergence to handle constrained domains like the simplex. The stochastic gradient descent section bridges theory and practice, showing how noisy gradient estimates with decreasing step sizes still converge. Throughout, we connect convergence guarantees to the convex analysis foundations — smoothness, strong convexity, and subdifferentials — established in the prerequisite topic."
+connections:
+  - topic: "convex-analysis"
+    relationship: "Every convergence proof in this topic relies on convexity and smoothness properties established in Convex Analysis. The Descent Lemma is the L-smooth analogue of the first-order convexity condition; strong convexity provides the quadratic lower bound that yields linear convergence."
+  - topic: "spectral-theorem"
+    relationship: "The condition number κ = L/μ for quadratic objectives equals the ratio of extreme eigenvalues of the Hessian. The Spectral Theorem provides the eigendecomposition that makes this concrete: ill-conditioned Hessians (large eigenvalue spread) cause the zigzag behavior that slows gradient descent."
+  - topic: "svd"
+    relationship: "For least-squares problems min ||Ax - b||², the condition number of A^T A governs GD convergence. The SVD reveals this condition number directly as σ_max²/σ_min², connecting linear algebra to optimization dynamics."
+references:
+  - type: "book"
+    title: "Convex Optimization"
+    authors: "Boyd & Vandenberghe"
+    year: 2004
+    note: "Chapter 9: Unconstrained minimization — gradient descent, Newton's method, convergence analysis"
+  - type: "book"
+    title: "Introductory Lectures on Convex Optimization"
+    authors: "Nesterov"
+    year: 2004
+    note: "Chapters 2-3: The foundational text for smooth convex optimization and the accelerated gradient method"
+  - type: "book"
+    title: "Convex Optimization: Algorithms and Complexity"
+    authors: "Bubeck"
+    year: 2015
+    note: "Chapters 3-4: Gradient descent convergence proofs, mirror descent, and lower bounds"
+  - type: "book"
+    title: "First-Order Methods in Optimization"
+    authors: "Beck"
+    year: 2017
+    note: "Comprehensive treatment of proximal, accelerated, and coordinate descent methods"
+  - type: "paper"
+    title: "A Method of Solving a Convex Programming Problem with Convergence Rate O(1/k²)"
+    authors: "Nesterov"
+    year: 1983
+    url: "https://doi.org/10.1016/0041-5553(83)90201-6"
+    note: "The original paper introducing the accelerated gradient method"
+  - type: "paper"
+    title: "Efficiency of Coordinate Descent Methods on Huge-Scale Optimization Problems"
+    authors: "Nesterov"
+    year: 2012
+    url: "https://doi.org/10.1137/100802001"
+    note: "Convergence analysis for randomized coordinate descent"
+  - type: "paper"
+    title: "Mirror Descent and Nonlinear Projected Subgradient Methods for Convex Optimization"
+    authors: "Beck & Teboulle"
+    year: 2003
+    url: "https://doi.org/10.1016/S0167-6377(02)00231-6"
+    note: "Mirror descent with Bregman divergence — the key framework for non-Euclidean optimization"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import GradientDescentExplorer from '../../components/viz/GradientDescentExplorer.tsx';
+import DescentLemmaExplorer from '../../components/viz/DescentLemmaExplorer.tsx';
+import StepSizeExplorer from '../../components/viz/StepSizeExplorer.tsx';
+import AccelerationExplorer from '../../components/viz/AccelerationExplorer.tsx';
+import MirrorDescentExplorer from '../../components/viz/MirrorDescentExplorer.tsx';
+
+## Overview & Motivation
+
+In [Convex Analysis](/topics/convex-analysis) we established the geometric and analytic infrastructure that makes optimization tractable: convex sets are closed under line segments, convex functions have a single global minimum, and smooth convex functions admit tangent-line lower bounds. That machinery tells us *what* to optimize but not *how*. This topic is about the how.
+
+Gradient descent is the simplest first-order algorithm for unconstrained minimization, and arguably the most important. The idea is disarmingly simple: to minimize $f$, start at an initial guess $x_0$ and repeatedly take steps in the direction that decreases $f$ fastest — the negative gradient $-\nabla f(x_k)$. Each step replaces the function by its local linear approximation and moves to where that approximation is most favorable.
+
+What makes gradient descent remarkable is not the algorithm itself but the *convergence theory* that governs it. With the right assumptions — smoothness, convexity, and sometimes strong convexity — we can prove exactly how fast the iterates approach the optimum, and these rates turn out to be tight: no first-order method can do better in the worst case (at least without acceleration).
+
+### What We Cover
+
+1. **The Gradient Descent Algorithm** — the update rule and its geometric interpretation as steepest descent.
+2. **Smoothness & the Descent Lemma** — how $L$-smoothness provides a quadratic upper bound that guarantees progress at each step.
+3. **Convergence for Convex Functions** — the $O(1/k)$ sublinear rate, proven via telescoping.
+4. **Strong Convexity & Linear Convergence** — the condition number $\kappa = L/\mu$ and the geometric rate $(1 - 1/\kappa)^k$.
+5. **Step Size Selection** — fixed, exact line search, and Armijo backtracking.
+6. **Nesterov Accelerated Gradient** — the momentum trick that achieves the optimal $O(1/k^2)$ rate.
+7. **Coordinate Descent** — updating one variable at a time, and when that beats full-gradient steps.
+8. **Mirror Descent & Bregman Divergence** — generalizing Euclidean geometry for constrained domains.
+9. **Stochastic Gradient Descent** — noisy gradients, mini-batches, and decreasing step sizes.
+10. **Computational Notes** — NumPy implementations and convergence diagnostics.
+
+![Gradient descent on a 2D quadratic: contour trajectory and convergence plot](/images/topics/gradient-descent/gradient-descent-algorithm.png)
+
+---
+
+## The Gradient Descent Algorithm
+
+The gradient $\nabla f(x)$ points in the direction of steepest *increase* of $f$ at $x$. To *decrease* $f$, we walk in the opposite direction.
+
+<TheoremBlock type="definition" number={1} title="Gradient Descent Update">
+Given a differentiable function $f : \mathbb{R}^n \to \mathbb{R}$, a starting point $x_0 \in \mathbb{R}^n$, and a step size (learning rate) $\eta > 0$, the **gradient descent** algorithm generates iterates
+
+$$x_{k+1} = x_k - \eta \nabla f(x_k), \quad k = 0, 1, 2, \ldots$$
+
+The iteration terminates when $\|\nabla f(x_k)\|$ falls below a chosen tolerance, or after a fixed budget of steps.
+</TheoremBlock>
+
+Geometrically, each iterate replaces $f$ by its first-order Taylor approximation $f(x_k) + \nabla f(x_k)^\top (x - x_k)$ and moves in the direction that decreases this linear model fastest. The step size $\eta$ controls how far we trust the linear approximation — too large and we overshoot; too small and progress is glacially slow.
+
+For a quadratic $f(x) = \frac{1}{2}x^\top A x$ with $A$ symmetric positive definite, the gradient is $\nabla f(x) = Ax$ and the update simplifies to $x_{k+1} = (I - \eta A)x_k$. The convergence behavior of this linear map is entirely determined by the eigenvalues of $I - \eta A$: convergence requires $|1 - \eta \lambda_i| < 1$ for every eigenvalue $\lambda_i$, which means $\eta$ must lie in $(0, 2/\lambda_{\max})$.
+
+---
+
+## Smoothness & the Descent Lemma
+
+The key to analyzing gradient descent is *smoothness* — a Lipschitz condition on the gradient that provides a global quadratic upper bound on $f$.
+
+<TheoremBlock type="definition" number={2} title="L-Smoothness">
+A differentiable function $f : \mathbb{R}^n \to \mathbb{R}$ is **$L$-smooth** (or has $L$-Lipschitz continuous gradient) if
+
+$$\|\nabla f(x) - \nabla f(y)\| \leq L \|x - y\| \quad \text{for all } x, y \in \mathbb{R}^n$$
+
+The constant $L > 0$ is the **smoothness parameter**. For twice-differentiable functions, $L$-smoothness is equivalent to $\nabla^2 f(x) \preceq L I$ for all $x$ — that is, the Hessian's eigenvalues are bounded above by $L$.
+</TheoremBlock>
+
+Smoothness says the gradient cannot change too fast. This is exactly the condition that allows us to guarantee progress at each gradient step: if the gradient doesn't change too fast between $x_k$ and $x_{k+1}$, then the decrease predicted by the linear approximation actually holds (up to a quadratic correction).
+
+<TheoremBlock type="theorem" number={1} title="The Descent Lemma">
+If $f$ is $L$-smooth, then for all $x, y \in \mathbb{R}^n$:
+
+$$f(y) \leq f(x) + \nabla f(x)^\top (y - x) + \frac{L}{2}\|y - x\|^2$$
+
+In particular, taking a gradient step $y = x - \frac{1}{L}\nabla f(x)$ yields the guaranteed decrease:
+
+$$f\!\left(x - \frac{1}{L}\nabla f(x)\right) \leq f(x) - \frac{1}{2L}\|\nabla f(x)\|^2$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By the fundamental theorem of calculus,
+
+$$f(y) - f(x) = \int_0^1 \nabla f(x + t(y-x))^\top (y-x) \, dt$$
+
+Adding and subtracting $\nabla f(x)^\top(y-x)$:
+
+$$f(y) - f(x) = \nabla f(x)^\top (y-x) + \int_0^1 \bigl[\nabla f(x + t(y-x)) - \nabla f(x)\bigr]^\top (y-x) \, dt$$
+
+By Cauchy–Schwarz and the $L$-Lipschitz condition on the gradient:
+
+$$\bigl|\bigl[\nabla f(x + t(y-x)) - \nabla f(x)\bigr]^\top (y-x)\bigr| \leq L \cdot t \|y-x\|^2$$
+
+Integrating from $0$ to $1$:
+
+$$f(y) \leq f(x) + \nabla f(x)^\top(y-x) + \frac{L}{2}\|y-x\|^2$$
+
+For the guaranteed decrease, substitute $y = x - \frac{1}{L}\nabla f(x)$:
+
+$$f(y) \leq f(x) + \nabla f(x)^\top\!\left(-\frac{1}{L}\nabla f(x)\right) + \frac{L}{2}\left\|\frac{1}{L}\nabla f(x)\right\|^2 = f(x) - \frac{1}{2L}\|\nabla f(x)\|^2$$
+</TheoremBlock>
+
+The Descent Lemma tells us that at each point $x$, the function $f$ is sandwiched between a linear lower bound (from convexity, if $f$ is convex) and a quadratic upper bound (from $L$-smoothness). The gradient step minimizes the upper bound exactly, and the decrease is proportional to $\|\nabla f(x)\|^2$.
+
+<DescentLemmaExplorer client:visible />
+
+![Smoothness and the Descent Lemma: quadratic upper bounds at multiple points](/images/topics/gradient-descent/smoothness-descent-lemma.png)
+
+---
+
+## Convergence for Convex Functions
+
+Armed with the Descent Lemma, we can prove the first convergence result. For a convex, $L$-smooth function, gradient descent with step size $\eta = 1/L$ achieves an $O(1/k)$ rate — sublinear, but dimension-free.
+
+<TheoremBlock type="theorem" number={2} title="Convergence for Convex + L-Smooth Functions">
+Let $f$ be convex and $L$-smooth, and let $x^*$ be a minimizer of $f$. Then gradient descent with step size $\eta = 1/L$ satisfies:
+
+$$f(x_k) - f(x^*) \leq \frac{L \|x_0 - x^*\|^2}{2k}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+From the Descent Lemma, each step guarantees:
+
+$$f(x_{k+1}) \leq f(x_k) - \frac{1}{2L}\|\nabla f(x_k)\|^2 \tag{1}$$
+
+Since $f$ is convex, the first-order condition gives us $f(x^*) \geq f(x_k) + \nabla f(x_k)^\top(x^* - x_k)$, which rearranges to:
+
+$$f(x_k) - f(x^*) \leq \nabla f(x_k)^\top(x_k - x^*) \leq \|\nabla f(x_k)\| \cdot \|x_k - x^*\| \tag{2}$$
+
+We will use a different approach that yields the tightest bound. Consider the distance to the optimum:
+
+$$\|x_{k+1} - x^*\|^2 = \left\|x_k - \frac{1}{L}\nabla f(x_k) - x^*\right\|^2 = \|x_k - x^*\|^2 - \frac{2}{L}\nabla f(x_k)^\top(x_k - x^*) + \frac{1}{L^2}\|\nabla f(x_k)\|^2$$
+
+Rearranging and using the convexity inequality $\nabla f(x_k)^\top(x_k - x^*) \geq f(x_k) - f(x^*)$:
+
+$$f(x_k) - f(x^*) \leq \frac{L}{2}\bigl(\|x_k - x^*\|^2 - \|x_{k+1} - x^*\|^2\bigr) + \frac{1}{2L}\|\nabla f(x_k)\|^2$$
+
+From (1), $\frac{1}{2L}\|\nabla f(x_k)\|^2 \leq f(x_k) - f(x_{k+1})$. Since $f(x_{k+1}) \geq f(x^*)$, we get:
+
+$$f(x_k) - f(x^*) \leq \frac{L}{2}\bigl(\|x_k - x^*\|^2 - \|x_{k+1} - x^*\|^2\bigr)$$
+
+Now telescope: sum both sides from $k = 0$ to $k = K-1$:
+
+$$\sum_{k=0}^{K-1} \bigl(f(x_k) - f(x^*)\bigr) \leq \frac{L}{2}\|x_0 - x^*\|^2$$
+
+Since $f(x_k) - f(x^*)$ is non-increasing (by the Descent Lemma), $K \cdot (f(x_K) - f(x^*)) \leq \sum_{k=0}^{K-1}(f(x_k) - f(x^*))$, giving:
+
+$$f(x_K) - f(x^*) \leq \frac{L\|x_0 - x^*\|^2}{2K}$$
+</TheoremBlock>
+
+The $O(1/k)$ rate tells us that to reach $\varepsilon$-accuracy, we need $k \sim L\|x_0 - x^*\|^2 / \varepsilon$ iterations. This depends on the initial distance to the optimum but — crucially — not on the dimension $n$.
+
+![Convergence for convex functions: rate comparison and contour paths](/images/topics/gradient-descent/convergence-convex.png)
+
+---
+
+## Strong Convexity & Linear Convergence
+
+The $O(1/k)$ rate is slow. If we strengthen our assumption from plain convexity to *strong* convexity, the rate improves dramatically from sublinear to linear (i.e., geometric).
+
+<TheoremBlock type="definition" number={3} title="μ-Strong Convexity">
+A differentiable function $f$ is **$\mu$-strongly convex** (with $\mu > 0$) if for all $x, y \in \mathbb{R}^n$:
+
+$$f(y) \geq f(x) + \nabla f(x)^\top(y - x) + \frac{\mu}{2}\|y - x\|^2$$
+
+Equivalently, $f(x) - \frac{\mu}{2}\|x\|^2$ is convex, or $\nabla^2 f(x) \succeq \mu I$ for all $x$.
+</TheoremBlock>
+
+Strong convexity says that $f$ curves upward at least as fast as a quadratic with parameter $\mu$. Together with $L$-smoothness, this gives a "quadratic sandwich":
+
+$$f(x) + \nabla f(x)^\top(y-x) + \frac{\mu}{2}\|y-x\|^2 \leq f(y) \leq f(x) + \nabla f(x)^\top(y-x) + \frac{L}{2}\|y-x\|^2$$
+
+<TheoremBlock type="definition" number={4} title="Condition Number">
+For an $L$-smooth, $\mu$-strongly convex function, the **condition number** is:
+
+$$\kappa = \frac{L}{\mu} \geq 1$$
+
+For a quadratic $f(x) = \frac{1}{2}x^\top A x$ with $A$ symmetric positive definite, $L = \lambda_{\max}(A)$, $\mu = \lambda_{\min}(A)$, and $\kappa$ equals the spectral condition number of $A$ (see [The Spectral Theorem](/topics/spectral-theorem)). For least-squares problems $\min \|Ax - b\|^2$, the relevant condition number is $\sigma_{\max}^2/\sigma_{\min}^2$ from the [SVD](/topics/svd).
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="Linear Convergence Under Strong Convexity">
+Let $f$ be $L$-smooth and $\mu$-strongly convex with condition number $\kappa = L/\mu$. Then gradient descent with step size $\eta = 1/L$ satisfies:
+
+$$f(x_k) - f(x^*) \leq \left(1 - \frac{1}{\kappa}\right)^k \bigl(f(x_0) - f(x^*)\bigr)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The Descent Lemma gives $f(x_{k+1}) \leq f(x_k) - \frac{1}{2L}\|\nabla f(x_k)\|^2$. Subtracting $f(x^*)$:
+
+$$f(x_{k+1}) - f(x^*) \leq f(x_k) - f(x^*) - \frac{1}{2L}\|\nabla f(x_k)\|^2 \tag{3}$$
+
+We need a lower bound on $\|\nabla f(x_k)\|^2$ in terms of $f(x_k) - f(x^*)$. Strong convexity gives us a key inequality (the Polyak–Łojasiewicz condition):
+
+$$\|\nabla f(x)\|^2 \geq 2\mu \bigl(f(x) - f(x^*)\bigr)$$
+
+To see why: by $\mu$-strong convexity, for any $y$,
+
+$$f(y) \geq f(x) + \nabla f(x)^\top(y-x) + \frac{\mu}{2}\|y-x\|^2$$
+
+Minimizing the right side over $y$ (a quadratic in $y$), the minimum is achieved at $y^* = x - \frac{1}{\mu}\nabla f(x)$ and equals $f(x) - \frac{1}{2\mu}\|\nabla f(x)\|^2$. Since $f(x^*) \leq f(y^*)$:
+
+$$f(x^*) \leq f(x) - \frac{1}{2\mu}\|\nabla f(x)\|^2$$
+
+which rearranges to $\|\nabla f(x)\|^2 \geq 2\mu(f(x) - f(x^*))$.
+
+Substituting into (3):
+
+$$f(x_{k+1}) - f(x^*) \leq f(x_k) - f(x^*) - \frac{\mu}{L}\bigl(f(x_k) - f(x^*)\bigr) = \left(1 - \frac{1}{\kappa}\right)\bigl(f(x_k) - f(x^*)\bigr)$$
+
+Applying this recursion $k$ times completes the proof.
+</TheoremBlock>
+
+The linear rate means $\log(f(x_k) - f(x^*))$ decreases at a constant rate per iteration — the convergence plot is a straight line on a log scale. To reach $\varepsilon$-accuracy, we need $k \sim \kappa \log(1/\varepsilon)$ iterations. The dependence on $1/\varepsilon$ is logarithmic (much better than the $1/\varepsilon$ for the convex case), but the price is a linear dependence on $\kappa$. Ill-conditioned problems (large $\kappa$) converge slowly because the contours are highly elongated ellipses, and gradient descent zigzags across the narrow valley.
+
+<GradientDescentExplorer client:visible />
+
+![Strong convexity: quadratic sandwich, linear convergence, and iterations vs κ](/images/topics/gradient-descent/strong-convexity-linear-convergence.png)
+
+---
+
+## Step Size Selection
+
+So far we've used the fixed step size $\eta = 1/L$, which requires knowing $L$ in advance. In practice, there are several strategies.
+
+### Exact line search
+
+This strategy chooses the step size that minimizes $f$ along the gradient direction:
+
+$$\eta_k = \arg\min_{\eta > 0} f(x_k - \eta \nabla f(x_k))$$
+
+For a quadratic $f(x) = \frac{1}{2}x^\top A x$, this has a closed-form solution:
+
+$$\eta_k^* = \frac{\|\nabla f(x_k)\|^2}{\nabla f(x_k)^\top A \nabla f(x_k)}$$
+
+Exact line search always converges at least as fast as fixed step size but is usually impractical for non-quadratic objectives.
+
+<TheoremBlock type="definition" number={5} title="Armijo Sufficient Decrease Condition">
+Given parameters $c \in (0, 1)$ (typically $c = 10^{-4}$) and backtracking factor $\beta \in (0, 1)$ (typically $\beta = 0.5$), the **Armijo backtracking** line search starts with $\alpha = \alpha_0$ and repeatedly sets $\alpha \leftarrow \beta \alpha$ until:
+
+$$f(x_k - \alpha \nabla f(x_k)) \leq f(x_k) - c \, \alpha \|\nabla f(x_k)\|^2$$
+
+This is the **sufficient decrease** (Armijo) condition: it requires a decrease proportional to the step size and the squared gradient norm.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Armijo Termination">
+If $f$ is $L$-smooth, Armijo backtracking with any $c < 1$ and $\beta \in (0,1)$ terminates in a finite number of halvings. Specifically, any $\alpha \leq \frac{2(1-c)}{L}$ satisfies the Armijo condition, so the search terminates with $\alpha \geq \beta \, \frac{2(1-c)}{L}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+From the Descent Lemma, for any $\alpha > 0$:
+
+$$f(x - \alpha \nabla f(x)) \leq f(x) - \alpha \|\nabla f(x)\|^2 + \frac{L \alpha^2}{2}\|\nabla f(x)\|^2 = f(x) - \alpha\left(1 - \frac{L\alpha}{2}\right)\|\nabla f(x)\|^2$$
+
+For the Armijo condition to hold, we need $\alpha(1 - L\alpha/2) \geq c\alpha$, which simplifies to $\alpha \leq 2(1-c)/L$. Since the search reduces $\alpha$ by factors of $\beta$, it will find such an $\alpha$ within $\lceil \log_\beta(2(1-c)/(L\alpha_0)) \rceil$ halvings.
+</TheoremBlock>
+
+<StepSizeExplorer client:visible />
+
+![Step size selection: trajectory comparison and convergence for fixed, exact line search, and Armijo backtracking](/images/topics/gradient-descent/step-size-selection.png)
+
+---
+
+## Nesterov Accelerated Gradient
+
+Gradient descent with step size $1/L$ converges at rate $O(1/k)$ for convex functions. Can we do better? Nesterov showed in 1983 that the answer is yes — and that $O(1/k^2)$ is optimal among all first-order methods.
+
+<TheoremBlock type="definition" number={6} title="Nesterov Accelerated Gradient">
+The **Nesterov accelerated gradient** (NAG) method maintains a sequence of iterates $x_k$ and extrapolation points $y_k$:
+
+$$y_k = x_k + \frac{t_k - 1}{t_{k+1}}(x_k - x_{k-1})$$
+
+$$x_{k+1} = y_k - \frac{1}{L} \nabla f(y_k)$$
+
+where the sequence $t_k$ satisfies $t_1 = 1$ and $t_{k+1} = \frac{1 + \sqrt{1 + 4t_k^2}}{2}$.
+</TheoremBlock>
+
+The critical difference from vanilla gradient descent: **the gradient is evaluated at the extrapolated point $y_k$, not at the current iterate $x_k$**. The extrapolation step $y_k$ adds a "momentum" term — it looks ahead in the direction the iterates have been moving, then computes the gradient at that look-ahead point.
+
+<TheoremBlock type="theorem" number={4} title="Nesterov's Optimal Rate">
+Let $f$ be convex and $L$-smooth. Then the Nesterov accelerated gradient method satisfies:
+
+$$f(x_k) - f(x^*) \leq \frac{2L\|x_0 - x^*\|^2}{(k+1)^2}$$
+
+This is an $O(1/k^2)$ rate, which is optimal among all first-order methods that access $f$ only through gradient evaluations (Nesterov, 1983).
+</TheoremBlock>
+
+We state this theorem without proof — the proof requires a carefully constructed Lyapunov function argument that we refer the reader to Nesterov's original paper.
+
+<TheoremBlock type="remark" title="Why O(1/k²) Is Optimal">
+Nesterov also proved a matching *lower bound*: for any first-order method that generates iterates in the Krylov subspace $\text{span}\{\nabla f(x_0), \nabla f(x_1), \ldots\}$, there exists an $L$-smooth convex function for which $f(x_k) - f(x^*) \geq \Omega(1/k^2)$. The accelerated gradient method achieves this lower bound and is therefore optimal in this class. This is one of the rare results in optimization where we have *matching* upper and lower bounds.
+</TheoremBlock>
+
+<AccelerationExplorer client:visible />
+
+![Nesterov acceleration: GD vs Nesterov trajectories, convergence comparison, and momentum visualization](/images/topics/gradient-descent/accelerated-gradient.png)
+
+---
+
+## Coordinate Descent
+
+Instead of computing the full gradient $\nabla f(x) \in \mathbb{R}^n$, coordinate descent updates one coordinate at a time. This is attractive when $n$ is large and computing a single partial derivative is cheap.
+
+<TheoremBlock type="definition" number={7} title="Coordinate Descent">
+**Cyclic coordinate descent** updates coordinates in order $i = 1, 2, \ldots, n, 1, 2, \ldots$:
+
+$$x^{(k+1)}_i = x^{(k)}_i - \frac{1}{L_i} \frac{\partial f}{\partial x_i}(x^{(k)})$$
+
+where $L_i$ is the smoothness constant along coordinate $i$. For $f(x) = \frac{1}{2}x^\top A x$, this is $x_i \leftarrow x_i - \frac{(Ax)_i}{A_{ii}}$.
+
+**Randomized coordinate descent** selects $i$ uniformly at random at each step.
+</TheoremBlock>
+
+The characteristic visual signature of coordinate descent is the "staircase" pattern on contour plots: each step moves along a coordinate axis, creating axis-aligned zigzags. Compare this with gradient descent, which moves along the gradient direction (which is generally *not* axis-aligned).
+
+<TheoremBlock type="theorem" number={5} title="Randomized Coordinate Descent Convergence">
+Let $f$ be convex with coordinate-wise smoothness constants $L_1, \ldots, L_n$. Then randomized coordinate descent with step sizes $1/L_i$ satisfies:
+
+$$\mathbb{E}[f(x_k) - f(x^*)] \leq \frac{2n \cdot \bar{L} \|x_0 - x^*\|^2}{k}$$
+
+where $\bar{L} = \frac{1}{n}\sum_i L_i$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+At each step, we select coordinate $i$ uniformly at random and update $x_{i} \leftarrow x_i - \frac{1}{L_i} \nabla_i f(x)$. The coordinate-wise Descent Lemma gives:
+
+$$f(x^+) \leq f(x) - \frac{1}{2L_i} |\nabla_i f(x)|^2$$
+
+Taking expectations over the random coordinate:
+
+$$\mathbb{E}_i[f(x^+)] \leq f(x) - \frac{1}{n}\sum_{i=1}^n \frac{1}{2L_i}|\nabla_i f(x)|^2 \leq f(x) - \frac{1}{2n\bar{L}}\|\nabla f(x)\|^2$$
+
+The rest follows the same telescoping argument as Theorem 2, with $L$ replaced by $n\bar{L}$.
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="When Coordinate Descent Wins">
+The $O(n/k)$ rate looks worse than GD's $O(1/k)$, but each CD step costs $O(1)$ gradient component while each GD step costs $O(n)$. When measured in *coordinate gradient evaluations*, the rates are comparable. CD wins when: (1) the function has separable or block-separable structure, (2) $n$ is very large and computing the full gradient is expensive, or (3) the coordinate-wise smoothness constants $L_i$ vary widely (some coordinates are much smoother than others).
+</TheoremBlock>
+
+![Coordinate descent: cyclic and randomized staircase trajectories and convergence comparison](/images/topics/gradient-descent/coordinate-descent.png)
+
+---
+
+## Mirror Descent & Bregman Divergence
+
+Gradient descent implicitly uses Euclidean distance to measure progress: the update $x_{k+1} = x_k - \eta \nabla f(x_k)$ can be written as
+
+$$x_{k+1} = \arg\min_x \left\{ \nabla f(x_k)^\top x + \frac{1}{2\eta}\|x - x_k\|^2 \right\}$$
+
+But Euclidean distance is not always the right geometry. When optimizing over the probability simplex $\Delta = \{x \geq 0 : \sum x_i = 1\}$, the Euclidean distance treats points near the boundary the same as interior points, which is wasteful — near a vertex, most directions leave the simplex. Mirror descent replaces $\|x - y\|^2$ with a *Bregman divergence* matched to the geometry of the domain.
+
+<TheoremBlock type="definition" number={8} title="Bregman Divergence">
+Given a strictly convex, differentiable function $\phi : \mathcal{X} \to \mathbb{R}$ (the **mirror map**), the **Bregman divergence** is:
+
+$$D_\phi(x, y) = \phi(x) - \phi(y) - \langle \nabla \phi(y), x - y \rangle$$
+
+This measures the gap between $\phi(x)$ and its first-order Taylor approximation at $y$. By strict convexity, $D_\phi(x, y) \geq 0$ with equality iff $x = y$.
+</TheoremBlock>
+
+When $\phi(x) = \frac{1}{2}\|x\|^2$, the Bregman divergence reduces to $D_\phi(x,y) = \frac{1}{2}\|x - y\|^2$ — ordinary Euclidean distance. When $\phi(x) = \sum_i x_i \log x_i$ (the negative entropy), the Bregman divergence is the KL divergence $D_\phi(x, y) = \sum_i x_i \log(x_i / y_i) - x_i + y_i$.
+
+<TheoremBlock type="definition" number={9} title="Mirror Descent">
+The **mirror descent** update with mirror map $\phi$ and step size $\eta$ is:
+
+$$x_{k+1} = \arg\min_{x \in \mathcal{X}} \left\{ \eta \langle \nabla f(x_k), x \rangle + D_\phi(x, x_k) \right\}$$
+
+When $\phi(x) = \sum_i x_i \log x_i$ and $\mathcal{X}$ is the simplex, this yields the **exponentiated gradient** update:
+
+$$x_{k+1,i} = \frac{x_{k,i} \exp(-\eta \, \nabla_i f(x_k))}{\sum_j x_{k,j} \exp(-\eta \, \nabla_j f(x_k))}$$
+</TheoremBlock>
+
+The exponentiated gradient update naturally maintains positivity and the simplex constraint without explicit projection. Mirror descent with negative entropy is the natural algorithm for the simplex: its iterates curve along the simplex boundary rather than cutting through the interior in straight lines.
+
+<TheoremBlock type="proposition" number={2} title="Mirror Descent Convergence">
+Let $f$ be convex and $G$-Lipschitz ($\|\nabla f(x)\| \leq G$ for all $x \in \mathcal{X}$), and let $\phi$ be $\sigma$-strongly convex with respect to a norm $\|\cdot\|$. Then mirror descent with step size $\eta = \frac{R}{G}\sqrt{\frac{2\sigma}{k}}$ (where $R^2 = \max_{x \in \mathcal{X}} D_\phi(x, x_0)$) satisfies:
+
+$$\frac{1}{k}\sum_{t=0}^{k-1} f(x_t) - f(x^*) \leq RG\sqrt{\frac{2}{\sigma k}}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+From the mirror descent update definition and the three-point identity for Bregman divergence:
+
+$$\eta \langle \nabla f(x_t), x_t - x^* \rangle \leq D_\phi(x^*, x_t) - D_\phi(x^*, x_{t+1}) + \frac{\eta^2}{2\sigma}\|\nabla f(x_t)\|_*^2$$
+
+By convexity, $f(x_t) - f(x^*) \leq \langle \nabla f(x_t), x_t - x^* \rangle$. Summing from $t = 0$ to $k-1$, the Bregman terms telescope to $D_\phi(x^*, x_0) - D_\phi(x^*, x_k) \leq R^2$. Using $\|\nabla f(x_t)\|_* \leq G$ and optimizing $\eta$ gives the result.
+</TheoremBlock>
+
+The connection to **Proximal Methods** *(coming soon)* is deep: mirror descent is a special case of the proximal point algorithm with Bregman divergence replacing Euclidean distance. Proximal operators generalize the gradient step to handle non-smooth regularizers like the $\ell_1$ norm.
+
+<MirrorDescentExplorer client:visible />
+
+![Mirror descent: Bregman divergence, simplex trajectories, and convergence comparison](/images/topics/gradient-descent/mirror-descent.png)
+
+---
+
+## Stochastic Gradient Descent
+
+In machine learning, the objective is often an average over a large dataset: $f(x) = \frac{1}{N}\sum_{i=1}^N f_i(x)$. Computing the full gradient $\nabla f(x) = \frac{1}{N}\sum_i \nabla f_i(x)$ requires $N$ gradient evaluations per step, which is expensive when $N$ is large. Stochastic gradient descent (SGD) replaces the full gradient with a noisy but unbiased estimate.
+
+<TheoremBlock type="definition" number={10} title="Stochastic Gradient Descent">
+Given an unbiased gradient estimator $g(x)$ satisfying $\mathbb{E}[g(x)] = \nabla f(x)$ and $\mathbb{E}[\|g(x) - \nabla f(x)\|^2] \leq \sigma^2$, **stochastic gradient descent** performs:
+
+$$x_{k+1} = x_k - \eta_k \, g(x_k)$$
+
+The **mini-batch** variant averages $B$ independent samples: $g_B(x) = \frac{1}{B}\sum_{j=1}^B g_j(x)$, reducing variance to $\sigma^2/B$.
+</TheoremBlock>
+
+The step size schedule is crucial. With a fixed step size $\eta$, SGD converges to a *neighborhood* of the optimum but cannot reach it — the noise prevents the iterates from settling down. A decreasing schedule $\eta_k = O(1/k)$ allows convergence to the exact optimum, at the cost of slower progress.
+
+<TheoremBlock type="theorem" number={6} title="SGD Convergence">
+Let $f$ be convex and $L$-smooth, and let the gradient estimator have bounded variance $\sigma^2$. Then:
+
+**Fixed step size** $\eta$:
+
+$$\frac{1}{K}\sum_{k=0}^{K-1}\mathbb{E}[\|\nabla f(x_k)\|^2] \leq \frac{2(f(x_0) - f(x^*))}{\eta K} + \eta L \sigma^2$$
+
+Optimizing $\eta = \sqrt{2(f(x_0) - f(x^*))/(KL\sigma^2)}$ gives an $O(1/\sqrt{K})$ rate.
+
+**Decreasing step size** $\eta_k = c/(k+k_0)$: SGD converges to the optimum at rate $O(1/K)$ for strongly convex objectives.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+From the smoothness of $f$ and the SGD update:
+
+$$\mathbb{E}[f(x_{k+1})] \leq f(x_k) - \eta_k \|\nabla f(x_k)\|^2 + \frac{L\eta_k^2}{2}\mathbb{E}[\|g(x_k)\|^2]$$
+
+Since $\mathbb{E}[\|g(x_k)\|^2] = \|\nabla f(x_k)\|^2 + \sigma^2$ (bias-variance decomposition):
+
+$$\mathbb{E}[f(x_{k+1})] \leq f(x_k) - \eta_k\left(1 - \frac{L\eta_k}{2}\right)\|\nabla f(x_k)\|^2 + \frac{L\eta_k^2 \sigma^2}{2}$$
+
+For $\eta_k \leq 1/L$, the term $(1 - L\eta_k/2) \geq 1/2$. Rearranging and summing over $k$ gives the stated bound. The key tension: the first term decreases with $K$ (more iterations help), but the second term $\eta L\sigma^2$ remains constant for fixed $\eta$. Decreasing $\eta_k$ eliminates the residual at the cost of slower convergence.
+</TheoremBlock>
+
+![Stochastic gradient descent: step size comparison, mini-batch variance reduction, and noisy trajectory](/images/topics/gradient-descent/stochastic-gradient-descent.png)
+
+---
+
+## Computational Notes
+
+Here we collect practical implementations. The `gradient_descent` function below supports fixed step size and Armijo backtracking, and returns the full convergence history for diagnostic plotting.
+
+```python
+def gradient_descent(f, grad_f, x0, eta=None, L=None, tol=1e-8, max_iter=1000,
+                     line_search='fixed'):
+    """
+    General-purpose gradient descent.
+
+    Parameters
+    ----------
+    f : callable — objective function
+    grad_f : callable — gradient of f
+    x0 : ndarray — initial point
+    eta : float — fixed step size (required if line_search='fixed')
+    L : float — Lipschitz constant; used for eta=1/L if eta not given
+    tol : float — gradient norm tolerance
+    max_iter : int — iteration budget
+    line_search : str — 'fixed' or 'armijo'
+
+    Returns
+    -------
+    dict with keys 'x', 'f_vals', 'grad_norms', 'trajectory', 'n_iter'
+    """
+    if eta is None and L is not None:
+        eta = 1.0 / L
+
+    x = x0.copy()
+    f_vals = [f(x)]
+    grad_norms = [np.linalg.norm(grad_f(x))]
+    trajectory = [x.copy()]
+
+    for k in range(max_iter):
+        g = grad_f(x)
+        if np.linalg.norm(g) < tol:
+            break
+
+        if line_search == 'armijo':
+            step = armijo_backtracking(f, grad_f, x, -g)
+        else:
+            step = eta
+
+        x = x - step * g
+        f_vals.append(f(x))
+        grad_norms.append(np.linalg.norm(grad_f(x)))
+        trajectory.append(x.copy())
+
+    return {
+        'x': x,
+        'f_vals': np.array(f_vals),
+        'grad_norms': np.array(grad_norms),
+        'trajectory': np.array(trajectory),
+        'n_iter': len(f_vals) - 1
+    }
+```
+
+The Armijo backtracking function:
+
+```python
+def armijo_backtracking(f, grad_f, x, d, alpha0=1.0, beta=0.5, c=1e-4, max_iter=50):
+    """Armijo backtracking line search."""
+    alpha = alpha0
+    fx = f(x)
+    gx = grad_f(x)
+    for _ in range(max_iter):
+        if f(x + alpha * d) <= fx + c * alpha * (gx @ d):
+            return alpha
+        alpha *= beta
+    return alpha
+```
+
+Nesterov accelerated gradient:
+
+```python
+def nesterov_gd(A, x0, n_iter=100):
+    """Nesterov accelerated gradient for f(x) = 0.5 x^T A x."""
+    L = eigvalsh(A)[-1]
+    eta = 1.0 / L
+    x, y = x0.copy(), x0.copy()
+    traj = [x0.copy()]
+    t = 1.0
+    for k in range(n_iter):
+        x_new = y - eta * (A @ y)
+        t_new = (1 + np.sqrt(1 + 4 * t**2)) / 2
+        y = x_new + ((t - 1) / t_new) * (x_new - x)
+        x, t = x_new, t_new
+        traj.append(x.copy())
+    return np.array(traj)
+```
+
+Cyclic coordinate descent:
+
+```python
+def cyclic_cd(A, x0, n_iter=50):
+    """Cyclic coordinate descent for f(x) = 0.5 x^T A x."""
+    x = x0.copy()
+    traj = [x.copy()]
+    for _ in range(n_iter):
+        for i in range(len(x0)):
+            grad_i = A[i, :] @ x
+            x[i] -= grad_i / A[i, i]
+            traj.append(x.copy())
+    return np.array(traj)
+```
+
+Mirror descent on the simplex (exponentiated gradient):
+
+```python
+def mirror_descent_simplex(grad_f, x0, eta, n_iter=50):
+    """Mirror descent with neg-entropy on the probability simplex."""
+    x = x0.copy()
+    traj = [x.copy()]
+    for _ in range(n_iter):
+        g = grad_f(x)
+        x_new = x * np.exp(-eta * g)
+        x_new /= x_new.sum()
+        x = x_new
+        traj.append(x.copy())
+    return np.array(traj)
+```
+
+SGD with mini-batch averaging:
+
+```python
+def sgd_minibatch(A, x0, eta_schedule, noise_std=1.0, batch_size=1,
+                  n_iter=500, seed=42):
+    """SGD with Gaussian gradient noise and mini-batch averaging."""
+    rng = np.random.RandomState(seed)
+    x = x0.copy()
+    traj = [x.copy()]
+    for k in range(n_iter):
+        eta = eta_schedule(k)
+        true_grad = A @ x
+        noise = rng.randn(batch_size, len(x)) * noise_std
+        x = x - eta * (true_grad + noise.mean(axis=0))
+        traj.append(x.copy())
+    return np.array(traj)
+```
+
+**Convergence diagnostics.** When running gradient descent in practice, monitor four quantities: (1) the objective value $f(x_k)$, which should decrease monotonically for deterministic GD; (2) the gradient norm $\|\nabla f(x_k)\|$, which indicates proximity to a stationary point; (3) the step size history (if using backtracking); and (4) the trajectory in parameter space (for low-dimensional problems).
+
+![Computational diagnostics: Rosenbrock function trajectory, convergence, gradient norm, and step size history](/images/topics/gradient-descent/computational-diagnostics.png)
+
+---
+
+## Connections & Further Reading
+
+Gradient descent sits at the center of the Optimization track, building on convex analysis and connecting forward to proximal methods and duality.
+
+| Topic | Connection |
+|-------|-----------|
+| **[Convex Analysis](/topics/convex-analysis)** | Every convergence proof here relies on convexity and smoothness established in Convex Analysis. The Descent Lemma is the $L$-smooth analogue of the first-order convexity condition; strong convexity provides the quadratic lower bound that yields linear convergence. |
+| **[The Spectral Theorem](/topics/spectral-theorem)** | The condition number $\kappa = L/\mu$ for quadratics equals $\lambda_{\max}/\lambda_{\min}$ of the Hessian. Ill-conditioned Hessians (large eigenvalue spread) cause the zigzag behavior that slows gradient descent. |
+| **[Singular Value Decomposition](/topics/svd)** | For least-squares problems $\min \|Ax - b\|^2$, the condition number of $A^\top A$ governs GD convergence. The SVD reveals this as $\sigma_{\max}^2/\sigma_{\min}^2$, connecting linear algebra to optimization dynamics. |
+| **Proximal Methods** *(coming soon)* | Mirror descent generalizes to proximal operators: $\text{prox}_{\eta f}(x) = \arg\min_y \{f(y) + \frac{1}{2\eta}\|y - x\|^2\}$. Proximal gradient descent handles composite objectives $f + g$ where $g$ is non-smooth but has a cheap proximal operator (e.g., $\ell_1$ regularization). |
+| **Lagrangian Duality & KKT** *(coming soon)* | Constrained optimization extends the unconstrained theory here. The KKT conditions generalize "gradient equals zero" to include constraints, and dual gradient descent operates on the Lagrangian dual function. |
+
+### The Optimization Track
+
+```
+Convex Analysis
+    ├── Gradient Descent & Convergence (this topic)
+    │       └── Proximal Methods
+    └── Lagrangian Duality & KKT
+```
