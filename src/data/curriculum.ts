@@ -26,7 +26,6 @@ export const tracks = [
     description:
       'Convex analysis, gradient methods, and the theoretical tools behind modern training algorithms.',
     planned: [
-      'Convex Analysis',
       'Gradient Descent & Convergence',
       'Proximal Methods',
       'Lagrangian Duality & KKT',
