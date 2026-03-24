@@ -1,0 +1,557 @@
+---
+title: "Convex Analysis"
+subtitle: "Convex sets, convex functions, subdifferentials, and separation theorems — the geometric foundation of tractable optimization"
+status: "published"
+difficulty: "foundational"
+prerequisites:
+  - "spectral-theorem"
+tags:
+  - "optimization"
+  - "convex-sets"
+  - "convex-functions"
+  - "subgradients"
+  - "conjugate-functions"
+  - "separation-theorems"
+domain: "optimization"
+videoId: null
+notebookPath: "notebooks/convex-analysis/01_convex_analysis.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/convex-analysis.mdx"
+datePublished: 2026-03-24
+estimatedReadTime: 45
+abstract: "Convex analysis provides the geometric and analytic infrastructure that makes modern optimization tractable. We develop the theory from its two primitives — convex sets (closed under line segments) and convex functions (epigraph is a convex set) — through three layers of increasing power: the first-order and second-order characterizations that connect convexity to gradients and Hessians, the operations that preserve convexity and underpin disciplined convex programming, and the duality machinery of conjugate functions and subdifferentials that extends calculus to non-smooth settings. The separating and supporting hyperplane theorems provide the geometric backbone, while the fundamental result — every local minimum of a convex function is a global minimum — explains why convexity transforms optimization from intractable search into efficient computation. The Spectral Theorem enters through the second-order condition: a twice-differentiable function is convex if and only if its Hessian is positive semidefinite everywhere."
+connections:
+  - topic: "spectral-theorem"
+    relationship: "The second-order convexity condition requires the Hessian to be positive semidefinite — the Spectral Theorem provides the eigendecomposition that lets us check this. PSD cones are fundamental convex sets whose structure is governed by the spectral theory of symmetric matrices."
+  - topic: "svd"
+    relationship: "The nuclear norm (sum of singular values) is a convex function, and its subdifferential involves the SVD. Low-rank matrix optimization problems rely on convex relaxations via the nuclear norm ball."
+  - topic: "pca-low-rank"
+    relationship: "PCA solves a non-convex rank-constrained problem whose convex relaxation (nuclear norm minimization) is a cornerstone of compressed sensing and matrix completion."
+references:
+  - type: "book"
+    title: "Convex Optimization"
+    authors: "Boyd & Vandenberghe"
+    year: 2004
+    note: "Chapters 2-3: Convex sets and convex functions — the primary reference for this topic"
+  - type: "book"
+    title: "Convex Analysis"
+    authors: "Rockafellar"
+    year: 1970
+    note: "The foundational monograph — conjugate functions, subdifferentials, separation theorems"
+  - type: "book"
+    title: "Introductory Lectures on Convex Optimization"
+    authors: "Nesterov"
+    year: 2004
+    note: "Chapter 2: Smooth convex optimization and first/second-order conditions"
+  - type: "book"
+    title: "Convex Analysis and Minimization Algorithms I"
+    authors: "Hiriart-Urruty & Lemaréchal"
+    year: 1993
+    note: "Subdifferential calculus, conjugate duality, and Moreau envelopes"
+  - type: "paper"
+    title: "Disciplined Convex Programming"
+    authors: "Grant, Boyd & Ye"
+    year: 2006
+    url: "https://web.stanford.edu/~boyd/papers/pdf/disc_cvx_prog.pdf"
+    note: "DCP composition rules that underpin CVXPY and CVX"
+  - type: "paper"
+    title: "Proximal Algorithms"
+    authors: "Parikh & Boyd"
+    year: 2014
+    url: "https://doi.org/10.1561/2400000003"
+    note: "Section 2: Convex analysis background — subdifferentials, conjugates, Moreau envelopes"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ConvexSetExplorer from '../../components/viz/ConvexSetExplorer.tsx';
+import ConvexFunctionExplorer from '../../components/viz/ConvexFunctionExplorer.tsx';
+import SubgradientExplorer from '../../components/viz/SubgradientExplorer.tsx';
+import SeparatingHyperplaneExplorer from '../../components/viz/SeparatingHyperplaneExplorer.tsx';
+
+## Overview & Motivation
+
+Here is the single most important fact in all of optimization:
+
+> **Every local minimum of a convex function is a global minimum.**
+
+This one sentence is why convex optimization is tractable and general optimization is not. In a non-convex landscape — say a deep neural network loss surface — gradient descent can get trapped in local minima, saddle points, or flat regions, and we have no guarantee that the point we converge to is anywhere near optimal. But if the function we're minimizing is convex, then any point where the gradient vanishes (or, more generally, where $0$ lies in the subdifferential) is a global minimizer. No restarts, no escaping saddle points, no hoping for the best.
+
+This topic develops the mathematical infrastructure behind that fact. We start with the two geometric primitives — **convex sets** (closed under line segments) and **convex functions** (whose epigraph is a convex set) — and build up through three layers:
+
+1. **Characterization:** First-order and second-order conditions that connect convexity to gradients and Hessians.
+2. **Closure:** Operations that preserve convexity — the toolkit that lets us certify complex functions as convex without checking from scratch.
+3. **Duality:** Conjugate functions and subdifferentials that extend calculus to non-smooth settings, enabling the analysis of functions like $\|x\|_1$ and $\max(0, x)$ that appear throughout modern ML.
+
+The **separating hyperplane theorem** provides the geometric backbone: it says that disjoint convex sets can always be separated by a hyperplane. This seemingly simple geometric fact has far-reaching consequences — it is the foundation of support vector machines, LP duality, and the entire theory of Lagrangian optimization.
+
+### What We Cover
+
+1. **Convex Sets** — the line-segment definition, convex combinations, and a gallery of examples.
+2. **Convex Hull & Extreme Points** — how to construct the smallest convex set containing a given set.
+3. **Convex Functions** — the chord inequality, epigraphs, and Jensen's inequality.
+4. **First-Order & Second-Order Conditions** — connecting convexity to tangent lines and Hessian eigenvalues (via the [Spectral Theorem](/topics/spectral-theorem)).
+5. **Operations Preserving Convexity** — nonneg. weighted sums, pointwise max, composition rules (DCP).
+6. **Conjugate Functions** — the Legendre–Fenchel transform and biconjugation.
+7. **Subdifferentials & Subgradients** — generalized gradients for non-smooth functions.
+8. **Separation Theorems** — the geometric foundation of duality.
+9. **Computational Notes** — DCP rules, CVXPY, and numerical convexity verification.
+
+![Why convexity matters: in a non-convex landscape, local minima are traps; in a convex landscape, every local minimum is global](/images/topics/convex-analysis/local-equals-global.png)
+
+---
+
+## Convex Sets
+
+Everything begins with a definition that is geometric at its core: a set is convex if you can draw a straight line between any two of its points and the line stays inside the set.
+
+<TheoremBlock type="definition" number={1} title="Convex Set">
+A set $C \subseteq \mathbb{R}^n$ is **convex** if for every $x, y \in C$ and every $\theta \in [0, 1]$:
+
+$$\theta x + (1 - \theta) y \in C$$
+
+Geometrically: the line segment from $x$ to $y$ lies entirely in $C$.
+</TheoremBlock>
+
+This is the line-segment test, and it is the only thing you need to verify. An ellipse passes — every chord stays inside. An L-shape fails — there exist pairs of points whose connecting segment exits the set.
+
+<TheoremBlock type="definition" number={2} title="Convex Combination">
+A point $z$ is a **convex combination** of $x_1, \ldots, x_k$ if $z = \sum_{i=1}^k \theta_i x_i$ where $\theta_i \geq 0$ and $\sum_{i=1}^k \theta_i = 1$. A set $C$ is convex if and only if it contains all convex combinations of its points.
+</TheoremBlock>
+
+### A Gallery of Convex Sets
+
+Convex sets are everywhere. Here are the workhorses:
+
+- **Halfspaces:** $\{x : a^T x \leq b\}$ for a fixed $a \neq 0$ and $b$. Every linear inequality defines a halfspace, and every halfspace is convex.
+- **Balls:** $\{x : \|x - c\| \leq r\}$ in any norm. Euclidean balls, $\ell_1$ balls (cross-polytopes), $\ell_\infty$ balls (cubes).
+- **Polyhedra:** $\{x : Ax \leq b\}$ — intersections of finitely many halfspaces.
+- **Cones:** $\{x : \|x\|_2 \leq t\}$ (the second-order cone), and the positive semidefinite cone $\mathbb{S}^n_+ = \{X \in \mathbb{R}^{n \times n} : X = X^T, X \succeq 0\}$.
+- **The PSD cone $\mathbb{S}^n_+$:** The set of all $n \times n$ symmetric positive semidefinite matrices. Its structure is governed by the [Spectral Theorem](/topics/spectral-theorem) — a symmetric matrix is PSD if and only if all its eigenvalues are nonneg.
+
+Convexity is preserved by intersection (any intersection of convex sets is convex), by affine maps (if $C$ is convex, then $f(C) = \{Ax + b : x \in C\}$ is convex), and by inverse affine maps (if $C$ is convex, then $f^{-1}(C) = \{x : Ax + b \in C\}$ is convex).
+
+Try the interactive explorer below — drag the two points around and watch whether the line segment between them stays inside the set.
+
+<ConvexSetExplorer client:visible />
+
+![Convex vs non-convex sets: line segment test and a gallery of canonical convex sets](/images/topics/convex-analysis/convex-sets.png)
+
+---
+
+## Convex Hull & Extreme Points
+
+Given any set $S$ — convex or not — we can always construct the smallest convex set that contains it.
+
+<TheoremBlock type="definition" number={3} title="Convex Hull">
+The **convex hull** of a set $S \subseteq \mathbb{R}^n$, denoted $\mathrm{conv}(S)$, is the set of all convex combinations of points in $S$:
+
+$$\mathrm{conv}(S) = \left\{ \sum_{i=1}^k \theta_i x_i : x_i \in S,\; \theta_i \geq 0,\; \sum \theta_i = 1,\; k \in \mathbb{N} \right\}$$
+
+Equivalently, $\mathrm{conv}(S)$ is the intersection of all convex sets containing $S$.
+</TheoremBlock>
+
+The vertices of the convex hull are special — they are the points that cannot be written as convex combinations of other points.
+
+<TheoremBlock type="definition" number={4} title="Extreme Point">
+A point $x \in C$ is an **extreme point** of a convex set $C$ if there do not exist $y, z \in C$ with $y \neq z$ and $\theta \in (0, 1)$ such that $x = \theta y + (1 - \theta) z$. In other words, $x$ is not a strict convex combination of two other points in $C$.
+</TheoremBlock>
+
+The **Krein–Milman theorem** says that every compact convex set is the convex hull of its extreme points. This is a foundational result in functional analysis, and it has practical consequences: to optimize a linear function over a compact convex set, we need only check the extreme points — a fact that underpins the simplex method for linear programming.
+
+![Convex hull construction: raw point set, convex hull boundary, and extreme points highlighted](/images/topics/convex-analysis/convex-hull.png)
+
+```python
+# Compute and plot convex hull of a point set
+from scipy.spatial import ConvexHull
+
+points = np.random.randn(30, 2) * 1.5
+hull = ConvexHull(points)
+
+# hull.vertices gives the indices of extreme points
+extreme_points = points[hull.vertices]
+```
+
+---
+
+## Convex Functions
+
+We now turn from sets to functions. The definition is again geometric: a function is convex if the chord between any two points on its graph lies above the graph.
+
+<TheoremBlock type="definition" number={5} title="Convex Function">
+A function $f : \mathbb{R}^n \to \mathbb{R} \cup \{+\infty\}$ is **convex** if for all $x, y$ in its domain and all $\theta \in [0, 1]$:
+
+$$f(\theta x + (1 - \theta)y) \leq \theta f(x) + (1 - \theta)f(y)$$
+
+The left side evaluates $f$ at the weighted average of $x$ and $y$; the right side is the weighted average of $f(x)$ and $f(y)$. The inequality says: the function at the blend is at most the blend of the function values.
+</TheoremBlock>
+
+The connection between convex functions and convex sets runs through the epigraph.
+
+<TheoremBlock type="definition" number={6} title="Epigraph">
+The **epigraph** of a function $f$ is the set of points lying on or above its graph:
+
+$$\mathrm{epi}(f) = \{(x, t) \in \mathbb{R}^{n+1} : f(x) \leq t\}$$
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Epigraph Characterization of Convexity">
+A function $f$ is convex if and only if $\mathrm{epi}(f)$ is a convex set.
+
+<TheoremBlock type="proof">
+**($\Rightarrow$)** Suppose $f$ is convex. Take any two points $(x, s), (y, t) \in \mathrm{epi}(f)$, so $f(x) \leq s$ and $f(y) \leq t$. For $\theta \in [0, 1]$:
+
+$$f(\theta x + (1-\theta)y) \leq \theta f(x) + (1-\theta)f(y) \leq \theta s + (1-\theta)t$$
+
+So $(\theta x + (1-\theta)y, \,\theta s + (1-\theta)t) \in \mathrm{epi}(f)$, meaning $\mathrm{epi}(f)$ is convex.
+
+**($\Leftarrow$)** Suppose $\mathrm{epi}(f)$ is convex. For $x, y$ in the domain of $f$, the points $(x, f(x))$ and $(y, f(y))$ lie in $\mathrm{epi}(f)$. Convexity of the epigraph gives:
+
+$$(\theta x + (1-\theta)y, \,\theta f(x) + (1-\theta)f(y)) \in \mathrm{epi}(f)$$
+
+which means $f(\theta x + (1-\theta)y) \leq \theta f(x) + (1-\theta)f(y)$, so $f$ is convex.
+</TheoremBlock>
+</TheoremBlock>
+
+This equivalence is powerful: it lets us transfer results about convex sets directly to convex functions.
+
+### Jensen's Inequality
+
+The chord inequality generalizes from two points to any weighted average — this is Jensen's inequality, one of the most widely used results in probability and information theory.
+
+<TheoremBlock type="theorem" number={1} title="Jensen's Inequality">
+If $f$ is convex and $X$ is a random variable with $\mathbb{E}[X]$ in the domain of $f$, then:
+
+$$f(\mathbb{E}[X]) \leq \mathbb{E}[f(X)]$$
+
+Applying a convex function then averaging gives at least as much as averaging then applying the function.
+
+<TheoremBlock type="proof">
+We prove the finite case. Let $x_1, \ldots, x_k$ be values with weights $\theta_1, \ldots, \theta_k \geq 0$ summing to $1$. We proceed by induction on $k$.
+
+**Base case** ($k = 2$): This is exactly the definition of convexity.
+
+**Inductive step:** Assume the result holds for $k - 1$ points. Write:
+
+$$\sum_{i=1}^k \theta_i x_i = \theta_k x_k + (1 - \theta_k) \sum_{i=1}^{k-1} \frac{\theta_i}{1 - \theta_k} x_i$$
+
+The inner sum is a convex combination of $k - 1$ points (the weights $\theta_i / (1 - \theta_k)$ sum to $1$). Call it $\bar{x}$. By convexity of $f$:
+
+$$f\!\left(\sum_{i=1}^k \theta_i x_i\right) = f(\theta_k x_k + (1 - \theta_k) \bar{x}) \leq \theta_k f(x_k) + (1 - \theta_k) f(\bar{x})$$
+
+By the inductive hypothesis, $f(\bar{x}) \leq \sum_{i=1}^{k-1} \frac{\theta_i}{1 - \theta_k} f(x_i)$. Substituting:
+
+$$f\!\left(\sum_{i=1}^k \theta_i x_i\right) \leq \theta_k f(x_k) + \sum_{i=1}^{k-1} \theta_i f(x_i) = \sum_{i=1}^k \theta_i f(x_i)$$
+</TheoremBlock>
+</TheoremBlock>
+
+<ConvexFunctionExplorer client:visible />
+
+![Convex functions: chord inequality, non-convex epigraph, and Jensen's inequality](/images/topics/convex-analysis/convex-functions.png)
+
+---
+
+## First-Order & Second-Order Conditions
+
+The chord inequality is the definition, but there are more practical characterizations for differentiable functions.
+
+### The Tangent Line Condition
+
+<TheoremBlock type="theorem" number={2} title="First-Order Condition for Convexity">
+Suppose $f$ is differentiable on an open convex set. Then $f$ is convex if and only if for all $x, y$:
+
+$$f(y) \geq f(x) + \nabla f(x)^T (y - x)$$
+
+The tangent hyperplane at any point is a global underestimator — the function never dips below its linearization.
+
+<TheoremBlock type="proof">
+**($\Rightarrow$)** Suppose $f$ is convex. For any $\theta \in (0, 1]$:
+
+$$f(x + \theta(y - x)) \leq (1 - \theta) f(x) + \theta f(y)$$
+
+Rearranging: $f(y) \geq f(x) + \frac{f(x + \theta(y - x)) - f(x)}{\theta}$
+
+Taking $\theta \to 0^+$, the right side becomes $f(x) + \nabla f(x)^T(y - x)$.
+
+**($\Leftarrow$)** Suppose the tangent inequality holds. For any $x, y$ and $\theta \in [0, 1]$, let $z = \theta x + (1 - \theta)y$. Apply the tangent inequality at $z$:
+
+$$f(x) \geq f(z) + \nabla f(z)^T(x - z), \qquad f(y) \geq f(z) + \nabla f(z)^T(y - z)$$
+
+Multiply the first by $\theta$, the second by $(1 - \theta)$, and add:
+
+$$\theta f(x) + (1-\theta)f(y) \geq f(z) + \nabla f(z)^T(\theta x + (1-\theta)y - z) = f(z)$$
+
+since $\theta x + (1-\theta)y - z = 0$.
+</TheoremBlock>
+</TheoremBlock>
+
+### The Hessian Condition
+
+For twice-differentiable functions, convexity is equivalent to the Hessian being positive semidefinite — and this is where the [Spectral Theorem](/topics/spectral-theorem) enters.
+
+<TheoremBlock type="theorem" number={3} title="Second-Order Condition for Convexity">
+Suppose $f$ is twice differentiable on an open convex set. Then $f$ is convex if and only if the Hessian is positive semidefinite everywhere:
+
+$$\nabla^2 f(x) \succeq 0 \quad \text{for all } x$$
+
+By the Spectral Theorem, the Hessian (a symmetric matrix) admits an eigendecomposition $\nabla^2 f(x) = Q \Lambda Q^T$, and $\nabla^2 f(x) \succeq 0$ if and only if all eigenvalues $\lambda_i \geq 0$.
+</TheoremBlock>
+
+This is the bridge between convexity and spectral theory. When we check whether a neural network loss function is locally convex around a critical point, we compute the Hessian and check its eigenvalues. The Spectral Theorem guarantees these eigenvalues are real and the eigenvectors are orthogonal — the entire machinery of [eigendecomposition](/topics/spectral-theorem) is built for exactly this purpose.
+
+**Example.** Consider $f(x_1, x_2) = 2x_1^2 + x_2^2 + x_1 x_2$. The Hessian is:
+
+$$\nabla^2 f = \begin{pmatrix} 4 & 1 \\ 1 & 2 \end{pmatrix}$$
+
+Its eigenvalues are approximately $4.62$ and $1.38$ — both positive. So $f$ is strictly convex.
+
+![First-order condition (tangent below graph), second-order condition (Hessian eigenvalues), and level set comparison](/images/topics/convex-analysis/first-second-order.png)
+
+---
+
+## Operations Preserving Convexity
+
+Checking convexity from the definition or from the Hessian can be tedious. A more practical approach is to build convex functions from known convex building blocks using operations that preserve convexity. This is the idea behind **Disciplined Convex Programming** (DCP).
+
+### Nonnegative Weighted Sums
+
+If $f_1, \ldots, f_k$ are convex and $\alpha_1, \ldots, \alpha_k \geq 0$, then $\sum \alpha_i f_i$ is convex. This follows directly from the definition — the chord inequality distributes over sums.
+
+### Pointwise Maximum and Supremum
+
+<TheoremBlock type="proposition" number={2} title="Pointwise Supremum Preserves Convexity">
+If $\{f_\alpha\}_{\alpha \in \mathcal{A}}$ is a family of convex functions, then $g(x) = \sup_{\alpha \in \mathcal{A}} f_\alpha(x)$ is convex.
+
+<TheoremBlock type="proof">
+For any $x, y$ and $\theta \in [0, 1]$:
+
+$$g(\theta x + (1-\theta)y) = \sup_\alpha f_\alpha(\theta x + (1-\theta)y) \leq \sup_\alpha \left[\theta f_\alpha(x) + (1-\theta) f_\alpha(y)\right]$$
+
+Since $\theta f_\alpha(x) \leq \theta \sup_\beta f_\beta(x) = \theta \, g(x)$ and similarly for the second term:
+
+$$g(\theta x + (1-\theta)y) \leq \theta \, g(x) + (1-\theta) \, g(y)$$
+</TheoremBlock>
+</TheoremBlock>
+
+This result is remarkably useful. The maximum of finitely many convex functions is convex: $\max(f_1(x), f_2(x), f_3(x))$ is convex if each $f_i$ is. The $\ell_\infty$ norm $\|x\|_\infty = \max_i |x_i|$ is convex because it's the max of convex functions $|x_i|$.
+
+### Composition Rules (DCP)
+
+The composition $h \circ g$ is convex under specific monotonicity conditions:
+
+| Outer $h$ | Inner $g$ | Result $h \circ g$ | Condition |
+|-----------|-----------|---------------------|-----------|
+| Convex, nondecreasing | Convex | Convex | — |
+| Convex, nonincreasing | Concave | Convex | — |
+| Concave, nondecreasing | Concave | Concave | — |
+| Convex | Affine | Convex | Always |
+
+These rules are the backbone of solvers like CVXPY. They verify convexity by parsing the composition structure of the objective function rather than computing second derivatives.
+
+### The Perspective Function
+
+If $f$ is convex, then its **perspective** $g(x, t) = t \, f(x/t)$ for $t > 0$ is also convex. This construction appears in information theory (the KL divergence is the perspective of $-\log$) and in conic optimization.
+
+![Operations preserving convexity: weighted sums, pointwise max, and perspective function](/images/topics/convex-analysis/operations-preserving-convexity.png)
+
+---
+
+## Conjugate Functions
+
+The Legendre–Fenchel conjugate provides a dual representation of convex functions — a powerful tool that transforms optimization problems into their dual forms.
+
+<TheoremBlock type="definition" number={7} title="Legendre–Fenchel Conjugate">
+The **conjugate** (or **Fenchel conjugate**) of a function $f : \mathbb{R}^n \to \mathbb{R} \cup \{+\infty\}$ is:
+
+$$f^*(s) = \sup_{x} \left\{ s^T x - f(x) \right\}$$
+
+For each slope $s$, the conjugate $f^*(s)$ measures the maximum gap between the linear function $s^T x$ and $f(x)$.
+</TheoremBlock>
+
+The conjugate $f^*$ is always convex (it's a pointwise supremum of affine functions in $s$), even if $f$ is not. Here are the classic conjugate pairs:
+
+| Function $f(x)$ | Conjugate $f^*(s)$ |
+|------------------|--------------------|
+| $\frac{1}{2}x^2$ | $\frac{1}{2}s^2$ |
+| $\|x\|$ (any norm) | $\delta_{\{s : \|s\|_* \leq 1\}}$ (indicator of dual norm ball) |
+| $e^x$ | $s \ln s - s$ for $s > 0$ |
+| $\delta_C(x)$ (indicator of $C$) | $\sup_{x \in C} s^T x$ (support function) |
+
+The **biconjugation theorem** is the central duality result: applying the conjugate twice recovers the original function — but only if it was convex to begin with.
+
+<TheoremBlock type="theorem" number={4} title="Fenchel–Moreau Biconjugation">
+If $f$ is a closed convex function (i.e., lower semicontinuous, convex, and proper), then $f^{**} = f$.
+
+If $f$ is not convex, then $f^{**}$ is the **convex envelope** of $f$ — the largest convex function that lies below $f$.
+
+<TheoremBlock type="proof">
+*Proof sketch.* We always have $f^{**} \leq f$ (apply the supremum definition twice). For the reverse inequality when $f$ is closed and convex: at any point $x_0$, by the supporting hyperplane theorem, there exists $s_0$ such that $f(x_0) = s_0^T x_0 - f^*(s_0)$. Then $f^{**}(x_0) \geq s_0^T x_0 - f^*(s_0) = f(x_0)$.
+</TheoremBlock>
+</TheoremBlock>
+
+Biconjugation is the foundation of Lagrangian duality in optimization: the dual problem is the conjugate of the primal, and strong duality says that solving the dual recovers the primal optimum — under convexity.
+
+![Conjugate functions: geometric construction, conjugate pairs, and biconjugation (convex envelope)](/images/topics/convex-analysis/conjugate-functions.png)
+
+---
+
+## Subdifferentials & Subgradients
+
+Not all convex functions are differentiable. The $\ell_1$ norm $\|x\|_1$, the hinge loss $\max(0, 1 - y \hat{y})$, and the ReLU $\max(0, x)$ all have kinks where the gradient does not exist. Subgradients generalize the gradient to handle these cases.
+
+<TheoremBlock type="definition" number={8} title="Subgradient">
+A vector $g \in \mathbb{R}^n$ is a **subgradient** of a convex function $f$ at $x$ if:
+
+$$f(y) \geq f(x) + g^T(y - x) \quad \text{for all } y$$
+
+That is, the affine function $f(x) + g^T(y - x)$ is a global underestimator of $f$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={9} title="Subdifferential">
+The **subdifferential** of $f$ at $x$ is the set of all subgradients:
+
+$$\partial f(x) = \{g \in \mathbb{R}^n : f(y) \geq f(x) + g^T(y - x) \text{ for all } y\}$$
+
+If $f$ is differentiable at $x$, then $\partial f(x) = \{\nabla f(x)\}$ — the subdifferential is a singleton containing the ordinary gradient. At a non-differentiable point, $\partial f(x)$ is a closed convex set of possible "slopes."
+</TheoremBlock>
+
+**Example:** For $f(x) = |x|$:
+- At $x > 0$: $\partial f(x) = \{1\}$ (the ordinary derivative)
+- At $x < 0$: $\partial f(x) = \{-1\}$
+- At $x = 0$: $\partial f(0) = [-1, 1]$ (any slope between $-1$ and $1$ gives a valid underestimator)
+
+The subdifferential gives us a complete optimality condition for convex optimization:
+
+<TheoremBlock type="theorem" number={5} title="Subgradient Optimality Condition">
+For a convex function $f$, $x^*$ is a global minimizer if and only if:
+
+$$0 \in \partial f(x^*)$$
+
+<TheoremBlock type="proof">
+**($\Leftarrow$)** If $0 \in \partial f(x^*)$, then by the subgradient inequality with $g = 0$:
+
+$$f(y) \geq f(x^*) + 0^T(y - x^*) = f(x^*) \quad \text{for all } y$$
+
+So $x^*$ is a global minimizer.
+
+**($\Rightarrow$)** If $x^*$ is a global minimizer, then $f(y) \geq f(x^*)$ for all $y$. This means $f(y) \geq f(x^*) + 0^T(y - x^*)$, so $g = 0$ satisfies the subgradient inequality, i.e., $0 \in \partial f(x^*)$.
+</TheoremBlock>
+</TheoremBlock>
+
+### Subdifferential Calculus
+
+The subdifferential obeys sum and chain rules (with some caveats):
+
+- **Sum rule:** $\partial(f_1 + f_2)(x) \supseteq \partial f_1(x) + \partial f_2(x)$ (Minkowski sum). Equality holds when a constraint qualification is satisfied (e.g., one of the functions is continuous at $x$).
+- **Scalar multiplication:** $\partial(\alpha f)(x) = \alpha \, \partial f(x)$ for $\alpha > 0$.
+- **Chain rule:** For $h(x) = g(Ax + b)$ with $g$ convex, $\partial h(x) = A^T \partial g(Ax + b)$.
+- **Connection to conjugates:** $s \in \partial f(x)$ if and only if $x \in \partial f^*(s)$ if and only if $f(x) + f^*(s) = s^T x$ (the Fenchel–Young equality).
+
+<SubgradientExplorer client:visible />
+
+![Subdifferentials: subgradient fan at kink point, set-valued subdifferential map, and optimality condition](/images/topics/convex-analysis/subdifferentials.png)
+
+---
+
+## Separation Theorems
+
+The separation theorems are the geometric bedrock of convex optimization. They say, loosely, that convex sets that don't overlap can be separated by a hyperplane.
+
+<TheoremBlock type="theorem" number={6} title="Separating Hyperplane Theorem">
+Let $C$ and $D$ be nonempty, disjoint, convex sets in $\mathbb{R}^n$. Then there exists $a \neq 0$ and $b$ such that:
+
+$$a^T x \leq b \text{ for all } x \in C, \qquad a^T x \geq b \text{ for all } x \in D$$
+
+The hyperplane $\{x : a^T x = b\}$ separates $C$ and $D$.
+
+<TheoremBlock type="proof">
+*Proof sketch.* When $C$ and $D$ are closed and at least one is compact, we can find closest points $c^* \in C$ and $d^* \in D$ minimizing $\|c - d\|$. The separating hyperplane passes through the midpoint $(c^* + d^*)/2$ with normal $a = d^* - c^*$. The key step is showing that for any $c \in C$, the inner product $a^T c \leq a^T c^*$ (otherwise we could find a point in $C$ closer to $d^*$, contradicting the minimality of $\|c^* - d^*\|$). The argument for $D$ is symmetric.
+</TheoremBlock>
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={7} title="Supporting Hyperplane Theorem">
+Let $C$ be a convex set and $x_0 \in \mathrm{bd}(C)$ a boundary point. Then there exists a **supporting hyperplane** at $x_0$: a hyperplane $\{x : a^T x = b\}$ with $a^T x_0 = b$ and $a^T x \leq b$ for all $x \in C$.
+
+Geometrically: we can always find a hyperplane that is tangent to $C$ at any boundary point, with the entire set on one side.
+</TheoremBlock>
+
+These theorems have far-reaching consequences:
+
+- **SVM margin:** The separating hyperplane between two classes of labeled data is the maximum-margin classifier.
+- **Farkas' lemma:** A direct consequence of separation, and the foundation of LP duality and the KKT conditions.
+- **Duality in convex optimization:** The entire theory of Lagrangian duality rests on separating the epigraph of the objective from a set defined by the constraints.
+
+<SeparatingHyperplaneExplorer client:visible />
+
+![Separating hyperplane theorem, supporting hyperplane theorem, and strict separation](/images/topics/convex-analysis/separation-theorems.png)
+
+---
+
+## Computational Notes
+
+### Disciplined Convex Programming (DCP)
+
+Rather than checking convexity analytically, modern solvers like **CVXPY** use the DCP composition rules to verify convexity syntactically. A problem is DCP-compliant if the objective and constraints can be parsed into a composition tree where every node preserves convexity according to the rules in the table above.
+
+```python
+import cvxpy as cp
+import numpy as np
+
+# Non-negative Lasso: min ||Ax - b||_2^2 + lambda * ||x||_1  s.t. x >= 0
+A = np.random.randn(50, 20)
+b = np.random.randn(50)
+lam = 0.1
+
+x = cp.Variable(20)
+objective = cp.Minimize(cp.sum_squares(A @ x - b) + lam * cp.norm1(x))
+constraints = [x >= 0]
+problem = cp.Problem(objective, constraints)
+problem.solve()
+
+print(f"Optimal value: {problem.value:.4f}")
+print(f"Solution sparsity: {np.sum(np.abs(x.value) < 1e-6)} / {x.size} zeros")
+```
+
+CVXPY verifies that `sum_squares` is convex nondecreasing, the affine map `A @ x - b` composes correctly, `norm1` is convex, and `x >= 0` is a valid convex constraint. If any rule is violated, CVXPY rejects the problem before solving.
+
+### Numerical Convexity Verification
+
+For a function given as code rather than a formula, we can check convexity numerically by sampling the Hessian at random points and verifying $\lambda_{\min}(\nabla^2 f(x)) \geq 0$:
+
+```python
+# Check convexity by sampling Hessian eigenvalues
+def check_convexity(f, grad2_f, n_samples=100, dim=5):
+    """Returns True if all sampled Hessians are PSD."""
+    for _ in range(n_samples):
+        x = np.random.randn(dim)
+        H = grad2_f(x)
+        min_eig = np.linalg.eigvalsh(H)[0]
+        if min_eig < -1e-10:
+            return False
+    return True
+```
+
+![Computational convexity: DCP rules table, eigenvalue verification, and CVXPY example](/images/topics/convex-analysis/computational-convexity.png)
+
+---
+
+## Connections & Further Reading
+
+Convex analysis is the foundation of the Optimization track, connecting backward to spectral theory and forward to gradient methods, proximal operators, and duality theory.
+
+| Topic | Connection |
+|-------|-----------|
+| **[The Spectral Theorem](/topics/spectral-theorem)** | The second-order condition: $\nabla^2 f \succeq 0$ (PSD Hessian) is verified through the eigendecomposition guaranteed by the Spectral Theorem. The PSD cone $\mathbb{S}^n_+$ is a fundamental convex set. |
+| **[Singular Value Decomposition](/topics/svd)** | The nuclear norm $\|X\|_* = \sum \sigma_i$ is convex, and its subdifferential involves the SVD. Convex relaxations of rank constraints use the nuclear norm ball. |
+| **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** | PCA solves a non-convex rank-constrained problem. Its convex relaxation — nuclear norm minimization — is a cornerstone of compressed sensing and matrix completion. |
+| **Gradient Descent & Convergence** *(coming soon)* | Convexity guarantees that gradient descent converges to the global minimum. The convergence rate depends on the strong convexity constant. |
+| **Proximal Methods** *(coming soon)* | Subgradients motivate proximal operators — the proximal map of $f$ at $x$ minimizes $f(y) + \frac{1}{2}\|y - x\|^2$, a regularized subgradient step. |
+| **Lagrangian Duality & KKT** *(coming soon)* | Conjugate functions are the engine of Lagrangian duality. The separation theorems lead to Farkas' lemma, which leads to the KKT conditions — the first-order optimality conditions for constrained convex optimization. |
+
+### The Optimization Track
+
+Convex Analysis is the root of the track: everything that follows either applies its results (gradient descent, proximal methods) or extends its duality machinery (Lagrangian duality, KKT conditions).
+
+```
+Convex Analysis (this topic)
+    ├── Gradient Descent & Convergence
+    │       └── Proximal Methods
+    └── Lagrangian Duality & KKT
+```
