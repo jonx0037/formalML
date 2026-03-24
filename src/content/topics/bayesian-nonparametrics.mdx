@@ -1,0 +1,757 @@
+---
+title: "Bayesian Nonparametrics"
+subtitle: "From the Dirichlet process to Gaussian processes and posterior consistency"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "pac-learning"
+  - "measure-theoretic-probability"
+tags:
+  - "probability"
+  - "bayesian-nonparametrics"
+  - "dirichlet-process"
+  - "gaussian-process"
+  - "posterior-consistency"
+  - "nonparametric-bayes"
+domain: "probability"
+videoId: null
+notebookPath: "notebooks/bayesian-nonparametrics/04_bayesian_nonparametrics.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/bayesian-nonparametrics.mdx"
+datePublished: 2026-03-24
+estimatedReadTime: 50
+abstract: "Bayesian nonparametrics places priors directly on infinite-dimensional parameter spaces, letting the effective model complexity grow with the data rather than being fixed a priori. We develop the theory from foundations: the Dirichlet process as a distribution over probability distributions with three equivalent constructive representations (stick-breaking, Chinese Restaurant Process, and Pólya urn), Dirichlet process mixture models for adaptive density estimation and clustering, Gaussian processes as nonparametric priors on function spaces with closed-form posterior inference, and the Indian Buffet Process for latent feature models. The capstone section on posterior consistency and contraction rates connects Bayesian nonparametrics to the PAC learning framework, showing that both address the same fundamental question — when and how fast does learning from data succeed — through different mechanisms: worst-case bounds versus prior-dependent average-case rates."
+connections:
+  - topic: "pac-learning"
+    relationship: "Direct prerequisite — posterior contraction rates parallel PAC sample complexity; Bayesian model selection via the marginal likelihood provides an alternative to structural risk minimization."
+  - topic: "measure-theoretic-probability"
+    relationship: "Foundational — the Dirichlet process is defined on measure spaces; posterior consistency proofs use the law of large numbers, dominated convergence, and Kullback-Leibler divergence."
+  - topic: "concentration-inequalities"
+    relationship: "Posterior contraction proofs use concentration of the log-likelihood ratio; Gaussian process concentration bounds use sub-Gaussian tail inequalities."
+  - topic: "spectral-theorem"
+    relationship: "GP kernel matrices are positive semi-definite; the eigendecomposition of the kernel operator determines the reproducing kernel Hilbert space."
+  - topic: "svd"
+    relationship: "Low-rank GP approximations (Nyström method) use the SVD of the kernel matrix."
+  - topic: "pca-low-rank"
+    relationship: "Kernel PCA is equivalent to projecting onto the leading eigenfunctions of the GP kernel; functional PCA uses GP priors."
+references:
+  - type: "paper"
+    title: "A Bayesian Analysis of Some Nonparametric Problems"
+    authors: "Ferguson"
+    year: 1973
+    url: "https://doi.org/10.1214/aos/1176342360"
+    note: "The foundational paper defining the Dirichlet process"
+  - type: "paper"
+    title: "A Constructive Definition of Dirichlet Priors"
+    authors: "Sethuraman"
+    year: 1994
+    note: "The stick-breaking construction"
+  - type: "paper"
+    title: "Ferguson Distributions Via Pólya Urn Schemes"
+    authors: "Blackwell & MacQueen"
+    year: 1973
+    url: "https://doi.org/10.1214/aos/1176342372"
+    note: "The Pólya urn representation and exchangeability"
+  - type: "book"
+    title: "Gaussian Processes for Machine Learning"
+    authors: "Rasmussen & Williams"
+    year: 2006
+    note: "Standard reference for GP theory and computation"
+  - type: "book"
+    title: "Fundamentals of Nonparametric Bayesian Inference"
+    authors: "Ghosal & van der Vaart"
+    year: 2017
+    note: "Comprehensive treatment of posterior consistency and contraction rates"
+  - type: "paper"
+    title: "Infinite Latent Feature Models and the Indian Buffet Process"
+    authors: "Griffiths & Ghahramani"
+    year: 2005
+    note: "Introduction of the IBP"
+  - type: "paper"
+    title: "Markov Chain Sampling Methods for Dirichlet Process Mixture Models"
+    authors: "Neal"
+    year: 2000
+    url: "https://doi.org/10.1080/10618600.2000.10474879"
+    note: "Gibbs sampling algorithms for DPMMs"
+  - type: "paper"
+    title: "Convergence rates of posterior distributions"
+    authors: "Ghosal, Ghosh & van der Vaart"
+    year: 2000
+    url: "https://doi.org/10.1214/aos/1016218228"
+    note: "The general posterior contraction rate theorem"
+  - type: "paper"
+    title: "On Bayes procedures"
+    authors: "Schwartz"
+    year: 1965
+    note: "The foundational posterior consistency theorem"
+  - type: "book"
+    title: "Bayesian Nonparametrics"
+    authors: "Hjort, Holmes, Müller & Walker"
+    year: 2010
+    note: "Comprehensive survey of BNP methods"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import StickBreakingExplorer from '../../components/viz/StickBreakingExplorer.tsx';
+import CRPSimulator from '../../components/viz/CRPSimulator.tsx';
+import DPPosteriorDemo from '../../components/viz/DPPosteriorDemo.tsx';
+import GPPosteriorExplorer from '../../components/viz/GPPosteriorExplorer.tsx';
+
+## Overview & Motivation
+
+In parametric statistics, we choose a model family — say, Gaussian distributions $\mathcal{N}(\mu, \sigma^2)$ — and reduce inference to estimating a fixed, finite-dimensional parameter $\theta = (\mu, \sigma^2) \in \mathbb{R}^2$. This works beautifully when the model is well-specified. But what if the true data-generating process is multimodal, heavy-tailed, or otherwise poorly captured by any finite-dimensional family?
+
+The [PAC learning framework](/topics/pac-learning) gave us one answer: control model complexity through the VC dimension or Rademacher complexity, using structural risk minimization (SRM) to balance approximation error and estimation error. Bayesian nonparametrics offers a fundamentally different approach: **place a prior directly on an infinite-dimensional parameter space** and let the effective complexity of the posterior grow with the data.
+
+The distinction between the two paradigms is worth making precise:
+
+- **Parametric models:** fix the number of parameters *a priori* (e.g., fit a mixture of $K = 3$ Gaussians).
+- **Nonparametric models:** let the effective number of parameters grow with $n$ (e.g., the number of mixture components adapts to the data).
+
+This naming is somewhat misleading — "nonparametric" models have *more* parameters than parametric ones, not fewer. A better name might be "infinite-parametric," but the convention is firmly established.
+
+![Parametric vs nonparametric paradigm](/images/topics/bayesian-nonparametrics/bnp-paradigm.png)
+
+<TheoremBlock type="remark" number={1} title="The Bayesian Resolution of Model Selection">
+Recall from the [PAC Learning Framework](/topics/pac-learning) that structural risk minimization balances approximation and estimation error by selecting from a nested sequence of hypothesis classes $\mathcal{H}_1 \subset \mathcal{H}_2 \subset \cdots$. Bayesian nonparametrics *sidesteps* model selection entirely: by placing a prior on the union $\bigcup_d \mathcal{H}_d$, the posterior automatically concentrates on the appropriate complexity level. The marginal likelihood provides an automatic "Occam's razor" — complex models are penalized by the prior unless the data strongly support them.
+</TheoremBlock>
+
+We'll develop three canonical nonparametric models in this topic:
+
+1. **The Dirichlet Process** — a prior on probability measures, used for clustering and density estimation.
+2. **The Gaussian Process** — a prior on functions, used for regression and classification.
+3. **The Indian Buffet Process** — a prior on binary matrices, used for latent feature models.
+
+Each places a prior on an infinite-dimensional object (a measure, a function, a binary matrix with infinitely many columns), yet admits tractable posterior inference through clever constructive representations.
+
+---
+
+## The Dirichlet Distribution
+
+The Dirichlet process is the infinite-dimensional generalization of the Dirichlet distribution, so we begin by reviewing the finite-dimensional case carefully.
+
+<TheoremBlock type="definition" number={1} title="Dirichlet Distribution">
+For a positive integer $K$ and a parameter vector $\boldsymbol{\alpha} = (\alpha_1, \ldots, \alpha_K) \in \mathbb{R}_{>0}^K$, the *Dirichlet distribution* $\text{Dir}(\boldsymbol{\alpha})$ is the probability distribution on the $(K-1)$-simplex
+
+$$\Delta_{K-1} = \left\{(p_1, \ldots, p_K) \in \mathbb{R}^K : p_k \geq 0, \sum_{k=1}^K p_k = 1\right\}$$
+
+with density
+
+$$f(\mathbf{p} \mid \boldsymbol{\alpha}) = \frac{\Gamma\!\left(\sum_{k=1}^K \alpha_k\right)}{\prod_{k=1}^K \Gamma(\alpha_k)} \prod_{k=1}^K p_k^{\alpha_k - 1},$$
+
+where $\Gamma(\cdot)$ is the gamma function.
+</TheoremBlock>
+
+The concentration parameter $\alpha_0 = \sum_k \alpha_k$ controls how concentrated the distribution is around the base measure $\mathbf{b} = \boldsymbol{\alpha}/\alpha_0$:
+
+- When $\alpha_0 \gg 1$, draws are concentrated near $\mathbf{b}$ (low variance).
+- When $\alpha_0 \ll 1$, draws are concentrated near the vertices of the simplex (sparse, winner-take-all).
+- When $\alpha_0 = 1$ and $\alpha_k = 1/K$ for all $k$, draws are approximately uniform on the simplex.
+
+![Dirichlet distribution on the simplex](/images/topics/bayesian-nonparametrics/dirichlet-distribution.png)
+
+<TheoremBlock type="proposition" number={1} title="Moments of the Dirichlet">
+If $\mathbf{p} \sim \text{Dir}(\boldsymbol{\alpha})$ with $\alpha_0 = \sum_k \alpha_k$, then:
+
+1. $\mathbb{E}[p_k] = \alpha_k / \alpha_0$,
+2. $\text{Var}(p_k) = \frac{\alpha_k(\alpha_0 - \alpha_k)}{\alpha_0^2(\alpha_0 + 1)}$,
+3. $\text{Cov}(p_j, p_k) = \frac{-\alpha_j \alpha_k}{\alpha_0^2(\alpha_0 + 1)}$ for $j \neq k$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+These follow from the integral representation of the beta function. For the mean, note that marginally $p_k \sim \text{Beta}(\alpha_k, \alpha_0 - \alpha_k)$, so $\mathbb{E}[p_k] = \alpha_k / \alpha_0$. The variance follows from the Beta variance formula. For the covariance, we use the constraint $\sum_k p_k = 1$, which gives $\sum_{j \neq k} \text{Cov}(p_j, p_k) = -\text{Var}(p_k)$. By the symmetry structure of the Dirichlet, all off-diagonal covariances involving $p_k$ have the same sign (negative), and the formula follows from direct computation.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Dirichlet–Multinomial Conjugacy">
+If $\mathbf{p} \sim \text{Dir}(\boldsymbol{\alpha})$ and $\mathbf{n} = (n_1, \ldots, n_K) \mid \mathbf{p} \sim \text{Multinomial}(N, \mathbf{p})$, then
+
+$$\mathbf{p} \mid \mathbf{n} \sim \text{Dir}(\alpha_1 + n_1, \ldots, \alpha_K + n_K).$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By Bayes' theorem, $f(\mathbf{p} \mid \mathbf{n}) \propto f(\mathbf{n} \mid \mathbf{p}) f(\mathbf{p})$. The multinomial likelihood is $f(\mathbf{n} \mid \mathbf{p}) \propto \prod_k p_k^{n_k}$, and the Dirichlet prior density is $f(\mathbf{p}) \propto \prod_k p_k^{\alpha_k - 1}$. Multiplying:
+
+$$f(\mathbf{p} \mid \mathbf{n}) \propto \prod_k p_k^{\alpha_k + n_k - 1},$$
+
+which we recognize as $\text{Dir}(\boldsymbol{\alpha} + \mathbf{n})$.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={2} title="Aggregation Property">
+The Dirichlet distribution satisfies a crucial *aggregation property*: if $(p_1, \ldots, p_K) \sim \text{Dir}(\alpha_1, \ldots, \alpha_K)$ and we merge components $j$ and $k$ into $p_{jk} = p_j + p_k$, then the resulting vector follows $\text{Dir}(\ldots, \alpha_j + \alpha_k, \ldots)$ with the merged parameter. This property is exactly what allows the infinite-dimensional extension — the Dirichlet process — to be self-consistent under arbitrary partitions.
+</TheoremBlock>
+
+---
+
+## The Dirichlet Process
+
+The Dirichlet process, introduced by Ferguson (1973), is the cornerstone of Bayesian nonparametrics. It is a *distribution over probability distributions* — a "prior over priors" — that generalizes the Dirichlet distribution to infinite-dimensional spaces.
+
+<TheoremBlock type="definition" number={2} title="Dirichlet Process">
+Let $(\Theta, \mathcal{A})$ be a measurable space, $\alpha > 0$ a *concentration parameter*, and $G_0$ a probability measure on $(\Theta, \mathcal{A})$ called the *base measure*. A random probability measure $G$ on $(\Theta, \mathcal{A})$ follows a *Dirichlet process*, written $G \sim \text{DP}(\alpha, G_0)$, if for every finite measurable partition $\{A_1, \ldots, A_K\}$ of $\Theta$:
+
+$$(G(A_1), G(A_2), \ldots, G(A_K)) \sim \text{Dir}(\alpha G_0(A_1), \alpha G_0(A_2), \ldots, \alpha G_0(A_K)).$$
+</TheoremBlock>
+
+This definition is elegant but requires verification that such an object exists — the condition must be self-consistent across all possible partitions.
+
+<TheoremBlock type="theorem" number={1} title="Existence and Uniqueness of the Dirichlet Process">
+For any concentration parameter $\alpha > 0$ and base measure $G_0$ on a Polish space $(\Theta, \mathcal{A})$, there exists a unique probability measure on the space of probability measures over $(\Theta, \mathcal{A})$ satisfying the Dirichlet process definition.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The key is the Kolmogorov extension theorem. We verify two conditions:
+
+1. **Consistency under marginalization.** If $\{A_1, \ldots, A_K\}$ is a partition and we merge $A_j \cup A_k$ into a single set, the resulting marginal distribution must be $\text{Dir}(\ldots, \alpha G_0(A_j) + \alpha G_0(A_k), \ldots)$. This follows from the aggregation property of the Dirichlet distribution (Remark 2).
+
+2. **Consistency under refinement.** If we refine $A_j$ into $A_j = B_1 \cup B_2$, the joint distribution of $(G(A_1), \ldots, G(B_1), G(B_2), \ldots, G(A_K))$ must agree with the Dirichlet definition on the finer partition. This follows from the conditional independence structure: $G(B_1)/G(A_j) \mid G(A_j) \sim \text{Beta}(\alpha G_0(B_1), \alpha G_0(B_2))$, independent of the other components.
+
+With these consistency conditions verified, the Kolmogorov extension theorem guarantees the existence of a unique probability measure on the product $\sigma$-algebra.
+</TheoremBlock>
+
+The two parameters of the DP have clear roles:
+
+- **Base measure $G_0$:** the "prior guess" at what $G$ looks like. $\mathbb{E}[G(A)] = G_0(A)$ for every measurable $A$ — draws from the DP are centered around $G_0$.
+- **Concentration parameter $\alpha$:** controls how close $G$ is to $G_0$. As $\alpha \to \infty$, $G \to G_0$ in distribution. As $\alpha \to 0$, $G$ concentrates on a single atom.
+
+<TheoremBlock type="proposition" number={3} title="Moments of the DP">
+If $G \sim \text{DP}(\alpha, G_0)$ and $A \in \mathcal{A}$, then:
+
+1. $\mathbb{E}[G(A)] = G_0(A)$,
+2. $\text{Var}(G(A)) = \frac{G_0(A)(1 - G_0(A))}{\alpha + 1}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+These follow directly from the moments of the Beta distribution. For any measurable set $A$, consider the partition $\{A, A^c\}$. Then $(G(A), G(A^c)) \sim \text{Dir}(\alpha G_0(A), \alpha(1 - G_0(A)))$, so $G(A) \sim \text{Beta}(\alpha G_0(A), \alpha(1 - G_0(A)))$. The beta distribution gives $\mathbb{E}[G(A)] = \frac{\alpha G_0(A)}{\alpha} = G_0(A)$ and $\text{Var}(G(A)) = \frac{\alpha G_0(A) \cdot \alpha(1 - G_0(A))}{\alpha^2(\alpha + 1)} = \frac{G_0(A)(1 - G_0(A))}{\alpha + 1}$.
+</TheoremBlock>
+
+The most surprising — and practically important — property of the Dirichlet process is its almost sure discreteness.
+
+![DP draws and discreteness](/images/topics/bayesian-nonparametrics/dp-draws-discreteness.png)
+
+<TheoremBlock type="theorem" number={2} title="Almost Sure Discreteness">
+If $G \sim \text{DP}(\alpha, G_0)$, then $G$ is almost surely a discrete measure, regardless of whether the base measure $G_0$ is continuous or discrete. That is, with probability one,
+
+$$G = \sum_{k=1}^{\infty} w_k \delta_{\theta_k}$$
+
+for some random weights $w_k \geq 0$ with $\sum_k w_k = 1$ and random atoms $\theta_k \in \Theta$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We prove this via the stick-breaking construction (§4), which provides an explicit representation $G = \sum_{k=1}^{\infty} w_k \delta_{\theta_k}$ with $w_k = V_k \prod_{j < k}(1 - V_j)$ and $V_k \stackrel{\text{iid}}{\sim} \text{Beta}(1, \alpha)$. Since each $V_k \in [0, 1]$ and $\mathbb{E}[V_k] = 1/(1 + \alpha) > 0$, the product $\prod_{j < k}(1 - V_j) \to 0$ almost surely, ensuring $\sum_k w_k = 1$ almost surely. The atoms $\theta_k$ are drawn i.i.d. from $G_0$, so $G$ is a countable mixture of point masses.
+
+An alternative argument: for any fixed atom $\theta$, $\Pr[G(\{\theta\}) > 0] = 0$ when $G_0$ is non-atomic. But $G$ still has atoms — they arise randomly, not at pre-specified locations. The key insight is that the DP's finite-dimensional distributions are Dirichlet, and as the partition becomes finer, the mass concentrates on increasingly few partition elements. In the limit, this produces a discrete measure with probability one.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={3} title="Discreteness Is a Feature, Not a Bug">
+The almost sure discreteness of the DP means draws $\theta_1, \theta_2, \ldots \mid G$ will exhibit *ties* — multiple observations share the same value. This clustering property is exactly what makes the DP useful for mixture modeling: the number of distinct values (clusters) grows logarithmically with $n$, adapting to the data.
+</TheoremBlock>
+
+---
+
+## Constructive Representations
+
+Ferguson's definition (Definition 2) is clean but non-constructive — it tells us the finite-dimensional marginals without directly telling us how to *sample* from the DP. Three equivalent constructive representations fill this gap, each offering different computational and conceptual advantages.
+
+### The Stick-Breaking Construction
+
+<TheoremBlock type="definition" number={3} title="Stick-Breaking Construction (Sethuraman, 1994)">
+Let $V_k \stackrel{\text{iid}}{\sim} \text{Beta}(1, \alpha)$ for $k = 1, 2, \ldots$ and $\theta_k \stackrel{\text{iid}}{\sim} G_0$, mutually independent. Define the *stick-breaking weights*
+
+$$w_k = V_k \prod_{j=1}^{k-1} (1 - V_j), \qquad k = 1, 2, \ldots$$
+
+Then $G = \sum_{k=1}^{\infty} w_k \delta_{\theta_k} \sim \text{DP}(\alpha, G_0)$.
+</TheoremBlock>
+
+The name is vivid: imagine a stick of length 1. Break off a fraction $V_1$ (the first weight $w_1 = V_1$). From the remaining piece of length $1 - V_1$, break off a fraction $V_2$ (giving $w_2 = V_2(1 - V_1)$). Continue ad infinitum. The process almost surely exhausts the stick: $\sum_k w_k = 1$ with probability one.
+
+<TheoremBlock type="theorem" number={3} title="Stick-Breaking Equivalence">
+The random measure $G = \sum_{k=1}^{\infty} w_k \delta_{\theta_k}$ constructed via stick-breaking is distributed as $\text{DP}(\alpha, G_0)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify the defining property. Let $\{A_1, \ldots, A_K\}$ be a finite measurable partition of $\Theta$. Then
+
+$$G(A_j) = \sum_{k=1}^{\infty} w_k \mathbf{1}[\theta_k \in A_j].$$
+
+We need to show $(G(A_1), \ldots, G(A_K)) \sim \text{Dir}(\alpha G_0(A_1), \ldots, \alpha G_0(A_K))$. The proof proceeds by showing that the Laplace transform of $(G(A_1), \ldots, G(A_K))$ matches that of the Dirichlet distribution. Since $\theta_k$ are i.i.d. $\sim G_0$ and independent of the weights, and the weights have the stick-breaking structure with $\text{Beta}(1, \alpha)$ breaks, this Laplace transform evaluates to the Dirichlet Laplace transform, confirming the DP distribution. The full calculation appears in Sethuraman (1994).
+</TheoremBlock>
+
+![Constructive representations](/images/topics/bayesian-nonparametrics/constructive-representations.png)
+
+In practice, we truncate the stick-breaking construction at $K$ components, which gives an excellent approximation when $K$ is large enough:
+
+```python
+def stick_breaking_sample(alpha, G0_sampler, K=200):
+    """Sample a truncated DP via stick-breaking."""
+    V = rng.beta(1, alpha, size=K)
+    w = np.zeros(K)
+    w[0] = V[0]
+    for k in range(1, K):
+        w[k] = V[k] * np.prod(1 - V[:k])
+    atoms = G0_sampler(K)
+    return w, atoms
+
+G0_sampler = lambda K: rng.normal(0, 1, K)
+```
+
+<StickBreakingExplorer client:visible />
+
+### The Chinese Restaurant Process
+
+<TheoremBlock type="definition" number={4} title="Chinese Restaurant Process">
+Consider a sequence of customers $\theta_1, \theta_2, \ldots$ arriving at a restaurant with infinitely many tables. The first customer sits at table 1. Customer $n+1$ sits at:
+
+- an *occupied table* $k$ (with currently $n_k$ customers) with probability $\frac{n_k}{\alpha + n}$,
+- a *new table* with probability $\frac{\alpha}{\alpha + n}$.
+
+When a new table is opened, a dish $\phi \sim G_0$ is drawn for that table. Each customer at table $k$ receives the dish $\phi_k$ associated with their table.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={4} title="CRP–DP Equivalence">
+The sequence $\theta_1, \theta_2, \ldots$ generated by the Chinese Restaurant Process is exchangeable, and the directing measure (in the sense of de Finetti's theorem) is $G \sim \text{DP}(\alpha, G_0)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Step 1: Predictive distribution.** By the CRP construction, the conditional distribution of $\theta_{n+1}$ given $\theta_1, \ldots, \theta_n$ is
+
+$$\theta_{n+1} \mid \theta_1, \ldots, \theta_n \sim \frac{\alpha}{\alpha + n} G_0 + \frac{1}{\alpha + n} \sum_{i=1}^n \delta_{\theta_i}.$$
+
+This is the Pólya urn predictive rule (Blackwell & MacQueen, 1973).
+
+**Step 2: Exchangeability.** We verify that $p(\theta_1, \ldots, \theta_n)$ is invariant under permutations. The joint probability factors as:
+
+$$p(\theta_1, \ldots, \theta_n) = \frac{\alpha^{K_n} \prod_{k=1}^{K_n} (n_k - 1)!}{\alpha(\alpha+1)\cdots(\alpha+n-1)} \prod_{k=1}^{K_n} G_0(\phi_k),$$
+
+where $K_n$ is the number of distinct values (tables) and $n_k$ is the count at table $k$. This expression depends on $(\theta_1, \ldots, \theta_n)$ only through the partition structure (which values are equal) — not on the ordering. Hence the sequence is exchangeable.
+
+**Step 3: De Finetti's representation.** By de Finetti's theorem, an exchangeable sequence of random variables is a mixture of i.i.d. sequences: $\theta_i \mid G \stackrel{\text{iid}}{\sim} G$ for some random $G$. The predictive distribution (Step 1) uniquely identifies $G \sim \text{DP}(\alpha, G_0)$ through the posterior characterization in §5.
+</TheoremBlock>
+
+The CRP provides an intuitive simulation algorithm:
+
+```python
+alpha_crp = 2.0
+n_customers = 50
+tables = []       # table sizes
+assignments = []  # which table each customer sits at
+
+for i in range(n_customers):
+    if len(tables) == 0:
+        tables.append(1)
+        assignments.append(0)
+    else:
+        probs = np.array(tables + [alpha_crp]) / (i + alpha_crp)
+        choice = rng.choice(len(probs), p=probs)
+        if choice == len(tables):   # new table
+            tables.append(1)
+            assignments.append(len(tables) - 1)
+        else:                        # existing table
+            tables[choice] += 1
+            assignments.append(choice)
+```
+
+<CRPSimulator client:visible />
+
+### The Pólya Urn Scheme
+
+<TheoremBlock type="definition" number={5} title="Pólya Urn Scheme (Blackwell & MacQueen, 1973)">
+The Pólya urn provides a sequential construction equivalent to the CRP. Start with an urn containing a "paint can" of color $G_0$ with mass $\alpha$. At step $n+1$:
+
+1. Draw a ball from the urn uniformly at random (proportional to mass).
+2. If the paint can is drawn, generate $\theta_{n+1} \sim G_0$ and add a unit-mass ball of color $\theta_{n+1}$ to the urn.
+3. If a ball of color $\theta_i$ is drawn, set $\theta_{n+1} = \theta_i$ and add another unit-mass ball of the same color.
+
+This produces the same predictive rule as the CRP:
+
+$$\theta_{n+1} \mid \theta_1, \ldots, \theta_n \sim \frac{\alpha}{\alpha + n} G_0 + \frac{1}{\alpha + n} \sum_{i=1}^n \delta_{\theta_i}.$$
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={4} title="Expected Number of Clusters">
+In the CRP, the expected number of distinct tables after $n$ customers is
+
+$$\mathbb{E}[K_n] = \sum_{i=1}^{n} \frac{\alpha}{\alpha + i - 1} \approx \alpha \log\!\left(\frac{n}{\alpha} + 1\right).$$
+
+This logarithmic growth is a hallmark of the DP: the number of clusters grows slowly, providing an automatic regularization effect.
+</TheoremBlock>
+
+---
+
+## Posterior Inference
+
+One of the most elegant properties of the Dirichlet process is its conjugacy: the posterior of a DP prior given i.i.d. observations is again a DP, with parameters updated in a natural way.
+
+<TheoremBlock type="theorem" number={5} title="DP Posterior Update">
+Let $G \sim \text{DP}(\alpha, G_0)$ and $\theta_1, \ldots, \theta_n \mid G \stackrel{\text{iid}}{\sim} G$. Then the posterior distribution of $G$ given $\theta_1, \ldots, \theta_n$ is
+
+$$G \mid \theta_1, \ldots, \theta_n \sim \text{DP}\!\left(\alpha + n,\; \frac{\alpha}{\alpha + n} G_0 + \frac{n}{\alpha + n} \hat{F}_n\right),$$
+
+where $\hat{F}_n = \frac{1}{n}\sum_{i=1}^n \delta_{\theta_i}$ is the empirical distribution.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify the defining property of the DP. Let $\{A_1, \ldots, A_K\}$ be a finite measurable partition of $\Theta$. Define $n_j = |\{i : \theta_i \in A_j\}|$, so $\sum_j n_j = n$.
+
+**Prior.** $(G(A_1), \ldots, G(A_K)) \sim \text{Dir}(\alpha G_0(A_1), \ldots, \alpha G_0(A_K))$.
+
+**Likelihood.** Given $G$, the observations $\theta_1, \ldots, \theta_n$ are i.i.d. from $G$, so the count vector $(n_1, \ldots, n_K) \mid G \sim \text{Multinomial}(n, (G(A_1), \ldots, G(A_K)))$.
+
+**Posterior.** By Dirichlet–Multinomial conjugacy (Proposition 2):
+
+$$(G(A_1), \ldots, G(A_K)) \mid \theta_1, \ldots, \theta_n \sim \text{Dir}(\alpha G_0(A_1) + n_1, \ldots, \alpha G_0(A_K) + n_K).$$
+
+We rewrite the updated parameters:
+
+$$\alpha G_0(A_j) + n_j = (\alpha + n) \left(\frac{\alpha}{\alpha + n} G_0(A_j) + \frac{n}{\alpha + n} \cdot \frac{n_j}{n}\right) = (\alpha + n) G_n(A_j),$$
+
+where $G_n = \frac{\alpha}{\alpha + n} G_0 + \frac{n}{\alpha + n} \hat{F}_n$ is the updated base measure. Since this holds for every finite measurable partition, $G \mid \theta_1, \ldots, \theta_n \sim \text{DP}(\alpha + n, G_n)$.
+</TheoremBlock>
+
+![DP posterior update](/images/topics/bayesian-nonparametrics/dp-posterior-update.png)
+
+<TheoremBlock type="corollary" number={1} title="Posterior Predictive Distribution">
+The predictive distribution for $\theta_{n+1}$ given $\theta_1, \ldots, \theta_n$ (marginalizing over $G$) is
+
+$$\theta_{n+1} \mid \theta_1, \ldots, \theta_n \sim \frac{\alpha}{\alpha + n} G_0 + \frac{1}{\alpha + n} \sum_{i=1}^n \delta_{\theta_i}.$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Integrate $\theta_{n+1} \mid G \sim G$ against the posterior $G \mid \theta_1, \ldots, \theta_n \sim \text{DP}(\alpha + n, G_n)$:
+
+$$\mathbb{E}[\theta_{n+1} \in A \mid \theta_1, \ldots, \theta_n] = \mathbb{E}[G(A) \mid \theta_1, \ldots, \theta_n] = G_n(A) = \frac{\alpha}{\alpha + n} G_0(A) + \frac{n}{\alpha + n} \hat{F}_n(A).$$
+
+This recovers the Pólya urn predictive rule (Definition 5).
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={5} title="Posterior as Weighted Average">
+The posterior base measure $G_n = \frac{\alpha}{\alpha+n}G_0 + \frac{n}{\alpha+n}\hat{F}_n$ is a weighted average of the prior $G_0$ and the empirical distribution $\hat{F}_n$. As $n \to \infty$, the posterior concentrates around $\hat{F}_n$ — the data overwhelm the prior. As $\alpha \to \infty$, the posterior stays close to $G_0$ — the prior dominates. This interpolation between prior belief and data evidence is the essence of Bayesian learning.
+</TheoremBlock>
+
+<DPPosteriorDemo client:visible />
+
+---
+
+## Dirichlet Process Mixture Models
+
+The DP by itself generates discrete distributions, but real data is often continuous. The *Dirichlet process mixture model* (DPMM) solves this by using the DP as a mixing distribution: each observation is drawn from a kernel (e.g., Gaussian) centered at a DP-sampled atom. This produces a countable mixture with an *unknown* number of components.
+
+<TheoremBlock type="definition" number={6} title="Dirichlet Process Mixture Model">
+A DPMM with concentration parameter $\alpha$, base measure $G_0$, and kernel $F(\cdot \mid \theta)$ is the hierarchical model:
+
+$$G \sim \text{DP}(\alpha, G_0), \qquad \theta_i \mid G \stackrel{\text{iid}}{\sim} G, \qquad x_i \mid \theta_i \sim F(\cdot \mid \theta_i).$$
+
+In the Gaussian case with $G_0 = \text{NIW}(\mu_0, \kappa_0, \nu_0, \Psi_0)$ (Normal-Inverse-Wishart) and $F(\cdot \mid \mu, \Sigma) = \mathcal{N}(\mu, \Sigma)$, this becomes a Gaussian mixture model with a random (potentially infinite) number of components.
+</TheoremBlock>
+
+The generative process via stick-breaking:
+
+1. Draw weights: $V_k \sim \text{Beta}(1, \alpha)$, set $w_k = V_k \prod_{j<k}(1-V_j)$.
+2. Draw atoms: $\theta_k \sim G_0$.
+3. For each observation $i$: assign to component $z_i$ with $\Pr[z_i = k] = w_k$, then draw $x_i \sim F(\cdot \mid \theta_{z_i})$.
+
+<TheoremBlock type="definition" number={7} title="Collapsed DPMM via CRP">
+The CRP representation provides an equivalent generative model that integrates out $G$:
+
+1. For $i = 1, \ldots, n$, assign observation $i$ to cluster $k$ with probability:
+   - $\frac{n_{k,-i}}{\alpha + n - 1}$ for existing cluster $k$ (where $n_{k,-i}$ is the count excluding $i$),
+   - $\frac{\alpha}{\alpha + n - 1}$ for a new cluster.
+2. If assigned to a new cluster, draw $\theta_{\text{new}} \sim G_0$.
+3. Draw $x_i \sim F(\cdot \mid \theta_{z_i})$.
+</TheoremBlock>
+
+**Gibbs sampling for DPMMs.** The collapsed Gibbs sampler (Neal, Algorithm 3) iterates over observations, resampling each cluster assignment $z_i$ from its full conditional:
+
+$$\Pr[z_i = k \mid z_{-i}, x_1, \ldots, x_n] \propto \begin{cases} n_{k,-i} \cdot F(x_i \mid \theta_k) & \text{existing cluster } k, \\ \alpha \cdot \int F(x_i \mid \theta) \, dG_0(\theta) & \text{new cluster.} \end{cases}$$
+
+When the kernel $F$ and base measure $G_0$ are conjugate (e.g., Gaussian-NIW), the marginal likelihood $\int F(x_i \mid \theta) dG_0(\theta)$ and the updated parameter $\theta_k$ given all observations assigned to cluster $k$ have closed-form expressions.
+
+<TheoremBlock type="example" number={1} title="Gaussian DPMM — Univariate">
+For $F(\cdot \mid \mu, \sigma^2) = \mathcal{N}(\mu, \sigma^2)$ with known variance $\sigma^2$ and $G_0 = \mathcal{N}(\mu_0, \sigma_0^2)$:
+
+- **Marginal likelihood:** $\int \mathcal{N}(x \mid \mu, \sigma^2) \mathcal{N}(\mu \mid \mu_0, \sigma_0^2) d\mu = \mathcal{N}(x \mid \mu_0, \sigma^2 + \sigma_0^2)$.
+- **Posterior for cluster mean:** $\mu_k \mid \{x_i : z_i = k\} \sim \mathcal{N}\!\left(\frac{\sigma_0^{-2}\mu_0 + n_k\sigma^{-2}\bar{x}_k}{\sigma_0^{-2} + n_k\sigma^{-2}},\; (\sigma_0^{-2} + n_k\sigma^{-2})^{-1}\right)$.
+</TheoremBlock>
+
+![DPMM clustering](/images/topics/bayesian-nonparametrics/dpmm-clustering.png)
+
+```python
+def run_dpmm_gibbs(X, alpha, n_iter=50, sigma2=0.5, mu0=0, sigma02=10):
+    """Collapsed Gibbs sampler for a univariate Gaussian DPMM."""
+    n = len(X)
+    z = rng.integers(0, 3, size=n)  # random initial assignments
+    for iteration in range(n_iter):
+        for i in range(n):
+            # Remove observation i from its cluster
+            clusters = {}
+            for j in range(n):
+                if j == i: continue
+                clusters.setdefault(z[j], []).append(j)
+            probs, cluster_ids = [], []
+            for k, members in clusters.items():
+                n_k = len(members)
+                x_bar = np.mean(X[members])
+                precision_post = 1/sigma02 + n_k/sigma2
+                mu_post = (mu0/sigma02 + n_k*x_bar/sigma2) / precision_post
+                sigma2_pred = sigma2 + 1/precision_post
+                log_prob = np.log(n_k) + norm.logpdf(X[i], mu_post, np.sqrt(sigma2_pred))
+                probs.append(np.exp(log_prob))
+                cluster_ids.append(k)
+            # New cluster probability
+            log_new = np.log(alpha) + norm.logpdf(X[i], mu0, np.sqrt(sigma2 + sigma02))
+            probs.append(np.exp(log_new))
+            cluster_ids.append(max(cluster_ids, default=-1) + 1)
+            probs = np.array(probs) / sum(probs)
+            z[i] = cluster_ids[rng.choice(len(probs), p=probs)]
+    return z
+```
+
+---
+
+## Gaussian Processes
+
+While the Dirichlet process provides a nonparametric prior on *probability measures*, the Gaussian process provides a nonparametric prior on *functions*. In the Bayesian nonparametric view, a GP is a prior on an infinite-dimensional function space that admits tractable finite-dimensional marginals.
+
+<TheoremBlock type="definition" number={8} title="Gaussian Process">
+A *Gaussian process* is a collection of random variables $\{f(x)\}_{x \in \mathcal{X}}$, any finite subset of which has a joint Gaussian distribution. A GP is fully specified by its mean function $m(x)$ and covariance function (kernel) $k(x, x')$:
+
+$$f \sim \mathcal{GP}(m, k), \qquad m(x) = \mathbb{E}[f(x)], \qquad k(x, x') = \text{Cov}(f(x), f(x')).$$
+
+For any finite set of inputs $\mathbf{x} = (x_1, \ldots, x_n)$, the function values $(f(x_1), \ldots, f(x_n))$ follow a multivariate Gaussian:
+
+$$(f(x_1), \ldots, f(x_n)) \sim \mathcal{N}(\mathbf{m}, \mathbf{K}),$$
+
+where $\mathbf{m}_i = m(x_i)$ and $\mathbf{K}_{ij} = k(x_i, x_j)$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={9} title="Common Kernels">
+The choice of kernel encodes prior assumptions about the function:
+
+1. **Squared exponential (RBF):** $k(x, x') = \sigma_f^2 \exp\!\left(-\frac{\|x - x'\|^2}{2\ell^2}\right)$ — infinitely differentiable functions. Parameters: signal variance $\sigma_f^2$, length-scale $\ell$.
+
+2. **Matérn-$\nu$:** $k(x, x') = \sigma_f^2 \frac{2^{1-\nu}}{\Gamma(\nu)}\left(\frac{\sqrt{2\nu}\|x-x'\|}{\ell}\right)^\nu K_\nu\!\left(\frac{\sqrt{2\nu}\|x-x'\|}{\ell}\right)$ — $\lceil\nu\rceil - 1$ times differentiable. For $\nu = 3/2$: $k(x, x') = \sigma_f^2\left(1 + \frac{\sqrt{3}|x-x'|}{\ell}\right)\exp\!\left(-\frac{\sqrt{3}|x-x'|}{\ell}\right)$.
+
+3. **Linear:** $k(x, x') = \sigma_b^2 + \sigma_v^2 (x - c)(x' - c)$ — equivalent to Bayesian linear regression.
+</TheoremBlock>
+
+The real power of GPs lies in the closed-form posterior — conditioning on observed data is just Gaussian conditioning.
+
+<TheoremBlock type="theorem" number={6} title="GP Posterior">
+Let $f \sim \mathcal{GP}(0, k)$ and observe $\mathbf{y} = f(\mathbf{X}) + \boldsymbol{\varepsilon}$ where $\varepsilon_i \stackrel{\text{iid}}{\sim} \mathcal{N}(0, \sigma_n^2)$. Then the posterior $f \mid \mathbf{X}, \mathbf{y}$ is again a GP with:
+
+$$\mathbb{E}[f(x^*) \mid \mathbf{X}, \mathbf{y}] = \mathbf{k}_*^\top (\mathbf{K} + \sigma_n^2 \mathbf{I})^{-1} \mathbf{y},$$
+
+$$\text{Var}(f(x^*) \mid \mathbf{X}, \mathbf{y}) = k(x^*, x^*) - \mathbf{k}_*^\top (\mathbf{K} + \sigma_n^2 \mathbf{I})^{-1} \mathbf{k}_*,$$
+
+where $\mathbf{k}_* = (k(x^*, x_1), \ldots, k(x^*, x_n))^\top$ and $\mathbf{K}_{ij} = k(x_i, x_j)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write the joint distribution of the training outputs $\mathbf{y}$ and the test output $f_* = f(x^*)$:
+
+$$\begin{pmatrix} \mathbf{y} \\ f_* \end{pmatrix} \sim \mathcal{N}\!\left(\mathbf{0},\; \begin{pmatrix} \mathbf{K} + \sigma_n^2 \mathbf{I} & \mathbf{k}_* \\ \mathbf{k}_*^\top & k(x^*, x^*) \end{pmatrix}\right).$$
+
+By the standard formula for Gaussian conditionals ($p(a \mid b) = \mathcal{N}(\mu_a + \Sigma_{ab}\Sigma_{bb}^{-1}(b - \mu_b),\; \Sigma_{aa} - \Sigma_{ab}\Sigma_{bb}^{-1}\Sigma_{ba})$):
+
+$$f_* \mid \mathbf{y} \sim \mathcal{N}\!\left(\mathbf{k}_*^\top(\mathbf{K} + \sigma_n^2\mathbf{I})^{-1}\mathbf{y},\; k(x^*, x^*) - \mathbf{k}_*^\top(\mathbf{K} + \sigma_n^2\mathbf{I})^{-1}\mathbf{k}_*\right).$$
+
+Since this holds for any finite set of test points, the posterior is a GP.
+</TheoremBlock>
+
+![GP regression](/images/topics/bayesian-nonparametrics/gp-regression.png)
+
+In practice, the matrix inverse $(\mathbf{K} + \sigma_n^2 \mathbf{I})^{-1}$ is computed via the Cholesky decomposition for numerical stability:
+
+```python
+def rbf_kernel(X1, X2, length_scale=1.0, signal_var=1.0):
+    """Squared exponential (RBF) kernel."""
+    sqdist = np.sum(X1**2, 1).reshape(-1, 1) + np.sum(X2**2, 1) - 2 * X1 @ X2.T
+    return signal_var * np.exp(-0.5 * sqdist / length_scale**2)
+
+# GP posterior via Cholesky decomposition
+K_train = rbf_kernel(X_train, X_train) + sigma_n**2 * np.eye(len(X_train))
+K_star = rbf_kernel(X_test, X_train)
+K_ss = rbf_kernel(X_test, X_test)
+
+L = np.linalg.cholesky(K_train)                       # O(n^3) factorization
+alpha_gp = np.linalg.solve(L.T, np.linalg.solve(L, y_train))  # O(n^2) solve
+mu_post = K_star @ alpha_gp                            # posterior mean
+
+v = np.linalg.solve(L, K_star.T)
+var_post = np.diag(K_ss) - np.sum(v**2, axis=0)       # posterior variance
+std_post = np.sqrt(np.maximum(var_post, 0))            # clamp for numerics
+```
+
+<GPPosteriorExplorer client:visible />
+
+<TheoremBlock type="remark" number={6} title="GP–DP Connection">
+The Dirichlet process and Gaussian process are complementary nonparametric priors: the DP is a prior on *discrete* measures (used for clustering and density estimation), while the GP is a prior on *continuous* functions (used for regression and classification). Both are infinite-dimensional priors with tractable finite-dimensional marginals. The DP's finite marginals are Dirichlet; the GP's finite marginals are Gaussian.
+</TheoremBlock>
+
+---
+
+## The Indian Buffet Process
+
+The Dirichlet process provides a nonparametric prior for *clustering* (each observation belongs to exactly one cluster). But what if we want each observation to possess multiple *latent features*? The Indian Buffet Process (IBP), introduced by Griffiths and Ghahramani (2005), provides a nonparametric prior on binary feature matrices with infinitely many columns.
+
+<TheoremBlock type="definition" number={10} title="Indian Buffet Process">
+Consider $n$ customers sequentially visiting an Indian buffet with infinitely many dishes. Customer 1 tries $\text{Poisson}(\alpha)$ dishes. Customer $i$ (for $i \geq 2$):
+
+- tries each previously tasted dish $k$ with probability $m_k / i$, where $m_k$ is the number of previous customers who tried dish $k$,
+- then tries $\text{Poisson}(\alpha / i)$ new dishes that no previous customer has tried.
+
+The result is a random binary matrix $\mathbf{Z} \in \{0,1\}^{n \times K}$, where $K$ is the (random, potentially infinite) number of dishes tasted by at least one customer, and $Z_{ik} = 1$ if customer $i$ tried dish $k$.
+</TheoremBlock>
+
+![IBP feature allocation](/images/topics/bayesian-nonparametrics/ibp-feature-allocation.png)
+
+<TheoremBlock type="proposition" number={4} title="Properties of the IBP">
+If $\mathbf{Z}$ is generated by the IBP with parameter $\alpha$:
+
+1. The expected total number of dishes is $\mathbb{E}[K] = \alpha H_n$, where $H_n = \sum_{i=1}^n 1/i \approx \log n$ is the $n$-th harmonic number.
+2. The expected number of features per customer is $\alpha$.
+3. The distribution on equivalence classes of binary matrices (up to column permutation) is exchangeable.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={7} title="DP vs IBP">
+The DP and IBP are complementary priors for different latent structures:
+
+| Property | Dirichlet Process | Indian Buffet Process |
+|----------|------------------|----------------------|
+| Prior on | Probability measures | Binary matrices |
+| Observation model | Each $x_i$ belongs to one cluster | Each $x_i$ has multiple features |
+| Analogy | Chinese Restaurant Process | Indian Buffet |
+| Underlying process | Beta (stick-breaking) | Beta process |
+| Expected components | $\alpha \log n$ clusters | $\alpha H_n$ features |
+
+The IBP can be derived from a *beta process* prior, just as the CRP arises from the DP. The beta process $B \sim \text{BP}(c, B_0)$ is a completely random measure whose atoms have weights in $[0,1]$; each observation independently "selects" each atom with probability equal to its weight, producing the binary matrix $\mathbf{Z}$.
+</TheoremBlock>
+
+---
+
+## Posterior Consistency and Contraction Rates
+
+The deepest connection between Bayesian nonparametrics and the [PAC learning framework](/topics/pac-learning) lies in the theory of *posterior consistency*. Just as PAC learning asks "does the learner converge to a good hypothesis as $n \to \infty$?", posterior consistency asks "does the Bayesian posterior converge to the truth?"
+
+<TheoremBlock type="definition" number={11} title="Posterior Consistency">
+A Bayesian nonparametric model with prior $\Pi$ on a parameter space $\Theta$ is *posterior consistent* at the true parameter $\theta_0$ if, for every neighborhood $U$ of $\theta_0$ (in an appropriate topology),
+
+$$\Pi(\theta \in U \mid X_1, \ldots, X_n) \xrightarrow{P_{\theta_0}} 1 \quad \text{as } n \to \infty.$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={12} title="Posterior Contraction Rate">
+The posterior contracts at rate $\varepsilon_n \to 0$ around $\theta_0$ if
+
+$$\Pi(d(\theta, \theta_0) > M\varepsilon_n \mid X_1, \ldots, X_n) \xrightarrow{P_{\theta_0}} 0 \quad \text{as } n \to \infty,$$
+
+for every $M > 0$ and some metric $d$ on $\Theta$. The rate $\varepsilon_n$ measures how fast the posterior concentrates.
+</TheoremBlock>
+
+### Schwartz's Theorem
+
+The classical result on posterior consistency is due to Schwartz (1965), who identified the key condition: the prior must assign positive probability to Kullback-Leibler neighborhoods of the truth.
+
+<TheoremBlock type="theorem" number={7} title="Schwartz's Theorem">
+Let $P_0$ be the true data-generating distribution with density $p_0$, and let $\Pi$ be a prior on a space of densities. If $P_0$ is in the *Kullback-Leibler support* of $\Pi$ — that is, for every $\varepsilon > 0$,
+
+$$\Pi\!\left(\left\{p : \text{KL}(p_0 \| p) < \varepsilon\right\}\right) > 0,$$
+
+then the posterior is *weakly consistent* at $P_0$: for every weak neighborhood $U$ of $P_0$,
+
+$$\Pi(p \in U \mid X_1, \ldots, X_n) \to 1 \quad P_0\text{-a.s.}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof uses three key steps:
+
+1. **Posterior ratio test.** For any measurable set $A$ in the complement of $U$, the posterior probability satisfies:
+
+$$\Pi(A \mid X_1, \ldots, X_n) = \frac{\int_A \prod_{i=1}^n \frac{p(X_i)}{p_0(X_i)} d\Pi(p)}{\int \prod_{i=1}^n \frac{p(X_i)}{p_0(X_i)} d\Pi(p)}.$$
+
+2. **Numerator control.** By the law of large numbers, for $p$ with $\text{KL}(p_0 \| p) > \varepsilon$, the log-likelihood ratio $\frac{1}{n}\sum_i \log\frac{p(X_i)}{p_0(X_i)} \to -\text{KL}(p_0 \| p) < -\varepsilon$ almost surely. The numerator decays exponentially.
+
+3. **Denominator control.** The KL support condition ensures the denominator does not decay as fast: there exists a "sieve" of densities near $p_0$ that maintain sufficient posterior mass.
+
+Combining, the ratio $\Pi(A \mid X_1, \ldots, X_n) \to 0$ almost surely.
+</TheoremBlock>
+
+### Posterior Contraction Rates
+
+Modern theory (Ghosal, Ghosh & van der Vaart, 2000) goes beyond consistency to *rates*. The key result establishes that posterior contraction rates are governed by the interplay between prior concentration (how much mass the prior places near the truth) and model complexity (measured by metric entropy).
+
+![Posterior consistency](/images/topics/bayesian-nonparametrics/posterior-consistency.png)
+
+<TheoremBlock type="theorem" number={8} title="Posterior Contraction Rate (Ghosal, Ghosh & van der Vaart)">
+Suppose the following conditions hold for a sequence $\varepsilon_n \to 0$ with $n\varepsilon_n^2 \to \infty$:
+
+1. **Prior concentration:** $\Pi(\{p : \text{KL}(p_0 \| p) \leq \varepsilon_n^2,\; V_2(p_0, p) \leq \varepsilon_n^2\}) \geq e^{-c_1 n\varepsilon_n^2}$, where $V_2(p_0, p) = P_0[(\log(p_0/p))^2] - [\text{KL}(p_0 \| p)]^2$.
+
+2. **Sieve complexity:** There exist sets $\Theta_n$ (sieves) with $\Pi(\Theta_n^c) \leq e^{-c_2 n\varepsilon_n^2}$ and $\log N(\varepsilon_n, \Theta_n, d) \leq c_3 n\varepsilon_n^2$, where $N(\varepsilon, \Theta, d)$ is the $\varepsilon$-covering number.
+
+Then $\Pi(d(p, p_0) > M\varepsilon_n \mid X_1, \ldots, X_n) \to 0$ in $P_0$-probability for sufficiently large $M$.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={8} title="Connection to PAC Learning">
+The parallel between posterior contraction and PAC learning is striking:
+
+| PAC Learning | Posterior Contraction |
+|-------------|---------------------|
+| Sample complexity $n(\varepsilon, \delta)$ | Contraction rate $\varepsilon_n$ |
+| VC dimension / Rademacher complexity | Metric entropy $\log N(\varepsilon_n, \Theta_n, d)$ |
+| Approximation error (bias) | Prior concentration (KL support) |
+| Estimation error (variance) | Sieve complexity (covering number) |
+| Structural risk minimization | Bayesian model selection (marginal likelihood) |
+
+Both frameworks say: *learning succeeds when the model class is rich enough to approximate the truth (low bias) but structured enough to avoid overfitting (controlled complexity)*. The key difference is the mechanism: PAC bounds are worst-case over distributions, while Bayesian rates depend on the prior and are typically average-case.
+</TheoremBlock>
+
+### Consistency of DP Mixture Models
+
+<TheoremBlock type="proposition" number={5} title="Consistency of DP Gaussian Mixtures">
+Let $P_0$ be a distribution with a continuous, bounded density $p_0$ on $\mathbb{R}^d$. A Dirichlet process mixture of Gaussians with base measure $G_0 = \text{NIW}(\mu_0, \kappa_0, \nu_0, \Psi_0)$ and any concentration parameter $\alpha > 0$ is posterior consistent at $P_0$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify the KL support condition of Schwartz's theorem. For any $\varepsilon > 0$, we need to show $\Pi(\text{KL}(p_0 \| p) < \varepsilon) > 0$.
+
+1. Since Gaussian mixtures are dense in continuous densities (in the $L^1$ sense), for any $\varepsilon' > 0$, there exists a finite Gaussian mixture $q = \sum_{k=1}^K \pi_k \mathcal{N}(\mu_k, \Sigma_k)$ with $\text{KL}(p_0 \| q) < \varepsilon' < \varepsilon$.
+
+2. The DP prior assigns positive probability to any finite mixture: the weights $(\pi_1, \ldots, \pi_K)$ can be approximated by stick-breaking weights (each $V_k \sim \text{Beta}(1, \alpha)$ has full support on $(0,1)$), and the atoms $(\mu_k, \Sigma_k)$ can be approximated since $G_0$ is a non-degenerate NIW (with full support on $\mathbb{R}^d \times S_+^d$).
+
+3. Since the KL divergence is continuous in the density (in the $L^1$ topology), a neighborhood of $q$ in the prior also satisfies $\text{KL}(p_0 \| p) < \varepsilon$, and this neighborhood has positive prior probability.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={9} title="Minimax Rates">
+Under regularity conditions (e.g., $p_0$ is $\beta$-Hölder smooth), DP Gaussian mixture models achieve the near-minimax contraction rate $\varepsilon_n = n^{-\beta/(2\beta + d)}(\log n)^t$ for some $t > 0$. This matches the minimax rate up to a logarithmic factor — the Bayesian nonparametric approach is *rate-adaptive*, automatically achieving near-optimal rates without needing to know the smoothness $\beta$ in advance.
+</TheoremBlock>
+
+---
+
+## Connections & Further Reading
+
+### Connection Map
+
+| Topic | Domain | Relationship |
+|-------|--------|-------------|
+| [PAC Learning Framework](/topics/pac-learning) | Probability & Statistics | Posterior contraction rates parallel PAC sample complexity; Bayesian model selection provides an alternative to SRM |
+| [Concentration Inequalities](/topics/concentration-inequalities) | Probability & Statistics | Posterior contraction proofs use concentration of the log-likelihood ratio; GP concentration bounds use sub-Gaussian tail inequalities |
+| [Measure-Theoretic Probability](/topics/measure-theoretic-probability) | Probability & Statistics | The DP is defined on measure spaces; posterior consistency uses dominated convergence and the law of large numbers |
+| [Spectral Theorem](/topics/spectral-theorem) | Linear Algebra | GP kernel matrices are positive semi-definite; the eigendecomposition of the kernel determines the GP's RKHS |
+| [SVD](/topics/svd) | Linear Algebra | Low-rank GP approximations (Nyström method) use the SVD of the kernel matrix |
+| [PCA & Low-Rank Approximation](/topics/pca-low-rank) | Linear Algebra | Kernel PCA is equivalent to projecting onto the leading eigenfunctions of the GP kernel; functional PCA uses GP priors |
+
+### Key Notation Summary
+
+| Symbol | Meaning |
+|--------|---------|
+| $\text{DP}(\alpha, G_0)$ | Dirichlet process with concentration $\alpha$ and base measure $G_0$ |
+| $G_0$ | Base measure (prior guess for DP draws) |
+| $\alpha$ | Concentration parameter |
+| $\delta_\theta$ | Point mass (Dirac delta) at $\theta$ |
+| $\text{Dir}(\boldsymbol{\alpha})$ | Dirichlet distribution with parameter vector $\boldsymbol{\alpha}$ |
+| $V_k \stackrel{\text{iid}}{\sim} \text{Beta}(1, \alpha)$ | Stick-breaking beta variables |
+| $w_k = V_k \prod_{j<k}(1-V_j)$ | Stick-breaking weight |
+| $\hat{F}_n = \frac{1}{n}\sum_{i=1}^n \delta_{\theta_i}$ | Empirical distribution |
+| $K_n$ | Number of distinct clusters after $n$ observations |
+| $\mathcal{GP}(m, k)$ | Gaussian process with mean $m$ and kernel $k$ |
+| $\mathbf{k}_*^\top (\mathbf{K} + \sigma_n^2 \mathbf{I})^{-1} \mathbf{y}$ | GP posterior mean |
+| $\text{KL}(p_0 \| p)$ | Kullback-Leibler divergence |
+| $N(\varepsilon, \Theta, d)$ | $\varepsilon$-covering number of $\Theta$ under metric $d$ |
+| $n^{-\beta/(2\beta+d)}$ | Minimax contraction rate for $\beta$-smooth densities in $\mathbb{R}^d$ |

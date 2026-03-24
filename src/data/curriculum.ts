@@ -18,9 +18,7 @@ export const tracks = [
     label: 'Probability & Statistics',
     description:
       'Measure-theoretic foundations through PAC learning and concentration inequalities.',
-    planned: [
-      'Bayesian Nonparametrics',
-    ],
+    planned: [],
   },
   {
     domain: 'optimization',

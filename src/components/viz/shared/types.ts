@@ -113,3 +113,16 @@ export interface ShatteringResult {
   realizable: boolean;
 }
 
+// ─── Bayesian Nonparametrics Types ───
+
+export interface DPConfig {
+  alpha: number;
+  truncationLevel: number;
+}
+
+export interface GPConfig {
+  kernel: 'rbf' | 'matern32' | 'linear';
+  lengthScale: number;
+  noiseVariance: number;
+}
+
