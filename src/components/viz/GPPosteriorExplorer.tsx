@@ -35,9 +35,15 @@ function linearKernel(x1: number, x2: number): number {
 
 // ─── Linear algebra utilities ───
 
-/** Cholesky decomposition — returns lower triangular L such that A = L L^T */
+/**
+ * Cholesky decomposition — returns lower triangular L such that A = L L^T.
+ * Throws if A is not positive definite (negative or zero pivot encountered).
+ * The caller should add jitter to the diagonal before calling if the matrix
+ * may be near-singular (e.g., kernel matrices with close observations).
+ */
 function cholesky(A: number[][]): number[][] {
   const n = A.length;
+  if (n === 0) return [];
   const L: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
   for (let i = 0; i < n; i++) {
     for (let j = 0; j <= i; j++) {
@@ -45,7 +51,12 @@ function cholesky(A: number[][]): number[][] {
       for (let k = 0; k < j; k++) sum += L[i][k] * L[j][k];
       if (i === j) {
         const diag = A[i][i] - sum;
-        L[i][j] = Math.sqrt(Math.max(diag, 1e-10));
+        if (!Number.isFinite(diag) || diag <= 0) {
+          throw new Error(
+            `Cholesky failed: non-positive pivot at index ${i} (value ${diag})`
+          );
+        }
+        L[i][j] = Math.sqrt(diag);
       } else {
         L[i][j] = (A[i][j] - sum) / L[j][j];
       }
@@ -54,9 +65,10 @@ function cholesky(A: number[][]): number[][] {
   return L;
 }
 
-/** Solve L x = b where L is lower triangular */
+/** Solve L x = b where L is lower triangular (L must be n×n, b length n) */
 function forwardSolve(L: number[][], b: number[]): number[] {
   const n = b.length;
+  if (L.length !== n) throw new Error('forwardSolve: incompatible dimensions');
   const x = new Array(n).fill(0);
   for (let i = 0; i < n; i++) {
     let sum = 0;
@@ -66,9 +78,10 @@ function forwardSolve(L: number[][], b: number[]): number[] {
   return x;
 }
 
-/** Solve L^T x = b where L is lower triangular */
+/** Solve L^T x = b where L is lower triangular (L must be n×n, b length n) */
 function backwardSolve(L: number[][], b: number[]): number[] {
   const n = b.length;
+  if (L.length !== n) throw new Error('backwardSolve: incompatible dimensions');
   const x = new Array(n).fill(0);
   for (let i = n - 1; i >= 0; i--) {
     let sum = 0;

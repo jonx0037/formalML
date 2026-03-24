@@ -7,12 +7,19 @@ const GRID_SIZE = 200;
 const X_MIN = -4;
 const X_MAX = 4;
 const MAX_DATA = 20;
+/**
+ * Bandwidth for the Gaussian smoothing kernel applied to each data point.
+ * Controls the width of the bump around each observation in the posterior
+ * predictive. Smaller values give sharper peaks; larger values give smoother
+ * curves. This is a visualization aid — the true DP predictive has point masses
+ * at observed atoms, which we smooth for visual clarity.
+ */
 const KERNEL_BW = 0.3;
 const SQRT_2PI = Math.sqrt(2 * Math.PI);
 
 const COLORS = {
   prior: '#6B7280',       // gray for G0
-  posterior: '#2563EB',   // blue for posterior predictive
+  posterior: '#2563EB',   // blue for posterior predictive (smoothed)
   posteriorFill: 'rgba(37, 99, 235, 0.3)',
   dataPoint: '#DC2626',   // red dots
 } as const;
@@ -22,7 +29,12 @@ function normalPDF(x: number): number {
   return Math.exp(-0.5 * x * x) / SQRT_2PI;
 }
 
-/** Gaussian kernel centered at xi with bandwidth h */
+/**
+ * Gaussian kernel centered at xi with bandwidth h.
+ * Used to smooth the discrete point masses in the DP predictive distribution
+ * into a continuous density for visualization. The bandwidth h controls how
+ * spread out each bump is (h = KERNEL_BW = 0.3 by default).
+ */
 function gaussianKernel(x: number, xi: number, h: number): number {
   const z = (x - xi) / h;
   return Math.exp(-0.5 * z * z) / (h * SQRT_2PI);
@@ -175,7 +187,7 @@ export default function DPPosteriorDemo() {
 
     sel.append('text').attr('x', MARGIN.left + 4).attr('y', MARGIN.top - 10)
       .style('font-size', '11px').style('font-family', 'var(--font-sans)').style('font-weight', '600').style('fill', 'var(--color-text)')
-      .text('DP Posterior Predictive');
+      .text('DP Posterior Predictive (kernel-smoothed)');
 
     // ─── Legend ───
 
@@ -196,7 +208,7 @@ export default function DPPosteriorDemo() {
       .style('fill', COLORS.posteriorFill).style('stroke', 'none');
     sel.append('text').attr('x', legendX + 22).attr('y', legendY + 20)
       .style('font-size', '9px').style('font-family', 'var(--font-mono)').style('fill', 'var(--color-text-secondary)')
-      .text('Posterior predictive');
+      .text('Posterior predictive (smoothed)');
 
     // Click-area overlay (transparent, for cursor hint)
     sel.append('rect')

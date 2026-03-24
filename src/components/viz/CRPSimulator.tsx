@@ -4,7 +4,11 @@ import { useResizeObserver } from './shared/useResizeObserver';
 
 const MARGIN = { top: 24, right: 12, bottom: 36, left: 44 };
 
-// Seeded LCG PRNG (consistent with other formalML components)
+/**
+ * Seeded linear congruential generator (LCG) for deterministic random numbers.
+ * Uses the Park-Miller multiplier 16807 (a = 7^5) with modulus 2^31 - 1.
+ * Three mixing rounds reduce correlation between adjacent index values.
+ */
 function lcg(index: number, seed: number): number {
   let s = (seed * 2147483647 + index * 16807 + 12345) & 0x7fffffff;
   s = (s * 16807 + 12345) & 0x7fffffff;
@@ -144,7 +148,7 @@ export default function CRPSimulator() {
         intervalRef.current = null;
       }
     };
-  }, [isPlaying, currentStep, totalN, speed]);
+  }, [isPlaying, totalN, speed]);
 
   // Current snapshot
   const currentSizes = useMemo(() => {

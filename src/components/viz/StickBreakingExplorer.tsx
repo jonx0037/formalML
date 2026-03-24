@@ -19,7 +19,12 @@ function createLCG(seed: number) {
   };
 }
 
-/* ── Beta(1, alpha) via inverse CDF: V = 1 - U^(1/alpha) ── */
+/**
+ * Sample from Beta(1, alpha) using the inverse CDF method.
+ * For Beta(1, α), the CDF is F(x) = 1 - (1-x)^α, so the inverse is
+ * F^{-1}(u) = 1 - (1-u)^{1/α} = 1 - u^{1/α} (since 1-U ~ U for uniform).
+ * This avoids needing a general Beta sampler.
+ */
 function sampleBeta1Alpha(alpha: number, rng: () => number): number {
   const u = rng();
   return 1 - Math.pow(u, 1 / alpha);
@@ -32,7 +37,11 @@ function sampleNormal(rng: () => number): number {
   return Math.sqrt(-2 * Math.log(Math.max(u1, 1e-15))) * Math.cos(2 * Math.PI * u2);
 }
 
-/* ── Standard normal CDF (Abramowitz & Stegun approximation) ── */
+/**
+ * Standard normal CDF via the Abramowitz & Stegun rational approximation
+ * (Handbook of Mathematical Functions, formula 7.1.26). Maximum absolute
+ * error < 1.5×10⁻⁷ for all x, which is more than sufficient for plotting.
+ */
 function normalCDF(x: number): number {
   const a1 = 0.254829592;
   const a2 = -0.284496736;
@@ -279,13 +288,21 @@ export default function StickBreakingExplorer() {
       .style('stroke-dasharray', '6 3');
 
     // DP draw CDF — step function
-    // Build step data: start at (xMin, 0), step up at each atom
+    // Fold remaining stick mass into the last atom so the CDF represents
+    // a proper probability measure that reaches 1.0 (truncated stick-breaking).
+    const totalMass = cumWeights[cumWeights.length - 1] || 0;
+    const remainingMass = Math.max(0, 1 - totalMass);
+    const adjustedCum = cumWeights.slice();
+    if (adjustedCum.length > 0) {
+      adjustedCum[adjustedCum.length - 1] = Math.min(1, adjustedCum[adjustedCum.length - 1] + remainingMass);
+    }
+
     const stepPoints: [number, number][] = [[-4, 0]];
     for (let i = 0; i < sortedAtoms.length; i++) {
-      stepPoints.push([sortedAtoms[i], i > 0 ? cumWeights[i - 1] : 0]);
-      stepPoints.push([sortedAtoms[i], cumWeights[i]]);
+      stepPoints.push([sortedAtoms[i], i > 0 ? adjustedCum[i - 1] : 0]);
+      stepPoints.push([sortedAtoms[i], adjustedCum[i]]);
     }
-    stepPoints.push([4, cumWeights[cumWeights.length - 1] || 0]);
+    stepPoints.push([4, adjustedCum[adjustedCum.length - 1] || 0]);
 
     const lineGen = d3.line<[number, number]>()
       .x(d => xScale(d[0]))
