@@ -1,0 +1,740 @@
+---
+title: "PAC Learning Framework"
+subtitle: "From finite hypothesis classes to VC dimension and the Fundamental Theorem of Statistical Learning"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "concentration-inequalities"
+tags:
+  - "probability"
+  - "pac-learning"
+  - "vc-dimension"
+  - "rademacher-complexity"
+  - "generalization-bounds"
+  - "statistical-learning-theory"
+domain: "probability"
+videoId: null
+notebookPath: "notebooks/pac-learning/03_pac_learning.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/pac-learning.mdx"
+datePublished: 2026-03-23
+estimatedReadTime: 45
+abstract: "The Probably Approximately Correct (PAC) learning framework provides the foundational theory for understanding when and how efficiently machine learning algorithms can generalize from finite training data. We develop the theory progressively: realizable PAC learning for finite hypothesis classes with sample complexity bounds via the union bound, agnostic PAC learning through uniform convergence and Hoeffding's inequality, the Vapnik–Chervonenkis (VC) dimension as the combinatorial measure of hypothesis class complexity with the Sauer–Shelah lemma bounding growth functions, the Fundamental Theorem of Statistical Learning establishing the equivalence of PAC learnability and finite VC dimension, and Rademacher complexity as a data-dependent refinement using McDiarmid's inequality and symmetrization arguments. Applications to linear classifiers, neural networks, decision trees, and structural risk minimization connect the abstract theory to practical machine learning."
+connections:
+  - topic: "concentration-inequalities"
+    relationship: "Direct prerequisite — Hoeffding's inequality and the union bound give sample complexity for finite classes; McDiarmid's inequality proves Rademacher generalization bounds."
+  - topic: "measure-theoretic-probability"
+    relationship: "Foundational — the convergence hierarchy and expectation operator underpin the definition of true risk and uniform convergence."
+  - topic: "pca-low-rank"
+    relationship: "The VC dimension of linear subspace classifiers relates to effective dimension captured by PCA; sample covariance concentration connects to agnostic learning bounds."
+  - topic: "simplicial-complexes"
+    relationship: "The combinatorial proof of Sauer–Shelah has structural analogues in extremal and topological combinatorics."
+references:
+  - type: "paper"
+    title: "A Theory of the Learnable"
+    authors: "Valiant"
+    year: 1984
+    url: "https://doi.org/10.1145/1968.1972"
+    note: "The foundational PAC learning paper"
+  - type: "book"
+    title: "Understanding Machine Learning: From Theory to Algorithms"
+    authors: "Shalev-Shwartz & Ben-David"
+    year: 2014
+    note: "Primary reference — Chapters 2-6 cover all topics in this page"
+  - type: "book"
+    title: "Statistical Learning Theory"
+    authors: "Vapnik"
+    year: 1998
+    note: "Comprehensive treatment of VC theory and structural risk minimization"
+  - type: "book"
+    title: "Foundations of Machine Learning"
+    authors: "Mohri, Rostamizadeh & Talwalkar"
+    year: 2018
+    note: "Excellent treatment of Rademacher complexity and its applications"
+  - type: "paper"
+    title: "Learnability and the Vapnik-Chervonenkis Dimension"
+    authors: "Blumer, Ehrenfeucht, Haussler & Warmuth"
+    year: 1989
+    url: "https://doi.org/10.1145/76359.76371"
+    note: "Early paper connecting VC dimension to PAC learning"
+  - type: "paper"
+    title: "On the Density of Families of Sets"
+    authors: "Sauer"
+    year: 1972
+    url: "https://doi.org/10.1016/0097-3165(72)90019-2"
+    note: "The original Sauer lemma"
+  - type: "paper"
+    title: "Rademacher and Gaussian Complexities: Risk Bounds and Structural Results"
+    authors: "Bartlett & Mendelson"
+    year: 2002
+    url: "https://jmlr.org/papers/v3/bartlett02a.html"
+    note: "Foundational paper on Rademacher complexity bounds"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ShatteringExplorer from '../../components/viz/ShatteringExplorer.tsx';
+import PACBoundComparator from '../../components/viz/PACBoundComparator.tsx';
+import GrowthFunctionVisualizer from '../../components/viz/GrowthFunctionVisualizer.tsx';
+import BiasComplexityDashboard from '../../components/viz/BiasComplexityDashboard.tsx';
+
+## Overview & Motivation
+
+The [Concentration Inequalities](/topics/concentration-inequalities) topic gave us quantitative tools for controlling how random quantities deviate from their expectations. Hoeffding's inequality bounds the gap between a sample average and its mean. McDiarmid's inequality extends this to general functions of independent variables. But those tools answer a *specific* question — how fast does an average concentrate? — without addressing the deeper question that drives machine learning: **when can a learning algorithm generalize at all?**
+
+Consider the standard machine learning setup. We have a hypothesis class $\mathcal{H}$ — a collection of candidate classifiers. We observe a finite training sample and pick the hypothesis that performs best on that sample (empirical risk minimization). The training error is an observable quantity. The true error — performance on unseen data — is not. The gap between them is the **generalization gap**, and controlling it is the central problem of statistical learning theory.
+
+PAC learning theory answers three fundamental questions:
+
+1. **Feasibility.** For which hypothesis classes is generalization *possible* — that is, for which $\mathcal{H}$ can we guarantee that training error approximates true error given enough data?
+2. **Sample complexity.** *How many* training examples suffice to achieve a desired accuracy $\varepsilon$ with confidence $1 - \delta$?
+3. **Complexity measures.** What properties of $\mathcal{H}$ determine the answers to (1) and (2)?
+
+We will build the theory in three stages. First, we handle finite hypothesis classes using the concentration tools from the previous topic — the union bound and Hoeffding's inequality give clean sample complexity bounds. Second, we introduce the **VC dimension** as the combinatorial measure that governs learnability for infinite classes, and prove the **Sauer–Shelah lemma** that makes infinite classes tractable. Third, we develop **Rademacher complexity** as a data-dependent alternative that often gives tighter bounds. The culmination is the **Fundamental Theorem of Statistical Learning**, which shows these perspectives are equivalent: a hypothesis class is learnable if and only if its VC dimension is finite.
+
+---
+
+## The Learning Problem
+
+We begin by formalizing the setup that machine learning algorithms operate in. The formalization may seem pedantic at first, but each definition isolates an assumption that will matter when we prove our main results.
+
+**The setup.** We have an instance space $\mathcal{X}$ (the set of all possible inputs — think feature vectors in $\mathbb{R}^d$), a label space $\mathcal{Y} = \{0, 1\}$ (binary classification), and an unknown probability distribution $\mathcal{D}$ over $\mathcal{X} \times \mathcal{Y}$ that governs the data-generating process. A **hypothesis** is a function $h: \mathcal{X} \to \mathcal{Y}$ — a candidate classifier. A **hypothesis class** $\mathcal{H}$ is a collection of hypotheses that our learning algorithm considers.
+
+We observe a **training sample** $S = \{(x_1, y_1), \ldots, (x_n, y_n)\}$ drawn i.i.d. from $\mathcal{D}$. The fundamental tension: we can evaluate how well a hypothesis performs on $S$, but we care about how well it performs on fresh data from $\mathcal{D}$.
+
+<TheoremBlock type="definition" number={1} title="True Risk">
+The **true risk** (generalization error) of hypothesis $h: \mathcal{X} \to \mathcal{Y}$ with respect to distribution $\mathcal{D}$ is:
+
+$$R(h) = \Pr_{(x,y) \sim \mathcal{D}}[h(x) \neq y] = \mathbb{E}_{(x,y) \sim \mathcal{D}}[\mathbf{1}[h(x) \neq y]]$$
+
+where $\mathbf{1}[\cdot]$ is the indicator function that equals 1 when its argument is true and 0 otherwise.
+</TheoremBlock>
+
+The true risk is the probability of misclassification on a fresh example drawn from $\mathcal{D}$. It is the quantity we *want* to minimize but *cannot* compute, since $\mathcal{D}$ is unknown.
+
+<TheoremBlock type="definition" number={2} title="Empirical Risk">
+The **empirical risk** of $h$ on sample $S = \{(x_i, y_i)\}_{i=1}^n$ is:
+
+$$\hat{R}_S(h) = \frac{1}{n}\sum_{i=1}^n \mathbf{1}[h(x_i) \neq y_i]$$
+
+the fraction of training examples that $h$ misclassifies.
+</TheoremBlock>
+
+The empirical risk is computable — it is the training error. For any fixed hypothesis $h$, the empirical risk is the average of i.i.d. Bernoulli random variables with mean $R(h)$, so by the law of large numbers, $\hat{R}_S(h) \to R(h)$ as $n \to \infty$. The question is: does this convergence happen *uniformly* over all $h \in \mathcal{H}$ simultaneously, and how fast?
+
+<TheoremBlock type="definition" number={3} title="Empirical Risk Minimization">
+The **Empirical Risk Minimization (ERM)** learning rule selects:
+
+$$h_S^{\mathrm{ERM}} = \arg\min_{h \in \mathcal{H}} \hat{R}_S(h)$$
+
+the hypothesis with the lowest training error. When the minimum is achieved by multiple hypotheses, we break ties arbitrarily.
+</TheoremBlock>
+
+ERM is the most natural learning strategy: pick the hypothesis that fits the training data best. Whether this strategy actually *works* — whether low training error implies low true error — depends on the hypothesis class $\mathcal{H}$, and characterizing when it works is the central goal of PAC theory.
+
+<TheoremBlock type="definition" number={4} title="Realizable Case">
+Hypothesis class $\mathcal{H}$ is **realizable** with respect to distribution $\mathcal{D}$ if there exists $h^* \in \mathcal{H}$ with $R(h^*) = 0$. That is, some hypothesis in the class achieves zero true risk — the "ground truth" labeling function belongs to $\mathcal{H}$.
+</TheoremBlock>
+
+Realizability is a strong assumption: it says our hypothesis class is rich enough to contain a perfect classifier. Most real-world problems are *not* realizable — the best classifier in $\mathcal{H}$ still makes some errors. We will handle both cases: the realizable setting first (where the analysis is cleaner), then the **agnostic** setting (where no assumptions are made about $\mathcal{D}$).
+
+![The learning problem setup — instance space, hypothesis class, and the true risk minimizer](/images/topics/pac-learning/pac-learning-setup.png)
+
+---
+
+## Realizable PAC Learning
+
+We are now ready to state the central definition of this topic. The name "PAC" — Probably Approximately Correct — captures both sources of uncertainty: the sample is random (so guarantees are probabilistic, "probably"), and we cannot expect perfect accuracy from finite data (so we settle for approximation, "approximately").
+
+<TheoremBlock type="definition" number={5} title="PAC Learnability (Realizable)">
+A hypothesis class $\mathcal{H}$ is **PAC learnable** if there exists a learning algorithm $A$ and a function $n_{\mathcal{H}}: (0,1)^2 \to \mathbb{N}$ such that for every $\varepsilon, \delta \in (0,1)$ and every distribution $\mathcal{D}$ over $\mathcal{X} \times \mathcal{Y}$ for which the realizability assumption holds, if $n \geq n_{\mathcal{H}}(\varepsilon, \delta)$, then with probability at least $1 - \delta$ over the random draw of $S \sim \mathcal{D}^n$:
+
+$$R(A(S)) \leq \varepsilon$$
+
+The function $n_{\mathcal{H}}(\varepsilon, \delta)$ is the **sample complexity** of learning $\mathcal{H}$.
+</TheoremBlock>
+
+Let's unpack this carefully. The definition quantifies over *all* distributions $\mathcal{D}$ (where $\mathcal{H}$ is realizable) and *all* accuracy/confidence parameters $\varepsilon, \delta$. It asks: is there a single algorithm $A$ and a sample size $n$ (depending on $\varepsilon, \delta$, and possibly $\mathcal{H}$, but *not* on $\mathcal{D}$) such that $A$ produces a hypothesis with true risk at most $\varepsilon$ with high probability? The algorithm does not know $\mathcal{D}$ — it only sees the sample $S$.
+
+Our first main result shows that every finite hypothesis class is PAC learnable, and ERM is the learning algorithm.
+
+<TheoremBlock type="theorem" number={1} title="PAC Learnability of Finite Classes (Realizable)">
+Let $\mathcal{H}$ be a finite hypothesis class. Then $\mathcal{H}$ is PAC learnable by ERM with sample complexity:
+
+$$n_{\mathcal{H}}(\varepsilon, \delta) \leq \left\lceil \frac{\log(|\mathcal{H}|/\delta)}{\varepsilon} \right\rceil$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Fix $\varepsilon, \delta \in (0,1)$. Let $h^* \in \mathcal{H}$ satisfy $R(h^*) = 0$ (this exists by realizability). Define the set of "bad" hypotheses:
+
+$$\mathcal{H}_{\text{bad}} = \{h \in \mathcal{H} : R(h) > \varepsilon\}$$
+
+Since $h^*$ achieves $\hat{R}_S(h^*) = 0$ on any sample (because $R(h^*) = 0$ and the sample is drawn from $\mathcal{D}$), ERM selects some $h_S$ with $\hat{R}_S(h_S) = 0$. The event $R(h_S) > \varepsilon$ can only occur if some bad hypothesis has zero empirical risk:
+
+$$\Pr[R(h_S) > \varepsilon] \leq \Pr\left[\exists h \in \mathcal{H}_{\text{bad}} : \hat{R}_S(h) = 0\right]$$
+
+We apply the **union bound** (from [Concentration Inequalities](/topics/concentration-inequalities)):
+
+$$\Pr\left[\exists h \in \mathcal{H}_{\text{bad}} : \hat{R}_S(h) = 0\right] \leq \sum_{h \in \mathcal{H}_{\text{bad}}} \Pr\left[\hat{R}_S(h) = 0\right]$$
+
+For each bad hypothesis $h$ with $R(h) > \varepsilon$, the event $\hat{R}_S(h) = 0$ means that $h$ correctly classifies all $n$ training examples despite having true error greater than $\varepsilon$. Each training example is correctly classified with probability $1 - R(h) < 1 - \varepsilon$, and the examples are independent, so:
+
+$$\Pr\left[\hat{R}_S(h) = 0\right] = (1 - R(h))^n \leq (1 - \varepsilon)^n \leq e^{-n\varepsilon}$$
+
+where the last step uses the standard inequality $1 - x \leq e^{-x}$. Combining:
+
+$$\Pr[R(h_S) > \varepsilon] \leq |\mathcal{H}_{\text{bad}}| \cdot e^{-n\varepsilon} \leq |\mathcal{H}| \cdot e^{-n\varepsilon}$$
+
+Setting this to at most $\delta$ and solving for $n$:
+
+$$|\mathcal{H}| \cdot e^{-n\varepsilon} \leq \delta \iff n \geq \frac{\log(|\mathcal{H}|/\delta)}{\varepsilon}$$
+
+$\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={1} title="Logarithmic Sample Complexity">
+The sample complexity $n = O(\log|\mathcal{H}|/\varepsilon)$ has a clean interpretation. The dependence on $|\mathcal{H}|$ is *logarithmic* — doubling the number of hypotheses adds only one more sample to the requirement. This is the price of the union bound: we pay a log factor to control all hypotheses simultaneously. The dependence on accuracy is $1/\varepsilon$ — to halve the maximum error, we double the sample size.
+</TheoremBlock>
+
+The following code verifies the theoretical bound via Monte Carlo simulation. We create a finite hypothesis class of 50 linear classifiers in $\mathbb{R}^5$, run ERM on random samples of varying sizes, and compare the empirical success probability with the theoretical guarantee.
+
+```python
+n_trials = 2000
+H_size_sim = 50
+d = 5
+epsilon_target = 0.1
+
+H_weights = rng.standard_normal((H_size_sim, d))
+H_biases = rng.standard_normal(H_size_sim)
+h_star_idx = 0  # First hypothesis is the ground truth
+
+sample_sizes_sim = [10, 20, 50, 100, 200, 500]
+empirical_success = []
+
+for n_s in sample_sizes_sim:
+    successes = 0
+    for _ in range(n_trials):
+        X_sim = rng.standard_normal((n_s, d))
+        y_sim = (X_sim @ H_weights[h_star_idx] + H_biases[h_star_idx] > 0).astype(int)
+
+        # ERM: find hypothesis with lowest training error
+        best_h, best_err = None, float('inf')
+        for h_idx in range(H_size_sim):
+            preds = (X_sim @ H_weights[h_idx] + H_biases[h_idx] > 0).astype(int)
+            err = np.mean(preds != y_sim)
+            if err < best_err:
+                best_err = err
+                best_h = h_idx
+
+        # Evaluate true risk on fresh test data
+        X_test = rng.standard_normal((5000, d))
+        y_test = (X_test @ H_weights[h_star_idx] + H_biases[h_star_idx] > 0).astype(int)
+        true_risk = np.mean(
+            (X_test @ H_weights[best_h] + H_biases[best_h] > 0).astype(int) != y_test
+        )
+
+        if true_risk <= epsilon_target:
+            successes += 1
+
+    empirical_success.append(successes / n_trials)
+
+# Compare with theoretical bound: P(success) >= 1 - |H| * exp(-n * epsilon)
+theoretical_bound = [
+    1 - min(H_size_sim * np.exp(-n_s * epsilon_target), 1.0)
+    for n_s in sample_sizes_sim
+]
+```
+
+![Realizable PAC learning — ERM success probability vs sample size, compared with theoretical bound](/images/topics/pac-learning/realizable-pac-learning.png)
+
+---
+
+## Agnostic PAC Learning
+
+The realizable setting is instructive but unrealistic. In practice, we rarely know whether our hypothesis class contains a perfect classifier. The **agnostic** setting drops the realizability assumption entirely: the distribution $\mathcal{D}$ can be arbitrary, and the best hypothesis in $\mathcal{H}$ may still have nonzero risk. The goal shifts from finding a hypothesis with small absolute risk to finding one whose risk is close to the best achievable within $\mathcal{H}$.
+
+<TheoremBlock type="definition" number={6} title="Agnostic PAC Learnability">
+A hypothesis class $\mathcal{H}$ is **agnostic PAC learnable** if there exists a learning algorithm $A$ and a function $n_{\mathcal{H}}: (0,1)^2 \to \mathbb{N}$ such that for every $\varepsilon, \delta \in (0,1)$ and every distribution $\mathcal{D}$ over $\mathcal{X} \times \mathcal{Y}$ (with no realizability assumption), if $n \geq n_{\mathcal{H}}(\varepsilon, \delta)$, then with probability at least $1 - \delta$:
+
+$$R(A(S)) \leq \min_{h \in \mathcal{H}} R(h) + \varepsilon$$
+
+The term $\min_{h \in \mathcal{H}} R(h)$ is the **approximation error** — the best possible risk within $\mathcal{H}$ — and $\varepsilon$ is the **estimation error** due to learning from a finite sample.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={2} title="Realizable vs Agnostic Rates">
+When $\mathcal{H}$ is realizable, $\min_{h \in \mathcal{H}} R(h) = 0$, and agnostic PAC reduces to the realizable definition. But the sample complexity will be different — the agnostic setting requires more samples because we cannot exploit the fact that a perfect hypothesis exists.
+</TheoremBlock>
+
+The key technique for proving agnostic bounds is **uniform convergence**: ensuring that empirical risk approximates true risk *simultaneously* for all hypotheses in $\mathcal{H}$.
+
+<TheoremBlock type="proposition" number={1} title="Uniform Convergence Implies Agnostic PAC">
+If $\mathcal{H}$ has the **uniform convergence property** — that is, for every $\varepsilon, \delta > 0$, there exists $n_{\mathrm{UC}}(\varepsilon, \delta)$ such that for $n \geq n_{\mathrm{UC}}$:
+
+$$\Pr\left[\sup_{h \in \mathcal{H}} |\hat{R}_S(h) - R(h)| \leq \varepsilon\right] \geq 1 - \delta$$
+
+— then $\mathcal{H}$ is agnostic PAC learnable by ERM with sample complexity $n_{\mathcal{H}}(\varepsilon, \delta) = n_{\mathrm{UC}}(\varepsilon/2, \delta)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Suppose uniform convergence holds with parameter $\varepsilon/2$, so that $|\hat{R}_S(h) - R(h)| \leq \varepsilon/2$ for all $h \in \mathcal{H}$ simultaneously. Let $h_S$ be the ERM hypothesis and $h^* = \arg\min_{h \in \mathcal{H}} R(h)$. Then:
+
+$$R(h_S) \leq \hat{R}_S(h_S) + \frac{\varepsilon}{2} \leq \hat{R}_S(h^*) + \frac{\varepsilon}{2} \leq R(h^*) + \frac{\varepsilon}{2} + \frac{\varepsilon}{2} = R(h^*) + \varepsilon$$
+
+The first and third inequalities use uniform convergence; the second uses the fact that ERM minimizes empirical risk, so $\hat{R}_S(h_S) \leq \hat{R}_S(h^*)$. $\square$
+</TheoremBlock>
+
+This proposition reduces the learning problem to a concentration problem: we need to show that $\hat{R}_S(h) \approx R(h)$ uniformly over $\mathcal{H}$. For finite classes, this follows directly from Hoeffding's inequality and the union bound.
+
+<TheoremBlock type="theorem" number={2} title="Agnostic PAC Learnability of Finite Classes">
+Let $\mathcal{H}$ be a finite hypothesis class. Then $\mathcal{H}$ is agnostic PAC learnable by ERM with sample complexity:
+
+$$n_{\mathcal{H}}(\varepsilon, \delta) \leq \left\lceil \frac{2\log(2|\mathcal{H}|/\delta)}{\varepsilon^2} \right\rceil$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We need uniform convergence: $\sup_{h \in \mathcal{H}} |\hat{R}_S(h) - R(h)| \leq \varepsilon/2$ with probability at least $1 - \delta$.
+
+For a fixed hypothesis $h$, the random variables $\mathbf{1}[h(x_i) \neq y_i]$ are i.i.d. Bernoulli with mean $R(h) \in [0,1]$. By **Hoeffding's inequality** (from [Concentration Inequalities](/topics/concentration-inequalities)):
+
+$$\Pr\left[|\hat{R}_S(h) - R(h)| \geq \frac{\varepsilon}{2}\right] \leq 2\exp\left(-\frac{n\varepsilon^2}{2}\right)$$
+
+Applying the **union bound** over all $h \in \mathcal{H}$:
+
+$$\Pr\left[\exists h \in \mathcal{H} : |\hat{R}_S(h) - R(h)| \geq \frac{\varepsilon}{2}\right] \leq 2|\mathcal{H}| \exp\left(-\frac{n\varepsilon^2}{2}\right)$$
+
+Setting this to at most $\delta$:
+
+$$2|\mathcal{H}| \exp\left(-\frac{n\varepsilon^2}{2}\right) \leq \delta \iff n \geq \frac{2\log(2|\mathcal{H}|/\delta)}{\varepsilon^2}$$
+
+By Proposition 1, this gives agnostic PAC learnability with the stated sample complexity. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={3} title="The 1/ε vs 1/ε² Gap">
+Compare the sample complexities: realizable gives $O(\log|\mathcal{H}|/\varepsilon)$ while agnostic gives $O(\log|\mathcal{H}|/\varepsilon^2)$. The agnostic bound is quadratically worse in $\varepsilon$. This is not an artifact of the proof technique — it reflects a fundamental difference. In the realizable case, we exploited the fact that $\hat{R}_S(h^*) = 0$, which gave us a one-sided tail bound. In the agnostic case, we need a two-sided bound (empirical risk can be both above and below true risk), and controlling this requires the stronger $1/\varepsilon^2$ rate from Hoeffding's inequality.
+</TheoremBlock>
+
+The following simulation illustrates uniform convergence empirically: we draw 50 random hypotheses, compute their empirical risks over 500 trials, and compare the distribution of the supremum gap $\sup_h |\hat{R}_S(h) - R(h)|$ against the Hoeffding + union bound prediction.
+
+```python
+n_sample = 100
+n_hyp = 50
+rng2 = np.random.default_rng(123)
+
+true_risks = rng2.beta(2, 5, n_hyp)
+emp_risks = np.zeros((n_hyp, 500))
+
+for trial in range(500):
+    for h_idx in range(n_hyp):
+        outcomes = rng2.binomial(1, true_risks[h_idx], n_sample)
+        emp_risks[h_idx, trial] = outcomes.mean()
+
+# Supremum gap over all hypotheses
+sup_gap = np.max(np.abs(emp_risks - true_risks[:, None]), axis=0)
+
+# Theoretical bound: Hoeffding + union bound
+eps_theory = np.linspace(0.001, 0.4, 200)
+p_exceed_hoeffding_ub = np.minimum(
+    2 * n_hyp * np.exp(-2 * n_sample * eps_theory**2), 1.0
+)
+
+# Empirical exceedance probability for comparison
+empirical_survival = [np.mean(sup_gap > e) for e in eps_theory]
+```
+
+![Agnostic PAC learning — supremum gap distribution vs Hoeffding + union bound](/images/topics/pac-learning/agnostic-pac-learning.png)
+
+<PACBoundComparator client:visible />
+
+---
+
+## The VC Dimension
+
+For finite hypothesis classes, the story is complete: both realizable and agnostic PAC learning are possible, with sample complexity logarithmic in $|\mathcal{H}|$. But most interesting hypothesis classes are infinite — the class of all linear classifiers in $\mathbb{R}^d$, for instance, has uncountably many elements. The union bound over $|\mathcal{H}|$ is useless when $|\mathcal{H}| = \infty$.
+
+The key insight is that an infinite hypothesis class, when restricted to a finite sample, can only produce finitely many distinct labeling patterns. The effective complexity of $\mathcal{H}$ on $n$ points is not $|\mathcal{H}|$ but the number of distinct behaviors on those points. This leads us to the VC dimension.
+
+<TheoremBlock type="definition" number={7} title="Restriction">
+The **restriction** of hypothesis class $\mathcal{H}$ to a finite set $C = \{x_1, \ldots, x_m\} \subset \mathcal{X}$ is:
+
+$$\mathcal{H}_C = \{(h(x_1), \ldots, h(x_m)) : h \in \mathcal{H}\} \subseteq \{0,1\}^m$$
+
+This is the set of all labeling patterns that hypotheses in $\mathcal{H}$ can produce on the points in $C$.
+</TheoremBlock>
+
+Even if $\mathcal{H}$ is infinite, $\mathcal{H}_C$ is always finite — it has at most $2^m$ elements (the total number of possible binary labelings of $m$ points). The question is: for how large an $m$ can we achieve the maximum $|\mathcal{H}_C| = 2^m$?
+
+<TheoremBlock type="definition" number={8} title="Shattering">
+A hypothesis class $\mathcal{H}$ **shatters** a set $C \subset \mathcal{X}$ if $\mathcal{H}_C = \{0,1\}^{|C|}$, i.e., every possible binary labeling of $C$ is realized by some $h \in \mathcal{H}$.
+</TheoremBlock>
+
+Shattering means $\mathcal{H}$ is maximally expressive on $C$ — no matter how the points are labeled, some hypothesis in $\mathcal{H}$ fits perfectly. This is the combinatorial analog of overfitting: if $\mathcal{H}$ can shatter large sets, it can memorize arbitrary patterns, which makes generalization harder.
+
+<TheoremBlock type="definition" number={9} title="VC Dimension">
+The **Vapnik–Chervonenkis dimension** of $\mathcal{H}$, denoted $\mathrm{VCdim}(\mathcal{H})$, is the largest integer $d$ such that there exists a set $C \subset \mathcal{X}$ with $|C| = d$ that is shattered by $\mathcal{H}$. If $\mathcal{H}$ can shatter arbitrarily large sets, then $\mathrm{VCdim}(\mathcal{H}) = \infty$.
+</TheoremBlock>
+
+The VC dimension measures the largest set of points that $\mathcal{H}$ can label in all possible ways. It is a *worst-case* combinatorial measure: we only need *one* set of size $d$ that is shattered, but *no* set of size $d+1$ can be shattered. Let's see some examples.
+
+<TheoremBlock type="example" number={1} title="Thresholds on ℝ">
+Consider $\mathcal{H} = \{h_a : a \in \mathbb{R}\}$ where $h_a(x) = \mathbf{1}[x \leq a]$ (predict 1 if $x$ is at most $a$). For any single point $\{x_1\}$, we can realize both labelings: choose $a > x_1$ for label 1, or $a < x_1$ for label 0. So $\mathcal{H}$ shatters sets of size 1.
+
+But for any pair $\{x_1, x_2\}$ with $x_1 < x_2$, the labeling $(0, 1)$ — "the smaller point is negative and the larger point is positive" — cannot be achieved by any threshold. Therefore $\mathrm{VCdim}(\mathcal{H}_{\text{threshold}}) = 1$.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={2} title="Intervals on ℝ">
+Consider $\mathcal{H} = \{h_{a,b} : a \leq b\}$ where $h_{a,b}(x) = \mathbf{1}[a \leq x \leq b]$ (predict 1 if $x$ lies in the interval $[a,b]$). Any two points can be shattered (check all four labelings). But for three points $x_1 < x_2 < x_3$, the labeling $(1, 0, 1)$ — positive at the endpoints, negative in the middle — cannot be produced by a single interval. Therefore $\mathrm{VCdim}(\mathcal{H}_{\text{interval}}) = 2$.
+</TheoremBlock>
+
+<ShatteringExplorer client:visible />
+
+The most important example for machine learning is linear classifiers, whose VC dimension has a clean characterization.
+
+<TheoremBlock type="theorem" number={3} title="VC Dimension of Linear Classifiers">
+The class of halfspaces in $\mathbb{R}^d$:
+
+$$\mathcal{H}_{\text{lin}} = \{x \mapsto \mathbf{1}[\mathbf{w} \cdot x + b \geq 0] : \mathbf{w} \in \mathbb{R}^d, b \in \mathbb{R}\}$$
+
+has $\mathrm{VCdim}(\mathcal{H}_{\text{lin}}) = d + 1$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Lower bound ($\mathrm{VCdim} \geq d + 1$).** We exhibit a set of $d+1$ points that $\mathcal{H}_{\text{lin}}$ shatters. Take the origin $\mathbf{0}$ and the $d$ standard basis vectors $\mathbf{e}_1, \ldots, \mathbf{e}_d$. For any binary labeling of these $d+1$ points, we can construct a weight vector $\mathbf{w}$ and bias $b$ that realizes it. The key is that these points are in "general position" — no $d+1$ of them lie on a common hyperplane — so the $d+1$ linear constraints $\mathbf{w} \cdot x_i + b \geq 0$ (or $< 0$) are always simultaneously satisfiable.
+
+**Upper bound ($\mathrm{VCdim} \leq d + 1$).** We use **Radon's theorem** from convex geometry: any set of $d+2$ points in $\mathbb{R}^d$ can be partitioned into two disjoint sets $P, Q$ whose convex hulls intersect: $\mathrm{conv}(P) \cap \mathrm{conv}(Q) \neq \emptyset$. If the convex hulls intersect, no hyperplane can separate $P$ from $Q$, so the labeling that assigns 1 to $P$ and 0 to $Q$ is not realizable. Therefore no set of $d+2$ points can be shattered. $\square$
+</TheoremBlock>
+
+This result connects the VC dimension to the geometric dimension of the feature space: linear classifiers in $\mathbb{R}^d$ have VC dimension $d+1$. This is why the number of features matters for generalization — it directly controls the complexity of the hypothesis class.
+
+![VC dimension and shattering examples — thresholds, intervals, and linear classifiers](/images/topics/pac-learning/vc-dimension-shattering.png)
+
+---
+
+## Sauer–Shelah Lemma and Growth Functions
+
+The VC dimension tells us the *boundary* at which shattering becomes impossible: $\mathcal{H}$ cannot shatter any set of size $d+1$ or larger. But we need a more quantitative statement: exactly how many labelings can $\mathcal{H}$ produce on a set of $m$ points when $m > d$? The growth function captures this.
+
+<TheoremBlock type="definition" number={10} title="Growth Function">
+The **growth function** (also called the **shattering coefficient**) of $\mathcal{H}$ is:
+
+$$\Pi_{\mathcal{H}}(m) = \max_{C \subset \mathcal{X}, |C|=m} |\mathcal{H}_C|$$
+
+the maximum number of distinct labelings that $\mathcal{H}$ can produce on any set of $m$ points. By definition, $\Pi_{\mathcal{H}}(m) \leq 2^m$ always, and $\mathrm{VCdim}(\mathcal{H}) = d$ means $\Pi_{\mathcal{H}}(d) = 2^d$ but $\Pi_{\mathcal{H}}(m) < 2^m$ for all $m > d$.
+</TheoremBlock>
+
+The Sauer–Shelah lemma is the remarkable fact that once $\Pi_{\mathcal{H}}$ drops below $2^m$, it doesn't just decrease slightly — it collapses from exponential to polynomial growth. This is the combinatorial engine that makes infinite hypothesis classes learnable.
+
+<TheoremBlock type="lemma" number={1} title="Sauer–Shelah Lemma">
+If $\mathrm{VCdim}(\mathcal{H}) = d < \infty$, then for all $m \geq 1$:
+
+$$\Pi_{\mathcal{H}}(m) \leq \sum_{i=0}^{d} \binom{m}{i}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We prove this by strong induction on $m + d$.
+
+**Base cases.** If $d = 0$, then $\mathcal{H}$ cannot shatter any single point, so $\Pi_{\mathcal{H}}(m) \leq 1 = \binom{m}{0}$ for all $m$. If $m \leq d$, then $\sum_{i=0}^{d} \binom{m}{i} = 2^m \geq \Pi_{\mathcal{H}}(m)$ trivially.
+
+**Inductive step.** Assume the lemma holds for all pairs $(m', d')$ with $m' + d' < m + d$ and $m' > d'$. Let $C = \{x_1, \ldots, x_m\}$ be any set of $m$ points achieving the maximum $\Pi_{\mathcal{H}}(m) = |\mathcal{H}_C|$. Set $C' = C \setminus \{x_m\} = \{x_1, \ldots, x_{m-1}\}$.
+
+We partition $\mathcal{H}_C$ based on the behavior at $x_m$. For each labeling pattern $\mathbf{b} = (b_1, \ldots, b_{m-1}) \in \mathcal{H}_{C'}$, either:
+- $\mathbf{b}$ extends to exactly one labeling on $C$ (either $(b_1, \ldots, b_{m-1}, 0)$ or $(b_1, \ldots, b_{m-1}, 1)$ is in $\mathcal{H}_C$, but not both), or
+- $\mathbf{b}$ extends to both labelings on $C$ (both extensions are in $\mathcal{H}_C$).
+
+Let $\mathcal{H}_0 = \mathcal{H}_{C'}$ be the set of all patterns on $C'$, and let $\mathcal{H}_1 \subseteq \mathcal{H}_{C'}$ be the set of patterns that extend both ways. Then:
+
+$$|\mathcal{H}_C| = |\mathcal{H}_0| + |\mathcal{H}_1|$$
+
+because each pattern in $\mathcal{H}_0 \setminus \mathcal{H}_1$ contributes one labeling on $C$, and each pattern in $\mathcal{H}_1$ contributes two.
+
+Now we bound each term:
+
+- $\mathcal{H}_0$ is the restriction of $\mathcal{H}$ to $m-1$ points, so $\mathrm{VCdim}(\mathcal{H}_0) \leq d$. By the inductive hypothesis: $|\mathcal{H}_0| \leq \sum_{i=0}^{d} \binom{m-1}{i}$.
+
+- For $\mathcal{H}_1$, we claim $\mathrm{VCdim}(\mathcal{H}_1) \leq d - 1$. If $\mathcal{H}_1$ shattered a set $D \subseteq C'$ of size $d$, then since every pattern in $\mathcal{H}_1$ extends both ways on $x_m$, the set $D \cup \{x_m\}$ of size $d+1$ would be shattered by $\mathcal{H}$ — contradicting $\mathrm{VCdim}(\mathcal{H}) = d$. By the inductive hypothesis: $|\mathcal{H}_1| \leq \sum_{i=0}^{d-1} \binom{m-1}{i}$.
+
+Combining and using **Pascal's identity** $\binom{m-1}{i} + \binom{m-1}{i-1} = \binom{m}{i}$:
+
+$$|\mathcal{H}_C| \leq \sum_{i=0}^{d} \binom{m-1}{i} + \sum_{i=0}^{d-1} \binom{m-1}{i} = \binom{m-1}{0} + \sum_{i=1}^{d}\left[\binom{m-1}{i} + \binom{m-1}{i-1}\right] = \sum_{i=0}^{d} \binom{m}{i}$$
+
+$\square$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={1} title="Polynomial Growth Bound">
+For $m \geq d \geq 1$:
+
+$$\Pi_{\mathcal{H}}(m) \leq \sum_{i=0}^{d} \binom{m}{i} \leq \left(\frac{em}{d}\right)^d$$
+
+The second inequality follows from the standard bound $\sum_{i=0}^{d} \binom{m}{i} \leq (em/d)^d$, which can be proved using the entropy method or direct algebraic manipulation.
+</TheoremBlock>
+
+The significance of Corollary 1 cannot be overstated. The growth function transitions from $\Pi_{\mathcal{H}}(m) = 2^m$ (exponential) for $m \leq d$ to $\Pi_{\mathcal{H}}(m) \leq (em/d)^d$ (polynomial in $m$ with degree $d$) for $m > d$. This **phase transition** at $m = d$ is what allows the VC theory to work: we can replace $|\mathcal{H}|$ in the union bound by $\Pi_{\mathcal{H}}(n) \leq (en/d)^d$, which is polynomial rather than infinite.
+
+The following code computes the growth function exactly and demonstrates the phase transition:
+
+```python
+from scipy.special import comb
+
+m_range = np.arange(1, 31)
+
+# Growth function for several VC dimensions
+for d in [1, 2, 3, 5, 10]:
+    growth = np.array([
+        sum(comb(m, i, exact=True) for i in range(d + 1))
+        for m in m_range
+    ])
+
+# Sauer-Shelah bound tightness
+d = 3
+m_range2 = np.arange(d, 51)
+exact = np.array([
+    sum(comb(m, i, exact=True) for i in range(d + 1))
+    for m in m_range2
+])
+upper = (np.e * m_range2 / d) ** d  # Simplified bound
+
+# Phase transition: ratio Pi(m) / 2^m drops at m = d
+d_val = 5
+m_range3 = np.arange(1, 25)
+growth_exact = np.array([
+    sum(comb(m, i, exact=True) for i in range(d_val + 1))
+    for m in m_range3
+])
+ratio = growth_exact / 2.0**m_range3
+```
+
+![Growth functions and the Sauer–Shelah bound — phase transition at m = d](/images/topics/pac-learning/sauer-shelah-growth.png)
+
+<GrowthFunctionVisualizer client:visible />
+
+---
+
+## The Fundamental Theorem of Statistical Learning
+
+We now have all the ingredients to state the deepest result in PAC learning theory. The Fundamental Theorem shows that four seemingly different properties of a hypothesis class are equivalent — they are four views of the same underlying phenomenon.
+
+<TheoremBlock type="theorem" number={4} title="VC Bound (Finite-Sample)">
+Let $\mathrm{VCdim}(\mathcal{H}) = d < \infty$. For any distribution $\mathcal{D}$ and any $\delta \in (0,1)$, with probability at least $1 - \delta$ over $S \sim \mathcal{D}^n$:
+
+$$\sup_{h \in \mathcal{H}} |R(h) - \hat{R}_S(h)| \leq \sqrt{\frac{8d\log(2en/d) + 8\log(4/\delta)}{n}}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof combines three techniques.
+
+**Step 1: Symmetrization.** Replace the true risk $R(h)$ with the empirical risk on an independent "ghost sample" $S' \sim \mathcal{D}^n$. By a doubling argument, $\Pr[\sup_h |R(h) - \hat{R}_S(h)| \geq \varepsilon] \leq 2\Pr[\sup_h |\hat{R}_S(h) - \hat{R}_{S'}(h)| \geq \varepsilon/2]$. This step eliminates the unknown distribution $\mathcal{D}$ from the bound.
+
+**Step 2: Rademacher randomization.** Since $S$ and $S'$ are exchangeable, we can insert random sign flips: replacing some pairs $(z_i, z_i')$ by $(z_i', z_i)$ doesn't change the distribution. This yields a bound in terms of Rademacher averages.
+
+**Step 3: Growth function bound.** On the combined sample $S \cup S'$ of $2n$ points, $\mathcal{H}$ produces at most $\Pi_{\mathcal{H}}(2n) \leq (2en/d)^d$ distinct labeling patterns (by Sauer–Shelah). Apply the union bound and Hoeffding's inequality over these finitely many patterns. The resulting bound is the VC bound. $\square$
+</TheoremBlock>
+
+The VC bound establishes uniform convergence for any class with finite VC dimension. Combined with Proposition 1 (uniform convergence implies agnostic PAC), this gives us one direction of the Fundamental Theorem. The full result establishes equivalence.
+
+<TheoremBlock type="theorem" number={5} title="The Fundamental Theorem of Statistical Learning">
+For binary classification with 0-1 loss, the following are equivalent:
+
+1. $\mathcal{H}$ has the **uniform convergence** property.
+2. $\mathcal{H}$ is **agnostic PAC learnable** (by ERM).
+3. $\mathcal{H}$ is **PAC learnable** in the realizable setting (by ERM).
+4. $\mathrm{VCdim}(\mathcal{H}) < \infty$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We outline the implications:
+
+**(4) $\Rightarrow$ (1):** This is Theorem 4 (the VC bound). Finite VC dimension gives us the growth function bound via Sauer–Shelah, which yields uniform convergence through symmetrization and the union bound over distinct labeling patterns.
+
+**(1) $\Rightarrow$ (2):** This is Proposition 1. Uniform convergence guarantees that the ERM hypothesis has risk close to the best in $\mathcal{H}$.
+
+**(2) $\Rightarrow$ (3):** Immediate — realizable PAC learnability is a special case of agnostic PAC learnability (set $\min_{h \in \mathcal{H}} R(h) = 0$).
+
+**(3) $\Rightarrow$ (4):** This is the hardest direction, proved by contrapositive. If $\mathrm{VCdim}(\mathcal{H}) = \infty$, then for every sample size $n$, there exists a set of $2n$ points that $\mathcal{H}$ shatters. An adversary can construct a distribution $\mathcal{D}$ on this set such that any learning algorithm fails with probability at least $1/4$ — this is a **No Free Lunch** argument. The construction places uniform distribution on the $2n$ points and assigns labels that the adversary chooses after seeing the algorithm's output, exploiting the shattering to always have a "hard" labeling available. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={2} title="VC Dimension Sample Complexity">
+If $\mathrm{VCdim}(\mathcal{H}) = d < \infty$, then $\mathcal{H}$ is agnostic PAC learnable with sample complexity:
+
+$$n_{\mathcal{H}}(\varepsilon, \delta) = O\left(\frac{d\log(1/\varepsilon) + \log(1/\delta)}{\varepsilon^2}\right)$$
+
+In particular, the sample complexity depends on $\mathcal{H}$ only through its VC dimension $d$ — not on the cardinality or any other structural property of $\mathcal{H}$.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={4} title="Significance of the Fundamental Theorem">
+The Fundamental Theorem is the crown jewel of computational learning theory. It tells us that one number — the VC dimension — completely characterizes whether a binary hypothesis class is learnable. This is a *qualitative* characterization (finite VC $\iff$ learnable) that also gives *quantitative* sample complexity bounds (through the VC bound). The elegance is in the equivalence of four seemingly different conditions: a convergence property, two learnability definitions, and a combinatorial measure.
+</TheoremBlock>
+
+![The Fundamental Theorem — equivalences between uniform convergence, PAC learnability, and finite VC dimension](/images/topics/pac-learning/fundamental-theorem.png)
+
+---
+
+## Rademacher Complexity
+
+The VC dimension is a *combinatorial* complexity measure — it depends on $\mathcal{H}$ but not on the data distribution $\mathcal{D}$ or the specific sample $S$. This universality is a strength (the VC bound holds for all distributions) but also a weakness (the bound may be loose for specific distributions). **Rademacher complexity** provides a data-dependent alternative that can yield tighter bounds.
+
+The intuition is simple: a complex hypothesis class can "fit random noise" — it can correlate with random labels. Rademacher complexity measures this ability.
+
+<TheoremBlock type="definition" number={11} title="Empirical Rademacher Complexity">
+For a fixed sample $S = \{z_1, \ldots, z_n\}$ and a function class $\mathcal{F}: \mathcal{Z} \to \mathbb{R}$, the **empirical Rademacher complexity** is:
+
+$$\hat{\mathfrak{R}}_S(\mathcal{F}) = \mathbb{E}_{\boldsymbol{\sigma}}\left[\sup_{f \in \mathcal{F}} \frac{1}{n}\sum_{i=1}^n \sigma_i f(z_i)\right]$$
+
+where $\sigma_1, \ldots, \sigma_n$ are i.i.d. **Rademacher variables**: $\Pr[\sigma_i = +1] = \Pr[\sigma_i = -1] = 1/2$.
+</TheoremBlock>
+
+The expression inside the expectation asks: given random signs $\sigma_i$, how well can the best function in $\mathcal{F}$ correlate with these signs? If $\mathcal{F}$ contains a function that correlates highly with random noise, the class is complex. If no function can do better than random chance, the class is simple.
+
+<TheoremBlock type="definition" number={12} title="Rademacher Complexity">
+The **(population) Rademacher complexity** is the expectation of the empirical version over the random draw of the sample:
+
+$$\mathfrak{R}_n(\mathcal{F}) = \mathbb{E}_{S \sim \mathcal{D}^n}\left[\hat{\mathfrak{R}}_S(\mathcal{F})\right]$$
+
+This measures how well $\mathcal{F}$ can fit random noise on average over samples from $\mathcal{D}$.
+</TheoremBlock>
+
+The main result connects Rademacher complexity to generalization through two applications of concentration inequalities from the [previous topic](/topics/concentration-inequalities): McDiarmid's inequality for the concentration step and symmetrization for the expectation bound.
+
+<TheoremBlock type="theorem" number={6} title="Rademacher Generalization Bound">
+Let $\mathcal{F}$ be a class of functions mapping to $[0,1]$. For any $\delta > 0$, with probability at least $1 - \delta$ over $S \sim \mathcal{D}^n$:
+
+$$\sup_{f \in \mathcal{F}} \left(\mathbb{E}[f] - \frac{1}{n}\sum_{i=1}^n f(z_i)\right) \leq 2\hat{\mathfrak{R}}_S(\mathcal{F}) + 3\sqrt{\frac{\log(2/\delta)}{2n}}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We break the proof into three steps.
+
+**Step 1: Bounded differences.** Define $\Phi(S) = \sup_{f \in \mathcal{F}} (\mathbb{E}[f] - \hat{\mathbb{E}}_S[f])$ where $\hat{\mathbb{E}}_S[f] = \frac{1}{n}\sum_i f(z_i)$. Changing a single sample point $z_i$ changes $\Phi(S)$ by at most $1/n$ (since each $f$ maps to $[0,1]$). By **McDiarmid's inequality**:
+
+$$\Pr[\Phi(S) - \mathbb{E}[\Phi(S)] \geq t] \leq \exp(-2nt^2)$$
+
+Setting $t = \sqrt{\log(2/\delta)/(2n)}$ gives $\Phi(S) \leq \mathbb{E}[\Phi(S)] + \sqrt{\log(2/\delta)/(2n)}$ with probability $\geq 1 - \delta/2$.
+
+**Step 2: Symmetrization.** We bound $\mathbb{E}[\Phi(S)]$ using a ghost sample $S' = \{z_1', \ldots, z_n'\}$:
+
+$$\mathbb{E}[\Phi(S)] = \mathbb{E}_S\left[\sup_f\left(\mathbb{E}_{S'}[\hat{\mathbb{E}}_{S'}[f]] - \hat{\mathbb{E}}_S[f]\right)\right] \leq \mathbb{E}_{S,S'}\left[\sup_f\left(\hat{\mathbb{E}}_{S'}[f] - \hat{\mathbb{E}}_S[f]\right)\right]$$
+
+Since $z_i$ and $z_i'$ are identically distributed, we can replace $z_i' - z_i$ by $\sigma_i(z_i' - z_i)$ where $\sigma_i$ are Rademacher variables. This gives:
+
+$$\mathbb{E}[\Phi(S)] \leq \mathbb{E}_{S,S',\boldsymbol{\sigma}}\left[\sup_f \frac{1}{n}\sum_{i=1}^n \sigma_i(f(z_i') - f(z_i))\right] \leq 2\mathbb{E}_{S,\boldsymbol{\sigma}}\left[\sup_f \frac{1}{n}\sum_{i=1}^n \sigma_i f(z_i)\right] = 2\mathfrak{R}_n(\mathcal{F})$$
+
+**Step 3: Empirical to population.** We convert $\mathfrak{R}_n(\mathcal{F})$ to the empirical $\hat{\mathfrak{R}}_S(\mathcal{F})$ using McDiarmid again. The empirical Rademacher complexity $S \mapsto \hat{\mathfrak{R}}_S(\mathcal{F})$ has bounded differences $\leq 1/n$ (changing one sample point changes the supremum by at most $1/n$). So with probability $\geq 1 - \delta/2$:
+
+$$\mathfrak{R}_n(\mathcal{F}) \leq \hat{\mathfrak{R}}_S(\mathcal{F}) + \sqrt{\frac{\log(2/\delta)}{2n}}$$
+
+Combining Steps 1–3 by a union bound over the two $\delta/2$ events:
+
+$$\Phi(S) \leq 2\hat{\mathfrak{R}}_S(\mathcal{F}) + 2\sqrt{\frac{\log(2/\delta)}{2n}} + \sqrt{\frac{\log(2/\delta)}{2n}} = 2\hat{\mathfrak{R}}_S(\mathcal{F}) + 3\sqrt{\frac{\log(2/\delta)}{2n}}$$
+
+$\square$
+</TheoremBlock>
+
+Two structural results connect Rademacher complexity to our earlier measures.
+
+<TheoremBlock type="proposition" number={2} title="Massart's Lemma">
+For a finite function class $\mathcal{F}$:
+
+$$\hat{\mathfrak{R}}_S(\mathcal{F}) \leq \frac{\max_f \|f_S\|_2 \cdot \sqrt{2\log|\mathcal{F}|}}{n}$$
+
+where $\|f_S\|_2 = \sqrt{\sum_i f(z_i)^2}$. This recovers the $\sqrt{\log|\mathcal{H}|/n}$ rate for finite classes.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={3} title="VC Bounds Rademacher Complexity">
+If $\mathrm{VCdim}(\mathcal{H}) = d$, then:
+
+$$\mathfrak{R}_n(\mathcal{H}) \leq \sqrt{\frac{2d\log(en/d)}{n}}$$
+
+This follows from combining Massart's Lemma with the Sauer–Shelah bound on the number of effective hypotheses: $|\mathcal{H}_S| \leq \Pi_{\mathcal{H}}(n) \leq (en/d)^d$.
+</TheoremBlock>
+
+Proposition 3 shows that the Rademacher bound is never worse than the VC bound (up to constants). But because $\hat{\mathfrak{R}}_S(\mathcal{F})$ depends on the specific sample $S$, it can be much tighter when the data has favorable structure — for instance, when the data is low-dimensional or when most hypotheses behave similarly on typical inputs.
+
+The following code estimates empirical Rademacher complexity via Monte Carlo simulation:
+
+```python
+def estimate_rademacher(H_preds, n_rad=500):
+    """
+    Estimate empirical Rademacher complexity via Monte Carlo.
+    H_preds: (num_hypotheses, sample_size) predictions matrix
+    n_rad: number of random sign trials
+    Returns: mean of max correlation with random signs
+    """
+    n_s = H_preds.shape[1]
+    maxcorr = []
+    for _ in range(n_rad):
+        sigma = rng.choice([-1, 1], size=n_s)
+        maxcorr.append(np.max(H_preds @ sigma / n_s))
+    return np.mean(maxcorr)
+
+# How Rademacher complexity scales with |H|
+n_data = 200
+X_data = rng.standard_normal((n_data, 2))
+H_sizes_test = [5, 10, 25, 50, 100, 200, 500]
+rad_c = []
+
+for H_s in H_sizes_test:
+    W = rng.standard_normal((H_s, 2))
+    b = rng.standard_normal(H_s)
+    preds = np.sign(X_data @ W.T + b)
+    rad_c.append(estimate_rademacher(preds.T))
+
+# Compare with theoretical: O(sqrt(log|H| / n))
+theory_rc = np.sqrt(2 * np.log(np.array(H_sizes_test)) / n_data)
+```
+
+![Rademacher complexity — empirical estimation and comparison with theoretical bounds](/images/topics/pac-learning/rademacher-complexity.png)
+
+---
+
+## Applications and Worked Examples
+
+The abstract theory developed above has direct implications for understanding the generalization behavior of concrete machine learning methods. We discuss four applications.
+
+### Linear Classifiers
+
+For halfspaces in $\mathbb{R}^d$, we know $\mathrm{VCdim} = d+1$ (Theorem 3). The VC bound gives sample complexity $O(d/\varepsilon^2)$ for agnostic PAC learning. This provides a formal justification for the common wisdom that the number of training examples should grow with the number of features. In practice, if we have $d = 100$ features and want $\varepsilon = 0.05$ accuracy, the VC bound suggests we need on the order of $100/0.0025 = 40{,}000$ samples — conservative, but in the right ballpark for linear methods on moderately difficult problems.
+
+### Neural Networks
+
+The VC dimension of a neural network with $W$ real-valued weights is $O(W \log W)$ (due to Bartlett, Harvey, Liaw & Mehrabian, 2019). For a network with millions of parameters, this gives a sample complexity bound in the millions — but modern networks generalize well with far fewer samples than the VC theory predicts. This **theory-practice gap** is one of the most active research areas in learning theory. Several explanations have been proposed: the effective capacity of trained networks is much smaller than the architectural capacity, optimization with SGD implicitly regularizes, and the data distribution has favorable structure that tighter measures like Rademacher complexity can exploit.
+
+### Decision Trees
+
+A decision tree with $k$ internal nodes on $d$-dimensional binary features has VC dimension at most $O(k \log(kd))$. This shows that the sample complexity scales with the tree complexity (number of splits), not with the ambient dimension $d$. Pruning a decision tree reduces its VC dimension, which the theory predicts should improve generalization — consistent with the well-known observation that unpruned trees overfit.
+
+### Structural Risk Minimization
+
+The bias-complexity tradeoff (also called the bias-variance tradeoff in some contexts) is a direct consequence of the PAC framework. Given a nested sequence of hypothesis classes $\mathcal{H}_1 \subset \mathcal{H}_2 \subset \cdots$ with increasing VC dimensions $d_1 < d_2 < \cdots$:
+
+- The **approximation error** $\min_{h \in \mathcal{H}_k} R(h)$ decreases with $k$ (larger classes contain better approximations).
+- The **estimation error** (the generalization gap, bounded by the VC bound) increases with $k$ (larger classes are harder to learn from finite data).
+
+**Structural Risk Minimization (SRM)** selects the hypothesis class $\mathcal{H}_{k^*}$ that minimizes the sum of empirical risk and the VC complexity penalty. This is the learning-theoretic justification for regularization: by controlling model complexity, we balance the two sources of error.
+
+<BiasComplexityDashboard client:visible />
+
+![Applications of PAC learning — linear classifiers, neural networks, and the bias-complexity tradeoff](/images/topics/pac-learning/pac-applications.png)
+
+---
+
+## Connections & Further Reading
+
+### Connections Map
+
+| Topic | Domain | Relationship |
+|--------|-------|-------------|
+| [Concentration Inequalities](/topics/concentration-inequalities) | Probability & Statistics | Direct prerequisite — Hoeffding + union bound give sample complexity for finite classes; McDiarmid's inequality proves the Rademacher generalization bound |
+| [Measure-Theoretic Probability](/topics/measure-theoretic-probability) | Probability & Statistics | Foundational — the convergence hierarchy and expectation operator underpin the definitions of true risk and uniform convergence |
+| [PCA & Low-Rank Approximation](/topics/pca-low-rank) | Linear Algebra | The VC dimension of linear subspace classifiers relates to effective dimension captured by PCA; sample covariance concentration connects to agnostic learning bounds |
+| [Simplicial Complexes](/topics/simplicial-complexes) | Topology | The combinatorial proof of Sauer–Shelah (induction on point removal) has structural analogues in extremal and topological combinatorics |
+| **Bayesian Nonparametrics** *(coming soon)* | Probability & Statistics | Bayesian model selection provides an alternative to SRM for balancing model complexity; posterior contraction rates parallel PAC sample complexity |
+
+### Key Notation Summary
+
+| Symbol | Meaning |
+|--------|---------|
+| $R(h) = \Pr_{(x,y) \sim \mathcal{D}}[h(x) \neq y]$ | True risk (generalization error) |
+| $\hat{R}_S(h) = \frac{1}{n}\sum_i \mathbf{1}[h(x_i) \neq y_i]$ | Empirical risk (training error) |
+| $h_S^{\mathrm{ERM}} = \arg\min_{h \in \mathcal{H}} \hat{R}_S(h)$ | Empirical risk minimizer |
+| $n_{\mathcal{H}}(\varepsilon, \delta)$ | Sample complexity |
+| $\mathcal{H}_C$ | Restriction of $\mathcal{H}$ to set $C$ |
+| $\mathrm{VCdim}(\mathcal{H})$ | Vapnik–Chervonenkis dimension |
+| $\Pi_{\mathcal{H}}(m)$ | Growth function (shattering coefficient) |
+| $\hat{\mathfrak{R}}_S(\mathcal{F})$ | Empirical Rademacher complexity |
+| $\mathfrak{R}_n(\mathcal{F})$ | Population Rademacher complexity |

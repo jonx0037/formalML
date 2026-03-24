@@ -98,3 +98,18 @@ export interface ConcentrationConfig {
   lossBound: number;
 }
 
+// ─── PAC Learning Types ───
+
+export interface PACBoundConfig {
+  hypothesisClassSize: number;
+  vcDimension: number;
+  delta: number;
+  epsilon: number;
+  sampleSize: number;
+}
+
+export interface ShatteringResult {
+  labeling: boolean[];
+  realizable: boolean;
+}
+
