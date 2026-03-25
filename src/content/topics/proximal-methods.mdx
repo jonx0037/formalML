@@ -1,0 +1,648 @@
+---
+title: "Proximal Methods"
+subtitle: "Proximal operators, the Moreau envelope, forward-backward splitting, ISTA/FISTA for composite objectives, Douglas–Rachford splitting, and ADMM — the algorithmic toolkit for non-smooth and constrained optimization"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "convex-analysis"
+  - "gradient-descent"
+tags:
+  - "optimization"
+  - "proximal-operators"
+  - "composite-optimization"
+  - "ista-fista"
+  - "admm"
+  - "splitting-methods"
+  - "sparse-recovery"
+domain: "optimization"
+videoId: null
+notebookPath: "notebooks/proximal-methods/03_proximal_methods.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/proximal-methods.mdx"
+datePublished: 2026-03-24
+estimatedReadTime: 50
+abstract: "Proximal methods extend gradient descent to non-smooth and constrained optimization by replacing the gradient step with a proximal operator — the point that best balances minimizing the objective and staying close to the current iterate. We develop the theory from the proximal operator definition through three layers of increasing generality: forward-backward splitting (proximal gradient descent) handles composite objectives where one term is smooth and one is prox-friendly, yielding the ISTA algorithm for the Lasso; FISTA accelerates this from O(1/k) to the optimal O(1/k²) rate via Nesterov momentum; Douglas–Rachford splitting and ADMM extend the framework to problems where both terms are non-smooth or where variable splitting enables parallel computation. The Moreau envelope provides the smoothing bridge that connects proximal operators to gradient-based reasoning, while the soft-thresholding operator emerges as the workhorse proximal map underlying sparse recovery. Throughout, we connect each algorithm to the convex analysis foundations — subdifferentials, conjugate functions, and the fundamental optimality condition 0 ∈ ∂f(x*) — and to the convergence machinery developed in the Gradient Descent topic."
+connections:
+  - topic: "convex-analysis"
+    relationship: "Every proximal operator solves a convex minimization problem. The subdifferential optimality condition 0 ∈ ∂f(x*) from Convex Analysis becomes the fixed-point condition x* = prox_f(x*) that characterizes solutions. Conjugate functions and the Moreau envelope are conjugate-dual objects connected by the Fenchel–Moreau theorem."
+  - topic: "gradient-descent"
+    relationship: "Proximal gradient descent generalizes gradient descent to composite objectives F = g + h. When h = 0 (no non-smooth term), the proximal step reduces to the identity and we recover vanilla gradient descent. The convergence analysis parallels the Descent Lemma framework, and FISTA inherits the Nesterov acceleration machinery."
+  - topic: "spectral-theorem"
+    relationship: "The condition number κ = L/μ that governs proximal gradient convergence for strongly convex problems involves eigenvalues of the Hessian. For quadratic smooth terms g(x) = (1/2)x^TAx, the Spectral Theorem provides the eigendecomposition that determines L and μ."
+  - topic: "svd"
+    relationship: "The proximal operator of the nuclear norm (the matrix analogue of the ℓ₁ norm) requires computing the SVD and applying soft-thresholding to the singular values. This singular value thresholding operator is the key subroutine in low-rank matrix recovery via proximal methods."
+references:
+  - type: "book"
+    title: "Convex Optimization"
+    authors: "Boyd & Vandenberghe"
+    year: 2004
+    note: "Chapter 6: Proximal algorithms in the context of constrained optimization"
+  - type: "book"
+    title: "First-Order Methods in Optimization"
+    authors: "Beck"
+    year: 2017
+    note: "Chapters 6-10: The primary reference — proximal operators, proximal gradient, FISTA, splitting methods"
+  - type: "book"
+    title: "Convex Optimization: Algorithms and Complexity"
+    authors: "Bubeck"
+    year: 2015
+    note: "Chapter 4: Proximal and projection methods, mirror descent connections"
+  - type: "paper"
+    title: "Proximal Algorithms"
+    authors: "Parikh & Boyd"
+    year: 2014
+    url: "https://doi.org/10.1561/2400000003"
+    note: "The comprehensive survey — proximal operators, ADMM, splitting methods, applications"
+  - type: "paper"
+    title: "A Fast Iterative Shrinkage-Thresholding Algorithm for Linear Inverse Problems"
+    authors: "Beck & Teboulle"
+    year: 2009
+    url: "https://doi.org/10.1137/080716542"
+    note: "The FISTA paper — accelerated proximal gradient with O(1/k²) convergence"
+  - type: "paper"
+    title: "Distributed Optimization and Statistical Learning via the Alternating Direction Method of Multipliers"
+    authors: "Boyd, Parikh, Chu, Peleato & Eckstein"
+    year: 2011
+    url: "https://doi.org/10.1561/2200000016"
+    note: "The ADMM monograph — theory, applications, and distributed computing"
+  - type: "paper"
+    title: "A Douglas–Rachford Splitting Approach to Nonsmooth Convex Variational Signal Recovery"
+    authors: "Combettes & Pesquet"
+    year: 2007
+    url: "https://doi.org/10.1109/JSTSP.2007.910264"
+    note: "Douglas–Rachford splitting for signal processing and inverse problems"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ProximalOperatorExplorer from '../../components/viz/ProximalOperatorExplorer.tsx';
+import MoreauEnvelopeExplorer from '../../components/viz/MoreauEnvelopeExplorer.tsx';
+import ForwardBackwardExplorer from '../../components/viz/ForwardBackwardExplorer.tsx';
+import FISTAExplorer from '../../components/viz/FISTAExplorer.tsx';
+import ADMMExplorer from '../../components/viz/ADMMExplorer.tsx';
+
+## Overview & Motivation
+
+In [Gradient Descent & Convergence](/topics/gradient-descent) we built a complete convergence theory for smooth optimization: given an $L$-smooth convex function $f$, gradient descent with step size $\eta = 1/L$ achieves an $O(1/k)$ rate, and Nesterov acceleration pushes this to the optimal $O(1/k^2)$. But smoothness is a luxury that many real problems don't enjoy.
+
+Consider the Lasso — the workhorse of sparse regression:
+
+$$\min_{x} \frac{1}{2}\|Ax - b\|^2 + \lambda\|x\|_1$$
+
+The first term is smooth (its gradient is $A^\top(Ax - b)$), but the $\ell_1$ penalty $\lambda\|x\|_1$ is not differentiable at zero, which is precisely where sparsity lives. We can't just compute $\nabla f(x_k)$ and step in the negative gradient direction, because $\nabla f$ doesn't exist everywhere.
+
+**Proximal methods** resolve this tension by splitting the problem into pieces we know how to handle. The key insight: even though $\|x\|_1$ isn't smooth, we can *evaluate its proximal operator* — a generalization of the gradient step that replaces "move in the direction that decreases $f$ fastest" with "find the point that best balances minimizing $f$ and staying close to where you are." For the $\ell_1$ norm, this proximal operator turns out to be soft-thresholding: shrink each coordinate toward zero by $\lambda$, and set it exactly to zero if it's smaller than $\lambda$.
+
+### What We Cover
+
+1. **The Proximal Operator** — definition, geometric interpretation, and the fixed-point characterization of minimizers.
+2. **Proximal Operator Catalog** — closed-form solutions for the $\ell_1$ norm (soft-thresholding), indicator functions (projection), the squared norm (shrinkage), and group norms.
+3. **The Moreau Envelope** — the smooth approximation that connects proximal operators to gradient-based reasoning, with the gradient identity $\nabla M_\lambda f = \frac{1}{\lambda}(v - \mathrm{prox}_{\lambda f}(v))$.
+4. **Proximal Gradient Descent** — forward-backward splitting for composite objectives $F = g + h$ (smooth + non-smooth), with $O(1/k)$ convergence.
+5. **ISTA** — proximal gradient applied to the Lasso, with soft-thresholding as the key subroutine.
+6. **FISTA** — Nesterov-style acceleration from $O(1/k)$ to the optimal $O(1/k^2)$.
+7. **Douglas–Rachford Splitting** — handling problems where *both* terms are non-smooth.
+8. **ADMM** — the consensus formulation with three-variable updates and primal-dual residuals.
+9. **Convergence Analysis** — the rate landscape across algorithms and the role of strong convexity.
+10. **Computational Notes** — backtracking step size selection, convergence diagnostics, and stopping criteria.
+
+---
+
+## The Proximal Operator
+
+The proximal operator is the fundamental building block. Where gradient descent asks "which direction decreases $f$ fastest?", the proximal operator asks a different question: "which point best balances minimizing $f$ and staying close to where I am?"
+
+<TheoremBlock type="definition" number={1} title="The Proximal Operator">
+Let $f : \mathbb{R}^n \to \mathbb{R} \cup \{+\infty\}$ be a proper, closed, convex function, and let $\lambda > 0$. The **proximal operator** of $f$ with parameter $\lambda$ is the map $\mathrm{prox}_{\lambda f} : \mathbb{R}^n \to \mathbb{R}^n$ defined by
+
+$$\mathrm{prox}_{\lambda f}(v) = \arg\min_{x \in \mathbb{R}^n} \left\{ f(x) + \frac{1}{2\lambda}\|x - v\|^2 \right\}$$
+
+The minimizer exists and is unique because the objective is $\frac{1}{\lambda}$-strongly convex (the quadratic penalty dominates at large $\|x\|$, and the sum of a convex and a strongly convex function is strongly convex).
+</TheoremBlock>
+
+The parameter $\lambda$ controls the tradeoff between the two competing objectives. When $\lambda$ is small, the quadratic penalty dominates — the proximal operator stays close to $v$, barely moving. When $\lambda$ is large, the function $f$ dominates — the proximal operator moves toward the minimizer of $f$ itself. In the limit $\lambda \to 0$, $\mathrm{prox}_{\lambda f}(v) \to v$ (don't move); in the limit $\lambda \to \infty$, $\mathrm{prox}_{\lambda f}(v) \to \arg\min f$ (jump to the global minimizer).
+
+The proximal operator has an elegant characterization in terms of fixed points that connects it directly to the optimality conditions from [Convex Analysis](/topics/convex-analysis).
+
+<TheoremBlock type="proposition" number={1} title="Fixed-Point Characterization">
+A point $x^*$ minimizes $f$ if and only if $x^*$ is a fixed point of the proximal operator:
+
+$$x^* = \mathrm{prox}_{\lambda f}(x^*) \qquad \Longleftrightarrow \qquad 0 \in \partial f(x^*)$$
+
+This holds for any $\lambda > 0$. That is, the fixed points of $\mathrm{prox}_{\lambda f}$ are exactly the minimizers of $f$, regardless of the choice of $\lambda$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**($\Rightarrow$)** If $x^* = \mathrm{prox}_{\lambda f}(x^*)$, then $x^*$ minimizes $f(x) + \frac{1}{2\lambda}\|x - x^*\|^2$. The optimality condition for this minimization is $0 \in \partial f(x^*) + \frac{1}{\lambda}(x^* - x^*)$, which gives $0 \in \partial f(x^*)$.
+
+**($\Leftarrow$)** If $0 \in \partial f(x^*)$, then for any $x$, convexity gives $f(x) \geq f(x^*) + \langle g, x - x^*\rangle$ for some $g \in \partial f(x^*)$. Taking $g = 0$, we get $f(x) \geq f(x^*)$ for all $x$, so $f(x) + \frac{1}{2\lambda}\|x - x^*\|^2 \geq f(x^*) + 0$, and $x^*$ is the minimizer.
+</TheoremBlock>
+
+<ProximalOperatorExplorer client:visible />
+
+![The proximal operator: definition, input-output map, and gallery of proximal operators](/images/topics/proximal-methods/proximal-operator.png)
+
+---
+
+## Proximal Operator Catalog
+
+The utility of proximal methods depends on having cheap, closed-form proximal operators for the functions we care about. Here are the most important ones.
+
+<TheoremBlock type="definition" number={2} title="Soft-Thresholding Operator">
+The proximal operator of $\lambda|\cdot|$ (the scaled absolute value in 1D, or the scaled $\ell_1$ norm componentwise in $\mathbb{R}^n$) is the **soft-thresholding** operator:
+
+$$\mathcal{S}_\lambda(v) = \mathrm{sgn}(v) \cdot (|v| - \lambda)_+ = \begin{cases} v - \lambda & \text{if } v > \lambda \\ 0 & \text{if } |v| \leq \lambda \\ v + \lambda & \text{if } v < -\lambda \end{cases}$$
+
+In $\mathbb{R}^n$, soft-thresholding acts componentwise: $[\mathcal{S}_\lambda(v)]_i = \mathrm{sgn}(v_i)(|v_i| - \lambda)_+$.
+</TheoremBlock>
+
+Soft-thresholding is the engine behind every $\ell_1$-regularized method in this topic. It does two things simultaneously: it shrinks each coordinate toward zero by $\lambda$ (the "shrinkage" part), and it sets coordinates smaller than $\lambda$ exactly to zero (the "thresholding" part). This is why $\ell_1$ regularization produces sparse solutions — the proximal operator itself enforces sparsity.
+
+```python
+def soft_threshold(x, lam):
+    """Proximal operator of lambda * |.|: soft-thresholding."""
+    return np.sign(x) * np.maximum(np.abs(x) - lam, 0.0)
+```
+
+<TheoremBlock type="proposition" number={2} title="Proximal Operator of an Indicator Function">
+Let $C \subseteq \mathbb{R}^n$ be a nonempty closed convex set, and let $\iota_C$ be its indicator function ($\iota_C(x) = 0$ if $x \in C$, $+\infty$ otherwise). Then
+
+$$\mathrm{prox}_{\lambda \iota_C}(v) = \Pi_C(v) = \arg\min_{x \in C} \|x - v\|^2$$
+
+is the Euclidean projection onto $C$, for any $\lambda > 0$.
+</TheoremBlock>
+
+This is immediate from the definition: the term $\iota_C(x)$ forces the minimizer to lie in $C$, and the quadratic penalty selects the closest point in $C$ to $v$. The indicator function effectively encodes a hard constraint, and its proximal operator is the classical projection. This means constrained optimization can be cast as unconstrained proximal operations.
+
+<TheoremBlock type="proposition" number={3} title="Proximal Operator of the Squared Norm">
+For $f(x) = \frac{1}{2}\|x\|^2$ (the squared Euclidean norm), the proximal operator is a shrinkage toward the origin:
+
+$$\mathrm{prox}_{\lambda f}(v) = \frac{v}{1 + \lambda}$$
+</TheoremBlock>
+
+This follows by setting the gradient of $\frac{1}{2}\|x\|^2 + \frac{1}{2\lambda}\|x - v\|^2$ to zero: $(1 + 1/\lambda)x = v/\lambda$, giving $x = v/(1 + \lambda)$.
+
+Two more proximal operators appear frequently in applications:
+
+**Group soft-thresholding.** For the group Lasso with $f(x) = \|x_G\|_2$ (the $\ell_2$ norm of a group of coordinates), the proximal operator is:
+
+$$\mathrm{prox}_{\lambda f}(v_G) = \begin{cases} \left(1 - \frac{\lambda}{\|v_G\|_2}\right) v_G & \text{if } \|v_G\|_2 > \lambda \\ 0 & \text{otherwise} \end{cases}$$
+
+This zeroes out entire groups, rather than individual coordinates.
+
+**Simplex projection.** The proximal operator of the indicator of the probability simplex $\Delta = \{x \geq 0 : \sum_i x_i = 1\}$ is the Euclidean projection onto $\Delta$. This can be computed in $O(n \log n)$ time by sorting and thresholding (Duchi et al., 2008):
+
+```python
+def proj_simplex(x):
+    """Projection onto the probability simplex."""
+    n = len(x)
+    u = np.sort(x)[::-1]
+    cssv = np.cumsum(u) - 1.0
+    rho = np.nonzero(u * np.arange(1, n + 1) > cssv)[0][-1]
+    theta = cssv[rho] / (rho + 1.0)
+    return np.maximum(x - theta, 0.0)
+```
+
+![Proximal operator catalog: soft-thresholding, L2 projection, group soft-thresholding, simplex projection](/images/topics/proximal-methods/proximal-operators-catalog.png)
+
+---
+
+## The Moreau Envelope
+
+The proximal operator finds the minimizer of $f(x) + \frac{1}{2\lambda}\|x - v\|^2$. But what is the *value* of that minimum? This is the Moreau envelope — a smooth version of $f$ that serves as a theoretical bridge between non-smooth analysis and gradient-based reasoning.
+
+<TheoremBlock type="definition" number={3} title="The Moreau Envelope">
+Let $f : \mathbb{R}^n \to \mathbb{R} \cup \{+\infty\}$ be proper, closed, and convex. The **Moreau envelope** of $f$ with parameter $\lambda > 0$ is
+
+$$M_\lambda f(v) = \min_{x \in \mathbb{R}^n} \left\{ f(x) + \frac{1}{2\lambda}\|x - v\|^2 \right\} = f\!\left(\mathrm{prox}_{\lambda f}(v)\right) + \frac{1}{2\lambda}\left\|\mathrm{prox}_{\lambda f}(v) - v\right\|^2$$
+
+The Moreau envelope is always finite, continuous, and — crucially — differentiable, even when $f$ is not.
+</TheoremBlock>
+
+The parameter $\lambda$ controls the smoothing strength. When $\lambda$ is small, $M_\lambda f$ closely approximates $f$ (but with corners rounded off). When $\lambda$ is large, $M_\lambda f$ is a very smooth, gentle version of $f$. The infimal values are preserved: $\min M_\lambda f = \min f$, and the minimizers are the same.
+
+A beautiful special case: when $f(x) = |x|$, the Moreau envelope $M_\lambda |{\cdot}|$ is exactly the **Huber function** with parameter $\delta = \lambda$:
+
+$$M_\lambda |\cdot|(v) = \begin{cases} \frac{v^2}{2\lambda} & \text{if } |v| \leq \lambda \\ |v| - \frac{\lambda}{2} & \text{if } |v| > \lambda \end{cases}$$
+
+The Huber function is the standard "smooth $\ell_1$" used in robust regression — it's quadratic near zero and linear in the tails, and we now see that this arises naturally as the Moreau envelope.
+
+<TheoremBlock type="theorem" number={1} title="Gradient of the Moreau Envelope">
+For any proper, closed, convex function $f$ and $\lambda > 0$, the Moreau envelope $M_\lambda f$ is differentiable everywhere, with gradient
+
+$$\nabla M_\lambda f(v) = \frac{1}{\lambda}\left(v - \mathrm{prox}_{\lambda f}(v)\right)$$
+
+Moreover, $\nabla M_\lambda f$ is Lipschitz continuous with constant $1/\lambda$, so $M_\lambda f$ is $(1/\lambda)$-smooth.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $p(v) = \mathrm{prox}_{\lambda f}(v)$. By definition, $p(v)$ minimizes $h(x, v) = f(x) + \frac{1}{2\lambda}\|x - v\|^2$ over $x$. The envelope is $M_\lambda f(v) = h(p(v), v)$.
+
+By the envelope theorem (or direct computation), we differentiate with respect to $v$, using the fact that $p(v)$ is the minimizer (so the $\partial h / \partial x$ term vanishes at $x = p(v)$):
+
+$$\nabla_v M_\lambda f(v) = \frac{\partial h}{\partial v}\bigg|_{x = p(v)} = \frac{1}{\lambda}(v - p(v))$$
+
+For Lipschitz continuity: the proximal operator $p$ is firmly nonexpansive (a classical result), meaning $\|p(v_1) - p(v_2)\| \leq \|v_1 - v_2\|$. Therefore
+
+$$\|\nabla M_\lambda f(v_1) - \nabla M_\lambda f(v_2)\| = \frac{1}{\lambda}\|(v_1 - p(v_1)) - (v_2 - p(v_2))\| \leq \frac{2}{\lambda}\|v_1 - v_2\|$$
+
+A tighter analysis using firm nonexpansiveness gives the $1/\lambda$ constant.
+</TheoremBlock>
+
+This identity is remarkable: the gradient of the smooth envelope equals the **proximal residual** $\frac{1}{\lambda}(v - \mathrm{prox}_{\lambda f}(v))$, scaled by $1/\lambda$. When $v = x^*$ is a minimizer, the proximal operator is the identity ($x^* = \mathrm{prox}_{\lambda f}(x^*)$), and the gradient is zero — exactly what we expect.
+
+<MoreauEnvelopeExplorer client:visible />
+
+![The Moreau envelope: smoothing, Huber connection, and gradient comparison](/images/topics/proximal-methods/moreau-envelope.png)
+
+---
+
+## Proximal Gradient Descent
+
+Now we assemble the proximal operator into an optimization algorithm. The setting is **composite minimization** — the most important problem structure in modern convex optimization.
+
+<TheoremBlock type="definition" number={4} title="Composite Minimization">
+The **composite minimization** problem is
+
+$$\min_{x \in \mathbb{R}^n} F(x) = g(x) + h(x)$$
+
+where:
+- $g$ is convex and $L$-smooth (i.e., $\nabla g$ is Lipschitz with constant $L$: $\|\nabla g(x) - \nabla g(y)\| \leq L\|x - y\|$ for all $x, y$),
+- $h$ is convex but possibly non-smooth, with a cheaply computable proximal operator.
+</TheoremBlock>
+
+The canonical example is the Lasso: $g(x) = \frac{1}{2}\|Ax - b\|^2$ is smooth with $L = \lambda_{\max}(A^\top A)$, and $h(x) = \lambda\|x\|_1$ has the soft-thresholding proximal operator. But the framework covers much more — any problem where we can split the objective into a smooth part we can take gradients of and a structured part we can "prox."
+
+The **forward-backward splitting** algorithm alternates between a gradient step on $g$ (the "forward" step) and a proximal step on $h$ (the "backward" step):
+
+$$x_{k+1} = \mathrm{prox}_{\eta h}\!\left(x_k - \eta \nabla g(x_k)\right)$$
+
+where $\eta \in (0, 1/L]$ is the step size. Intuitively: first move in the negative gradient direction of $g$ (the smooth part), then apply the proximal operator of $h$ to "clean up" — projecting, thresholding, or whatever $h$ demands.
+
+When $h = 0$, the proximal step is the identity and we recover vanilla gradient descent. When $g = 0$, the gradient step is trivial and we get the **proximal point algorithm**. Forward-backward splitting is the natural hybrid.
+
+<TheoremBlock type="theorem" number={2} title="Convergence of Proximal Gradient Descent">
+Let $F = g + h$ where $g$ is convex and $L$-smooth, and $h$ is convex with a computable proximal operator. Let $\{x_k\}$ be the iterates of proximal gradient descent with step size $\eta = 1/L$. Then:
+
+1. **Convex case:** $F(x_k) - F(x^*) \leq \frac{L\|x_0 - x^*\|^2}{2k}$, giving a rate of $O(1/k)$.
+
+2. **Strongly convex case:** If $g$ is additionally $\mu$-strongly convex (with $\mu > 0$), then
+
+$$F(x_k) - F(x^*) \leq \left(1 - \frac{\mu}{L}\right)^k \left(F(x_0) - F(x^*)\right)$$
+
+giving linear convergence with rate governed by the condition number $\kappa = L/\mu$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof extends the Descent Lemma from [Gradient Descent & Convergence](/topics/gradient-descent). By $L$-smoothness of $g$:
+
+$$g(y) \leq g(x) + \langle \nabla g(x), y - x \rangle + \frac{L}{2}\|y - x\|^2$$
+
+Setting $x = x_k$ and $y = x_{k+1} = \mathrm{prox}_{\eta h}(x_k - \eta \nabla g(x_k))$ with $\eta = 1/L$, and using the optimality condition for the proximal step (which says $\frac{1}{\eta}(x_k - \eta \nabla g(x_k) - x_{k+1}) \in \partial h(x_{k+1})$), we obtain the sufficient decrease condition:
+
+$$F(x_{k+1}) \leq F(x) + \frac{1}{2\eta}\|x_k - x\|^2 - \frac{1}{2\eta}\|x_{k+1} - x\|^2$$
+
+for any $x$. Setting $x = x^*$ and summing from $k = 0$ to $K-1$:
+
+$$\sum_{k=0}^{K-1} \left(F(x_{k+1}) - F(x^*)\right) \leq \frac{1}{2\eta}\|x_0 - x^*\|^2$$
+
+Since $F(x_k)$ is non-increasing, $K \cdot (F(x_K) - F(x^*)) \leq \frac{L}{2}\|x_0 - x^*\|^2$, giving the $O(1/k)$ rate.
+
+For the strongly convex case, the additional quadratic lower bound $g(y) \geq g(x) + \langle \nabla g(x), y - x\rangle + \frac{\mu}{2}\|y - x\|^2$ gives a contraction factor of $(1 - \mu/L)$ per step, yielding linear convergence.
+</TheoremBlock>
+
+<ForwardBackwardExplorer client:visible />
+
+![Proximal gradient descent: forward-backward splitting trajectory, convergence, and sparse recovery](/images/topics/proximal-methods/proximal-gradient-descent.png)
+
+---
+
+## ISTA & Soft-Thresholding
+
+The **Iterative Shrinkage-Thresholding Algorithm** (ISTA) is proximal gradient descent applied to the Lasso. The name comes from the fact that the proximal step reduces to componentwise soft-thresholding — a "shrink and threshold" operation.
+
+<TheoremBlock type="proposition" number={4} title="ISTA for the Lasso">
+For the Lasso problem $\min_x \frac{1}{2}\|Ax - b\|^2 + \lambda\|x\|_1$, proximal gradient descent with step size $\eta = 1/L$ (where $L = \lambda_{\max}(A^\top A)$) reduces to:
+
+$$x_{k+1} = \mathcal{S}_{\eta\lambda}\!\left(x_k - \eta A^\top(Ax_k - b)\right)$$
+
+That is: take a gradient step on the smooth quadratic loss, then apply componentwise soft-thresholding with threshold $\eta\lambda$. The algorithm converges at rate $O(1/k)$ for the objective gap.
+</TheoremBlock>
+
+The two-step structure is transparent. The gradient step $x_k - \eta A^\top(Ax_k - b)$ moves toward fitting the data (minimizing $\|Ax - b\|^2$), and the soft-thresholding step $\mathcal{S}_{\eta\lambda}$ promotes sparsity by shrinking small coefficients to zero. The threshold $\eta\lambda$ balances the two goals: larger $\lambda$ means more thresholding and sparser solutions.
+
+```python
+# ISTA for Lasso
+L = np.linalg.eigvalsh(A.T @ A)[-1]  # Lipschitz constant
+eta = 1.0 / L
+x = np.zeros(p)
+
+for k in range(max_iter):
+    x_half = x - eta * A.T @ (A @ x - b)          # gradient step on g
+    x = soft_threshold(x_half, eta * lam_lasso)     # prox step on h
+```
+
+**The regularization path.** As $\lambda$ varies from large to small, the ISTA solution traces a path from zero (complete sparsity) to the least-squares solution (no regularization). This path reveals which features enter the model first — the most important predictors appear at larger $\lambda$ values. Computing the full regularization path is a standard diagnostic for choosing $\lambda$ in practice.
+
+![ISTA: soft-thresholding, regularization path, and sparsity vs regularization strength](/images/topics/proximal-methods/ista-soft-thresholding.png)
+
+---
+
+## FISTA: Accelerated Proximal Gradient
+
+ISTA's $O(1/k)$ rate is the same as vanilla gradient descent on smooth problems. Can we accelerate it, the way Nesterov acceleration improves gradient descent from $O(1/k)$ to $O(1/k^2)$? The answer is yes, and the result is **FISTA** — the Fast Iterative Shrinkage-Thresholding Algorithm of Beck & Teboulle (2009).
+
+<TheoremBlock type="theorem" number={3} title="FISTA Convergence Rate">
+The FISTA algorithm, defined by the updates
+
+$$y_k = x_k + \frac{t_{k-1} - 1}{t_k}(x_k - x_{k-1})$$
+$$x_{k+1} = \mathrm{prox}_{\eta h}\!\left(y_k - \eta \nabla g(y_k)\right)$$
+$$t_{k+1} = \frac{1 + \sqrt{1 + 4t_k^2}}{2}$$
+
+with $t_0 = 1$, converges at rate
+
+$$F(x_k) - F(x^*) \leq \frac{2L\|x_0 - x^*\|^2}{(k+1)^2}$$
+
+This is $O(1/k^2)$ — optimal for first-order methods on the composite class.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof follows Nesterov's estimation sequence technique, adapted to the composite setting. The key is the momentum schedule $t_k$ satisfying $t_k^2 - t_k \leq t_{k-1}^2$, which ensures the sequence $t_k$ grows as $t_k \sim k/2$ for large $k$.
+
+Define the Lyapunov function $E_k = t_k^2(F(x_k) - F(x^*)) + \frac{L}{2}\|u_k - x^*\|^2$, where $u_k = x_{k-1} + t_k(x_k - x_{k-1})$. Using the sufficient decrease property from the proximal gradient step and the momentum relation, one shows $E_{k+1} \leq E_k$. Since $E_0 = F(x_0) - F(x^*) + \frac{L}{2}\|x_0 - x^*\|^2$, we get
+
+$$t_k^2(F(x_k) - F(x^*)) \leq E_0 \leq \frac{L}{2}\|x_0 - x^*\|^2 + (F(x_0) - F(x^*))$$
+
+and since $t_k \geq (k+1)/2$, the $O(1/k^2)$ bound follows.
+</TheoremBlock>
+
+The momentum schedule $t_{k+1} = \frac{1 + \sqrt{1 + 4t_k^2}}{2}$ is the signature feature. As $k \to \infty$, the momentum coefficient $(t_{k-1} - 1)/t_k \to 1$, meaning the extrapolation step becomes increasingly aggressive. This is why FISTA trajectories can *overshoot* — the momentum pushes past the current iterate, trading local stability for faster global convergence.
+
+```python
+# FISTA for Lasso
+x = np.zeros(p)
+x_prev = x.copy()
+t_k = 1.0
+
+for k in range(max_iter):
+    t_next = (1 + np.sqrt(1 + 4 * t_k**2)) / 2
+    y = x + ((t_k - 1) / t_next) * (x - x_prev)   # momentum extrapolation
+    x_prev = x.copy()
+    x_half = y - eta * A.T @ (A @ y - b)            # gradient step on g (at y)
+    x = soft_threshold(x_half, eta * lam_lasso)      # prox step on h
+    t_k = t_next
+```
+
+**When does acceleration matter?** The gap between $O(1/k)$ and $O(1/k^2)$ is most dramatic when high accuracy is needed — to reach $\epsilon = 10^{-6}$, ISTA needs $O(1/\epsilon)$ iterations while FISTA needs $O(1/\sqrt{\epsilon})$. For well-conditioned problems or moderate accuracy, ISTA may suffice. For ill-conditioned sparse recovery or high-precision scientific computing, FISTA's speedup is substantial.
+
+<FISTAExplorer client:visible />
+
+![FISTA acceleration: ISTA vs FISTA convergence, momentum schedule, and trajectory comparison](/images/topics/proximal-methods/fista-acceleration.png)
+
+---
+
+## Douglas–Rachford Splitting
+
+Forward-backward splitting requires one term to be smooth (so we can compute its gradient). What if *both* terms are non-smooth? This is the setting for **Douglas–Rachford splitting**.
+
+<TheoremBlock type="definition" number={5} title="Douglas–Rachford Splitting">
+To minimize $f(x) + g(x)$ where both $f$ and $g$ are proper, closed, convex (but possibly non-smooth) with computable proximal operators, the **Douglas–Rachford** (DR) update is:
+
+$$y_{k+1} = \mathrm{prox}_{\gamma f}(z_k)$$
+$$z_{k+1} = z_k + \mathrm{prox}_{\gamma g}(2y_{k+1} - z_k) - y_{k+1}$$
+
+where $\gamma > 0$ is a step-size parameter. The iterates $y_k$ converge to a minimizer of $f + g$.
+</TheoremBlock>
+
+The variable $z_k$ is an auxiliary "shadow" variable — it doesn't converge to the solution itself, but the $y_k$ iterates do. The second update can be rewritten as $z_{k+1} = z_k + R_g \circ R_f(z_k)$ where $R_f(z) = 2\mathrm{prox}_f(z) - z$ is the *reflected proximal operator* (or "reflection"). Douglas–Rachford is thus an averaged iteration of composed reflections — a deeply geometric operation.
+
+The canonical application is **basis pursuit**: minimize $\|x\|_1$ subject to $Ax = b$ (exact sparse recovery). Setting $f(x) = \|x\|_1$ and $g(x) = \iota_{\{Ax = b\}}(x)$, both are non-smooth, but both have cheap proximal operators — soft-thresholding for $f$ and projection onto the affine subspace for $g$.
+
+<TheoremBlock type="theorem" number={4} title="Convergence of Douglas–Rachford Splitting">
+Let $f, g$ be proper, closed, convex functions with $\mathrm{dom}\, f \cap \mathrm{dom}\, g \neq \emptyset$. Then for any $z_0 \in \mathbb{R}^n$ and $\gamma > 0$, the Douglas–Rachford iterates satisfy:
+
+1. $y_k = \mathrm{prox}_{\gamma f}(z_k)$ converges to a minimizer $x^*$ of $f + g$.
+2. The convergence rate for the objective gap is $O(1/k)$.
+</TheoremBlock>
+
+```python
+# Douglas-Rachford for basis pursuit: min ||x||_1 s.t. Ax = b
+AAt_inv = np.linalg.inv(A @ A.T)
+def proj_affine(x):
+    return x + A.T @ AAt_inv @ (b - A @ x)
+
+gamma = 1.0
+z = np.zeros(p)
+for k in range(max_iter):
+    y = soft_threshold(z, gamma)                    # prox_f
+    r = proj_affine(2 * y - z)                      # prox_g(reflected)
+    z = z + r - y                                   # shadow update
+# y is the solution
+```
+
+![Douglas–Rachford splitting: 2D geometry, convergence, and basis pursuit recovery](/images/topics/proximal-methods/douglas-rachford.png)
+
+---
+
+## ADMM
+
+The **Alternating Direction Method of Multipliers** (ADMM) is the most widely used splitting method in practice. It handles the general constrained formulation $\min f(x) + g(z) \text{ s.t. } Ax + Bz = c$ by augmenting the Lagrangian with a quadratic penalty.
+
+<TheoremBlock type="definition" number={6} title="ADMM Update">
+For the **consensus problem** $\min f(x) + g(z) \text{ subject to } x = z$, the ADMM updates (in scaled form) are:
+
+$$x_{k+1} = \mathrm{prox}_{f/\rho}(z_k - u_k) \qquad \text{[x-update]}$$
+$$z_{k+1} = \mathrm{prox}_{g/\rho}(x_{k+1} + u_k) \qquad \text{[z-update]}$$
+$$u_{k+1} = u_k + x_{k+1} - z_{k+1} \qquad \text{[dual update]}$$
+
+where $\rho > 0$ is the **penalty parameter** and $u$ is the scaled dual variable (the Lagrange multiplier divided by $\rho$).
+</TheoremBlock>
+
+For the Lasso via ADMM, we set $f(x) = \frac{1}{2}\|Ax - b\|^2$ and $g(z) = \lambda\|z\|_1$ with the constraint $x = z$. The $x$-update requires solving a linear system $(A^\top A + \rho I)x = A^\top b + \rho(z - u)$, the $z$-update is soft-thresholding, and the $u$-update is a simple addition.
+
+```python
+# ADMM for Lasso
+rho = 1.0
+AtA_rho_inv = np.linalg.inv(A.T @ A + rho * np.eye(p))
+Atb = A.T @ b
+
+x, z, u = np.zeros(p), np.zeros(p), np.zeros(p)
+for k in range(max_iter):
+    x = AtA_rho_inv @ (Atb + rho * (z - u))              # x-update
+    z_old = z.copy()
+    z = soft_threshold(x + u, lam_lasso / rho)            # z-update
+    u = u + x - z                                          # dual update
+
+    primal_res = np.linalg.norm(x - z)                    # primal residual
+    dual_res = rho * np.linalg.norm(z - z_old)            # dual residual
+```
+
+**Convergence monitoring.** ADMM convergence is tracked via two residuals:
+- **Primal residual** $r_k = \|x_k - z_k\|$ — measures constraint violation (how far $x$ and $z$ are from consensus).
+- **Dual residual** $s_k = \rho\|z_k - z_{k-1}\|$ — measures dual variable change (stationarity of the Lagrangian).
+
+The algorithm converges when both residuals are small. The standard stopping criterion is $r_k < \epsilon^{\mathrm{pri}}$ and $s_k < \epsilon^{\mathrm{dual}}$.
+
+**Sensitivity to $\rho$.** The penalty parameter $\rho$ has a significant effect on convergence speed but does not affect the final solution. Small $\rho$ favors fast primal convergence (the $x$ and $z$ updates are more independent), while large $\rho$ favors fast dual convergence (the constraint is enforced more aggressively). In practice, adaptive $\rho$ schemes that increase $\rho$ when the primal residual is large and decrease it when the dual residual is large can dramatically improve convergence.
+
+<TheoremBlock type="remark">
+**ADMM as Douglas–Rachford on the dual.** ADMM applied to the consensus problem $\min f(x) + g(z)$ s.t. $x = z$ is equivalent to applying Douglas–Rachford splitting to the **dual problem**. This explains why both methods achieve an $O(1/k)$ convergence rate and why the penalty parameter $\rho$ in ADMM plays the same role as the step-size parameter $\gamma$ in DR. The primal-dual structure of ADMM provides richer convergence diagnostics (two residuals instead of one), which is a practical advantage.
+</TheoremBlock>
+
+<ADMMExplorer client:visible />
+
+![ADMM: algorithm comparison, primal-dual residuals, and sensitivity to penalty parameter rho](/images/topics/proximal-methods/admm.png)
+
+---
+
+## Convergence Analysis
+
+We now have four splitting algorithms — ISTA, FISTA, Douglas–Rachford, and ADMM — each designed for a different problem structure. The following table summarizes the convergence landscape:
+
+| Algorithm | Setting | Rate (convex) | Rate (strongly convex, $\mu > 0$) |
+|-----------|---------|---------------|-------------------------------------|
+| ISTA (Proximal Gradient) | $g$ smooth + $h$ prox-friendly | $O(LR^2/k)$ | $(1 - \mu/L)^k$ (linear) |
+| FISTA (Accelerated) | $g$ smooth + $h$ prox-friendly | $O(LR^2/k^2)$ (optimal) | $(1 - \sqrt{\mu/L})^k$ (linear, faster) |
+| Douglas–Rachford | both non-smooth, both prox-friendly | $O(1/k)$ | — |
+| ADMM | consensus/splitting form | $O(1/k)$ | — |
+
+Here $L$ is the smoothness constant of $g$, $R = \|x_0 - x^*\|$ is the initial distance, $\mu$ is the strong convexity parameter, and $\kappa = L/\mu$ is the condition number.
+
+**Key observations:**
+
+1. **FISTA is always at least as fast as ISTA**, and strictly faster when the target accuracy $\epsilon$ is small. The gap widens as $\kappa$ grows: ISTA needs $O(\kappa \log(1/\epsilon))$ iterations while FISTA needs $O(\sqrt{\kappa}\log(1/\epsilon))$.
+
+2. **Strong convexity accelerates both ISTA and FISTA** from sublinear to linear convergence. The practical message: if you know your problem is strongly convex, the convergence is exponentially faster.
+
+3. **ADMM and DR have the same theoretical rate** ($O(1/k)$), but ADMM is often faster in practice because it exploits the structure of the consensus formulation and allows per-variable parallelism.
+
+4. **Condition number dependence is the bottleneck.** For all these methods, ill-conditioned problems (large $\kappa$) converge slowly. Preconditioning — transforming the problem to reduce $\kappa$ — is often more effective than switching algorithms.
+
+![Convergence analysis: rate comparison, iterations-to-accuracy, and actual convergence on Lasso](/images/topics/proximal-methods/convergence-analysis.png)
+
+---
+
+## Computational Notes
+
+We close with a full implementation of proximal gradient descent with Armijo backtracking — the version you'd actually use in practice, with convergence diagnostics.
+
+**Backtracking step size selection.** Instead of computing $L = \lambda_{\max}(A^\top A)$ exactly (which requires an eigendecomposition), backtracking finds a suitable step size adaptively. Starting from an initial estimate $L_{\text{est}}$, it doubles $L_{\text{est}}$ until the sufficient decrease condition is satisfied:
+
+$$g(x_{k+1}) \leq g(y) + \langle \nabla g(y), x_{k+1} - y \rangle + \frac{L_{\text{est}}}{2}\|x_{k+1} - y\|^2$$
+
+This ensures the step size is never too large while allowing it to be larger than $1/L$ when the local curvature is smaller.
+
+```python
+def proximal_gradient_bt(A, b, lam, x0=None, max_iter=500, tol=1e-8,
+                          accelerated=False, verbose=False):
+    """
+    Proximal gradient for Lasso: min (1/2)||Ax-b||^2 + lam*||x||_1
+    with Armijo backtracking for step size selection.
+
+    Parameters
+    ----------
+    A : (n, p) array
+    b : (n,) array
+    lam : float, regularization parameter
+    x0 : initial point (default: zeros)
+    max_iter : max iterations
+    tol : stopping tolerance on relative change
+    accelerated : if True, use FISTA momentum
+
+    Returns
+    -------
+    x : solution
+    info : dict with convergence diagnostics
+    """
+    n_obs, p_dim = A.shape
+    if x0 is None:
+        x0 = np.zeros(p_dim)
+
+    x = x0.copy()
+    x_prev = x.copy()
+    t_k = 1.0
+    L_est = 1.0
+
+    AtA = A.T @ A
+    Atb_vec = A.T @ b
+
+    info = {'f_vals': [], 'grad_norms': [], 'step_sizes': [], 'nnz': []}
+
+    def f_smooth(x):
+        r = A @ x - b
+        return 0.5 * np.dot(r, r)
+
+    def grad_smooth(x):
+        return AtA @ x - Atb_vec
+
+    def F_obj(x):
+        return f_smooth(x) + lam * np.linalg.norm(x, 1)
+
+    for k in range(max_iter):
+        if accelerated and k > 0:
+            t_next = (1 + np.sqrt(1 + 4 * t_k**2)) / 2
+            y = x + ((t_k - 1) / t_next) * (x - x_prev)
+            t_k = t_next
+        else:
+            y = x
+
+        g = grad_smooth(y)
+        f_y = f_smooth(y)
+
+        # Backtracking: find step size that satisfies descent condition
+        while True:
+            eta_k = 1.0 / L_est
+            x_new = soft_threshold(y - eta_k * g, eta_k * lam)
+            f_new = f_smooth(x_new)
+            d = x_new - y
+            if f_new <= f_y + np.dot(g, d) + (L_est / 2) * np.dot(d, d):
+                break
+            L_est *= 2
+
+        # Adaptive decrease of L_est for efficiency
+        if k % 10 == 0 and L_est > 1.0:
+            L_est *= 0.8
+
+        x_prev = x.copy()
+        x = x_new
+
+        info['f_vals'].append(F_obj(x))
+        info['grad_norms'].append(np.linalg.norm(g))
+        info['step_sizes'].append(eta_k)
+        info['nnz'].append(np.sum(np.abs(x) > 1e-8))
+
+        # Stopping criterion: relative change
+        if k > 0 and abs(info['f_vals'][-1] - info['f_vals'][-2]) < tol * abs(info['f_vals'][-2]):
+            break
+
+    return x, info
+```
+
+**Convergence diagnostics.** A well-implemented proximal gradient solver tracks four quantities:
+1. **Objective value** $F(x_k)$ — should decrease monotonically (for ISTA; FISTA may oscillate).
+2. **Gradient norm** $\|\nabla g(x_k)\|$ — measures how close the smooth part is to stationarity.
+3. **Step size** $\eta_k$ — should stabilize; rapid changes indicate numerical issues.
+4. **Sparsity** $\|x_k\|_0$ (number of nonzeros) — should converge to a stable support.
+
+![Computational notes: backtracking, convergence diagnostics, and stopping criteria](/images/topics/proximal-methods/computational-notes.png)
+
+---
+
+## Connections & Further Reading
+
+Proximal methods sit at the intersection of convex analysis, gradient-based optimization, and linear algebra — drawing on the foundations of the first two topics in the Optimization track and connecting forward to constrained optimization.
+
+| Topic | Connection |
+|-------|-----------|
+| **[Convex Analysis](/topics/convex-analysis)** | Every proximal operator solves a convex minimization problem. The subdifferential optimality condition $0 \in \partial f(x^*)$ becomes the fixed-point condition $x^* = \mathrm{prox}_f(x^*)$. Conjugate functions and the Moreau envelope are dual objects connected by the Fenchel–Moreau theorem. |
+| **[Gradient Descent & Convergence](/topics/gradient-descent)** | Proximal gradient descent generalizes gradient descent to composite objectives $F = g + h$. When $h = 0$, the proximal step reduces to the identity and we recover vanilla GD. The convergence analysis parallels the Descent Lemma, and FISTA inherits Nesterov's momentum machinery. Mirror descent from GD is a special case of the proximal point algorithm with Bregman divergence. |
+| **[The Spectral Theorem](/topics/spectral-theorem)** | The condition number $\kappa = L/\mu$ that governs proximal gradient convergence involves eigenvalues of the Hessian. For quadratic $g(x) = \frac{1}{2}x^\top A x$, the Spectral Theorem gives the eigendecomposition that determines $L$ and $\mu$. |
+| **[Singular Value Decomposition](/topics/svd)** | The proximal operator of the nuclear norm $\|X\|_* = \sum \sigma_i$ requires computing the SVD and applying soft-thresholding to the singular values — the *singular value thresholding* operator, which is the key subroutine in low-rank matrix recovery. |
+| **Lagrangian Duality & KKT** *(coming soon)* | ADMM is a dual decomposition method: it applies Douglas–Rachford to the dual of the consensus problem. The KKT conditions generalize the fixed-point characterization $0 \in \partial f(x^*)$ to constrained settings. |
+
+### The Optimization Track
+
+```
+Convex Analysis
+    ├── Gradient Descent & Convergence
+    │       └── Proximal Methods (this topic)
+    └── Lagrangian Duality & KKT
+```
