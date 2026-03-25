@@ -1,0 +1,605 @@
+---
+title: "Smooth Manifolds"
+subtitle: "Charts, tangent spaces, and the language of calculus on curved spaces"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "spectral-theorem"
+  - "simplicial-complexes"
+tags:
+  - "differential-geometry"
+  - "manifolds"
+  - "tangent-spaces"
+  - "smooth-maps"
+  - "charts-and-atlases"
+domain: "geometry"
+videoId: null
+notebookPath: "notebooks/smooth-manifolds/01_smooth_manifolds.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/smooth-manifolds.mdx"
+datePublished: 2026-03-25
+estimatedReadTime: 50
+abstract: "Smooth manifolds formalize the idea of a space that is locally Euclidean but globally curved — the setting where calculus, linear algebra, and topology converge. We build the theory from coordinate charts and atlases, which encode how to do calculus on curved spaces by transferring computations to flat Euclidean patches. Smooth compatibility of transition maps ensures that the notion of differentiability is chart-independent. Tangent vectors, defined as derivations on smooth functions, organize into tangent spaces that recover the linear algebra of the Spectral Theorem at every point. The differential (pushforward) of a smooth map generalizes the Jacobian to manifold-valued maps, and diffeomorphisms capture when two manifolds are 'the same' as smooth objects. Partitions of unity provide the technical bridge from local constructions to global results. The Whitney embedding theorem guarantees that every abstract manifold lives inside some Euclidean space, connecting the intrinsic and extrinsic viewpoints."
+connections:
+  - topic: "spectral-theorem"
+    relationship: "The tangent space at each point of an n-manifold is an n-dimensional real vector space. Inner products on tangent spaces (Riemannian metrics) produce symmetric bilinear forms whose analysis relies on the Spectral Theorem — eigenvalues of the metric tensor encode principal curvatures."
+  - topic: "simplicial-complexes"
+    relationship: "Simplicial complexes provide a combinatorial model of topological spaces. Smooth manifolds can be triangulated into simplicial complexes, connecting the combinatorial topology of homology with the differential topology of tangent spaces and smooth maps."
+  - topic: "svd"
+    relationship: "The differential (pushforward) of a smooth map between manifolds is a linear map between tangent spaces. Its SVD reveals how the map stretches and rotates infinitesimal neighborhoods — the singular values are the principal stretches."
+  - topic: "pca-low-rank"
+    relationship: "PCA on data sampled from a manifold estimates the tangent space at a point. Tangent-space PCA is the foundation of local dimensionality reduction methods like local PCA and manifold learning algorithms."
+references:
+  - type: "book"
+    title: "Introduction to Smooth Manifolds"
+    authors: "Lee"
+    year: 2013
+    note: "Chapters 1-5: The primary graduate reference for smooth manifolds, charts, tangent spaces, and smooth maps"
+  - type: "book"
+    title: "An Introduction to Manifolds"
+    authors: "Tu"
+    year: 2011
+    note: "Chapters 1-8: Accessible undergraduate-to-graduate treatment with careful exposition of tangent vectors as derivations"
+  - type: "book"
+    title: "Differential Geometry: Connections, Curvature, and Characteristic Classes"
+    authors: "Tu"
+    year: 2017
+    note: "Chapter 1: Smooth manifolds review, connecting to vector bundles and curvature"
+  - type: "book"
+    title: "Foundations of Differential Geometry, Vol. I"
+    authors: "Kobayashi & Nomizu"
+    year: 1963
+    note: "Chapter I: Differentiable manifolds — the classical reference for the foundations"
+  - type: "paper"
+    title: "The Easy Part of the Whitney Embedding Theorem"
+    authors: "Shastri"
+    year: 2011
+    url: "https://doi.org/10.1007/978-1-4419-9982-5_10"
+    note: "Clean proof of the weak Whitney embedding theorem (2n+1 dimensions) used in exposition"
+  - type: "paper"
+    title: "Manifold Learning: What, How, and Why"
+    authors: "Izenman"
+    year: 2012
+    url: "https://doi.org/10.1146/annurev-statistics-031017-100332"
+    note: "Connects smooth manifold theory to modern dimensionality reduction and manifold learning in data science"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ChartAtlasExplorer from '../../components/viz/ChartAtlasExplorer.tsx';
+import TangentSpaceExplorer from '../../components/viz/TangentSpaceExplorer.tsx';
+import SmoothMapExplorer from '../../components/viz/SmoothMapExplorer.tsx';
+import ManifoldGalleryExplorer from '../../components/viz/ManifoldGalleryExplorer.tsx';
+
+## Overview & Motivation
+
+The Earth is round, but every map you have ever used is flat. A navigator's chart takes a patch of the globe — say, the North Atlantic — and lays it out on a plane where you can draw straight lines, measure distances with a ruler, and do Euclidean geometry. A different chart covers the South Pacific. Where the charts overlap, a *transition map* tells you how to convert coordinates from one chart to the other. The key insight: as long as these transition maps are smooth, you can do calculus on the sphere by doing calculus on the flat charts and translating back.
+
+This is exactly what a smooth manifold is: a space that is *locally Euclidean* — every point has a neighborhood that looks like a patch of $\mathbb{R}^n$ — with a collection of charts whose transitions are smooth. The definition captures an enormous family of spaces: spheres, tori, the configuration space of a robot arm, the space of probability distributions in statistics, and the parameter spaces of neural networks.
+
+Why should an ML practitioner care? Three reasons.
+
+1. **Data lives on manifolds.** High-dimensional datasets often concentrate near lower-dimensional curved surfaces. Manifold learning algorithms (Isomap, LLE, t-SNE, UMAP) assume this structure explicitly. Understanding the tangent space at a point is the first step toward understanding local geometry, and tangent-space PCA ([PCA & Low-Rank Approximation](/topics/pca-low-rank)) is the workhorse of local dimensionality reduction.
+
+2. **Optimization happens on manifolds.** Constraints force parameters onto curved spaces — orthogonal matrices form the manifold $\mathrm{O}(n)$, positive-definite matrices form an open cone, and probability simplices are manifolds with boundary. Riemannian optimization generalizes gradient descent to these settings, and the theory starts here.
+
+3. **Information geometry is manifold geometry.** The space of parametric probability distributions is a smooth manifold, and the Fisher information metric turns it into a *Riemannian* manifold. The natural gradient, KL divergence, and the geometry of exponential families all live in this framework — but the foundations require smooth manifolds, tangent spaces, and the differential.
+
+### What We Cover
+
+1. **Topological Manifolds** — the definition: locally Euclidean, Hausdorff, second-countable.
+2. **Charts and Atlases** — coordinate charts, transition maps, and smooth compatibility.
+3. **Smooth Manifolds** — smooth atlases, maximal atlases, and the smooth structure.
+4. **A Gallery of Smooth Manifolds** — spheres, tori, projective spaces, and matrix Lie groups.
+5. **Smooth Maps & Diffeomorphisms** — smoothness via charts, the inverse function theorem on manifolds.
+6. **Tangent Vectors & Tangent Spaces** — derivations, the tangent space as a vector space, coordinate bases.
+7. **The Differential (Pushforward)** — the derivative of maps between manifolds, the chain rule, immersions and submersions.
+8. **Partitions of Unity** — gluing local constructions into global ones.
+9. **Computational Notes** — stereographic projection code, symbolic tangent vectors, numerical tangent space estimation.
+10. **The Whitney Embedding Theorem & Connections** — every manifold embeds in Euclidean space; connections to the rest of formalML.
+
+The prerequisites are the [Spectral Theorem](/topics/spectral-theorem) (for the linear algebra of tangent spaces) and [Simplicial Complexes](/topics/simplicial-complexes) (for the topological intuition). We assume familiarity with multivariable calculus and basic point-set topology (open sets, continuity, homeomorphisms).
+
+---
+
+## Topological Manifolds
+
+Before we can talk about smooth structure, we need the underlying topological space to behave well. A topological manifold is a space that *locally* looks like Euclidean space and has enough topological regularity to support analysis.
+
+<TheoremBlock type="definition" number={1} title="Topological Manifold">
+A **topological manifold** of dimension $n$ is a topological space $M$ that satisfies three conditions:
+
+1. **Hausdorff:** For any two distinct points $p, q \in M$, there exist disjoint open sets $U \ni p$ and $V \ni q$.
+2. **Second-countable:** $M$ has a countable basis for its topology.
+3. **Locally Euclidean of dimension $n$:** Every point $p \in M$ has an open neighborhood $U$ that is homeomorphic to an open subset of $\mathbb{R}^n$.
+</TheoremBlock>
+
+The Hausdorff condition rules out pathological spaces like the "line with two origins," where two points cannot be separated by open sets. Second-countability ensures that the topology is not too large — it guarantees the existence of partitions of unity (which we will need later) and makes the space paracompact.
+
+The heart of the definition is condition (3): local Euclideanness. Around every point $p$, we can find a neighborhood that "looks like" a piece of $\mathbb{R}^n$. The homeomorphism is a coordinate system — it assigns $n$ real numbers to each point near $p$.
+
+**Examples.**
+- $\mathbb{R}^n$ is an $n$-dimensional topological manifold: take $U = \mathbb{R}^n$ and the identity map.
+- The circle $S^1 = \{(x,y) \in \mathbb{R}^2 : x^2 + y^2 = 1\}$ is a 1-manifold: every point has a small arc around it that is homeomorphic to an open interval in $\mathbb{R}$.
+- The sphere $S^2$ is a 2-manifold: every point has a small cap homeomorphic to a disk in $\mathbb{R}^2$.
+- Any open subset of $\mathbb{R}^n$ is an $n$-manifold (open subsets of manifolds are manifolds).
+
+**Non-examples.**
+- A figure-eight (two circles sharing a point) is *not* a manifold: at the crossing point, no neighborhood is homeomorphic to an interval — it looks like a cross, not a line segment.
+- A cone with its apex is not a 2-manifold at the apex: the apex has no neighborhood homeomorphic to an open disk.
+
+![Topological manifolds: locally Euclidean neighborhoods, examples and non-examples](/images/topics/smooth-manifolds/topological-manifolds.png)
+
+---
+
+## Charts and Atlases
+
+A topological manifold tells us that coordinate systems *exist* locally. We now formalize what a coordinate system is and what happens where two coordinate systems overlap.
+
+<TheoremBlock type="definition" number={2} title="Chart (Coordinate Chart)">
+A **chart** on a topological manifold $M$ is a pair $(U, \varphi)$ where $U \subseteq M$ is an open set and $\varphi : U \to \hat{U} \subseteq \mathbb{R}^n$ is a homeomorphism onto an open subset $\hat{U}$ of $\mathbb{R}^n$. The set $U$ is the **coordinate neighborhood** (or **chart domain**), and $\varphi$ is the **coordinate map**. For a point $p \in U$, the components $\varphi(p) = (x^1(p), \ldots, x^n(p))$ are the **local coordinates** of $p$.
+</TheoremBlock>
+
+A single chart rarely covers the entire manifold. The sphere $S^2$, for instance, cannot be covered by a single chart — there is no homeomorphism from $S^2$ to an open subset of $\mathbb{R}^2$ (a topological obstruction: $S^2$ is compact, and open subsets of $\mathbb{R}^2$ are not). We need multiple charts, and we need them to be compatible where they overlap.
+
+<TheoremBlock type="definition" number={3} title="Atlas">
+An **atlas** on $M$ is a collection $\mathcal{A} = \{(U_\alpha, \varphi_\alpha)\}_{\alpha \in A}$ of charts such that the chart domains cover $M$:
+
+$$\bigcup_{\alpha \in A} U_\alpha = M$$
+</TheoremBlock>
+
+Where two charts $(U_\alpha, \varphi_\alpha)$ and $(U_\beta, \varphi_\beta)$ overlap — that is, when $U_\alpha \cap U_\beta \neq \emptyset$ — we can ask: how do the two coordinate systems relate? The answer is the **transition map**.
+
+The transition map from chart $\alpha$ to chart $\beta$ is the composite
+
+$$\varphi_\beta \circ \varphi_\alpha^{-1} : \varphi_\alpha(U_\alpha \cap U_\beta) \to \varphi_\beta(U_\alpha \cap U_\beta)$$
+
+This is a map between open subsets of $\mathbb{R}^n$ — familiar territory where we know exactly what "smooth" means. The smoothness of the transition maps is what will let us do calculus on $M$.
+
+<TheoremBlock type="definition" number={4} title="Smoothly Compatible Charts">
+Two charts $(U_\alpha, \varphi_\alpha)$ and $(U_\beta, \varphi_\beta)$ on $M$ are **smoothly compatible** if either $U_\alpha \cap U_\beta = \emptyset$, or the transition map
+
+$$\varphi_\beta \circ \varphi_\alpha^{-1} : \varphi_\alpha(U_\alpha \cap U_\beta) \to \varphi_\beta(U_\alpha \cap U_\beta)$$
+
+is a $C^\infty$ diffeomorphism (smooth with smooth inverse) between open subsets of $\mathbb{R}^n$.
+</TheoremBlock>
+
+**Worked example: Stereographic projection on $S^2$.** The stereographic atlas for the sphere uses two charts:
+
+- **North pole chart** $(U_N, \varphi_N)$: the domain $U_N = S^2 \setminus \{N\}$ is everything except the north pole $N = (0, 0, 1)$. The map projects from the north pole onto the equatorial plane:
+
+$$\varphi_N(x, y, z) = \left(\frac{x}{1 - z},\; \frac{y}{1 - z}\right)$$
+
+- **South pole chart** $(U_S, \varphi_S)$: the domain $U_S = S^2 \setminus \{S\}$ is everything except the south pole $S = (0, 0, -1)$. The map projects from the south pole:
+
+$$\varphi_S(x, y, z) = \left(\frac{x}{1 + z},\; \frac{y}{1 + z}\right)$$
+
+The overlap is $U_N \cap U_S = S^2 \setminus \{N, S\}$ — the sphere minus both poles. The transition map $\varphi_S \circ \varphi_N^{-1}$ acts on $(u, v) \in \mathbb{R}^2 \setminus \{0\}$ by:
+
+$$\varphi_S \circ \varphi_N^{-1}(u, v) = \frac{(u, v)}{u^2 + v^2}$$
+
+This is the **inversion map** — smooth (and in fact real-analytic) on $\mathbb{R}^2 \setminus \{0\}$, with itself as its own inverse. The two charts are smoothly compatible, so $\{(U_N, \varphi_N), (U_S, \varphi_S)\}$ is a smooth atlas on $S^2$.
+
+<ChartAtlasExplorer client:visible />
+
+![Charts and transition maps on the sphere: stereographic projection from the north and south poles, with the inversion transition map](/images/topics/smooth-manifolds/charts-transition-maps.png)
+
+---
+
+## Smooth Manifolds
+
+We now have all the ingredients to define the central object.
+
+<TheoremBlock type="definition" number={5} title="Smooth Atlas">
+An atlas $\mathcal{A} = \{(U_\alpha, \varphi_\alpha)\}$ on $M$ is a **smooth atlas** if every pair of charts in $\mathcal{A}$ is smoothly compatible — that is, all transition maps $\varphi_\beta \circ \varphi_\alpha^{-1}$ are $C^\infty$ diffeomorphisms.
+</TheoremBlock>
+
+A smooth atlas specifies how to do calculus on $M$: a function $f : M \to \mathbb{R}$ is "smooth" if, for every chart $(U, \varphi)$ in the atlas, the composite $f \circ \varphi^{-1} : \hat{U} \to \mathbb{R}$ is a smooth function on an open subset of $\mathbb{R}^n$. But there is a subtlety: different smooth atlases might define the same notion of "smooth function." Two smooth atlases $\mathcal{A}$ and $\mathcal{A}'$ are **compatible** if their union $\mathcal{A} \cup \mathcal{A}'$ is also a smooth atlas. Compatible atlases define the same calculus, so we want to identify them.
+
+The cleanest way to do this is to take the *maximal* atlas: the collection of *all* charts that are smoothly compatible with a given atlas.
+
+<TheoremBlock type="definition" number={6} title="Smooth Manifold">
+A **smooth manifold** is a pair $(M, \mathcal{A}_{\max})$ where $M$ is a topological manifold and $\mathcal{A}_{\max}$ is a **maximal smooth atlas** — a smooth atlas that is not properly contained in any larger smooth atlas. The maximal atlas $\mathcal{A}_{\max}$ is called the **smooth structure** on $M$.
+</TheoremBlock>
+
+In practice, we never write down the maximal atlas explicitly. We specify a smooth atlas $\mathcal{A}$, and the maximal atlas is the unique one containing $\mathcal{A}$: it consists of all charts that are smoothly compatible with every chart in $\mathcal{A}$. Two smooth atlases determine the same smooth structure if and only if their union is still a smooth atlas.
+
+**When do two atlases give different smooth structures?** Consider $\mathbb{R}$ with two atlases:
+- $\mathcal{A}_1 = \{(\mathbb{R}, \mathrm{id})\}$ — the identity chart.
+- $\mathcal{A}_2 = \{(\mathbb{R}, \psi)\}$ where $\psi(x) = x^3$.
+
+The transition map $\psi \circ \mathrm{id}^{-1}(t) = t^3$ is smooth, but its inverse $t \mapsto t^{1/3}$ is *not* smooth at $t = 0$ (the derivative blows up). So $\mathcal{A}_1$ and $\mathcal{A}_2$ are *not compatible* — they define different smooth structures on $\mathbb{R}$. However, the map $f : (\mathbb{R}, \mathcal{A}_1) \to (\mathbb{R}, \mathcal{A}_2)$ given by $f(x) = x^{1/3}$ is a diffeomorphism, so the two smooth structures are *diffeomorphic* (the same up to relabeling). This is a general phenomenon for $\mathbb{R}$, but not for all manifolds — exotic smooth structures on $\mathbb{R}^4$ and $S^7$ show that distinct non-diffeomorphic smooth structures can exist on the same topological manifold.
+
+![Smooth atlases: compatible versus incompatible charts, maximal atlas, and the exotic smooth structure on R](/images/topics/smooth-manifolds/smooth-atlas.png)
+
+---
+
+## A Gallery of Smooth Manifolds
+
+The definition might seem abstract, but smooth manifolds are everywhere. Here is a tour of the most important examples, each illustrating a different way that smooth structures arise.
+
+**The $n$-sphere $S^n$.** The unit sphere $S^n = \{x \in \mathbb{R}^{n+1} : \|x\| = 1\}$ is a smooth $n$-manifold. The stereographic atlas (two charts, projecting from opposite poles) provides a smooth atlas with two charts. For $n = 1$, this is the circle; for $n = 2$, the ordinary sphere. The sphere is *compact* (closed and bounded in $\mathbb{R}^{n+1}$) and *simply connected* for $n \geq 2$ (every loop can be contracted to a point).
+
+**The torus $T^2$.** The 2-torus $T^2 = S^1 \times S^1$ is the product of two circles. As a smooth manifold, its smooth structure is the product structure: if $(U_1, \varphi_1)$ and $(U_2, \varphi_2)$ are charts on $S^1$, then $(U_1 \times U_2, \varphi_1 \times \varphi_2)$ is a chart on $T^2$. The torus is compact with fundamental group $\mathbb{Z} \times \mathbb{Z}$ (genus 1). It can be parametrized by
+
+$$(u, v) \mapsto \big((R + r\cos v)\cos u,\; (R + r\cos v)\sin u,\; r\sin v\big)$$
+
+for $u, v \in [0, 2\pi)$, where $R > r > 0$ are the major and minor radii.
+
+**Real projective space $\mathbb{RP}^n$.** The real projective space $\mathbb{RP}^n$ is the set of lines through the origin in $\mathbb{R}^{n+1}$, or equivalently the quotient $S^n / \{x \sim -x\}$ (identifying antipodal points). It is a smooth $n$-manifold with $n + 1$ standard charts. For $n = 2$, $\mathbb{RP}^2$ is the projective plane — non-orientable (it contains a Mobius band) and cannot be embedded in $\mathbb{R}^3$ without self-intersections.
+
+**Matrix Lie groups.** The general linear group $\mathrm{GL}(n, \mathbb{R}) = \{A \in \mathbb{R}^{n \times n} : \det A \neq 0\}$ is an open subset of $\mathbb{R}^{n^2}$, hence a smooth manifold of dimension $n^2$. It is a *Lie group*: a smooth manifold that is also a group, with smooth multiplication and inversion.
+
+The orthogonal group $\mathrm{O}(n) = \{A \in \mathbb{R}^{n \times n} : A^\top A = I\}$ is a smooth manifold of dimension $n(n-1)/2$ (the orthogonality condition $A^\top A = I$ imposes $n(n+1)/2$ independent constraints on $n^2$ entries). The [Spectral Theorem](/topics/spectral-theorem) tells us that orthogonal matrices have eigenvalues on the unit circle — the spectral structure constrains the geometry of $\mathrm{O}(n)$.
+
+The special orthogonal group $\mathrm{SO}(n) = \{A \in \mathrm{O}(n) : \det A = 1\}$ is the connected component of the identity in $\mathrm{O}(n)$, and represents pure rotations. For $n = 3$, $\mathrm{SO}(3)$ is diffeomorphic to $\mathbb{RP}^3$ — every rotation is determined by an axis (a line through the origin) and an angle.
+
+<ManifoldGalleryExplorer client:visible />
+
+![Gallery of smooth manifolds: the circle, sphere, torus, real projective plane, GL(n), and Mobius band with their dimensions, charts, and topological properties](/images/topics/smooth-manifolds/manifold-gallery.png)
+
+---
+
+## Smooth Maps & Diffeomorphisms
+
+With smooth manifolds defined, the next question is: what does it mean for a map between manifolds to be smooth? Since we only know how to differentiate functions on $\mathbb{R}^n$, we route through the charts.
+
+<TheoremBlock type="definition" number={7} title="Smooth Map">
+Let $M$ and $N$ be smooth manifolds. A continuous map $F : M \to N$ is **smooth** if for every point $p \in M$, there exist charts $(U, \varphi)$ around $p$ in $M$ and $(V, \psi)$ around $F(p)$ in $N$ such that the **coordinate representation**
+
+$$\hat{F} = \psi \circ F \circ \varphi^{-1} : \varphi(U \cap F^{-1}(V)) \to \psi(V)$$
+
+is a smooth map between open subsets of Euclidean space.
+</TheoremBlock>
+
+The coordinate representation $\hat{F}$ is the map "as seen in the charts." We check smoothness in $\mathbb{R}^n$ where we know what that means. But we need this to be independent of which charts we choose — otherwise the definition would be chart-dependent and hence meaningless.
+
+<TheoremBlock type="proposition" number={1} title="Smoothness Is Chart-Independent">
+If $F : M \to N$ is smooth with respect to one pair of charts around $p$ and $F(p)$, then it is smooth with respect to *every* pair of compatible charts.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $(U, \varphi)$ and $(U', \varphi')$ be charts around $p$ in $M$, and let $(V, \psi)$ and $(V', \psi')$ be charts around $F(p)$ in $N$. Suppose $\psi \circ F \circ \varphi^{-1}$ is smooth. Then
+
+$$\psi' \circ F \circ (\varphi')^{-1} = (\psi' \circ \psi^{-1}) \circ (\psi \circ F \circ \varphi^{-1}) \circ (\varphi \circ (\varphi')^{-1})$$
+
+The outer factors $\psi' \circ \psi^{-1}$ and $\varphi \circ (\varphi')^{-1}$ are transition maps — smooth by the atlas compatibility condition. The middle factor is smooth by assumption. A composition of smooth maps is smooth, so $\psi' \circ F \circ (\varphi')^{-1}$ is smooth.
+</TheoremBlock>
+
+This is precisely why we required the transition maps to be smooth: it ensures that the notion of "smooth map" does not depend on the choice of charts.
+
+<TheoremBlock type="definition" number={8} title="Diffeomorphism">
+A smooth map $F : M \to N$ is a **diffeomorphism** if it is bijective and its inverse $F^{-1} : N \to M$ is also smooth. If a diffeomorphism exists between $M$ and $N$, we write $M \cong N$ and say they are **diffeomorphic**.
+</TheoremBlock>
+
+Diffeomorphisms are the isomorphisms in the category of smooth manifolds. Two diffeomorphic manifolds are "the same" as smooth objects — they have the same dimension, the same smooth functions, and the same differential-geometric invariants.
+
+<TheoremBlock type="theorem" number={1} title="Inverse Function Theorem on Manifolds">
+Let $F : M \to N$ be a smooth map between smooth manifolds of the same dimension. If the differential $dF_p : T_pM \to T_{F(p)}N$ is an isomorphism (i.e., the Jacobian of the coordinate representation is invertible), then there exists an open neighborhood $U$ of $p$ such that $F|_U : U \to F(U)$ is a diffeomorphism onto an open subset of $N$.
+</TheoremBlock>
+
+This is the manifold version of the classical inverse function theorem from multivariable calculus. It says that a smooth map is locally invertible wherever its derivative is invertible — the same statement, now on curved spaces.
+
+![Smooth maps between manifolds: coordinate representation via charts, diffeomorphism as structure-preserving isomorphism](/images/topics/smooth-manifolds/smooth-maps.png)
+
+---
+
+## Tangent Vectors & Tangent Spaces
+
+We have smooth manifolds and smooth maps. The next step is the *derivative* — but the derivative of what? On $\mathbb{R}^n$, the derivative of a function $f$ at a point $p$ is a linear map that tells us how $f$ changes in each direction. On a manifold, we need to define "directions" without relying on an ambient Euclidean space.
+
+The geometric picture is clear: a tangent vector at a point $p$ on a surface is the velocity vector of a curve passing through $p$. If $\gamma : (-\epsilon, \epsilon) \to M$ is a smooth curve with $\gamma(0) = p$, then $\gamma'(0)$ should be a tangent vector at $p$. But "velocity" requires a notion of derivative, which we are trying to define. The resolution is elegant: we define tangent vectors *algebraically*, as operators on smooth functions.
+
+<TheoremBlock type="definition" number={9} title="Tangent Vector (Derivation)">
+Let $M$ be a smooth manifold and $p \in M$. A **tangent vector** at $p$ is a linear map $v : C^\infty(M) \to \mathbb{R}$ that satisfies the **Leibniz rule** (product rule):
+
+$$v(fg) = f(p)\,v(g) + g(p)\,v(f) \qquad \text{for all } f, g \in C^\infty(M)$$
+
+where $C^\infty(M)$ denotes the algebra of smooth real-valued functions on $M$.
+</TheoremBlock>
+
+A tangent vector "eats" a smooth function and returns a number — the directional derivative of the function in the direction of the vector. The Leibniz rule is the product rule, the defining property of differentiation.
+
+**The connection to curves.** If $\gamma : (-\epsilon, \epsilon) \to M$ is a smooth curve with $\gamma(0) = p$, then the operator
+
+$$v_\gamma(f) = \frac{d}{dt}\bigg|_{t=0} (f \circ \gamma)(t)$$
+
+is a derivation at $p$. Every derivation arises this way — there is a one-to-one correspondence between tangent vectors as derivations and equivalence classes of curves through $p$ (where two curves are equivalent if they have the same velocity in any chart).
+
+<TheoremBlock type="definition" number={10} title="Tangent Space">
+The **tangent space** to $M$ at $p$, denoted $T_pM$, is the set of all tangent vectors (derivations) at $p$. With pointwise addition and scalar multiplication of linear maps, $T_pM$ is a real vector space.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Dimension of the Tangent Space">
+If $M$ is a smooth manifold of dimension $n$, then $T_pM$ is an $n$-dimensional real vector space for every $p \in M$. In particular, $T_pM \cong \mathbb{R}^n$ as vector spaces.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $(U, \varphi)$ be a chart around $p$ with coordinate functions $\varphi(q) = (x^1(q), \ldots, x^n(q))$. Define the **coordinate basis vectors** $\partial/\partial x^i|_p \in T_pM$ by
+
+$$\frac{\partial}{\partial x^i}\bigg|_p (f) = \frac{\partial (f \circ \varphi^{-1})}{\partial r^i}\bigg|_{\varphi(p)}$$
+
+where $r^1, \ldots, r^n$ are the standard coordinates on $\mathbb{R}^n$.
+
+We claim that $\{\partial/\partial x^1|_p, \ldots, \partial/\partial x^n|_p\}$ is a basis for $T_pM$.
+
+**Linear independence.** Apply $\partial/\partial x^i|_p$ to the coordinate function $x^j$:
+
+$$\frac{\partial}{\partial x^i}\bigg|_p (x^j) = \frac{\partial r^j}{\partial r^i}\bigg|_{\varphi(p)} = \delta^j_i$$
+
+If $\sum_i c^i \,\partial/\partial x^i|_p = 0$, then applying this to $x^j$ gives $c^j = 0$ for all $j$.
+
+**Spanning.** Let $v \in T_pM$ be any derivation. Set $v^i = v(x^i)$. For any $f \in C^\infty(M)$, write $f$ in local coordinates as $\hat{f} = f \circ \varphi^{-1}$. By Taylor's theorem in $\mathbb{R}^n$ with the Leibniz rule, one shows that
+
+$$v(f) = \sum_{i=1}^n v^i \frac{\partial \hat{f}}{\partial r^i}\bigg|_{\varphi(p)} = \sum_{i=1}^n v^i \frac{\partial}{\partial x^i}\bigg|_p (f)$$
+
+so $v = \sum_i v^i \,\partial/\partial x^i|_p$. Thus $\dim T_pM = n$.
+</TheoremBlock>
+
+The coordinate basis $\{\partial/\partial x^i|_p\}$ depends on the chart, but the tangent space itself does not. A different chart gives a different basis related by the Jacobian of the transition map — the same change-of-basis story from linear algebra.
+
+The tangent space is where the linear algebra of the [Spectral Theorem](/topics/spectral-theorem) comes alive on manifolds. Once we equip each tangent space with an inner product (a *Riemannian metric*), the tangent space becomes an inner product space, and its self-adjoint operators have spectral decompositions. The eigenvalues of the curvature operator at each point encode the *principal curvatures* — but that is the story of **Riemannian Geometry** *(coming soon)*.
+
+<TangentSpaceExplorer client:visible />
+
+![Tangent vectors and tangent spaces: velocity vectors of curves, the tangent plane on a surface, coordinate basis vectors, and the isomorphism with Euclidean space](/images/topics/smooth-manifolds/tangent-spaces.png)
+
+---
+
+## The Differential (Pushforward)
+
+We have tangent spaces at every point. Now we need the manifold version of the derivative: a linear map between tangent spaces that tells us how a smooth map transforms infinitesimal displacements.
+
+<TheoremBlock type="definition" number={11} title="The Differential (Pushforward)">
+Let $F : M \to N$ be a smooth map and $p \in M$. The **differential** of $F$ at $p$ is the linear map $dF_p : T_pM \to T_{F(p)}N$ defined by
+
+$$dF_p(v)(g) = v(g \circ F) \qquad \text{for all } v \in T_pM, \; g \in C^\infty(N)$$
+
+The differential is also called the **pushforward** and sometimes denoted $F_{*,p}$ or $(F_*)_p$.
+</TheoremBlock>
+
+In words: to push forward a tangent vector $v$ at $p$ along $F$, we define a new tangent vector $dF_p(v)$ at $F(p)$ that acts on test functions $g$ by first pulling $g$ back to $M$ (composing with $F$) and then applying $v$.
+
+**In coordinates.** Let $(U, \varphi)$ be a chart around $p$ and $(V, \psi)$ a chart around $F(p)$, with coordinate functions $x^1, \ldots, x^m$ on $M$ and $y^1, \ldots, y^k$ on $N$. The coordinate representation of $F$ is $\hat{F} = \psi \circ F \circ \varphi^{-1}$, with components $\hat{F}^j(x^1, \ldots, x^m)$. Then
+
+$$dF_p\left(\frac{\partial}{\partial x^i}\bigg|_p\right) = \sum_{j=1}^k \frac{\partial \hat{F}^j}{\partial x^i}\bigg|_{\varphi(p)} \frac{\partial}{\partial y^j}\bigg|_{F(p)}$$
+
+The matrix $\left[\partial \hat{F}^j / \partial x^i\right]$ is the **Jacobian matrix** of $F$ at $p$ in these coordinates. The differential is the coordinate-free version of the Jacobian.
+
+The [Singular Value Decomposition](/topics/svd) of the Jacobian matrix reveals how $F$ stretches and rotates infinitesimal neighborhoods: the singular values are the principal stretches, and the left and right singular vectors give the principal directions of stretching in the target and source tangent spaces.
+
+<TheoremBlock type="theorem" number={3} title="Chain Rule for Differentials">
+Let $F : L \to M$ and $G : M \to N$ be smooth maps between smooth manifolds. Then for all $p \in L$,
+
+$$d(G \circ F)_p = dG_{F(p)} \circ dF_p$$
+
+In coordinates, this is matrix multiplication of Jacobians: $[d(G \circ F)_p] = [dG_{F(p)}] \cdot [dF_p]$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $v \in T_pL$ and $g \in C^\infty(N)$. Then
+
+$$d(G \circ F)_p(v)(g) = v(g \circ G \circ F) = v((g \circ G) \circ F) = dF_p(v)(g \circ G) = dG_{F(p)}(dF_p(v))(g)$$
+
+The first equality is the definition of $d(G \circ F)_p$. The third equality is the definition of $dF_p$. The fourth is the definition of $dG_{F(p)}$. Since this holds for all $g$, we have $d(G \circ F)_p(v) = dG_{F(p)}(dF_p(v))$ for all $v$.
+</TheoremBlock>
+
+The chain rule on manifolds says that the derivative of a composition is the composition of derivatives — exactly the same statement as in multivariable calculus, now liberated from coordinates.
+
+**Immersions and submersions.** A smooth map $F : M \to N$ is an **immersion** at $p$ if $dF_p$ is injective (the Jacobian has full column rank). It is a **submersion** at $p$ if $dF_p$ is surjective (the Jacobian has full row rank). If $dF_p$ is an isomorphism (bijective), then the Inverse Function Theorem (Theorem 1) guarantees that $F$ is a local diffeomorphism near $p$.
+
+These rank conditions classify the local behavior of smooth maps: immersions locally look like linear inclusions $\mathbb{R}^m \hookrightarrow \mathbb{R}^n$ (with $m \leq n$), and submersions locally look like linear projections $\mathbb{R}^m \twoheadrightarrow \mathbb{R}^n$ (with $m \geq n$).
+
+<SmoothMapExplorer client:visible />
+
+![The differential (pushforward): how a smooth map transforms tangent vectors, the Jacobian matrix, and the chain rule for compositions](/images/topics/smooth-manifolds/differential-pushforward.png)
+
+---
+
+## Partitions of Unity
+
+One of the deepest differences between smooth manifolds and general topological spaces is the existence of **partitions of unity**: families of smooth functions that sum to 1 and allow us to glue local constructions into global ones.
+
+<TheoremBlock type="definition" number={12} title="Partition of Unity">
+Let $\{U_\alpha\}_{\alpha \in A}$ be an open cover of a smooth manifold $M$. A **smooth partition of unity subordinate to the cover** is a collection $\{\rho_\alpha\}_{\alpha \in A}$ of smooth functions $\rho_\alpha : M \to [0, 1]$ such that:
+
+1. **Support condition:** $\mathrm{supp}(\rho_\alpha) \subseteq U_\alpha$ for each $\alpha$ (each $\rho_\alpha$ is zero outside $U_\alpha$).
+2. **Local finiteness:** Every point $p \in M$ has a neighborhood that intersects only finitely many of the sets $\mathrm{supp}(\rho_\alpha)$.
+3. **Partition condition:** $\displaystyle\sum_{\alpha \in A} \rho_\alpha(p) = 1$ for all $p \in M$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={4} title="Existence of Smooth Partitions of Unity">
+Every open cover of a smooth manifold admits a smooth partition of unity subordinate to it.
+</TheoremBlock>
+
+<TheoremBlock type="proof" title="Proof sketch">
+The proof has three ingredients. First, the existence of **smooth bump functions**: for any point $p$ and open neighborhood $U \ni p$, there exists a smooth function $\psi : M \to [0, 1]$ that equals 1 near $p$ and vanishes outside $U$. (In $\mathbb{R}^n$, the standard construction uses $\exp(-1/t)$ mollifiers; the charts carry this to $M$.)
+
+Second, **paracompactness**: every open cover of $M$ has a locally finite refinement. This follows from second-countability (condition 2 of the topological manifold definition). We refine $\{U_\alpha\}$ to a locally finite cover, construct bump functions for each element of the refinement, and group them by which $U_\alpha$ they refine.
+
+Third, **normalization**: given bump functions $\psi_\alpha$ with $\mathrm{supp}(\psi_\alpha) \subseteq U_\alpha$ and $\sum_\alpha \psi_\alpha > 0$ everywhere (which follows from the covering property), set $\rho_\alpha = \psi_\alpha / \sum_\beta \psi_\beta$. The sum in the denominator is locally finite, hence smooth, and the resulting $\{\rho_\alpha\}$ satisfies all three conditions.
+</TheoremBlock>
+
+**Why partitions of unity matter.** They are the technical engine behind almost every "local-to-global" argument in differential geometry:
+
+1. **Extending local to global.** If you have a smooth function defined on an open subset $U$ of $M$, a partition of unity lets you extend it to all of $M$ (possibly changing it outside $U$).
+
+2. **Defining integrals on manifolds.** To integrate a function on $M$, cover $M$ with charts, multiply by partition-of-unity functions to localize, integrate each piece in $\mathbb{R}^n$, and sum: $\int_M f = \sum_\alpha \int_M \rho_\alpha f$.
+
+3. **Constructing Riemannian metrics.** Any smooth manifold admits a Riemannian metric. Proof: on each chart, use the standard Euclidean inner product; then use a partition of unity to average them into a global metric. (This is how the existence of metrics on all smooth manifolds is proved — it's a direct application of Theorem 4.)
+
+4. **The Whitney embedding theorem.** The proof that every smooth manifold embeds in Euclidean space uses partitions of unity to build a global embedding from local coordinate maps.
+
+![Partitions of unity: smooth bump functions subordinate to an open cover, with the partition condition ensuring they sum to 1 everywhere](/images/topics/smooth-manifolds/partitions-of-unity.png)
+
+---
+
+## Computational Notes
+
+The abstract definitions become concrete — and computationally useful — when we implement them. Here we work through key computations that connect the theory to code.
+
+### Stereographic Projection
+
+The stereographic atlas on $S^2$ is the running example throughout this topic. Here it is in Python:
+
+```python
+import numpy as np
+
+def stereo_north(x, y, z):
+    """Stereographic projection from the north pole: S^2 \ {N} -> R^2."""
+    return x / (1 - z), y / (1 - z)
+
+def stereo_south(x, y, z):
+    """Stereographic projection from the south pole: S^2 \ {S} -> R^2."""
+    return x / (1 + z), y / (1 + z)
+
+def inv_stereo_north(u, v):
+    """Inverse stereographic projection (north pole chart)."""
+    d = u**2 + v**2
+    return 2*u / (1 + d), 2*v / (1 + d), (d - 1) / (1 + d)
+
+def transition_NS(u, v):
+    """Transition map: phi_S ∘ phi_N^{-1}(u, v) = (u, v) / (u^2 + v^2)."""
+    r2 = u**2 + v**2
+    return u / r2, v / r2
+```
+
+We can verify the transition map: applying `transition_NS` to the north-pole coordinates of a point should give the south-pole coordinates of the same point.
+
+```python
+# Point on S^2: (x, y, z) = (1/sqrt(2), 0, 1/sqrt(2))
+x, y, z = 1/np.sqrt(2), 0, 1/np.sqrt(2)
+u_N, v_N = stereo_north(x, y, z)    # North pole chart coordinates
+u_S, v_S = stereo_south(x, y, z)    # South pole chart coordinates
+u_T, v_T = transition_NS(u_N, v_N)  # Via transition map
+
+print(f"Direct south pole coords: ({u_S:.6f}, {v_S:.6f})")
+print(f"Via transition map:       ({u_T:.6f}, {v_T:.6f})")
+# Both give the same result — the transition map works.
+```
+
+### Symbolic Tangent Vectors with SymPy
+
+The tangent space at a point is spanned by the coordinate basis vectors $\partial/\partial x^i$. In the stereographic chart, these are:
+
+```python
+import sympy as sp
+
+u, v = sp.symbols('u v')
+
+# Inverse stereographic projection (north pole chart)
+d = u**2 + v**2
+x_expr = 2*u / (1 + d)
+y_expr = 2*v / (1 + d)
+z_expr = (d - 1) / (1 + d)
+
+# Tangent vectors: partial derivatives of the parametrization
+du_tangent = sp.Matrix([sp.diff(x_expr, u), sp.diff(y_expr, u), sp.diff(z_expr, u)])
+dv_tangent = sp.Matrix([sp.diff(x_expr, v), sp.diff(y_expr, v), sp.diff(z_expr, v)])
+
+print("∂/∂u =", sp.simplify(du_tangent).T)
+print("∂/∂v =", sp.simplify(dv_tangent).T)
+```
+
+### Jacobian of Stereographic Projection
+
+The differential of the stereographic projection $\varphi_N : S^2 \setminus \{N\} \to \mathbb{R}^2$ has a Jacobian that reveals conformal stretching:
+
+```python
+# Jacobian of the transition map (inversion)
+u_out = u / (u**2 + v**2)
+v_out = v / (u**2 + v**2)
+
+J = sp.Matrix([
+    [sp.diff(u_out, u), sp.diff(u_out, v)],
+    [sp.diff(v_out, u), sp.diff(v_out, v)]
+])
+
+print("Jacobian of transition map:")
+sp.pprint(sp.simplify(J))
+# Result: (1/(u^2+v^2)^2) * [[v^2-u^2, -2uv], [-2uv, u^2-v^2]]
+# This is a conformal map: J = (1/r^2) * rotation
+```
+
+### Numerical Tangent Space Estimation
+
+Given a point cloud sampled near a manifold, we can estimate the tangent space at a point using [PCA](/topics/pca-low-rank). The key insight: near a point $p$ on an $n$-manifold embedded in $\mathbb{R}^N$, the local point cloud is approximately flat in the tangent directions and thin in the normal directions. The top $n$ principal components span (approximately) $T_pM$.
+
+```python
+from sklearn.decomposition import PCA
+
+def estimate_tangent_space(points, p, k=50, n_components=2):
+    """Estimate the tangent space at p from a local neighborhood."""
+    # Find k nearest neighbors of p
+    dists = np.linalg.norm(points - p, axis=1)
+    neighbors = points[np.argsort(dists)[:k]]
+
+    # Local PCA: top n_components directions approximate T_pM
+    pca = PCA(n_components=n_components)
+    pca.fit(neighbors - p)  # Center at p
+    return pca.components_  # Rows are tangent basis vectors
+
+# Example: points on S^2, estimate tangent plane at the north pole
+theta = np.random.uniform(0, 0.3, 500)  # Small polar angle (near north pole)
+phi = np.random.uniform(0, 2*np.pi, 500)
+points = np.column_stack([
+    np.sin(theta)*np.cos(phi),
+    np.sin(theta)*np.sin(phi),
+    np.cos(theta)
+])
+
+tangent_basis = estimate_tangent_space(points, p=np.array([0, 0, 1]))
+print("Estimated tangent basis:")
+print(tangent_basis)
+# Should be approximately [[1, 0, 0], [0, 1, 0]] — the xy-plane
+```
+
+![Computational examples: stereographic transition maps verified numerically, and tangent space estimation from point clouds via PCA](/images/topics/smooth-manifolds/computational-manifolds.png)
+
+---
+
+## The Whitney Embedding Theorem & Connections
+
+We close with a theorem that bridges the intrinsic and extrinsic viewpoints, and then connect the theory to the rest of the formalML curriculum.
+
+### The Whitney Embedding Theorem
+
+Throughout this topic, we have defined smooth manifolds *intrinsically* — via charts and transition maps, with no reference to an ambient Euclidean space. But many of the examples we drew intuition from — the sphere in $\mathbb{R}^3$, the torus in $\mathbb{R}^3$ — are subsets of Euclidean space. Is this always possible? Can every abstract smooth manifold be realized as a "surface" in some $\mathbb{R}^N$?
+
+<TheoremBlock type="theorem" number={5} title="Whitney Embedding Theorem">
+Every smooth $n$-manifold admits a smooth embedding into $\mathbb{R}^{2n+1}$.
+
+More precisely, if $M$ is a smooth manifold of dimension $n$, then there exists an injective smooth immersion $F : M \hookrightarrow \mathbb{R}^{2n+1}$ that is a homeomorphism onto its image — a **smooth embedding**.
+</TheoremBlock>
+
+The dimension bound $2n + 1$ is sharp in the sense that there exist $n$-manifolds that cannot be embedded in $\mathbb{R}^{2n}$ (though many specific manifolds embed in much lower dimensions). The proof uses partitions of unity (Theorem 4) to assemble local coordinate embeddings into a global one, and a transversality argument to ensure injectivity in dimension $2n + 1$.
+
+**Geometric meaning.** No matter how abstractly a manifold is defined — even if it is constructed as a quotient, a fiber bundle, or an inverse image of a regular value — it can always be concretely realized as a subset of Euclidean space. The intrinsic viewpoint (charts and transition maps) and the extrinsic viewpoint (submanifolds of $\mathbb{R}^N$) are equivalent.
+
+**Examples of the dimension bound:**
+- $S^1$ ($n = 1$): embeds in $\mathbb{R}^2$ — well below the $\mathbb{R}^3$ guarantee.
+- $S^2$ ($n = 2$): embeds in $\mathbb{R}^3$ — below the $\mathbb{R}^5$ guarantee.
+- $T^2$ ($n = 2$): embeds in $\mathbb{R}^3$ — again below the guarantee.
+- The Klein bottle ($n = 2$): cannot embed in $\mathbb{R}^3$ (non-orientable surfaces self-intersect in $\mathbb{R}^3$), but embeds in $\mathbb{R}^4$ — still below $\mathbb{R}^5$.
+
+![The Whitney embedding theorem: every abstract manifold can be embedded in Euclidean space](/images/topics/smooth-manifolds/whitney-embedding.png)
+
+### Where This Goes Next
+
+Smooth manifolds are the foundation for three planned topics in the Differential Geometry track:
+
+- **Riemannian Geometry** *(coming soon)* — equip each tangent space with an inner product (a metric tensor). The [Spectral Theorem](/topics/spectral-theorem) then applies at every point: the eigenvalues of the metric encode how the manifold stretches in different directions. Riemannian metrics make it possible to measure lengths, angles, and volumes on curved spaces.
+
+- **Geodesics & Curvature** *(coming soon)* — the differential (§7) tells us how maps curve, and the Riemannian metric (from the next topic) tells us how the manifold itself curves. Geodesics are the "straight lines" of curved spaces, and curvature quantifies how the manifold deviates from flatness.
+
+- **Information Geometry & Fisher Metric** *(coming soon)* — a parametric family of probability distributions $\{p_\theta : \theta \in \Theta\}$ is a smooth manifold (the parameter space $\Theta$). The Fisher information matrix is a Riemannian metric on this manifold. The natural gradient, KL divergence, and the geometry of exponential families all live in this framework — the direct connection between smooth manifolds and machine learning.
+
+### Connections to Other Tracks
+
+The theory in this topic connects to several topics across other tracks on formalML:
+
+- **[The Spectral Theorem](/topics/spectral-theorem):** The tangent space $T_pM$ is a real vector space. Once equipped with a Riemannian metric, the curvature operator on $T_pM$ is a self-adjoint linear map whose eigenvalues (principal curvatures) are computed via the Spectral Theorem.
+
+- **[Simplicial Complexes](/topics/simplicial-complexes):** Smooth manifolds can be triangulated — decomposed into simplicial complexes. This connects the combinatorial topology of homology (Betti numbers, Euler characteristic) with the differential topology of tangent spaces and smooth maps.
+
+- **[Singular Value Decomposition](/topics/svd):** The differential $dF_p : T_pM \to T_{F(p)}N$ is a linear map between finite-dimensional vector spaces. Its SVD decomposes the map into principal stretches (singular values) and principal directions (singular vectors), revealing exactly how $F$ distorts infinitesimal geometry.
+
+- **[PCA & Low-Rank Approximation](/topics/pca-low-rank):** Tangent-space PCA estimates the tangent space from data sampled near a manifold. This is the foundation of manifold learning algorithms that use local linear approximations to discover low-dimensional structure in high-dimensional data.
