@@ -1,10 +1,8 @@
-import { useState, useId } from 'react';
-import * as d3 from 'd3';
-import { useD3 } from './shared/useD3';
+import { useState } from 'react';
 import { useResizeObserver } from './shared/useResizeObserver';
+import { dimensionColors } from './shared/colorScales';
 import {
   type Vec2,
-  spherePoint,
   torusPoint,
   mobiusPoint,
   orthoProject,
@@ -218,7 +216,7 @@ const MANIFOLDS: ManifoldInfo[] = [
     dimension: -1, // n²
     compact: false,
     orientable: true,
-    fundamentalGroup: 'ℤ/2ℤ',
+    fundamentalGroup: 'ℤ for n = 2, ℤ/2ℤ for n ≥ 3',
     minCharts: 1,
     connection: 'Open subset of ℝⁿ² (det ≠ 0). A Lie group — smooth manifold with smooth group operations.',
     wireframe: glMatrixSVG,
@@ -227,11 +225,11 @@ const MANIFOLDS: ManifoldInfo[] = [
     name: 'Mobius Band',
     symbol: 'Möbius',
     dimension: 2,
-    compact: false,
+    compact: true, // compact manifold with boundary
     orientable: false,
     fundamentalGroup: 'ℤ',
     minCharts: 2,
-    connection: 'Non-orientable surface with boundary. Shows why orientability matters for integration.',
+    connection: 'Compact non-orientable surface with boundary. Shows why orientability matters for integration.',
     wireframe: mobiusSVG,
   },
 ];
@@ -241,8 +239,18 @@ const MANIFOLDS: ManifoldInfo[] = [
 export default function ManifoldGalleryExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<number | null>(null);
 
-  const cardSize = containerWidth < 400 ? Math.floor(containerWidth / 2) - 8 : Math.min(180, Math.floor(containerWidth / 3) - 12);
+  const rawCardSize =
+    containerWidth < 400
+      ? Math.floor(containerWidth / 2) - 8
+      : Math.min(180, Math.floor(containerWidth / 3) - 12);
+  const cardSize = Math.max(32, rawCardSize);
+
+  // Don't render grid until we have a valid container width
+  if (containerWidth === 0 && expanded === null) {
+    return <div ref={containerRef} className="w-full my-8" />;
+  }
 
   if (expanded !== null) {
     const m = MANIFOLDS[expanded];
@@ -331,17 +339,14 @@ export default function ManifoldGalleryExplorer() {
           <button
             key={m.symbol}
             onClick={() => setExpanded(i)}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
             className="rounded-lg p-3 cursor-pointer transition-all"
             style={{
               background: 'var(--color-surface)',
-              border: '1px solid var(--color-muted-border)',
+              border: '1px solid',
+              borderColor: hovered === i ? dimensionColors[0] : 'var(--color-muted-border)',
               textAlign: 'center',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = dimensionColors[0];
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-muted-border)';
             }}
           >
             <svg width={cardSize - 24} height={Math.min(cardSize - 24, 100)} style={{ margin: '0 auto', display: 'block' }}>

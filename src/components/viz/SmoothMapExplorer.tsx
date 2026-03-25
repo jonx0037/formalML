@@ -145,7 +145,8 @@ export default function SmoothMapExplorer() {
       const px = cx + sourcePos.x * r;
       const py = cy - sourcePos.y * r;
 
-      svg.append('circle')
+      const draggablePoint = svg.append('circle')
+        .attr('class', 'draggable-point')
         .attr('cx', px).attr('cy', py).attr('r', 6)
         .style('fill', TEAL)
         .style('stroke', 'var(--color-surface)')
@@ -218,7 +219,7 @@ export default function SmoothMapExplorer() {
           setTheta(angle);
         });
 
-      svg.select<SVGCircleElement>(`circle[cx="${px}"]`).call(drag);
+      draggablePoint.call(drag);
     },
     [panelWidth, mapData, theta, magnitude, cfg, instanceId, mapType],
   );

@@ -8,12 +8,9 @@ import {
   type Vec3,
   stereoNorth,
   stereoSouth,
-  invStereoNorth,
-  invStereoSouth,
   transitionNS,
   spherePoint,
   geoToSpherical,
-  vec2Norm,
 } from './shared/manifoldGeometry';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -22,9 +19,12 @@ const HEIGHT = 360;
 const SM_BREAKPOINT = 640;
 const MARGIN = { top: 24, right: 16, bottom: 32, left: 16 };
 const CHART_CLAMP = 8; // clamp stereographic coords to avoid blowup
+const STEREO_VALID_Z = 0.95; // z-threshold to exclude poles for stereographic charts
+const CYL_VALID_X = 2.8; // x-threshold to exclude seam for cylindrical charts
 
 const TEAL = dimensionColors[0];  // chart 1 (north pole)
 const PURPLE = dimensionColors[1]; // chart 2 (south pole)
+const AMBER = '#D97706'; // for transition map elements
 
 type AtlasType = 'stereographic' | 'cylindrical';
 
@@ -82,24 +82,26 @@ export default function ChartAtlasExplorer() {
     let chart2: ChartInfo;
 
     if (atlas === 'stereographic') {
-      const c1 = clampVec2(stereoNorth(p), CHART_CLAMP);
-      const c2 = clampVec2(stereoSouth(p), CHART_CLAMP);
-      chart1 = { name: 'φ_N (North)', color: TEAL, coords: c1, valid: p.z < 0.95 };
-      chart2 = { name: 'φ_S (South)', color: PURPLE, coords: c2, valid: p.z > -0.95 };
+      const raw1 = stereoNorth(p);
+      const raw2 = stereoSouth(p);
+      const c1 = clampVec2(raw1, CHART_CLAMP);
+      const c2 = clampVec2(raw2, CHART_CLAMP);
+      chart1 = { name: 'φ_N (North)', color: TEAL, coords: c1, valid: p.z < STEREO_VALID_Z };
+      chart2 = { name: 'φ_S (South)', color: PURPLE, coords: c2, valid: p.z > -STEREO_VALID_Z };
     } else {
       const c1 = cylChart1(p);
       const c2 = cylChart2(p);
-      // Cylindrical charts valid when not near the "seam"
-      chart1 = { name: 'ψ₁ (Front)', color: TEAL, coords: c1, valid: Math.abs(c1.x) < 2.8 };
-      chart2 = { name: 'ψ₂ (Back)', color: PURPLE, coords: c2, valid: Math.abs(c2.x) < 2.8 };
+      chart1 = { name: 'ψ₁ (Front)', color: TEAL, coords: c1, valid: Math.abs(c1.x) < CYL_VALID_X };
+      chart2 = { name: 'ψ₂ (Back)', color: PURPLE, coords: c2, valid: Math.abs(c2.x) < CYL_VALID_X };
     }
 
     const inOverlap = chart1.valid && chart2.valid;
 
-    // Transition map value
+    // Transition map value — use unclamped chart-1 coords for accuracy
     let transitionCoords: Vec2 | null = null;
     if (inOverlap && atlas === 'stereographic') {
-      transitionCoords = transitionNS(chart1.coords);
+      const raw1 = stereoNorth(p);
+      transitionCoords = transitionNS(raw1);
     }
 
     return { p, chart1, chart2, inOverlap, transitionCoords };
@@ -249,10 +251,37 @@ export default function ChartAtlasExplorer() {
             },
           };
 
+          const backHemi: GeoJSON.Feature = {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  ...Array.from({ length: 61 }, (_, i) => {
+                    const lat = -90 + (i / 60) * 180;
+                    return [90, lat] as [number, number];
+                  }),
+                  ...Array.from({ length: 61 }, (_, i) => {
+                    const lat = 90 - (i / 60) * 180;
+                    return [270, lat] as [number, number];
+                  }),
+                  [90, -90],
+                ],
+              ],
+            },
+          };
+
           svg.append('path')
             .datum(frontHemi)
             .attr('d', path as any)
             .style('fill', TEAL)
+            .style('opacity', 0.12);
+
+          svg.append('path')
+            .datum(backHemi)
+            .attr('d', path as any)
+            .style('fill', PURPLE)
             .style('opacity', 0.12);
         }
       }
@@ -270,7 +299,8 @@ export default function ChartAtlasExplorer() {
           .style('fill', activeColor)
           .style('opacity', 0.15);
 
-        svg.append('circle')
+        const draggablePoint = svg.append('circle')
+          .attr('class', 'draggable-point')
           .attr('cx', projected[0])
           .attr('cy', projected[1])
           .attr('r', 6)
@@ -288,7 +318,7 @@ export default function ChartAtlasExplorer() {
             }
           });
 
-        svg.select<SVGCircleElement>('circle:last-of-type').call(drag);
+        draggablePoint.call(drag);
       }
 
       // Labels
@@ -432,7 +462,7 @@ export default function ChartAtlasExplorer() {
             .attr('orient', 'auto')
             .append('path')
             .attr('d', 'M0,0 L10,3 L0,6 Z')
-            .style('fill', '#D97706');
+            .style('fill', AMBER);
 
           // Curved arrow
           const mx = (x1 + x2) / 2;
@@ -440,7 +470,7 @@ export default function ChartAtlasExplorer() {
           g.append('path')
             .attr('d', `M${x1},${y1} Q${mx},${my} ${x2},${y2}`)
             .style('fill', 'none')
-            .style('stroke', '#D97706')
+            .style('stroke', AMBER)
             .style('stroke-width', 1.5)
             .style('stroke-dasharray', '4,3')
             .attr('marker-end', `url(#${markerId})`);
@@ -449,7 +479,7 @@ export default function ChartAtlasExplorer() {
           g.append('text')
             .attr('x', mx).attr('y', my - 6)
             .attr('text-anchor', 'middle')
-            .style('fill', '#D97706').style('font-size', '10px').style('font-family', 'var(--font-sans)')
+            .style('fill', AMBER).style('font-size', '10px').style('font-family', 'var(--font-sans)')
             .text(atlas === 'stereographic' ? 'φ_S ∘ φ_N⁻¹: inversion' : 'transition');
         }
       }
@@ -549,7 +579,7 @@ export default function ChartAtlasExplorer() {
             : '— (pole excluded)'}
         </div>
         {sphereData.inOverlap && (
-          <div className="col-span-2" style={{ color: '#D97706' }}>
+          <div className="col-span-2" style={{ color: AMBER }}>
             Overlap region — both charts valid
             {showTransition && atlas === 'stereographic' && sphereData.transitionCoords && (
               <span>

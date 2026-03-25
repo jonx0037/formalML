@@ -11,7 +11,6 @@ import {
   paraboloidPoint,
   surfaceTangents,
   orthoProject,
-  isVisible,
   vec3Add,
   vec3Scale,
   vec3Normalize,
@@ -23,7 +22,6 @@ import {
 
 const HEIGHT = 340;
 const SM_BREAKPOINT = 640;
-const MARGIN = { top: 28, right: 16, bottom: 16, left: 16 };
 
 const TEAL = dimensionColors[0];
 const PURPLE = dimensionColors[1];
@@ -208,12 +206,12 @@ export default function TangentSpaceExplorer() {
         .style('stroke', 'var(--color-text-muted)')
         .style('stroke-width', 0.5);
 
-      // Arrow helper
-      const drawArrow = (from: Vec2, to: Vec2, color: string, width: number) => {
-        const markerId = `arr-${color.replace('#', '')}-${instanceId}`;
-        svg.append('defs')
-          .append('marker')
-          .attr('id', markerId)
+      // Define arrow markers once
+      const defs = svg.append('defs');
+      const colors = { teal: TEAL, purple: PURPLE, amber: AMBER };
+      for (const [key, color] of Object.entries(colors)) {
+        defs.append('marker')
+          .attr('id', `arr-${key}-${instanceId}`)
           .attr('viewBox', '0 0 10 6')
           .attr('refX', 8).attr('refY', 3)
           .attr('markerWidth', 7).attr('markerHeight', 5)
@@ -221,27 +219,24 @@ export default function TangentSpaceExplorer() {
           .append('path')
           .attr('d', 'M0,0 L10,3 L0,6 Z')
           .style('fill', color);
+      }
 
+      const drawArrow = (from: Vec2, to: Vec2, markerKey: string, color: string, width: number) => {
         svg.append('line')
           .attr('x1', from.x).attr('y1', from.y)
           .attr('x2', to.x).attr('y2', to.y)
           .style('stroke', color).style('stroke-width', width)
-          .attr('marker-end', `url(#${markerId})`);
+          .attr('marker-end', `url(#arr-${markerKey}-${instanceId})`);
       };
 
-      // Basis vectors
-      const arrowScale = sc * 0.7;
-      const duEnd = { x: pp.x + du.x * arrowScale * orthoXFactor(du, cfg), y: pp.y - du.y * arrowScale * orthoYFactor(du, cfg) };
-      const dvEnd = { x: pp.x + dv.x * arrowScale * orthoXFactor(dv, cfg), y: pp.y - dv.y * arrowScale * orthoYFactor(dv, cfg) };
-
-      // Project arrow endpoints properly
+      // Basis vectors (project arrow endpoints properly)
       const duEndP = proj(vec3Add(p, vec3Scale(du, 0.7)));
       const dvEndP = proj(vec3Add(p, vec3Scale(dv, 0.7)));
       const combEndP = proj(vec3Add(p, vec3Scale(combined, 0.7)));
 
-      drawArrow(pp, duEndP, TEAL, 2);
-      drawArrow(pp, dvEndP, PURPLE, 2);
-      drawArrow(pp, combEndP, AMBER, 2.5);
+      drawArrow(pp, duEndP, 'teal', TEAL, 2);
+      drawArrow(pp, dvEndP, 'purple', PURPLE, 2);
+      drawArrow(pp, combEndP, 'amber', AMBER, 2.5);
 
       // Labels
       svg.append('text')
@@ -316,12 +311,12 @@ export default function TangentSpaceExplorer() {
         .attr('y1', oy - 2.5 * sc).attr('y2', oy + 2.5 * sc)
         .style('stroke', 'var(--color-text-muted)').style('stroke-width', 1);
 
-      // Arrow helper
-      const drawArrow = (fx: number, fy: number, color: string, width: number, label: string) => {
-        const markerId = `arr2-${color.replace('#', '')}-${instanceId}`;
-        svg.append('defs')
-          .append('marker')
-          .attr('id', markerId)
+      // Define arrow markers once
+      const defs = svg.append('defs');
+      const colors = { teal: TEAL, purple: PURPLE, amber: AMBER };
+      for (const [key, color] of Object.entries(colors)) {
+        defs.append('marker')
+          .attr('id', `arr2-${key}-${instanceId}`)
           .attr('viewBox', '0 0 10 6')
           .attr('refX', 8).attr('refY', 3)
           .attr('markerWidth', 7).attr('markerHeight', 5)
@@ -329,12 +324,14 @@ export default function TangentSpaceExplorer() {
           .append('path')
           .attr('d', 'M0,0 L10,3 L0,6 Z')
           .style('fill', color);
+      }
 
+      const drawArrow = (fx: number, fy: number, markerKey: string, color: string, width: number, label: string) => {
         svg.append('line')
           .attr('x1', ox).attr('y1', oy)
           .attr('x2', ox + fx * sc).attr('y2', oy - fy * sc)
           .style('stroke', color).style('stroke-width', width)
-          .attr('marker-end', `url(#${markerId})`);
+          .attr('marker-end', `url(#arr2-${markerKey}-${instanceId})`);
 
         svg.append('text')
           .attr('x', ox + fx * sc + 8).attr('y', oy - fy * sc - 4)
@@ -343,11 +340,11 @@ export default function TangentSpaceExplorer() {
       };
 
       // Basis vectors (unit vectors in abstract space)
-      drawArrow(1, 0, TEAL, 2, 'e₁ = ∂/∂u');
-      drawArrow(0, 1, PURPLE, 2, 'e₂ = ∂/∂v');
+      drawArrow(1, 0, 'teal', TEAL, 2, 'e₁ = ∂/∂u');
+      drawArrow(0, 1, 'purple', PURPLE, 2, 'e₂ = ∂/∂v');
 
       // Combined vector
-      drawArrow(a1, a2, AMBER, 2.5, `v = ${a1.toFixed(1)}e₁ + ${a2.toFixed(1)}e₂`);
+      drawArrow(a1, a2, 'amber', AMBER, 2.5, `v = ${a1.toFixed(1)}e₁ + ${a2.toFixed(1)}e₂`);
 
       // Origin dot
       svg.append('circle')
@@ -462,7 +459,3 @@ export default function TangentSpaceExplorer() {
     </div>
   );
 }
-
-// Helpers for orthographic projection factor (unused in current approach — keeping for potential future use)
-function orthoXFactor(_v: Vec3, _cfg: SurfaceConfig): number { return 1; }
-function orthoYFactor(_v: Vec3, _cfg: SurfaceConfig): number { return 1; }
