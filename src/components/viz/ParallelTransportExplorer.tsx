@@ -1,4 +1,4 @@
-import { useState, useMemo, useId } from 'react';
+import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -10,7 +10,6 @@ import {
   isVisible,
   sphereWireframe,
   parallelTransportS2,
-  sphereMetric,
 } from './shared/manifoldGeometry';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -85,7 +84,6 @@ const CURVES: Record<CurveType, CurveDef> = {
 
 export default function ParallelTransportExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const instanceId = useId().replace(/:/g, '');
 
   const [curveType, setCurveType] = useState<CurveType>('latitude60');
   const [initialAngle, setInitialAngle] = useState(0);
@@ -167,7 +165,6 @@ export default function ParallelTransportExplorer() {
 
       // Draw transported vectors at intervals
       const nArrows = 12;
-      const arrowScale = scale * 0.12;
       transportData.forEach((pt, idx) => {
         if (idx % Math.floor(transportData.length / nArrows) !== 0 && idx !== transportData.length - 1) return;
 
@@ -223,12 +220,16 @@ export default function ParallelTransportExplorer() {
         }
       });
 
-      // Holonomy annotation
+      // Holonomy annotation — compute angle in orthonormal basis
+      // (V^θ, V^φ) are coordinate components; ∂/∂φ has length sinθ,
+      // so the orthonormal components are (V^θ, sinθ · V^φ).
       if (showHolonomy && CURVES[curveType].isClosed && transportData.length > 1) {
         const first = transportData[0];
         const last = transportData[transportData.length - 1];
-        const angle1 = Math.atan2(first.V[1], first.V[0]);
-        const angle2 = Math.atan2(last.V[1], last.V[0]);
+        const sinThStart = Math.sin(first.pos[0]);
+        const sinThEnd = Math.sin(last.pos[0]);
+        const angle1 = Math.atan2(sinThStart * first.V[1], first.V[0]);
+        const angle2 = Math.atan2(sinThEnd * last.V[1], last.V[0]);
         let holAngle = ((angle2 - angle1) * 180 / Math.PI + 360) % 360;
         if (holAngle > 180) holAngle -= 360;
 

@@ -1,11 +1,10 @@
-import { useState, useMemo, useId } from 'react';
+import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { dimensionColors } from './shared/colorScales';
 import {
   type Vec2,
-  type Vec3,
   type MetricTensor,
   spherePoint,
   sphereMetric,
@@ -34,7 +33,6 @@ type ManifoldType = 'sphere' | 'poincare' | 'ellipsoid';
 
 export default function MetricTensorExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const instanceId = useId().replace(/:/g, '');
 
   const [manifold, setManifold] = useState<ManifoldType>('sphere');
   // Sphere/ellipsoid: (theta, phi); Poincaré: (x, y)
@@ -258,18 +256,21 @@ export default function MetricTensorExplorer() {
           .style('cursor', 'grab');
       }
 
-      // Drag behavior
+      // Drag behavior: map screen (sx, sy) back to approximate (theta, phi)
       const drag = d3.drag<SVGSVGElement, unknown>()
         .on('drag', (event) => {
           const sx = (event.x - cx) / scale;
           const sy = -(event.y - cy) / scale;
-          // Map screen coords back to approx (theta, phi) for the sphere
           const r = Math.sqrt(sx * sx + sy * sy);
           if (r > 0.98) return;
-          const newTheta = Math.acos(Math.max(-0.95, Math.min(0.95, -sy / Math.max(r, 0.01) * r)));
-          const newPhi = Math.atan2(sx, 0.3) + 0.8; // approximate
-          setTheta(Math.max(0.15, Math.min(Math.PI - 0.15, Math.acos(Math.max(-1, Math.min(1, sy))))));
-          setPhi(((Math.atan2(sx, 0.3) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
+          // theta from y-projection: acos clamps to [0.15, π-0.15]
+          const newTheta = Math.acos(Math.max(-1, Math.min(1, sy)));
+          setTheta(Math.max(0.15, Math.min(Math.PI - 0.15, newTheta)));
+          // phi from x-projection via atan2, accounting for view rotation
+          const cosRY = Math.cos(rotY);
+          const sinRY = Math.sin(rotY);
+          const newPhi = Math.atan2(sx, cosRY * Math.sqrt(Math.max(0, 1 - sy * sy)) * 0.5 + 0.01);
+          setPhi(((newPhi % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
         });
 
       svg.call(drag);
@@ -377,8 +378,6 @@ export default function MetricTensorExplorer() {
     if (Math.abs(v) < 1e-6) return '0';
     return v.toFixed(3);
   };
-
-  const coordLabels = manifold === 'poincare' ? ['x', 'y'] : ['θ', 'φ'];
 
   return (
     <div ref={containerRef} className="my-6 rounded-lg border border-[var(--color-border,#e5e7eb)] bg-[var(--color-bg-secondary,#f9fafb)] p-4">

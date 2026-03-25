@@ -1,4 +1,4 @@
-import { useState, useMemo, useId } from 'react';
+import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -8,7 +8,6 @@ import {
   type ChristoffelSymbols,
   spherePoint,
   sphereChristoffel,
-  sphereMetric,
   orthoProject,
   isVisible,
   sphereWireframe,
@@ -29,7 +28,6 @@ type MetricType = 'sphere' | 'poincare' | 'flat';
 
 export default function ConnectionExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const instanceId = useId().replace(/:/g, '');
 
   const [metricType, setMetricType] = useState<MetricType>('sphere');
   const [theta, setTheta] = useState(1.0);
@@ -207,8 +205,9 @@ export default function ConnectionExplorer() {
           if (!isVisible(p3, rotY, rotX)) continue;
           const proj = orthoProject(p3, rotY, rotX);
           const chris = sphereChristoffel(th);
+          // Include both symmetric components: Γ^θ_{φφ} and Γ^φ_{θφ} = Γ^φ_{φθ}
           const mag = Math.sqrt(
-            chris.gamma[0][1][1] ** 2 + chris.gamma[1][0][1] ** 2
+            chris.gamma[0][1][1] ** 2 + 2 * chris.gamma[1][0][1] ** 2
           );
           svg.append('circle')
             .attr('cx', cx + proj.x * scale)

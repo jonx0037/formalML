@@ -338,7 +338,7 @@ export function sphereMetric(theta: number): MetricTensor {
   const sinTh = Math.sin(theta);
   const sin2 = sinTh * sinTh;
   const det = sin2; // det(diag(1, sin²θ)) = sin²θ
-  const invSin2 = sin2 > 1e-12 ? 1 / sin2 : 1e12;
+  const invSin2 = sin2 > 1e-12 ? 1 / sin2 : Infinity;
   return {
     g: [[1, 0], [0, sin2]],
     det,
@@ -367,7 +367,7 @@ export function sphereChristoffel(theta: number): ChristoffelSymbols {
 export function poincareConformalFactor(x: number, y: number): number {
   const r2 = x * x + y * y;
   const denom = 1 - r2;
-  if (denom < 1e-8) return 1e6; // boundary clamp
+  if (denom < 1e-8) return Infinity; // λ → ∞ at the boundary
   return 2 / denom;
 }
 
@@ -503,25 +503,23 @@ export function klDivGradient(
   return [dMu, dSigma];
 }
 
-/** Ellipsoid metric: g = diag(a², a² sin²θ + b² cos²θ) for an oblate ellipsoid
- *  with semi-axes a (equatorial) and b (polar). At θ: meridional and azimuthal components. */
+/** Ellipsoid metric: g = diag(a² sin²θ + b² cos²θ, a² sin²θ) for an oblate ellipsoid
+ *  with semi-axes a (equatorial) and b (polar). g_θθ is the meridional component,
+ *  g_φφ is the azimuthal component. */
 export function ellipsoidMetric(theta: number, a = 1, b = 0.6): MetricTensor {
   const sinTh = Math.sin(theta);
   const cosTh = Math.cos(theta);
   const sin2 = sinTh * sinTh;
   const cos2 = cosTh * cosTh;
-  // For an oblate ellipsoid parametrized by (θ, φ):
-  //   g_θθ = a² sin²θ + b² cos²θ   (meridional stretch)
-  //   g_φφ = a² sin²θ               (azimuthal stretch)
   const gThTh = a * a * sin2 + b * b * cos2;
   const gPhPh = a * a * sin2;
   const det = gThTh * gPhPh;
-  const invThTh = det > 1e-12 ? gPhPh / det * gThTh > 1e-12 ? 1 / gThTh : 1e12 : 1e12;
-  const invPhPh = gPhPh > 1e-12 ? 1 / gPhPh : 1e12;
+  const invThTh = gThTh > 1e-12 ? 1 / gThTh : Infinity;
+  const invPhPh = gPhPh > 1e-12 ? 1 / gPhPh : Infinity;
   return {
     g: [[gThTh, 0], [0, gPhPh]],
     det,
-    inv: [[1 / Math.max(gThTh, 1e-12), 0], [0, invPhPh]],
+    inv: [[invThTh, 0], [0, invPhPh]],
   };
 }
 

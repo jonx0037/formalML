@@ -1,4 +1,4 @@
-import { useState, useMemo, useId, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -13,7 +13,6 @@ import {
 // ── Constants ────────────────────────────────────────────────────────
 
 const HEIGHT = 420;
-const SM_BREAKPOINT = 640;
 
 const TEAL = dimensionColors[0];
 const PURPLE = dimensionColors[1];
@@ -77,7 +76,6 @@ function runGradientDescent(
 
 export default function NaturalGradientExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const instanceId = useId().replace(/:/g, '');
 
   const [targetIdx, setTargetIdx] = useState(0);
   const [lr, setLr] = useState(0.15);
