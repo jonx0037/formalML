@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -23,6 +23,7 @@ const INITIAL_DATA = generateSVMDataset(N_PER_CLASS, 42);
 
 export default function SVMDualExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
+  const clipId = `clip-svm-${useId().replace(/:/g, '')}`;
   const [points, setPoints] = useState(INITIAL_DATA.X);
   const [labels] = useState(INITIAL_DATA.y);
   const [showDualVars, setShowDualVars] = useState(true);
@@ -77,30 +78,43 @@ export default function SVMDualExplorer() {
 
       g.append('defs')
         .append('clipPath')
-        .attr('id', 'clip-svm')
+        .attr('id', clipId)
         .append('rect')
         .attr('width', plotW)
         .attr('height', plotH);
 
-      const plotArea = g.append('g').attr('clip-path', 'url(#clip-svm)');
+      const plotArea = g.append('g').attr('clip-path', `url(#${clipId})`);
 
       const { w: wVec, b: bVal } = solution;
       const wNorm = Math.sqrt(wVec[0] ** 2 + wVec[1] ** 2);
 
       if (wNorm > 1e-6) {
-        // Decision boundary: w·x + b = 0 → x₂ = -(w₁x₁ + b)/w₂
+        // Decision boundary: w·x + b = 0
+        // Handle vertical boundary (wVec[1] ≈ 0) by drawing x = const
+        const isVertical = Math.abs(wVec[1]) < 1e-8;
+
         const drawLine = (offset: number, color: string, dashed: boolean) => {
-          const x1 = extent.xMin;
-          const x2 = extent.xMax;
-          const y1 = -(wVec[0] * x1 + bVal + offset) / wVec[1];
-          const y2 = -(wVec[0] * x2 + bVal + offset) / wVec[1];
+          let lx1: number, ly1: number, lx2: number, ly2: number;
+
+          if (isVertical) {
+            // Vertical line: x = -(b + offset) / w₁
+            const xConst = -(bVal + offset) / wVec[0];
+            lx1 = xConst; ly1 = extent.yMin;
+            lx2 = xConst; ly2 = extent.yMax;
+          } else {
+            // Standard: x₂ = -(w₁x₁ + b + offset) / w₂
+            lx1 = extent.xMin;
+            lx2 = extent.xMax;
+            ly1 = -(wVec[0] * lx1 + bVal + offset) / wVec[1];
+            ly2 = -(wVec[0] * lx2 + bVal + offset) / wVec[1];
+          }
 
           plotArea
             .append('line')
-            .attr('x1', xScale(x1))
-            .attr('y1', yScale(y1))
-            .attr('x2', xScale(x2))
-            .attr('y2', yScale(y2))
+            .attr('x1', xScale(lx1))
+            .attr('y1', yScale(ly1))
+            .attr('x2', xScale(lx2))
+            .attr('y2', yScale(ly2))
             .style('stroke', color)
             .style('stroke-width', dashed ? '1.5' : '2')
             .style('stroke-dasharray', dashed ? '5,3' : 'none');
@@ -112,20 +126,21 @@ export default function SVMDualExplorer() {
         // Decision boundary
         drawLine(0, '#d4d4d8', false);
 
-        // Margin band shading
-        // Fill between margin lines
-        const polyPts = [
-          { x: extent.xMin, y: -(wVec[0] * extent.xMin + bVal + 1) / wVec[1] },
-          { x: extent.xMax, y: -(wVec[0] * extent.xMax + bVal + 1) / wVec[1] },
-          { x: extent.xMax, y: -(wVec[0] * extent.xMax + bVal - 1) / wVec[1] },
-          { x: extent.xMin, y: -(wVec[0] * extent.xMin + bVal - 1) / wVec[1] },
-        ];
+        // Margin band shading (skip for vertical boundaries — polygon degenerates)
+        if (!isVertical) {
+          const polyPts = [
+            { x: extent.xMin, y: -(wVec[0] * extent.xMin + bVal + 1) / wVec[1] },
+            { x: extent.xMax, y: -(wVec[0] * extent.xMax + bVal + 1) / wVec[1] },
+            { x: extent.xMax, y: -(wVec[0] * extent.xMax + bVal - 1) / wVec[1] },
+            { x: extent.xMin, y: -(wVec[0] * extent.xMin + bVal - 1) / wVec[1] },
+          ];
 
-        plotArea
-          .append('polygon')
-          .attr('points', polyPts.map((p) => `${xScale(p.x)},${yScale(p.y)}`).join(' '))
-          .style('fill', TEAL)
-          .style('opacity', 0.08);
+          plotArea
+            .append('polygon')
+            .attr('points', polyPts.map((p) => `${xScale(p.x)},${yScale(p.y)}`).join(' '))
+            .style('fill', TEAL)
+            .style('opacity', 0.08);
+        }
       }
 
       // Data points

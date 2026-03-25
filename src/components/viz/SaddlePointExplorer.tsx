@@ -17,12 +17,6 @@ function dualFunc(lam: number): number {
   return lagrangian(xStar, lam);
 }
 
-/** h(x) = max_{λ≥0} L(x, λ) */
-function primalSlice(x: number): number {
-  if (x <= C) return (x - 3) ** 2; // λ*=0 if feasible
-  return Infinity; // infeasible → max_λ blows up
-}
-
 const X_RANGE: [number, number] = [-1, 6];
 const LAM_RANGE: [number, number] = [0, 7];
 const SADDLE_X = C; // x* = 1.5

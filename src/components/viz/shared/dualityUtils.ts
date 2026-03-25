@@ -3,7 +3,7 @@
  * All exports are pure functions — no module-level state.
  */
 
-import { dot, norm2 } from './gradientDescentUtils';
+import { norm2 } from './gradientDescentUtils';
 
 // Re-export vector utilities used by multiple duality viz components
 export { dot, norm2, matVec } from './gradientDescentUtils';

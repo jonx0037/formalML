@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -121,6 +121,10 @@ const AMBER = '#D97706';
 
 export default function DualityExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
+  const instanceId = useId().replace(/:/g, '');
+  const clipLag = `clip-lag-${instanceId}`;
+  const clipDual = `clip-dual-${instanceId}`;
+  const clipPert = `clip-pert-${instanceId}`;
   const [problemIdx, setProblemIdx] = useState(0);
   const [constraint, setConstraint] = useState(PROBLEMS[0].constraintDefault);
   const [lambda, setLambda] = useState(2.0);
@@ -190,12 +194,12 @@ export default function DualityExplorer() {
       // Clip path
       g.append('defs')
         .append('clipPath')
-        .attr('id', 'clip-lagrangian')
+        .attr('id', clipLag)
         .append('rect')
         .attr('width', plotW)
         .attr('height', plotH);
 
-      const plotArea = g.append('g').attr('clip-path', 'url(#clip-lagrangian)');
+      const plotArea = g.append('g').attr('clip-path', `url(#${clipLag})`);
 
       // Feasible region shading
       plotArea
@@ -291,12 +295,12 @@ export default function DualityExplorer() {
 
       g.append('defs')
         .append('clipPath')
-        .attr('id', 'clip-dual')
+        .attr('id', clipDual)
         .append('rect')
         .attr('width', plotW)
         .attr('height', plotH);
 
-      const plotArea = g.append('g').attr('clip-path', 'url(#clip-dual)');
+      const plotArea = g.append('g').attr('clip-path', `url(#${clipDual})`);
 
       // p* dashed horizontal line
       plotArea
@@ -418,12 +422,12 @@ export default function DualityExplorer() {
 
       g.append('defs')
         .append('clipPath')
-        .attr('id', 'clip-pert')
+        .attr('id', clipPert)
         .append('rect')
         .attr('width', plotW)
         .attr('height', plotH);
 
-      const plotArea = g.append('g').attr('clip-path', 'url(#clip-pert)');
+      const plotArea = g.append('g').attr('clip-path', `url(#${clipPert})`);
 
       // Perturbation curve
       const line = d3
@@ -440,7 +444,6 @@ export default function DualityExplorer() {
         .style('stroke-width', '2.5');
 
       // Supporting hyperplane at u=0 (slope = -λ*)
-      const dualOpt = d3.max(dualCurve.filter((d) => d.g > -20), (d) => d.g) ?? pStar;
       const optLambdaIdx = dualCurve.reduce(
         (best, d, i) => (d.g > -20 && d.g > (dualCurve[best]?.g ?? -Infinity) ? i : best),
         0,

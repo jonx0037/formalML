@@ -17,7 +17,8 @@ interface SensitivityProblem {
 const PROBLEMS: SensitivityProblem[] = [
   {
     name: 'Resource allocation (linear)',
-    pStar: (u) => -3 + 0.75 * u, // p*(u) ≈ p*(0) − λ*u, λ* = −0.75
+    // min −0.75x s.t. x ≤ 4+u → p*(u) = −0.75(4+u) = −3 − 0.75u, ∂p*/∂u = −0.75 → λ* = 0.75
+    pStar: (u) => -3 - 0.75 * u,
     shadowPrices: [
       { label: 'Material A', value: 0.75, active: true },
       { label: 'Material B', value: 0.5, active: true },
@@ -27,6 +28,7 @@ const PROBLEMS: SensitivityProblem[] = [
   },
   {
     name: 'Quadratic program',
+    // min (x−3)² s.t. x ≤ 1.5+u → p*(u) = (1.5+u−3)², ∂p*/∂u|₀ = 2(−1.5) = −3 → λ* = 3
     pStar: (u) => {
       const c = 1.5 + u;
       return c > 0 ? (c - 3) * (c - 3) : 9;
@@ -39,13 +41,14 @@ const PROBLEMS: SensitivityProblem[] = [
   },
   {
     name: 'Inequality-constrained LS',
+    // min (x−3.5)²+0.5 s.t. x ≤ 2+u → p*(u) = (2+u−3.5)²+0.5, ∂p*/∂u|₀ = 2(−1.5) = −3 → λ* = 3
     pStar: (u) => {
       const bound = 2 + u;
       if (bound >= 3.5) return 0.5;
       return (bound - 3.5) * (bound - 3.5) + 0.5;
     },
     shadowPrices: [
-      { label: '‖x‖ ≤ b', value: 1.5, active: true },
+      { label: '‖x‖ ≤ b', value: 3.0, active: true },
       { label: 'xᵢ ≥ 0', value: 0.0, active: false },
       { label: 'Σxᵢ ≤ M', value: 0.0, active: false },
     ],

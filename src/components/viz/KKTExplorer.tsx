@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -81,6 +81,9 @@ const RED = '#DC2626';
 
 export default function KKTExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
+  const instanceId = useId().replace(/:/g, '');
+  const clipId = `clip-kkt-${instanceId}`;
+  const arrowId = `arrow-purple-${instanceId}`;
   const [candidate, setCandidate] = useState<[number, number]>([2.0, 2.0]);
   const [showGradients, setShowGradients] = useState(true);
   const [activeConstraints, setActiveConstraints] = useState([0, 1, 2]); // indices
@@ -144,12 +147,12 @@ export default function KKTExplorer() {
 
       g.append('defs')
         .append('clipPath')
-        .attr('id', 'clip-kkt')
+        .attr('id', clipId)
         .append('rect')
         .attr('width', plotW)
         .attr('height', plotH);
 
-      const plotArea = g.append('g').attr('clip-path', 'url(#clip-kkt)');
+      const plotArea = g.append('g').attr('clip-path', `url(#${clipId})`);
 
       // Contour levels
       const contours = d3
@@ -222,7 +225,7 @@ export default function KKTExplorer() {
           .attr('y2', yScale(candidate[1]) + gf[1] * arrowScale)
           .style('stroke', PURPLE)
           .style('stroke-width', '2.5')
-          .attr('marker-end', 'url(#arrow-purple)');
+          .attr('marker-end', `url(#${arrowId})`);
 
         // Constraint gradient arrows (for active constraints)
         activeConstraints.forEach((ci, idx) => {
@@ -249,7 +252,7 @@ export default function KKTExplorer() {
         const defs = svg.select('defs').empty() ? svg.append('defs') : svg.select('defs');
         defs
           .append('marker')
-          .attr('id', 'arrow-purple')
+          .attr('id', arrowId)
           .attr('viewBox', '0 0 10 10')
           .attr('refX', 8)
           .attr('refY', 5)
@@ -283,8 +286,10 @@ export default function KKTExplorer() {
 
       candidateCircle.call(drag);
 
-      // Optimum marker (analytical: constrained min of quadratic)
-      const xOpt = [2, 2]; // For x₁+x₂≤4, x≥0: opt is (3,1) clamped → (2,2)
+      // Optimum marker (analytical: constrained min of quadratic).
+      // For f₀(x) = (x₁ - 3)² + (x₂ - 2)² with x₁ + x₂ ≤ 4, x ≥ 0,
+      // the unconstrained minimum is (3, 2), whose projection onto x₁ + x₂ = 4 is (2.5, 1.5).
+      const xOpt = [2.5, 1.5];
       plotArea
         .append('circle')
         .attr('cx', xScale(xOpt[0]))
