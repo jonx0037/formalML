@@ -1,4 +1,4 @@
-import { useState, useMemo, useId } from 'react';
+import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { useD3 } from './shared/useD3';
@@ -23,7 +23,6 @@ const LAMBDA = 0.1;
 const MAX_ITER = 200;
 
 export default function ADMMExplorer() {
-  const id = useId();
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [rho, setRho] = useState(1.0);
   const [showResiduals, setShowResiduals] = useState(false);
@@ -248,7 +247,9 @@ export default function ADMMExplorer() {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
       const p = problem.p;
-      const barW = Math.max(2, (panelW / p - 2) / 2);
+      const MIN_BAR_WIDTH = 2;
+      const BAR_GAP = 2; // px between paired truth/recovered bars
+      const barW = Math.max(MIN_BAR_WIDTH, (panelW / p - BAR_GAP) / 2);
 
       const allVals = [...problem.xTrue, ...admmResult.z];
       const yMax = Math.max(...allVals.map(Math.abs), 0.5);

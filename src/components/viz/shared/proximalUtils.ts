@@ -41,6 +41,24 @@ export function projectBox(x: number[], lo: number, hi: number): number[] {
   return x.map((xi) => Math.max(lo, Math.min(hi, xi)));
 }
 
+// ── General math utilities ─────────────────────────────────────────────
+
+/** Generate n evenly-spaced values from a to b (inclusive). */
+export function linspace(a: number, b: number, n: number): number[] {
+  const step = (b - a) / (n - 1);
+  return Array.from({ length: n }, (_, i) => a + i * step);
+}
+
+/**
+ * Huber function: smooth approximation to |x|.
+ * H_δ(x) = x²/(2δ) if |x| ≤ δ, |x| − δ/2 otherwise.
+ */
+export function huber(x: number, delta: number): number {
+  const ax = Math.abs(x);
+  if (ax <= delta) return (x * x) / (2 * delta);
+  return ax - delta / 2;
+}
+
 // ── Lasso problem utilities ────────────────────────────────────────────
 
 /**
@@ -102,7 +120,7 @@ export function lassoObjective(
 
 /**
  * Generate a reproducible Lasso problem for visualizations.
- * Uses a simple seeded PRNG (xoshiro128) for deterministic results.
+ * Uses a simple seeded PRNG for deterministic results.
  *
  * Returns A (n×p), xTrue (p), b (n), support indices, and L (Lipschitz constant).
  */
@@ -293,7 +311,12 @@ export function solveFISTA(
 
 // ── Internal helpers ───────────────────────────────────────────────────
 
-/** Simple seeded PRNG (xoshiro128**) for reproducible visualizations. */
+/**
+ * Simple seeded PRNG for reproducible visualizations.
+ * Uses an LCG-seeded state with a shift-xor update; NOT a standard
+ * xoshiro variant — just a lightweight deterministic generator adequate
+ * for visualization data.
+ */
 function seededRng(seed: number) {
   let s0 = seed | 0 || 1;
   let s1 = (seed * 1664525 + 1013904223) | 0;
@@ -324,7 +347,7 @@ function seededRng(seed: number) {
 }
 
 /** Estimate largest eigenvalue of AᵀA via power iteration. */
-function estimateLipschitz(A: number[][], n: number, p: number): number {
+export function estimateLipschitz(A: number[][], n: number, p: number): number {
   let v = new Array(p).fill(0).map((_, i) => (i === 0 ? 1 : 0));
   for (let iter = 0; iter < 30; iter++) {
     // w = AᵀA v
@@ -398,7 +421,9 @@ function invertMatrix(M: number[][], p: number): number[][] {
     [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
 
     const pivot = aug[col][col];
-    if (Math.abs(pivot) < 1e-15) continue;
+    if (Math.abs(pivot) < 1e-15) {
+      throw new Error('invertMatrix: matrix is singular or ill-conditioned (pivot too small).');
+    }
     for (let j = 0; j < 2 * p; j++) aug[col][j] /= pivot;
 
     for (let row = 0; row < p; row++) {

@@ -2,6 +2,7 @@ import { useState, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { useD3 } from './shared/useD3';
+import { softThresholdScalar } from './shared/proximalUtils';
 
 const SM_BREAKPOINT = 640;
 const TEAL = '#0F6E56';
@@ -31,11 +32,6 @@ function makeQuadratic2D(kappa: number) {
   return { f, grad, L, A: [[a00, a01], [a01, a11]] };
 }
 
-/** Scalar soft-threshold. */
-function sThresh(v: number, lam: number): number {
-  return Math.sign(v) * Math.max(Math.abs(v) - lam, 0);
-}
-
 /** Run ISTA on composite g + lambda*||.||_1. */
 function runISTA(
   quad: ReturnType<typeof makeQuadratic2D>,
@@ -51,7 +47,7 @@ function runISTA(
   for (let k = 0; k < maxIter; k++) {
     const g = quad.grad(x);
     const xh = [x[0] - eta * g[0], x[1] - eta * g[1]];
-    x = [sThresh(xh[0], eta * lambda), sThresh(xh[1], eta * lambda)];
+    x = [softThresholdScalar(xh[0], eta * lambda), softThresholdScalar(xh[1], eta * lambda)];
     path.push(x.slice());
     objs.push(quad.f(x) + lambda * (Math.abs(x[0]) + Math.abs(x[1])));
   }
@@ -82,7 +78,7 @@ function runFISTA(
     const g = quad.grad(y);
     const yh = [y[0] - eta * g[0], y[1] - eta * g[1]];
     xPrev = x.slice();
-    x = [sThresh(yh[0], eta * lambda), sThresh(yh[1], eta * lambda)];
+    x = [softThresholdScalar(yh[0], eta * lambda), softThresholdScalar(yh[1], eta * lambda)];
     tk = tNext;
     path.push(x.slice());
     objs.push(quad.f(x) + lambda * (Math.abs(x[0]) + Math.abs(x[1])));
@@ -91,7 +87,8 @@ function runFISTA(
 }
 
 export default function FISTAExplorer() {
-  const id = useId();
+  const rawId = useId();
+  const id = rawId.replace(/:/g, '');
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [kappa, setKappa] = useState(10);
   const [x0, setX0] = useState<[number, number]>([2.5, 2.5]);
@@ -388,9 +385,11 @@ export default function FISTAExplorer() {
         .style('stroke', PURPLE)
         .style('stroke-width', 2);
 
-      // Rate envelopes
+      // Rate envelopes — scale constant so the theoretical O(1/k) / O(1/k²)
+      // curves visually bracket the empirical convergence curves.
       const ks = d3.range(1, maxIter + 1);
-      const C1 = istaGap[0] * 3;
+      const ENVELOPE_SCALE = 3; // visual scaling to sit above empirical curves
+      const C1 = istaGap[0] * ENVELOPE_SCALE;
 
       g.append('path')
         .datum(ks)

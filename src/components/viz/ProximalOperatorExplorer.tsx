@@ -2,12 +2,16 @@ import { useState, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { useD3 } from './shared/useD3';
+import { linspace } from './shared/proximalUtils';
 
 const SM_BREAKPOINT = 640;
 const MARGIN = { top: 30, right: 20, bottom: 40, left: 50 };
 const HEIGHT = 320;
 const X_DOMAIN: [number, number] = [-4, 4];
 const NUM_SAMPLES = 300;
+const Y_AXIS_PADDING = 1.15;   // 15% headroom above tallest value
+const Y_AXIS_DEFAULT_MAX = 6;  // fallback when all finite values are tiny
+const Y_AXIS_HARD_CAP = 20;    // prevent extreme y range for indicator funcs
 
 // ─── Colors ───
 const COLOR_F = '#0F6E56';       // teal — f(x)
@@ -15,12 +19,15 @@ const COLOR_SUM = '#534AB7';     // purple — sum / prox curve
 const COLOR_ANCHOR = '#D97706';  // amber — anchor v
 const COLOR_QUAD = '#6B6E6B';    // slate — quadratic penalty
 const COLOR_STAR = '#DC2626';    // red — minimizer star
+const COLOR_IDENTITY = '#3f3f46'; // zinc-700 — identity reference line
 
 // ─── Function definitions with closed-form proximal operators ───
 
 interface FuncDef {
   key: string;
   label: string;
+  /** Short name for the formula readout (no parenthetical explanation). */
+  shortLabel: string;
   fn: (x: number) => number;
   prox: (v: number, lam: number) => number;
   /** domain of f; returns Infinity outside */
@@ -31,12 +38,14 @@ const FUNCTIONS: FuncDef[] = [
   {
     key: 'abs',
     label: '|x|  (soft-thresholding)',
+    shortLabel: '|x|',
     fn: (x) => Math.abs(x),
     prox: (v, lam) => Math.sign(v) * Math.max(Math.abs(v) - lam, 0),
   },
   {
     key: 'indicator',
     label: 'ι_{[-1,1]}  (projection)',
+    shortLabel: 'ι_{[-1,1]}',
     fn: (x) => (Math.abs(x) <= 1 + 1e-9 ? 0 : Infinity),
     prox: (v, _lam) => Math.max(-1, Math.min(1, v)),
     domain: (x) => Math.abs(x) <= 1 + 1e-9,
@@ -44,22 +53,19 @@ const FUNCTIONS: FuncDef[] = [
   {
     key: 'quad',
     label: 'x²  (shrinkage)',
+    shortLabel: 'x²',
     fn: (x) => x * x,
     prox: (v, lam) => v / (1 + 2 * lam),
   },
   {
     key: 'nn_soft',
     label: '|x| + ι_{[0,∞)}  (non-neg soft-thresh)',
+    shortLabel: '|x| + ι_{[0,∞)}',
     fn: (x) => (x >= -1e-9 ? Math.abs(x) : Infinity),
     prox: (v, lam) => Math.max(v - lam, 0),
     domain: (x) => x >= -1e-9,
   },
 ];
-
-function linspace(a: number, b: number, n: number): number[] {
-  const step = (b - a) / (n - 1);
-  return Array.from({ length: n }, (_, i) => a + i * step);
-}
 
 export default function ProximalOperatorExplorer() {
   const uid = useId();
@@ -119,8 +125,8 @@ export default function ProximalOperatorExplorer() {
 
       const xScale = d3.scaleLinear().domain(X_DOMAIN).range([0, innerW]);
       const finiteVals = leftData.filter((d) => isFinite(d.fx) && isFinite(d.sum));
-      const yMax = d3.max(finiteVals, (d) => Math.max(d.fx, d.qx, d.sum)) ?? 6;
-      const yScale = d3.scaleLinear().domain([0, Math.min(yMax * 1.15, 20)]).range([innerH, 0]);
+      const yMax = d3.max(finiteVals, (d) => Math.max(d.fx, d.qx, d.sum)) ?? Y_AXIS_DEFAULT_MAX;
+      const yScale = d3.scaleLinear().domain([0, Math.min(yMax * Y_AXIS_PADDING, Y_AXIS_HARD_CAP)]).range([innerH, 0]);
 
       // Axes
       g.append('g')
@@ -322,7 +328,7 @@ export default function ProximalOperatorExplorer() {
         .attr('y1', yScale(X_DOMAIN[0]))
         .attr('x2', xScale(X_DOMAIN[1]))
         .attr('y2', yScale(X_DOMAIN[1]))
-        .style('stroke', '#3f3f46')
+        .style('stroke', COLOR_IDENTITY)
         .style('stroke-width', '1')
         .style('stroke-dasharray', '4,4');
 
@@ -412,7 +418,7 @@ export default function ProximalOperatorExplorer() {
 
       {/* Formula readout */}
       <p className="mt-3 text-xs text-zinc-400 font-mono">
-        prox<sub>λf</sub>(v) = prox<sub>{lambda.toFixed(1)}·{selectedFunc.label.split('(')[0].trim()}</sub>
+        prox<sub>λf</sub>(v) = prox<sub>{lambda.toFixed(1)}·{selectedFunc.shortLabel}</sub>
         ({v.toFixed(1)}) = {proxValue.toFixed(3)}
       </p>
     </div>

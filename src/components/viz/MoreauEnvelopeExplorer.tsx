@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
+import { huber } from './shared/proximalUtils';
 
 const SM_BREAKPOINT = 640;
 const MARGIN = { top: 30, right: 20, bottom: 40, left: 50 };
@@ -21,32 +22,37 @@ interface FuncDef {
   label: string;
   fn: (x: number) => number;
   prox: (v: number, lambda: number) => number;
-  subdiff: (x: number) => { segments: { x: number; yLow: number; yHigh: number }[] };
+  subdiff: (xDomain: [number, number]) => { segments: { x: number; yLow: number; yHigh: number }[] };
   xDomain: [number, number];
   yDomain: [number, number];
   gradYDomain: [number, number];
   huberOverlay?: boolean;
 }
 
-function huber(x: number, delta: number): number {
-  const ax = Math.abs(x);
-  if (ax <= delta) return (x * x) / (2 * delta);
-  return ax - delta / 2;
-}
+/** Tiny offset used to separate single-valued from set-valued segments in subdiff rendering. */
+const SUBDIFF_KINK_EPSILON = 0.01;
+/** Threshold for distinguishing single-valued vs set-valued subdiff segments in the plot. */
+const SUBDIFF_SET_VALUED_THRESHOLD = 0.02;
+/** Margin from y-axis bounds used to decide if a subdiff endpoint is "finite" (worth a dot). */
+const SUBDIFF_FINITE_MARGIN = 0.5;
+/** Number of grid points for Moreau envelope numerical minimization. */
+const MOREAU_GRID_SIZE = 500;
+/** Half-width of the grid search window relative to v. */
+const MOREAU_GRID_HALFWIDTH = 5;
 
 const FUNCTIONS: Record<FuncKey, FuncDef> = {
   abs: {
     label: '|x|',
     fn: (x) => Math.abs(x),
     prox: (v, lambda) => Math.sign(v) * Math.max(Math.abs(v) - lambda, 0),
-    subdiff: () => ({
+    subdiff: (xDomain: [number, number]) => ({
       segments: [
         // sign(x) for x != 0, [-1,1] at x = 0
-        { x: -3, yLow: -1, yHigh: -1 },
-        { x: -0.01, yLow: -1, yHigh: -1 },
+        { x: xDomain[0], yLow: -1, yHigh: -1 },
+        { x: -SUBDIFF_KINK_EPSILON, yLow: -1, yHigh: -1 },
         { x: 0, yLow: -1, yHigh: 1 },
-        { x: 0.01, yLow: 1, yHigh: 1 },
-        { x: 3, yLow: 1, yHigh: 1 },
+        { x: SUBDIFF_KINK_EPSILON, yLow: 1, yHigh: 1 },
+        { x: xDomain[1], yLow: 1, yHigh: 1 },
       ],
     }),
     xDomain: [-3, 3],
@@ -62,13 +68,13 @@ const FUNCTIONS: Record<FuncKey, FuncDef> = {
       if (v <= lambda) return 0;
       return v - lambda;
     },
-    subdiff: () => ({
+    subdiff: (xDomain: [number, number]) => ({
       segments: [
-        { x: -3, yLow: 0, yHigh: 0 },
-        { x: -0.01, yLow: 0, yHigh: 0 },
+        { x: xDomain[0], yLow: 0, yHigh: 0 },
+        { x: -SUBDIFF_KINK_EPSILON, yLow: 0, yHigh: 0 },
         { x: 0, yLow: 0, yHigh: 1 },
-        { x: 0.01, yLow: 1, yHigh: 1 },
-        { x: 3, yLow: 1, yHigh: 1 },
+        { x: SUBDIFF_KINK_EPSILON, yLow: 1, yHigh: 1 },
+        { x: xDomain[1], yLow: 1, yHigh: 1 },
       ],
     }),
     xDomain: [-3, 3],
@@ -79,16 +85,19 @@ const FUNCTIONS: Record<FuncKey, FuncDef> = {
     label: 'ι_{[-1,1]}(x)',
     fn: (x) => (Math.abs(x) <= 1 ? 0 : Infinity),
     prox: (v, _lambda) => Math.max(-1, Math.min(1, v)),
-    subdiff: () => ({
+    subdiff: (xDomain: [number, number]) => {
       // Normal cone: 0 in interior, ray outward at boundaries
-      segments: [
-        { x: -1, yLow: -8, yHigh: 0 },
-        { x: -0.99, yLow: 0, yHigh: 0 },
-        { x: 0, yLow: 0, yHigh: 0 },
-        { x: 0.99, yLow: 0, yHigh: 0 },
-        { x: 1, yLow: 0, yHigh: 8 },
-      ],
-    }),
+      const rayExtent = Math.abs(xDomain[1]) * 2.5;
+      return {
+        segments: [
+          { x: -1, yLow: -rayExtent, yHigh: 0 },
+          { x: -1 + SUBDIFF_KINK_EPSILON, yLow: 0, yHigh: 0 },
+          { x: 0, yLow: 0, yHigh: 0 },
+          { x: 1 - SUBDIFF_KINK_EPSILON, yLow: 0, yHigh: 0 },
+          { x: 1, yLow: 0, yHigh: rayExtent },
+        ],
+      };
+    },
     xDomain: [-3, 3],
     yDomain: [-0.5, 4],
     gradYDomain: [-3, 3],
@@ -102,7 +111,11 @@ function computeMoreauEnvelope(
   v: number,
   lambda: number,
 ): number {
-  const grid = Array.from({ length: 500 }, (_, i) => v - 5 + (i * 10) / 499);
+  const halfW = MOREAU_GRID_HALFWIDTH;
+  const grid = Array.from(
+    { length: MOREAU_GRID_SIZE },
+    (_, i) => v - halfW + (i * 2 * halfW) / (MOREAU_GRID_SIZE - 1),
+  );
   let minVal = Infinity;
   for (const x of grid) {
     const val = fFunc(x) + (1 / (2 * lambda)) * (x - v) ** 2;
@@ -354,11 +367,10 @@ export default function MoreauEnvelopeExplorer() {
       legendY += 16;
     }
 
-    // x-axis label
-    svg
-      .append('text')
-      .attr('x', panelWidth / 2)
-      .attr('y', panelHeight - 6)
+    // x-axis label (inside the main g element for consistent positioning)
+    g.append('text')
+      .attr('x', w / 2)
+      .attr('y', h + 34)
       .attr('text-anchor', 'middle')
       .style('fill', 'var(--color-muted)')
       .style('font-size', '11px')
@@ -453,7 +465,7 @@ export default function MoreauEnvelopeExplorer() {
     }
 
     // Subdifferential — draw as thick segments
-    const subdiffInfo = funcDef.subdiff(0);
+    const subdiffInfo = funcDef.subdiff(funcDef.xDomain);
     const segs = subdiffInfo.segments;
 
     // Draw single-valued parts as lines
@@ -461,7 +473,7 @@ export default function MoreauEnvelopeExplorer() {
       const s0 = segs[i];
       const s1 = segs[i + 1];
       // Only connect if both are single-valued (no jump)
-      if (Math.abs(s0.yHigh - s0.yLow) < 0.02 && Math.abs(s1.yHigh - s1.yLow) < 0.02) {
+      if (Math.abs(s0.yHigh - s0.yLow) < SUBDIFF_SET_VALUED_THRESHOLD && Math.abs(s1.yHigh - s1.yLow) < SUBDIFF_SET_VALUED_THRESHOLD) {
         plotArea
           .append('line')
           .attr('x1', xScale(s0.x))
@@ -476,7 +488,7 @@ export default function MoreauEnvelopeExplorer() {
 
     // Draw set-valued parts as thick vertical segments
     for (const seg of segs) {
-      if (Math.abs(seg.yHigh - seg.yLow) >= 0.02) {
+      if (Math.abs(seg.yHigh - seg.yLow) >= SUBDIFF_SET_VALUED_THRESHOLD) {
         // Clamp to visible range
         const drawLow = Math.max(seg.yLow, yMin);
         const drawHigh = Math.min(seg.yHigh, yMax);
@@ -492,7 +504,7 @@ export default function MoreauEnvelopeExplorer() {
           .style('stroke-linecap', 'round');
 
         // Endpoint dots for finite endpoints
-        if (seg.yLow > yMin + 0.5) {
+        if (seg.yLow > yMin + SUBDIFF_FINITE_MARGIN) {
           plotArea
             .append('circle')
             .attr('cx', xScale(seg.x))
@@ -502,7 +514,7 @@ export default function MoreauEnvelopeExplorer() {
             .style('stroke', '#fff')
             .style('stroke-width', '1.5');
         }
-        if (seg.yHigh < yMax - 0.5) {
+        if (seg.yHigh < yMax - SUBDIFF_FINITE_MARGIN) {
           plotArea
             .append('circle')
             .attr('cx', xScale(seg.x))
@@ -569,11 +581,10 @@ export default function MoreauEnvelopeExplorer() {
       .style('font-size', '11px')
       .text('∇Mλf(x)');
 
-    // x-axis label
-    svg
-      .append('text')
-      .attr('x', panelWidth / 2)
-      .attr('y', panelHeight - 6)
+    // x-axis label (inside the main g element for consistent positioning)
+    g.append('text')
+      .attr('x', w / 2)
+      .attr('y', h + 34)
       .attr('text-anchor', 'middle')
       .style('fill', 'var(--color-muted)')
       .style('font-size', '11px')
@@ -609,9 +620,9 @@ export default function MoreauEnvelopeExplorer() {
               color: 'var(--color-text)',
             }}
           >
-            <option value="abs">|x| (Huber connection)</option>
-            <option value="relu">max(0, x) (ReLU smoothing)</option>
-            <option value="indicator">ι_[-1,1] (distance-to-set)</option>
+            <option value="abs">|x| — Huber connection</option>
+            <option value="relu">max(0, x) — ReLU smoothing</option>
+            <option value="indicator">ι_[-1,1] — distance-to-set</option>
           </select>
         </div>
 

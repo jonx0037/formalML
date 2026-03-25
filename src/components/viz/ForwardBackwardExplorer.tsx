@@ -4,9 +4,11 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import { useD3 } from './shared/useD3';
 import {
   softThreshold,
+  softThresholdScalar,
   generateLassoProblem,
   lassoGradient,
   lassoObjective,
+  estimateLipschitz,
 } from './shared/proximalUtils';
 
 // ─── Constants ───
@@ -31,17 +33,13 @@ const A2 = [
   [1.0, 0.6],
 ];
 const bTrue2 = [1.2, -0.8];
-const b2 = A2.map((row) => row[0] * bTrue2[0] + row[1] * bTrue2[1]);
+// b = A * bTrue (matrix-vector product)
+const b2 = A2.map((row) =>
+  row.reduce((sum, aij, j) => sum + aij * bTrue2[j], 0),
+);
 
-// Lipschitz constant for the 2D problem (largest eigenvalue of A^T A)
-const L2 = (() => {
-  const ata00 = A2.reduce((s, r) => s + r[0] * r[0], 0);
-  const ata01 = A2.reduce((s, r) => s + r[0] * r[1], 0);
-  const ata11 = A2.reduce((s, r) => s + r[1] * r[1], 0);
-  const trace = ata00 + ata11;
-  const det = ata00 * ata11 - ata01 * ata01;
-  return 0.5 * (trace + Math.sqrt(trace * trace - 4 * det));
-})();
+// Lipschitz constant for the 2D problem (largest eigenvalue of AᵀA)
+const L2 = estimateLipschitz(A2, A2.length, A2[0].length);
 
 const GRID_SIZE = 80;
 const X_RANGE: [number, number] = [-3, 3];
@@ -61,36 +59,21 @@ function runProxGrad2D(
   const eta = 1 / L2;
   const traj = [x0.slice()];
   const gradSteps: number[][] = [];
-  const objectives: number[] = [computeObj2D(x0, lambda)];
+  const objectives: number[] = [lassoObjective(A2, x0, b2, lambda)];
   let x = x0.slice();
 
   for (let k = 0; k < maxIter; k++) {
-    const Ax = A2.map((row) => row[0] * x[0] + row[1] * x[1]);
-    const grad = [0, 0];
-    for (let i = 0; i < A2.length; i++) {
-      const r = Ax[i] - b2[i];
-      grad[0] += A2[i][0] * r;
-      grad[1] += A2[i][1] * r;
-    }
+    const grad = lassoGradient(A2, x, b2);
     const xHalf = [x[0] - eta * grad[0], x[1] - eta * grad[1]];
     gradSteps.push(xHalf.slice());
     x = [
-      Math.sign(xHalf[0]) * Math.max(Math.abs(xHalf[0]) - eta * lambda, 0),
-      Math.sign(xHalf[1]) * Math.max(Math.abs(xHalf[1]) - eta * lambda, 0),
+      softThresholdScalar(xHalf[0], eta * lambda),
+      softThresholdScalar(xHalf[1], eta * lambda),
     ];
     traj.push(x.slice());
-    objectives.push(computeObj2D(x, lambda));
+    objectives.push(lassoObjective(A2, x, b2, lambda));
   }
   return { traj, gradSteps, objectives };
-}
-
-function computeObj2D(x: number[], lambda: number): number {
-  let smooth = 0;
-  for (const row of A2) {
-    const r = row[0] * x[0] + row[1] * x[1] - b2[A2.indexOf(row)];
-    smooth += r * r;
-  }
-  return 0.5 * smooth + lambda * (Math.abs(x[0]) + Math.abs(x[1]));
 }
 
 // ─── Component ───
