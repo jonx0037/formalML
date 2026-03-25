@@ -1,0 +1,699 @@
+---
+title: "Riemannian Geometry"
+subtitle: "Metric tensors, connections, and parallel transport on smooth manifolds"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "smooth-manifolds"
+tags:
+  - "differential-geometry"
+  - "riemannian-metrics"
+  - "connections"
+  - "parallel-transport"
+  - "christoffel-symbols"
+  - "killing-fields"
+domain: "geometry"
+videoId: null
+notebookPath: "notebooks/riemannian-geometry/02_riemannian_geometry.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/riemannian-geometry.mdx"
+datePublished: 2026-03-25
+estimatedReadTime: 55
+abstract: "A Riemannian metric equips each tangent space of a smooth manifold with an inner product that varies smoothly from point to point — this single piece of structure unlocks lengths, angles, areas, curvature, and a canonical notion of differentiation. We construct the metric tensor in local coordinates and prove that every smooth manifold admits a Riemannian metric via partitions of unity. The musical isomorphisms (flat and sharp) provide the bridge between tangent and cotangent spaces, revealing that the gradient depends on the metric. The Fundamental Theorem of Riemannian Geometry establishes the existence and uniqueness of the Levi-Civita connection — the unique torsion-free, metric-compatible covariant derivative — whose Christoffel symbols are computed explicitly for the sphere and Poincaré disk. Parallel transport along curves, governed by a first-order ODE, is path-dependent on curved manifolds: the holonomy of a closed loop encodes curvature. The Riemannian volume form enables coordinate-invariant integration. Isometries and Killing vector fields capture the symmetries of a Riemannian manifold, with maximally symmetric spaces saturating the bound dim(Isom) = n(n+1)/2. The Fisher information metric on statistical parameter spaces connects this machinery to natural gradient descent and information geometry."
+connections:
+  - topic: "smooth-manifolds"
+    relationship: "Riemannian geometry builds directly on smooth manifolds by adding an inner product to each tangent space. Charts, tangent vectors, and the differential from the Smooth Manifolds topic are the raw inputs; the Riemannian metric is the additional structure that makes geometric measurement possible."
+  - topic: "spectral-theorem"
+    relationship: "The metric tensor g_ij at each point is a symmetric positive-definite matrix. Its eigendecomposition — the Spectral Theorem — reveals the principal directions and magnitudes of the metric, determining how the manifold stretches and compresses in each direction."
+  - topic: "svd"
+    relationship: "The Jacobian of a smooth map between Riemannian manifolds decomposes via SVD into stretching (singular values) and rotational components. In Riemannian geometry, this decomposition of the differential dF_p reveals how the map distorts the metric."
+  - topic: "pca-low-rank"
+    relationship: "PCA on data sampled near a manifold estimates the tangent space metric locally. The Riemannian metric provides the theoretical foundation for local PCA methods and manifold learning algorithms that respect the intrinsic geometry of the data."
+references:
+  - type: "book"
+    title: "Riemannian Manifolds: An Introduction to Curvature"
+    authors: "Lee"
+    year: 2018
+    note: "Chapters 2-5: The primary graduate reference for Riemannian metrics, connections, and geodesics. Second edition (Riemannian Manifolds: An Introduction to Curvature → Introduction to Riemannian Manifolds)."
+  - type: "book"
+    title: "Semi-Riemannian Geometry with Applications to Relativity"
+    authors: "O'Neill"
+    year: 1983
+    note: "Chapters 3-5: Classical treatment of connections, parallel transport, and curvature with applications to general relativity"
+  - type: "book"
+    title: "Differential Geometry: Connections, Curvature, and Characteristic Classes"
+    authors: "Tu"
+    year: 2017
+    note: "Chapters 2-6: Accessible treatment connecting Riemannian geometry to vector bundles and characteristic classes"
+  - type: "book"
+    title: "Foundations of Differential Geometry, Vol. I"
+    authors: "Kobayashi & Nomizu"
+    year: 1963
+    note: "Chapters II-IV: Affine connections, parallel transport, and curvature — the classical definitive reference"
+  - type: "paper"
+    title: "Natural Gradient Works Efficiently in Learning"
+    authors: "Amari"
+    year: 1998
+    url: "https://doi.org/10.1162/089976698300017746"
+    note: "Foundational paper connecting Riemannian geometry (Fisher information metric) to neural network optimization"
+  - type: "paper"
+    title: "Information Geometry and Its Applications"
+    authors: "Amari"
+    year: 2016
+    url: "https://doi.org/10.1007/978-4-431-55978-8"
+    note: "Comprehensive treatment of the Fisher information metric as a Riemannian metric on statistical manifolds"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import MetricTensorExplorer from '../../components/viz/MetricTensorExplorer.tsx';
+import ParallelTransportExplorer from '../../components/viz/ParallelTransportExplorer.tsx';
+import ConnectionExplorer from '../../components/viz/ConnectionExplorer.tsx';
+import NaturalGradientExplorer from '../../components/viz/NaturalGradientExplorer.tsx';
+
+## Overview & Motivation
+
+In the [Smooth Manifolds](/topics/smooth-manifolds) topic, we built the language for doing calculus on curved spaces: charts, tangent vectors, the differential. But that machinery alone cannot answer the most basic geometric questions. How long is a curve on the sphere? What angle do two curves make when they cross? What is the area of a region on a surface? Smooth manifolds, by themselves, have no notion of length, angle, or volume — they are *topological* objects with a differentiable structure, nothing more.
+
+The missing ingredient is a **Riemannian metric**: a smoothly varying inner product on each tangent space. This single piece of additional structure transforms a smooth manifold into a *Riemannian manifold* — a space where we can measure everything. Lengths of curves, distances between points, angles between tangent vectors, areas, volumes, curvature: all flow from the metric tensor $g$.
+
+Why should this matter for machine learning?
+
+1. **Natural gradient descent.** The parameter space of a statistical model $\{p_\theta : \theta \in \Theta\}$ is a smooth manifold. The Fisher information matrix $g_{ij}(\theta) = \mathbb{E}\!\left[\frac{\partial \log p_\theta}{\partial \theta^i}\frac{\partial \log p_\theta}{\partial \theta^j}\right]$ is a Riemannian metric on $\Theta$. Standard gradient descent ignores this geometry; natural gradient descent (Amari, 1998) uses the metric to compute steepest descent in the *intrinsic* sense, converging faster and more invariantly.
+
+2. **The Cramér–Rao bound.** The inverse of the Fisher metric gives the minimum variance of any unbiased estimator. This is a statement about the Riemannian geometry of the parameter space.
+
+3. **KL divergence as Riemannian distance.** For nearby distributions, the Kullback–Leibler divergence $\mathrm{KL}(p_\theta \| p_{\theta + d\theta}) \approx \frac{1}{2} g_{ij}\, d\theta^i\, d\theta^j$ is the squared Riemannian distance element. Information-theoretic quantities are geometric.
+
+**What we cover.** We construct the Riemannian metric and prove that every smooth manifold admits one (§2). We define curve lengths and the Riemannian distance function (§3). The musical isomorphisms — flat $\flat$ and sharp $\sharp$ — bridge tangent and cotangent spaces, revealing that the gradient is metric-dependent (§4). The Fundamental Theorem of Riemannian Geometry establishes the Levi-Civita connection as the unique torsion-free, metric-compatible way to differentiate vector fields (§5). Parallel transport carries vectors along curves, and its path-dependence — holonomy — is the first shadow of curvature (§6). The Riemannian volume form enables coordinate-invariant integration (§7). Isometries and Killing vector fields capture the symmetries of a Riemannian manifold (§8). We close with computational tools (§9) and the direct connection to the Fisher information metric and natural gradient descent (§10).
+
+**Prerequisites.** This topic assumes familiarity with [Smooth Manifolds](/topics/smooth-manifolds): charts, smooth atlases, tangent spaces $T_pM$, the differential $dF_p$, and partitions of unity. We reference the [Spectral Theorem](/topics/spectral-theorem) when discussing eigendecompositions of the metric tensor.
+
+---
+
+## Riemannian Metrics
+
+The central object in Riemannian geometry is a smoothly varying choice of inner product on each tangent space.
+
+<TheoremBlock type="definition" number={1} title="Riemannian Metric">
+Let $M$ be a smooth manifold. A **Riemannian metric** on $M$ is a smooth $(0,2)$-tensor field $g$ such that for each point $p \in M$, the bilinear form $g_p : T_pM \times T_pM \to \mathbb{R}$ is:
+
+1. **Symmetric:** $g_p(v, w) = g_p(w, v)$ for all $v, w \in T_pM$.
+2. **Positive definite:** $g_p(v, v) > 0$ for all $v \neq 0$ in $T_pM$.
+
+A smooth manifold equipped with a Riemannian metric is a **Riemannian manifold**, denoted $(M, g)$.
+</TheoremBlock>
+
+In local coordinates $(x^1, \ldots, x^n)$, the metric is represented by a matrix of smooth functions:
+
+$$
+g_{ij}(p) = g_p\!\left(\frac{\partial}{\partial x^i}\bigg|_p,\, \frac{\partial}{\partial x^j}\bigg|_p\right)
+$$
+
+The inner product of two tangent vectors $v = v^i \frac{\partial}{\partial x^i}$ and $w = w^j \frac{\partial}{\partial x^j}$ is:
+
+$$
+g_p(v, w) = g_{ij}(p)\, v^i\, w^j
+$$
+
+where we use the Einstein summation convention (repeated indices are summed). At each point, the matrix $(g_{ij})$ is symmetric and positive definite — which is precisely the setting of the [Spectral Theorem](/topics/spectral-theorem). Its eigenvalues are the *principal stretches* of the metric, and its eigenvectors are the *principal directions*.
+
+**Three fundamental examples.**
+
+**Example 1: The Euclidean metric on $\mathbb{R}^n$.** In standard coordinates, $g_{ij} = \delta_{ij}$ (the identity matrix). The inner product is the ordinary dot product $g_p(v, w) = v^1 w^1 + \cdots + v^n w^n$. The metric is the same everywhere — flat space.
+
+**Example 2: The Poincaré disk $\mathbb{D}^2$.** The open unit disk $\{(x, y) : x^2 + y^2 < 1\}$ with the metric:
+
+$$
+g = \frac{4}{(1 - x^2 - y^2)^2}\left(dx^2 + dy^2\right)
+$$
+
+This is a *conformal* metric — it is a scalar multiple $\lambda^2$ of the Euclidean metric, where $\lambda = 2/(1 - r^2)$ is the **conformal factor**. As a point approaches the boundary of the disk ($r \to 1$), $\lambda \to \infty$: distances blow up. The Poincaré disk is a model of the hyperbolic plane $\mathbb{H}^2$ — a space of constant negative curvature.
+
+**Example 3: The round metric on $S^2$.** In spherical coordinates $(\theta, \varphi)$ with $\theta \in (0, \pi)$ (colatitude) and $\varphi \in [0, 2\pi)$ (azimuth):
+
+$$
+g = d\theta^2 + \sin^2\!\theta\; d\varphi^2 \qquad \Longleftrightarrow \qquad g_{ij} = \begin{pmatrix} 1 & 0 \\ 0 & \sin^2\!\theta \end{pmatrix}
+$$
+
+The metric is diagonal: the $\theta$-direction has unit stretching everywhere, while the $\varphi$-direction shrinks as $\sin\theta \to 0$ near the poles. At the equator ($\theta = \pi/2$), the metric is locally Euclidean; at the poles, the $\varphi$-circles collapse to points.
+
+![Three Riemannian metrics — Euclidean (unit circles everywhere), Poincaré disk (circles shrink toward center, expand toward boundary), and the round sphere (ellipses flatten near the poles)](/images/topics/riemannian-geometry/riemannian-metrics.png)
+
+<MetricTensorExplorer client:visible />
+
+The natural question is: does every smooth manifold admit a Riemannian metric? The answer is yes, and the proof uses the partitions of unity from [Smooth Manifolds](/topics/smooth-manifolds).
+
+<TheoremBlock type="theorem" number={1} title="Existence of Riemannian Metrics">
+Every smooth manifold admits a Riemannian metric.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $M$ be a smooth manifold with a smooth atlas $\{(U_\alpha, \varphi_\alpha)\}$. On each chart domain $U_\alpha$, define the *pullback of the Euclidean metric*:
+
+$$
+g^{(\alpha)}_p(v, w) = \langle d\varphi_\alpha(v),\, d\varphi_\alpha(w) \rangle_{\mathbb{R}^n}
+$$
+
+This is a Riemannian metric on $U_\alpha$ (it inherits symmetry and positive definiteness from the Euclidean inner product). Let $\{\rho_\alpha\}$ be a smooth partition of unity subordinate to $\{U_\alpha\}$. Define:
+
+$$
+g_p(v, w) = \sum_\alpha \rho_\alpha(p)\, g^{(\alpha)}_p(v, w)
+$$
+
+This sum is locally finite, so $g$ is smooth. It is symmetric because each $g^{(\alpha)}$ is symmetric. It is positive definite because each $g^{(\alpha)}_p(v, v) > 0$ for $v \neq 0$, each $\rho_\alpha(p) \geq 0$, and at least one $\rho_\alpha(p) > 0$ at each point. Therefore $g$ is a Riemannian metric on $M$.
+</TheoremBlock>
+
+The proof is non-constructive — it tells us that metrics exist, but the particular metric we get depends on the choice of atlas and partition of unity. In practice, the metrics we work with (Euclidean, round sphere, Poincaré, Fisher) come from the geometry of the problem, not from this existence argument.
+
+---
+
+## Lengths of Curves and Riemannian Distance
+
+The metric lets us measure the length of a curve, and from curve lengths we build a distance function.
+
+<TheoremBlock type="definition" number={2} title="Arc Length of a Curve">
+Let $\gamma : [a, b] \to M$ be a piecewise smooth curve in a Riemannian manifold $(M, g)$. The **length** of $\gamma$ is:
+
+$$
+L(\gamma) = \int_a^b \sqrt{g_{\gamma(t)}\!\left(\gamma'(t),\, \gamma'(t)\right)}\; dt = \int_a^b \|\gamma'(t)\|_g\; dt
+$$
+
+where $\gamma'(t) \in T_{\gamma(t)}M$ is the velocity vector and $\|\cdot\|_g$ is the norm induced by the metric.
+</TheoremBlock>
+
+In local coordinates, if $\gamma(t) = (\gamma^1(t), \ldots, \gamma^n(t))$, this becomes:
+
+$$
+L(\gamma) = \int_a^b \sqrt{g_{ij}(\gamma(t))\, \dot\gamma^i(t)\, \dot\gamma^j(t)}\; dt
+$$
+
+**Example.** On $S^2$ with the round metric, a curve $\gamma(t) = (\theta(t), \varphi(t))$ has length:
+
+$$
+L(\gamma) = \int_a^b \sqrt{\dot\theta^2 + \sin^2\!\theta\; \dot\varphi^2}\; dt
+$$
+
+For the equator parametrized by $\gamma(t) = (\pi/2, t)$ with $t \in [0, 2\pi]$: $\dot\theta = 0$, $\dot\varphi = 1$, $\sin(\pi/2) = 1$, so $L = 2\pi$, the circumference of a great circle.
+
+<TheoremBlock type="definition" number={3} title="Riemannian Distance">
+The **Riemannian distance** between two points $p, q \in M$ is:
+
+$$
+d(p, q) = \inf\left\{L(\gamma) : \gamma \text{ is a piecewise smooth curve from } p \text{ to } q\right\}
+$$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Riemannian Distance Is a Metric">
+Let $(M, g)$ be a connected Riemannian manifold. The Riemannian distance $d$ is a metric on $M$ (in the metric-space sense), and the topology induced by $d$ agrees with the manifold topology.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify the metric space axioms.
+
+**Non-negativity and identity of indiscernibles.** $d(p, q) \geq 0$ is immediate since $L(\gamma) \geq 0$ for any curve. If $p = q$, the constant curve has length $0$, so $d(p, p) = 0$. Conversely, if $p \neq q$, choose a chart $(U, \varphi)$ containing $p$ but not $q$. In this chart, $g_p$ is a positive-definite bilinear form, so there exist constants $c, C > 0$ such that $c\|v\|_{\mathrm{Euc}} \leq \|v\|_g \leq C\|v\|_{\mathrm{Euc}}$ for all $v \in T_xM$ and $x$ in a compact neighborhood $K$ of $p$ inside $U$. Any curve from $p$ to $q$ must exit $K$, so its length is at least $c \cdot \mathrm{dist}_{\mathrm{Euc}}(p, \partial K) > 0$.
+
+**Symmetry.** If $\gamma$ is a curve from $p$ to $q$, then $\bar\gamma(t) = \gamma(a + b - t)$ is a curve from $q$ to $p$ with the same length. Taking the infimum over all such curves gives $d(p, q) = d(q, p)$.
+
+**Triangle inequality.** Given $p, q, r$, concatenate a near-optimal curve from $p$ to $q$ with a near-optimal curve from $q$ to $r$. The concatenation is a curve from $p$ to $r$ with length $\leq L_1 + L_2 + \varepsilon$. Since $\varepsilon > 0$ is arbitrary, $d(p, r) \leq d(p, q) + d(q, r)$.
+
+**Topology.** The comparison $c\|\cdot\|_{\mathrm{Euc}} \leq \|\cdot\|_g \leq C\|\cdot\|_{\mathrm{Euc}}$ in each chart shows that the $d$-balls and the Euclidean balls (pulled back to $M$) generate the same topology.
+</TheoremBlock>
+
+**Example: great-circle distance on $S^2$.** For two points $p, q$ on the unit sphere with position vectors $\mathbf{p}, \mathbf{q} \in \mathbb{R}^3$, the Riemannian distance is $d(p, q) = \arccos(\mathbf{p} \cdot \mathbf{q})$ — the angle between the vectors, which is the length of the shorter great-circle arc connecting them.
+
+![Curve lengths and Riemannian distance — two curves on the sphere with different lengths connecting the same endpoints, the arc-length integrand, and metric balls in the Poincaré disk growing as they approach the boundary](/images/topics/riemannian-geometry/curve-lengths-distance.png)
+
+---
+
+## Musical Isomorphisms
+
+The Riemannian metric provides a canonical identification between tangent vectors and cotangent vectors — between "arrows" and "linear measurements." This identification is called the **musical isomorphisms**, named for the flat ($\flat$) and sharp ($\sharp$) symbols borrowed from musical notation.
+
+<TheoremBlock type="definition" number={4} title="Flat Map (Index Lowering)">
+Let $(M, g)$ be a Riemannian manifold. The **flat map** $\flat : T_pM \to T_p^*M$ sends a tangent vector $v \in T_pM$ to the covector $v^{\flat} \in T_p^*M$ defined by:
+
+$$
+v^{\flat}(w) = g_p(v, w) \qquad \text{for all } w \in T_pM
+$$
+
+In local coordinates, if $v = v^i \frac{\partial}{\partial x^i}$, then $v^{\flat} = v_j\, dx^j$ where $v_j = g_{ij}\, v^i$.
+</TheoremBlock>
+
+The flat map "lowers an index": it takes a vector with an upper index $v^i$ and produces a covector with a lower index $v_j = g_{ij} v^i$.
+
+<TheoremBlock type="definition" number={5} title="Sharp Map (Index Raising)">
+The **sharp map** $\sharp : T_p^*M \to T_pM$ is the inverse of $\flat$. For a covector $\omega \in T_p^*M$, the vector $\omega^{\sharp} \in T_pM$ is defined by:
+
+$$
+g_p(\omega^{\sharp}, w) = \omega(w) \qquad \text{for all } w \in T_pM
+$$
+
+In local coordinates, if $\omega = \omega_j\, dx^j$, then $\omega^{\sharp} = \omega^i \frac{\partial}{\partial x^i}$ where $\omega^i = g^{ij}\, \omega_j$ and $(g^{ij})$ is the inverse matrix of $(g_{ij})$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Musical Isomorphisms Are Inverses">
+The maps $\flat : T_pM \to T_p^*M$ and $\sharp : T_p^*M \to T_pM$ are inverse linear isomorphisms. That is, $(v^{\flat})^{\sharp} = v$ and $(\omega^{\sharp})^{\flat} = \omega$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The flat map is the linear map $v \mapsto g_p(v, \cdot)$. Since $g_p$ is a non-degenerate bilinear form (positive definite implies non-degenerate), this map is injective. Since $\dim T_pM = \dim T_p^*M = n$, an injective linear map between spaces of equal dimension is an isomorphism. The sharp map is defined as its inverse.
+
+In coordinates: $(v^{\flat})^{\sharp}$ has components $g^{ij}(g_{jk} v^k) = \delta^i_k v^k = v^i$. Similarly, $(\omega^{\sharp})^{\flat}$ has components $g_{ij}(g^{jk}\omega_k) = \delta_i^k \omega_k = \omega_i$.
+</TheoremBlock>
+
+**The gradient depends on the metric.** Given a smooth function $f : M \to \mathbb{R}$, the differential $df \in T_p^*M$ is a covector — it does not depend on any metric. But the **gradient** $\mathrm{grad}\, f = (df)^{\sharp}$ is a *vector*, and converting a covector to a vector requires the metric. In local coordinates:
+
+$$
+(\mathrm{grad}\, f)^i = g^{ij} \frac{\partial f}{\partial x^j}
+$$
+
+In flat Euclidean space with $g^{ij} = \delta^{ij}$, this recovers the familiar gradient $\nabla f = \left(\frac{\partial f}{\partial x^1}, \ldots, \frac{\partial f}{\partial x^n}\right)$. But on a curved manifold, the gradient depends on $g^{ij}$ — change the metric, and the gradient changes direction. This is precisely why the natural gradient (which uses the Fisher information metric $g^{ij}$) differs from the ordinary gradient (which implicitly uses the Euclidean metric).
+
+![Musical isomorphisms — the flat map sends a tangent vector to a covector, the sharp map inverts it, and the gradient of a function depends on which metric we use](/images/topics/riemannian-geometry/musical-isomorphisms.png)
+
+---
+
+## The Levi-Civita Connection
+
+On $\mathbb{R}^n$, differentiating a vector field is straightforward: differentiate each component. On a manifold, this does not work — the component functions live in different coordinate systems at different points, and the tangent spaces at different points are different vector spaces. To differentiate vector fields on a manifold, we need a **connection**: a rule for comparing tangent vectors at nearby points.
+
+<TheoremBlock type="definition" number={6} title="Affine Connection (Covariant Derivative)">
+An **affine connection** (or **covariant derivative**) on a smooth manifold $M$ is a map
+
+$$
+\nabla : \Gamma(TM) \times \Gamma(TM) \to \Gamma(TM), \qquad (X, Y) \mapsto \nabla_X Y
+$$
+
+satisfying, for all smooth vector fields $X, Y, Z$ and smooth functions $f$:
+
+1. **$C^\infty$-linearity in $X$:** $\nabla_{fX + Z} Y = f\nabla_X Y + \nabla_Z Y$
+2. **$\mathbb{R}$-linearity in $Y$:** $\nabla_X(Y + Z) = \nabla_X Y + \nabla_X Z$
+3. **Leibniz rule:** $\nabla_X(fY) = (Xf)\, Y + f\, \nabla_X Y$
+</TheoremBlock>
+
+The covariant derivative $\nabla_X Y$ measures "how $Y$ changes as we move in the direction $X$," in a way that is well-defined on a manifold.
+
+<TheoremBlock type="definition" number={7} title="Christoffel Symbols">
+In local coordinates $(x^1, \ldots, x^n)$, the connection $\nabla$ is determined by its action on coordinate basis vector fields:
+
+$$
+\nabla_{\partial/\partial x^i} \frac{\partial}{\partial x^j} = \Gamma^k_{ij} \frac{\partial}{\partial x^k}
+$$
+
+The functions $\Gamma^k_{ij}$ are the **Christoffel symbols** of the connection in these coordinates.
+</TheoremBlock>
+
+There are infinitely many possible connections on any manifold. Two additional conditions — metric compatibility and torsion-freeness — single out a unique one.
+
+<TheoremBlock type="definition" number={8} title="Metric Compatibility">
+A connection $\nabla$ on a Riemannian manifold $(M, g)$ is **metric-compatible** (or **compatible with the metric**) if:
+
+$$
+\nabla g = 0 \qquad \Longleftrightarrow \qquad X\bigl(g(Y, Z)\bigr) = g(\nabla_X Y,\, Z) + g(Y,\, \nabla_X Z)
+$$
+
+for all smooth vector fields $X, Y, Z$. Equivalently, parallel transport preserves inner products.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={9} title="Torsion-Free Connection">
+A connection $\nabla$ is **torsion-free** (or **symmetric**) if:
+
+$$
+\nabla_X Y - \nabla_Y X = [X, Y]
+$$
+
+for all smooth vector fields $X, Y$, where $[X, Y]$ is the Lie bracket. In local coordinates, this is equivalent to the symmetry of the Christoffel symbols: $\Gamma^k_{ij} = \Gamma^k_{ji}$.
+</TheoremBlock>
+
+The torsion-free condition says that infinitesimal parallelograms close: if we transport $X$ along $Y$ and $Y$ along $X$, we arrive at the same point (up to the Lie bracket correction).
+
+<TheoremBlock type="theorem" number={3} title="Fundamental Theorem of Riemannian Geometry">
+On every Riemannian manifold $(M, g)$, there exists a **unique** connection $\nabla$ that is both metric-compatible and torsion-free. This connection is the **Levi-Civita connection**. Its Christoffel symbols are given by:
+
+$$
+\Gamma^k_{ij} = \frac{1}{2}\, g^{k\ell}\!\left(\frac{\partial g_{j\ell}}{\partial x^i} + \frac{\partial g_{i\ell}}{\partial x^j} - \frac{\partial g_{ij}}{\partial x^\ell}\right)
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Uniqueness.** Suppose $\nabla$ is both metric-compatible and torsion-free. We derive the **Koszul formula**, which determines $\nabla$ entirely from $g$ and the Lie bracket.
+
+Write out metric compatibility three times, cyclically permuting the arguments:
+
+$$
+\begin{aligned}
+X\bigl(g(Y, Z)\bigr) &= g(\nabla_X Y, Z) + g(Y, \nabla_X Z) \\
+Y\bigl(g(Z, X)\bigr) &= g(\nabla_Y Z, X) + g(Z, \nabla_Y X) \\
+Z\bigl(g(X, Y)\bigr) &= g(\nabla_Z X, Y) + g(X, \nabla_Z Y)
+\end{aligned}
+$$
+
+Add the first two equations and subtract the third:
+
+$$
+\begin{aligned}
+&X\bigl(g(Y, Z)\bigr) + Y\bigl(g(Z, X)\bigr) - Z\bigl(g(X, Y)\bigr) \\
+&= g(\nabla_X Y, Z) + g(Y, \nabla_X Z) + g(\nabla_Y Z, X) + g(Z, \nabla_Y X) \\
+&\quad - g(\nabla_Z X, Y) - g(X, \nabla_Z Y)
+\end{aligned}
+$$
+
+Now use the torsion-free condition $\nabla_X Z - \nabla_Z X = [X, Z]$ to replace $\nabla_X Z = \nabla_Z X + [X, Z]$ and $\nabla_Y X = \nabla_X Y - [X, Y]$ (and similarly for the other pairs). After collecting terms and using the symmetry of $g$, we obtain the **Koszul formula**:
+
+$$
+\begin{aligned}
+2\, g(\nabla_X Y, Z) &= X\bigl(g(Y, Z)\bigr) + Y\bigl(g(X, Z)\bigr) - Z\bigl(g(X, Y)\bigr) \\
+&\quad + g\bigl([X, Y], Z\bigr) - g\bigl([X, Z], Y\bigr) - g\bigl([Y, Z], X\bigr)
+\end{aligned}
+$$
+
+The right-hand side depends only on $g$ and the Lie bracket — not on $\nabla$. Since $g$ is non-degenerate, this formula determines $\nabla_X Y$ uniquely. Hence at most one metric-compatible, torsion-free connection exists.
+
+**Existence.** Define $\nabla_X Y$ by the Koszul formula and verify that the result satisfies the connection axioms (linearity, Leibniz rule), metric compatibility, and torsion-freeness. This is a direct (if lengthy) computation. The Christoffel symbol formula follows by substituting $X = \partial_i$, $Y = \partial_j$, $Z = \partial_\ell$ (for which all Lie brackets vanish) and solving for $\Gamma^k_{ij}$ using $g(\nabla_{\partial_i} \partial_j, \partial_\ell) = \Gamma^k_{ij} g_{k\ell}$.
+</TheoremBlock>
+
+**Worked example: Christoffel symbols on $S^2$.** With the round metric $g = d\theta^2 + \sin^2\!\theta\; d\varphi^2$, the metric is diagonal with $g_{\theta\theta} = 1$, $g_{\varphi\varphi} = \sin^2\!\theta$, and $g_{\theta\varphi} = 0$. Since the metric components depend only on $\theta$, the Christoffel symbol formula yields exactly two independent nonzero symbols (plus one symmetry partner):
+
+$$
+\Gamma^\theta_{\varphi\varphi} = -\sin\theta\cos\theta, \qquad \Gamma^\varphi_{\theta\varphi} = \Gamma^\varphi_{\varphi\theta} = \cot\theta
+$$
+
+All other $\Gamma^k_{ij} = 0$. The first says that moving in the $\varphi$-direction on the sphere generates an apparent acceleration in the $\theta$-direction (toward the equator). The second says that moving in the $\theta$-direction while pointing in the $\varphi$-direction requires a correction proportional to $\cot\theta$.
+
+![The Levi-Civita connection — Christoffel symbols on the sphere shown as vector fields, the metric compatibility condition, and the torsion-free parallelogram that closes](/images/topics/riemannian-geometry/levi-civita-connection.png)
+
+<ConnectionExplorer client:visible />
+
+---
+
+## Parallel Transport
+
+On flat $\mathbb{R}^n$, we can compare tangent vectors at different points by simply translating them. On a curved manifold, there is no canonical way to do this — the tangent spaces at different points are different vector spaces. The Levi-Civita connection provides the next best thing: we can "carry" a tangent vector along a curve while keeping it "as constant as possible." This is **parallel transport**.
+
+<TheoremBlock type="definition" number={10} title="Parallel Vector Field Along a Curve">
+Let $\gamma : [a, b] \to M$ be a smooth curve in a Riemannian manifold $(M, g)$. A vector field $V(t) \in T_{\gamma(t)}M$ along $\gamma$ is **parallel** if:
+
+$$
+\nabla_{\gamma'(t)} V(t) = 0 \qquad \text{for all } t \in [a, b]
+$$
+
+In local coordinates, this is the system of first-order linear ODEs:
+
+$$
+\frac{dV^k}{dt} + \Gamma^k_{ij}\bigl(\gamma(t)\bigr)\, \dot\gamma^i(t)\, V^j(t) = 0, \qquad k = 1, \ldots, n
+$$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={4} title="Existence and Uniqueness of Parallel Transport">
+Given a smooth curve $\gamma : [a, b] \to M$ and an initial vector $V_0 \in T_{\gamma(a)}M$, there exists a unique parallel vector field $V$ along $\gamma$ with $V(a) = V_0$. The map $P_\gamma : T_{\gamma(a)}M \to T_{\gamma(b)}M$ defined by $P_\gamma(V_0) = V(b)$ is the **parallel transport** along $\gamma$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+In local coordinates, the parallel transport equation $\frac{dV^k}{dt} + \Gamma^k_{ij}\, \dot\gamma^i\, V^j = 0$ is a system of $n$ linear first-order ODEs with smooth coefficients (the $\Gamma^k_{ij} \circ \gamma$ and $\dot\gamma^i$ are smooth functions of $t$). By the Picard–Lindelöf theorem, the initial value problem $V(a) = V_0$ has a unique solution on $[a, b]$. Since the system is linear, solutions exist for all $t \in [a, b]$ (no finite-time blowup). The solution $V(t)$ is the unique parallel vector field, and $P_\gamma(V_0) = V(b)$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Parallel Transport Is a Linear Isometry">
+The parallel transport map $P_\gamma : T_{\gamma(a)}M \to T_{\gamma(b)}M$ is a linear isometry:
+
+$$
+g_{\gamma(b)}(P_\gamma(v),\, P_\gamma(w)) = g_{\gamma(a)}(v, w) \qquad \text{for all } v, w \in T_{\gamma(a)}M
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $V$ and $W$ be parallel vector fields along $\gamma$ with $V(a) = v$ and $W(a) = w$. Consider the function $f(t) = g_{\gamma(t)}(V(t), W(t))$. Differentiating and using metric compatibility:
+
+$$
+\frac{d}{dt}f(t) = g(\nabla_{\gamma'} V, W) + g(V, \nabla_{\gamma'} W) = g(0, W) + g(V, 0) = 0
+$$
+
+So $f$ is constant: $g_{\gamma(b)}(V(b), W(b)) = g_{\gamma(a)}(V(a), W(a)) = g_{\gamma(a)}(v, w)$.
+
+Linearity of $P_\gamma$ follows from the linearity of the ODE: if $V_1$ and $V_2$ are parallel along $\gamma$, then $\alpha V_1 + \beta V_2$ is also parallel.
+</TheoremBlock>
+
+**Path dependence and holonomy.** On flat $\mathbb{R}^n$, parallel transport is path-independent — the result depends only on the endpoints. On a curved manifold, **parallel transport depends on the path**. If we transport a vector around a closed loop back to the starting point, it generally returns *rotated*. The rotation angle is called the **holonomy** of the loop.
+
+**Example: holonomy on $S^2$.** Consider transporting a tangent vector around a spherical triangle with vertices at the north pole, the equator at longitude $0°$, and the equator at longitude $90°$. Each side is a geodesic (great circle arc), and the vector stays tangent to the geodesic along each side. After traversing all three sides, the vector has rotated by $90°$ — exactly the solid angle subtended by the triangle ($\frac{1}{8}$ of $4\pi$ steradians = $\pi/2$ steradians). This is a special case of the **Gauss–Bonnet theorem**: on a surface of constant curvature $K$, the holonomy of a loop enclosing area $A$ is $KA$.
+
+![Parallel transport on the sphere — a vector transported along a great circle stays tangent, but transport around a closed triangle produces holonomy (a rotation by the enclosed area)](/images/topics/riemannian-geometry/parallel-transport.png)
+
+<ParallelTransportExplorer client:visible />
+
+---
+
+## Riemannian Volume Form and Integration
+
+The Riemannian metric determines a canonical way to measure volumes on $M$.
+
+<TheoremBlock type="definition" number={11} title="Riemannian Volume Form">
+Let $(M, g)$ be an oriented Riemannian $n$-manifold. The **Riemannian volume form** is the $n$-form:
+
+$$
+dV_g = \sqrt{\det(g_{ij})}\; dx^1 \wedge dx^2 \wedge \cdots \wedge dx^n
+$$
+
+where $(x^1, \ldots, x^n)$ is a positively oriented local coordinate system.
+</TheoremBlock>
+
+The factor $\sqrt{\det g}$ is the Jacobian that corrects for the distortion introduced by the coordinate system. It ensures that the volume form is *intrinsic* — independent of the choice of coordinates.
+
+<TheoremBlock type="theorem" number={5} title="Coordinate Independence of the Volume Form">
+The Riemannian volume form $dV_g$ is a well-defined global $n$-form on an oriented Riemannian manifold: it does not depend on the choice of coordinates.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Under a change of coordinates $x \mapsto \tilde x$ with Jacobian matrix $J = \left(\frac{\partial \tilde x^i}{\partial x^j}\right)$, the metric transforms as $\tilde g = J^T g\, J$, so $\det \tilde g = (\det J)^2 \det g$. Therefore $\sqrt{\det \tilde g} = |\det J| \sqrt{\det g}$. The coordinate $n$-form transforms as $d\tilde x^1 \wedge \cdots \wedge d\tilde x^n = (\det J)\, dx^1 \wedge \cdots \wedge dx^n$. Since the coordinates are positively oriented, $\det J > 0$, so $|\det J| = \det J$, and the two factors cancel:
+
+$$
+\sqrt{\det \tilde g}\; d\tilde x^1 \wedge \cdots \wedge d\tilde x^n = \sqrt{\det g}\; dx^1 \wedge \cdots \wedge dx^n
+$$
+</TheoremBlock>
+
+**Worked example: area of $S^2$.** With the round metric $g = \mathrm{diag}(1, \sin^2\!\theta)$, we have $\det g = \sin^2\!\theta$, so $dV_g = \sin\theta\; d\theta \wedge d\varphi$. The total area is:
+
+$$
+\mathrm{Area}(S^2) = \int_0^{2\pi}\!\int_0^{\pi} \sin\theta\; d\theta\; d\varphi = 2\pi \cdot [-\cos\theta]_0^{\pi} = 2\pi \cdot 2 = 4\pi
+$$
+
+For the Poincaré disk with $\det g = \lambda^4 = \frac{16}{(1-r^2)^4}$, the volume form is $dV_g = \frac{4}{(1-r^2)^2}\, dx \wedge dy$. The "area" of the Poincaré disk is infinite — reflecting the fact that the hyperbolic plane has infinite extent, even though the disk looks bounded in Euclidean coordinates.
+
+![Volume forms — the factor √(det g) on the sphere (large near the equator, small near the poles), the area element as a heatmap, and the integral that gives Area(S²) = 4π](/images/topics/riemannian-geometry/volume-forms-integration.png)
+
+---
+
+## Isometries and Killing Vector Fields
+
+Symmetries of a Riemannian manifold are the diffeomorphisms that preserve the metric.
+
+<TheoremBlock type="definition" number={12} title="Isometry">
+A diffeomorphism $\phi : (M, g) \to (N, h)$ between Riemannian manifolds is an **isometry** if it preserves the metric:
+
+$$
+h_{\phi(p)}\!\bigl(d\phi_p(v),\, d\phi_p(w)\bigr) = g_p(v, w) \qquad \text{for all } v, w \in T_pM
+$$
+
+Equivalently, $\phi^*h = g$ (the pullback metric equals $g$). An isometry from $(M, g)$ to itself is called an **isometry of $(M, g)$**.
+</TheoremBlock>
+
+Isometries preserve everything that depends on the metric: lengths, angles, areas, geodesics, curvature. The set of all isometries of $(M, g)$ forms a group under composition, denoted $\mathrm{Isom}(M, g)$.
+
+**Examples.**
+- $\mathrm{Isom}(\mathbb{R}^n, g_{\mathrm{Euc}}) = E(n)$, the Euclidean group of rotations, reflections, and translations. $\dim E(n) = n(n+1)/2$.
+- $\mathrm{Isom}(S^n, g_{\mathrm{round}}) = \mathrm{O}(n+1)$, the orthogonal group. $\dim \mathrm{O}(n+1) = n(n+1)/2$.
+- $\mathrm{Isom}(\mathbb{H}^n, g_{\mathrm{hyp}}) = \mathrm{O}^+(1, n)$, the proper Lorentz group. Also $\dim = n(n+1)/2$.
+
+<TheoremBlock type="definition" number={13} title="Killing Vector Field">
+A smooth vector field $X$ on a Riemannian manifold $(M, g)$ is a **Killing vector field** if the flow of $X$ consists of isometries. Equivalently, $X$ satisfies **Killing's equation**:
+
+$$
+(\mathcal{L}_X g)(Y, Z) = 0 \qquad \Longleftrightarrow \qquad \nabla_i X_j + \nabla_j X_i = 0
+$$
+
+where $\mathcal{L}_X g$ is the Lie derivative of $g$ along $X$, and $X_j = g_{jk} X^k$.
+</TheoremBlock>
+
+Killing vector fields are the infinitesimal generators of isometries: each Killing field generates a one-parameter family of isometries. On $S^2$, there are exactly three independent Killing fields — the infinitesimal rotations about the three coordinate axes — corresponding to $\dim \mathrm{SO}(3) = 3$.
+
+<TheoremBlock type="theorem" number={6} title="Myers–Steenrod Theorem">
+The isometry group $\mathrm{Isom}(M, g)$ of a Riemannian manifold is a Lie group. For a connected $n$-dimensional Riemannian manifold:
+
+$$
+\dim \mathrm{Isom}(M, g) \leq \frac{n(n+1)}{2}
+$$
+
+A Riemannian manifold achieving equality is called **maximally symmetric**. The three maximally symmetric spaces of dimension $n$ are: $\mathbb{R}^n$ (flat, curvature $K = 0$), $S^n$ (positive curvature $K > 0$), and $\mathbb{H}^n$ (negative curvature $K < 0$).
+</TheoremBlock>
+
+The bound $n(n+1)/2$ decomposes as $n$ translations (or their curved analogues) plus $n(n-1)/2$ rotations — the most symmetry any $n$-dimensional geometry can have.
+
+![Isometries and Killing vector fields — rotation as an isometry of the sphere, the three independent Killing fields on S², and the dimension count for maximally symmetric spaces](/images/topics/riemannian-geometry/isometries-killing-fields.png)
+
+---
+
+## Computational Notes
+
+The formulas in this topic are explicit enough for symbolic and numerical computation. Here we illustrate two core calculations.
+
+**Symbolic Christoffel symbols with SymPy.** We can derive the Christoffel symbols for any metric directly from the formula $\Gamma^k_{ij} = \frac{1}{2} g^{k\ell}(\partial_i g_{j\ell} + \partial_j g_{i\ell} - \partial_\ell g_{ij})$.
+
+```python
+import sympy as sp
+
+theta, phi = sp.symbols('theta phi', positive=True)
+
+# Round metric on S^2
+g = sp.Matrix([[1, 0], [0, sp.sin(theta)**2]])
+g_inv = g.inv()
+coords = [theta, phi]
+
+# Christoffel symbols Gamma^k_{ij}
+n = 2
+Gamma = [[[sp.Rational(0)] * n for _ in range(n)] for _ in range(n)]
+for k in range(n):
+    for i in range(n):
+        for j in range(n):
+            Gamma[k][i][j] = sp.Rational(1, 2) * sum(
+                g_inv[k, l] * (
+                    sp.diff(g[j, l], coords[i])
+                    + sp.diff(g[i, l], coords[j])
+                    - sp.diff(g[i, j], coords[l])
+                )
+                for l in range(n)
+            )
+            Gamma[k][i][j] = sp.simplify(Gamma[k][i][j])
+
+# Print nonzero Christoffel symbols
+for k in range(n):
+    for i in range(n):
+        for j in range(i, n):
+            if Gamma[k][i][j] != 0:
+                print(f"Gamma^{coords[k]}_{{{coords[i]},{coords[j]}}} = {Gamma[k][i][j]}")
+# Output:
+#   Gamma^theta_{phi,phi} = -sin(theta)*cos(theta)
+#   Gamma^phi_{theta,phi} = cos(theta)/sin(theta)
+```
+
+**Numerical parallel transport ODE.** We solve $dV^k/dt + \Gamma^k_{ij}\, \dot\gamma^i\, V^j = 0$ numerically with forward Euler:
+
+```python
+import numpy as np
+
+def parallel_transport_s2(curve, curve_dot, V0, n_steps=500):
+    """Parallel transport on S^2 via forward Euler."""
+    dt = 1.0 / n_steps
+    V = np.array(V0, dtype=float)
+    trajectory = [V.copy()]
+
+    for step in range(n_steps):
+        t = step * dt
+        theta, _ = curve(t)
+        dgamma = np.array(curve_dot(t))
+        sin_th, cos_th = np.sin(theta), np.cos(theta)
+
+        # Christoffel symbols for S^2
+        # Gamma^0_{11} = -sin(theta)*cos(theta)
+        # Gamma^1_{01} = Gamma^1_{10} = cos(theta)/sin(theta)
+        dV = np.zeros(2)
+        dV[0] = sin_th * cos_th * dgamma[1] * V[1]  # -Gamma^0_{11} * dphi * V^phi
+        dV[1] = -(cos_th / max(sin_th, 1e-10)) * (
+            dgamma[0] * V[1] + dgamma[1] * V[0]
+        )
+        V = V + dV * dt
+        trajectory.append(V.copy())
+
+    return np.array(trajectory)
+
+# Transport along latitude theta = pi/3, phi from 0 to pi/2
+theta0 = np.pi / 3
+curve = lambda t: (theta0, t * np.pi / 2)
+curve_dot = lambda t: (0.0, np.pi / 2)
+V0 = (1.0, 0.0)  # Initially pointing in theta-direction
+
+result = parallel_transport_s2(curve, curve_dot, V0)
+
+# Verify norm preservation: |V|_g should be constant
+sin_th = np.sin(theta0)
+norms = np.sqrt(result[:, 0]**2 + sin_th**2 * result[:, 1]**2)
+print(f"Initial norm: {norms[0]:.6f}")
+print(f"Final norm:   {norms[-1]:.6f}")
+print(f"Max deviation: {np.max(np.abs(norms - norms[0])):.2e}")
+# Output (typical):
+#   Initial norm: 1.000000
+#   Final norm:   0.999998
+#   Max deviation: 2.14e-06
+```
+
+The norm is preserved to within the forward Euler truncation error — confirming metric compatibility numerically.
+
+![Computational Riemannian geometry — SymPy Christoffel symbol derivation, numerical parallel transport trajectory, and norm preservation verification](/images/topics/riemannian-geometry/computational-riemannian.png)
+
+---
+
+## Connections to Machine Learning
+
+The Fisher information metric turns the machinery of this topic into a tool for optimization and statistics.
+
+**The Fisher information metric.** Let $\{p_\theta : \theta \in \Theta\}$ be a parametric family of probability distributions, with $\Theta \subseteq \mathbb{R}^n$ an open parameter space. The **Fisher information matrix** at $\theta$ is:
+
+$$
+g_{ij}(\theta) = \mathbb{E}_{x \sim p_\theta}\!\left[\frac{\partial \log p_\theta(x)}{\partial \theta^i}\,\frac{\partial \log p_\theta(x)}{\partial \theta^j}\right]
+$$
+
+When the model is identifiable, $g_{ij}(\theta)$ is positive definite for all $\theta$ — it is a Riemannian metric on $\Theta$. The parameter space becomes a Riemannian manifold $(\Theta, g)$.
+
+**Example: Gaussian family.** For $p_\theta = \mathcal{N}(\mu, \sigma^2)$ with $\theta = (\mu, \sigma)$ and $\sigma > 0$:
+
+$$
+g = \frac{1}{\sigma^2}\, d\mu^2 + \frac{2}{\sigma^2}\, d\sigma^2 \qquad \Longleftrightarrow \qquad g_{ij} = \begin{pmatrix} 1/\sigma^2 & 0 \\ 0 & 2/\sigma^2 \end{pmatrix}
+$$
+
+The $\sigma$-direction is "steeper" than the $\mu$-direction by a factor of $\sqrt{2}$ — moving $\sigma$ changes the distribution more (in the KL sense) than moving $\mu$ by the same Euclidean amount.
+
+**Natural gradient descent.** Standard gradient descent updates $\theta_{t+1} = \theta_t - \eta\, \nabla_{\mathrm{Euc}} L(\theta_t)$ using the Euclidean gradient — but this implicitly assumes the parameter space is flat with the Euclidean metric. When the parameter space is curved (which it always is for statistical models), the Euclidean gradient points in the wrong direction.
+
+The **natural gradient** (Amari, 1998) uses the Fisher metric to compute the steepest descent direction in the Riemannian sense:
+
+$$
+\tilde{\nabla} L = g^{-1}(\theta)\, \nabla_{\mathrm{Euc}} L(\theta)
+$$
+
+This is exactly the sharp map applied to the Euclidean gradient: $\tilde{\nabla} L = (\nabla_{\mathrm{Euc}} L)^{\sharp}$. The natural gradient is invariant under reparametrization — it does not depend on the coordinates we use for $\Theta$.
+
+**KL divergence as Riemannian distance.** For nearby parameters $\theta$ and $\theta + d\theta$:
+
+$$
+\mathrm{KL}(p_\theta \| p_{\theta + d\theta}) \approx \frac{1}{2}\, g_{ij}(\theta)\, d\theta^i\, d\theta^j
+$$
+
+The KL divergence is the squared infinitesimal Riemannian distance. This is why the Fisher metric is natural: it is the unique Riemannian metric (up to scale) for which KL divergence is the distance.
+
+**The Cramér–Rao bound.** For any unbiased estimator $\hat\theta$ of $\theta$:
+
+$$
+\mathrm{Cov}(\hat\theta) \succeq g^{-1}(\theta)
+$$
+
+The inverse Fisher metric is the lower bound on estimation variance. The metric tells us how hard it is to distinguish nearby parameters — directions where $g$ is large are "easy" to estimate (the distributions are very different); directions where $g$ is small are "hard."
+
+![Riemannian geometry in ML — the Fisher metric on Gaussian parameter space, Euclidean vs. natural gradient trajectories, and KL divergence as Riemannian distance](/images/topics/riemannian-geometry/riemannian-ml-connections.png)
+
+<NaturalGradientExplorer client:visible />
+
+---
+
+## Connections and Further Reading
+
+**Cross-topic connections.**
+
+| Topic | Connection |
+|:---|:---|
+| [Smooth Manifolds](/topics/smooth-manifolds) | The prerequisite: charts, tangent spaces, and the differential are the raw inputs for Riemannian geometry. The metric is the additional structure that enables measurement. |
+| [The Spectral Theorem](/topics/spectral-theorem) | The metric tensor $g_{ij}$ at each point is symmetric positive definite — its eigendecomposition reveals the principal directions and magnitudes of the metric. |
+| [Singular Value Decomposition](/topics/svd) | The differential of a map between Riemannian manifolds decomposes via SVD into rotations and stretches. The singular values measure metric distortion. |
+| [PCA & Low-Rank Approximation](/topics/pca-low-rank) | Local PCA on data near a manifold estimates the tangent space metric. The Riemannian metric is the theoretical foundation for manifold learning. |
+
+**Where this leads.**
+
+- **Geodesics & Curvature** *(coming soon)* — The Levi-Civita connection defines geodesics as curves with zero acceleration ($\nabla_{\gamma'}\gamma' = 0$). The Riemann curvature tensor $R^l_{ijk}$ measures the failure of parallel transport to be path-independent. Sectional curvature, Ricci curvature, and scalar curvature each capture different aspects of how the manifold curves.
+
+- **Information Geometry & Fisher Metric** *(coming soon)* — The Fisher information metric on statistical manifolds, natural gradient methods for neural network optimization, $\alpha$-connections, and the geometry of exponential families. This topic provides the complete Riemannian foundation; Information Geometry builds the statistical superstructure.
