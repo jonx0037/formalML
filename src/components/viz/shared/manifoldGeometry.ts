@@ -317,3 +317,217 @@ export function sphereWireframe(
     rotX
   );
 }
+
+// ─── Riemannian Geometry Utilities ───
+// Shared by MetricTensorExplorer, ParallelTransportExplorer,
+// ConnectionExplorer, NaturalGradientExplorer
+
+export interface MetricTensor {
+  g: [[number, number], [number, number]];
+  det: number;
+  inv: [[number, number], [number, number]];
+}
+
+export interface ChristoffelSymbols {
+  /** gamma[k][i][j] = Γ^k_{ij} */
+  gamma: number[][][];
+}
+
+/** Round metric on S² at colatitude θ: g = dθ² + sin²θ dφ² */
+export function sphereMetric(theta: number): MetricTensor {
+  const sinTh = Math.sin(theta);
+  const sin2 = sinTh * sinTh;
+  const det = sin2; // det(diag(1, sin²θ)) = sin²θ
+  const invSin2 = sin2 > 1e-12 ? 1 / sin2 : Infinity;
+  return {
+    g: [[1, 0], [0, sin2]],
+    det,
+    inv: [[1, 0], [0, invSin2]],
+  };
+}
+
+/** Christoffel symbols for S² at colatitude θ.
+ *  Nonzero: Γ^θ_{φφ} = −sinθ cosθ,  Γ^φ_{θφ} = Γ^φ_{φθ} = cotθ */
+export function sphereChristoffel(theta: number): ChristoffelSymbols {
+  const sinTh = Math.sin(theta);
+  const cosTh = Math.cos(theta);
+  const cotTh = Math.abs(sinTh) > 1e-12 ? cosTh / sinTh : 0;
+
+  // gamma[k][i][j] for k,i,j ∈ {0=θ, 1=φ}
+  const gamma: number[][][] = [
+    // k = 0 (θ)
+    [[0, 0], [0, -sinTh * cosTh]],
+    // k = 1 (φ)
+    [[0, cotTh], [cotTh, 0]],
+  ];
+  return { gamma };
+}
+
+/** Poincaré disk conformal factor λ = 2/(1 − |x|²) at point (x, y) */
+export function poincareConformalFactor(x: number, y: number): number {
+  const r2 = x * x + y * y;
+  const denom = 1 - r2;
+  if (denom < 1e-8) return Infinity; // λ → ∞ at the boundary
+  return 2 / denom;
+}
+
+/** Poincaré disk metric g = λ² I  where λ = 2/(1−|x|²) */
+export function poincareMetric(x: number, y: number): MetricTensor {
+  const lambda = poincareConformalFactor(x, y);
+  const lambda2 = lambda * lambda;
+  return {
+    g: [[lambda2, 0], [0, lambda2]],
+    det: lambda2 * lambda2,
+    inv: [[1 / lambda2, 0], [0, 1 / lambda2]],
+  };
+}
+
+/** Eigendecomposition of a 2×2 symmetric matrix.
+ *  Returns eigenvalues (ascending) and orthonormal eigenvectors. */
+export function metricEigendecomp(
+  g: [[number, number], [number, number]]
+): { eigenvalues: [number, number]; eigenvectors: [Vec2, Vec2] } {
+  const a = g[0][0];
+  const b = g[0][1]; // = g[1][0] by symmetry
+  const d = g[1][1];
+
+  const trace = a + d;
+  const det = a * d - b * b;
+  const disc = Math.sqrt(Math.max(0, trace * trace - 4 * det));
+
+  const lam1 = (trace - disc) / 2;
+  const lam2 = (trace + disc) / 2;
+
+  let v1: Vec2;
+  let v2: Vec2;
+  if (Math.abs(b) > 1e-12) {
+    v1 = vec2Normalize({ x: lam1 - d, y: b });
+    v2 = vec2Normalize({ x: lam2 - d, y: b });
+  } else {
+    v1 = { x: 1, y: 0 };
+    v2 = { x: 0, y: 1 };
+    // swap if a > d so eigenvalues match
+    if (a > d) {
+      return { eigenvalues: [d, a], eigenvectors: [v2, v1] };
+    }
+  }
+
+  return { eigenvalues: [lam1, lam2], eigenvectors: [v1, v2] };
+}
+
+/** Normalize a Vec2 to unit length */
+export function vec2Normalize(v: Vec2): Vec2 {
+  const n = vec2Norm(v);
+  return n < 1e-12 ? { x: 1, y: 0 } : { x: v.x / n, y: v.y / n };
+}
+
+/** Solve parallel transport ODE on S² along a parametric curve.
+ *  ODE: dV^k/dt + Γ^k_{ij} γ̇^i V^j = 0 (Forward Euler) */
+export function parallelTransportS2(
+  curve: (t: number) => [number, number],
+  curveDot: (t: number) => [number, number],
+  V0: [number, number],
+  nSteps = 300
+): { t: number; pos: [number, number]; V: [number, number]; normG: number }[] {
+  const result: { t: number; pos: [number, number]; V: [number, number]; normG: number }[] = [];
+  const dt = 1 / nSteps;
+  let V: [number, number] = [V0[0], V0[1]];
+
+  for (let step = 0; step <= nSteps; step++) {
+    const t = step * dt;
+    const pos = curve(t);
+    const [theta] = pos;
+    const chris = sphereChristoffel(theta);
+    const gam = curveDot(t);
+
+    // Compute metric norm |V|_g = sqrt(g_{ij} V^i V^j)
+    const metric = sphereMetric(theta);
+    const normG = Math.sqrt(
+      metric.g[0][0] * V[0] * V[0] +
+      2 * metric.g[0][1] * V[0] * V[1] +
+      metric.g[1][1] * V[1] * V[1]
+    );
+
+    result.push({ t, pos: [pos[0], pos[1]], V: [V[0], V[1]], normG });
+
+    if (step < nSteps) {
+      // dV^k/dt = −Γ^k_{ij} γ̇^i V^j
+      const dV0 = -(
+        chris.gamma[0][0][0] * gam[0] * V[0] +
+        chris.gamma[0][0][1] * gam[0] * V[1] +
+        chris.gamma[0][1][0] * gam[1] * V[0] +
+        chris.gamma[0][1][1] * gam[1] * V[1]
+      );
+      const dV1 = -(
+        chris.gamma[1][0][0] * gam[0] * V[0] +
+        chris.gamma[1][0][1] * gam[0] * V[1] +
+        chris.gamma[1][1][0] * gam[1] * V[0] +
+        chris.gamma[1][1][1] * gam[1] * V[1]
+      );
+      V = [V[0] + dV0 * dt, V[1] + dV1 * dt];
+    }
+  }
+  return result;
+}
+
+/** Fisher information metric for N(μ, σ²): g = diag(1/σ², 2/σ²) */
+export function fisherMetricGaussian(sigma: number): MetricTensor {
+  const s2 = sigma * sigma;
+  const g11 = 1 / s2;
+  const g22 = 2 / s2;
+  return {
+    g: [[g11, 0], [0, g22]],
+    det: g11 * g22,
+    inv: [[s2, 0], [0, s2 / 2]],
+  };
+}
+
+/** KL divergence KL(N(μ,σ²) ‖ N(μ₀,σ₀²)) */
+export function klDivGaussian(
+  mu: number, sigma: number,
+  mu0: number, sigma0: number
+): number {
+  const s2 = sigma * sigma;
+  const s02 = sigma0 * sigma0;
+  return Math.log(sigma0 / sigma) + (s2 + (mu - mu0) ** 2) / (2 * s02) - 0.5;
+}
+
+/** Partial derivatives of KL(N(μ,σ²) ‖ N(μ₀,σ₀²)) w.r.t. (μ, σ) */
+export function klDivGradient(
+  mu: number, sigma: number,
+  mu0: number, sigma0: number
+): [number, number] {
+  const s02 = sigma0 * sigma0;
+  const dMu = (mu - mu0) / s02;
+  const dSigma = -1 / sigma + sigma / s02;
+  return [dMu, dSigma];
+}
+
+/** Ellipsoid metric: g = diag(a² sin²θ + b² cos²θ, a² sin²θ) for an oblate ellipsoid
+ *  with semi-axes a (equatorial) and b (polar). g_θθ is the meridional component,
+ *  g_φφ is the azimuthal component. */
+export function ellipsoidMetric(theta: number, a = 1, b = 0.6): MetricTensor {
+  const sinTh = Math.sin(theta);
+  const cosTh = Math.cos(theta);
+  const sin2 = sinTh * sinTh;
+  const cos2 = cosTh * cosTh;
+  const gThTh = a * a * sin2 + b * b * cos2;
+  const gPhPh = a * a * sin2;
+  const det = gThTh * gPhPh;
+  const invThTh = gThTh > 1e-12 ? 1 / gThTh : Infinity;
+  const invPhPh = gPhPh > 1e-12 ? 1 / gPhPh : Infinity;
+  return {
+    g: [[gThTh, 0], [0, gPhPh]],
+    det,
+    inv: [[invThTh, 0], [0, invPhPh]],
+  };
+}
+
+/** Point on an oblate ellipsoid from spherical coordinates */
+export function ellipsoidPoint(theta: number, phi: number, a = 1, b = 0.6): Vec3 {
+  return {
+    x: a * Math.sin(theta) * Math.cos(phi),
+    y: a * Math.sin(theta) * Math.sin(phi),
+    z: b * Math.cos(theta),
+  };
+}
