@@ -1,0 +1,624 @@
+---
+title: "Lagrangian Duality & KKT Conditions"
+subtitle: "The Lagrangian, weak and strong duality, Slater's condition, KKT optimality conditions, sensitivity analysis, and applications to SVMs, water-filling, and portfolio optimization"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "convex-analysis"
+tags:
+  - "optimization"
+  - "lagrangian-duality"
+  - "kkt-conditions"
+  - "constrained-optimization"
+  - "duality"
+  - "sensitivity-analysis"
+  - "support-vector-machines"
+domain: "optimization"
+videoId: null
+notebookPath: "notebooks/lagrangian-duality/04_lagrangian_duality.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/lagrangian-duality.mdx"
+datePublished: 2026-03-24
+estimatedReadTime: 55
+abstract: "Lagrangian duality transforms constrained optimization into a two-player game between primal and dual variables. We build the theory from the Lagrangian function — which prices constraint violations via dual variables — through the dual problem, whose optimal value always lower-bounds the primal (weak duality). For convex problems satisfying Slater's constraint qualification, the bound is tight: strong duality gives p* = d*, and the Karush–Kuhn–Tucker conditions become both necessary and sufficient for optimality. The four KKT conditions — stationarity, primal feasibility, dual feasibility, and complementary slackness — encode the geometric insight that at an optimal point, the objective gradient lies in the cone spanned by the active constraint gradients. The dual variables double as sensitivity measures: each λ_i* is the shadow price of constraint i, which gives the rate at which the optimal value changes under perturbations. We ground the theory in three applications where the dual formulation is essential: the support vector machine (where the dual reveals the kernel trick and identifies support vectors via complementary slackness), water-filling for channel capacity allocation (where KKT yields the closed-form solution), and mean-variance portfolio optimization (where the dual traces the efficient frontier). Throughout, the convex analysis foundations — subdifferentials, conjugate functions, and the separation theorems — provide the analytical backbone."
+connections:
+  - topic: "convex-analysis"
+    relationship: "Every result in this topic rests on convex analysis. Weak duality follows from the infimum structure; strong duality requires Slater's condition on the feasible set; KKT stationarity is the multivariate extension of the subgradient optimality condition 0 ∈ ∂f(x*). The separating hyperplane theorem provides the geometric proof of strong duality."
+  - topic: "spectral-theorem"
+    relationship: "Quadratic programs min x^T P x + q^T x subject to linear constraints require P to be PSD for convexity. The Spectral Theorem provides the eigendecomposition that verifies positive semidefiniteness and computes the condition number relevant to interior-point solver convergence."
+  - topic: "svd"
+    relationship: "The SVM dual involves the Gram matrix K_{ij} = x_i^T x_j. For kernel SVMs, the SVD of the feature matrix reveals the effective dimensionality and condition number of the kernel matrix, governing the dual QP's difficulty."
+  - topic: "pca-low-rank"
+    relationship: "Semidefinite relaxations of rank-constrained problems (e.g., max-cut) produce SDP duals whose analysis relies on the duality theory developed here. The nuclear norm minimization from PCA & Low-Rank Approximation is the Lagrangian dual of a rank-constrained problem."
+  - topic: "gradient-descent"
+    relationship: "Interior-point methods solve the KKT system via Newton's method on the barrier-modified equations. The convergence analysis of these solvers uses the smoothness and strong convexity framework from the Gradient Descent topic."
+  - topic: "proximal-methods"
+    relationship: "ADMM solves constrained problems by alternating between primal updates and dual (multiplier) updates. The augmented Lagrangian in ADMM is a proximal regularization of the standard Lagrangian developed here."
+references:
+  - type: "book"
+    title: "Convex Optimization"
+    authors: "Boyd & Vandenberghe"
+    year: 2004
+    note: "Chapter 5: Duality — the primary reference for Lagrangian duality, weak/strong duality, KKT conditions, and sensitivity analysis"
+  - type: "book"
+    title: "Convex Analysis"
+    authors: "Rockafellar"
+    year: 1970
+    note: "The foundational monograph — conjugate duality, saddle point theory, and the minimax theorem"
+  - type: "book"
+    title: "Introductory Lectures on Convex Optimization"
+    authors: "Nesterov"
+    year: 2004
+    note: "Chapter 4: Duality in convex optimization and self-concordant barrier methods"
+  - type: "book"
+    title: "Numerical Optimization"
+    authors: "Nocedal & Wright"
+    year: 2006
+    note: "Chapter 12: Theory of constrained optimization — KKT conditions for general nonlinear programs"
+  - type: "paper"
+    title: "A Tutorial on Support Vector Machines for Pattern Recognition"
+    authors: "Burges"
+    year: 1998
+    url: "https://doi.org/10.1023/A:1009715923555"
+    note: "The SVM dual derivation via KKT conditions and the kernel trick"
+  - type: "paper"
+    title: "Interior-Point Methods in Semidefinite Programming with Applications to Combinatorial Optimization"
+    authors: "Alizadeh"
+    year: 1995
+    url: "https://doi.org/10.1137/0805002"
+    note: "Interior-point duality for SDP — extends the LP duality framework to semidefinite constraints"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import DualityExplorer from '../../components/viz/DualityExplorer.tsx';
+import KKTExplorer from '../../components/viz/KKTExplorer.tsx';
+import SaddlePointExplorer from '../../components/viz/SaddlePointExplorer.tsx';
+import SensitivityExplorer from '../../components/viz/SensitivityExplorer.tsx';
+import SVMDualExplorer from '../../components/viz/SVMDualExplorer.tsx';
+
+## Overview & Motivation
+
+In [Convex Analysis](/topics/convex-analysis) we developed the foundations — convex sets, convex functions, subdifferentials, and the separation theorems. In [Gradient Descent & Convergence](/topics/gradient-descent) and [Proximal Methods](/topics/proximal-methods) we built algorithms for *unconstrained* optimization (or at least for objectives where constraints could be absorbed into the proximal operator). But many of the most important problems in machine learning and engineering are *constrained*: minimize an objective subject to explicit limits on the variables.
+
+Consider training a support vector machine. We want the widest-margin separating hyperplane, but we *require* that every training point lies on the correct side of the boundary. Or consider allocating power across communication channels: we want to maximize total capacity, but we have a fixed total power budget. Or consider building a portfolio: we want maximum expected return, but we can't exceed a given risk tolerance.
+
+The direct approach — "optimize over the feasible set" — is often intractable. The feasible set might have a complicated geometry, or the constraints might couple variables in ways that make projection expensive. **Lagrangian duality** offers an alternative: attach a *price* (a dual variable, or multiplier) to each constraint, fold the constraints into the objective, and solve an unconstrained problem instead. The dual variables play a double role: they enforce the constraints at optimality, and they measure the *sensitivity* of the optimal value to constraint perturbations.
+
+The punchline is the **KKT conditions** — four equations that are *necessary and sufficient* for optimality in convex programs. When you see a machine learning paper derive a closed-form solution to a constrained problem, the KKT conditions are almost always the tool that gets them there.
+
+### What We Cover
+
+1. **The Lagrangian & Dual Problem** — the Lagrangian function, dual variables as prices on constraint violations, the dual function as a pointwise infimum, and concavity of the dual.
+2. **Weak Duality** — the universal inequality $d^* \leq p^*$ and the duality gap.
+3. **Strong Duality & Slater's Condition** — when the gap closes to zero, and the geometric picture via the perturbation function.
+4. **KKT Conditions** — stationarity, primal feasibility, dual feasibility, and complementary slackness; necessity under strong duality and sufficiency for convex programs.
+5. **Complementary Slackness** — the economic insight: you only pay for constraints that bind.
+6. **Saddle Point Interpretation** — the minimax theorem and the Lagrangian as a saddle surface.
+7. **Sensitivity Analysis** — shadow prices, the perturbation function, and the identity $\partial p^*/\partial u_i = -\lambda_i^*$.
+8. **Application: The SVM Dual** — the hard-margin SVM, the kernel trick as a consequence of duality, and support vectors via complementary slackness.
+9. **Application: Water-Filling & Portfolio Optimization** — KKT in closed form for channel capacity and the efficient frontier.
+10. **Computational Notes** — CVXPY with dual extraction, scipy SLSQP, and the barrier method.
+
+---
+
+## The Lagrangian & Dual Problem
+
+We start with the standard form of a constrained convex optimization problem.
+
+<TheoremBlock type="definition" number={1} title="Standard Form Convex Program">
+A **standard form convex program** is
+
+$$\text{minimize} \quad f_0(x) \qquad \text{subject to} \quad f_i(x) \leq 0,\; i = 1, \ldots, m, \qquad h_j(x) = 0,\; j = 1, \ldots, p$$
+
+where $f_0, f_1, \ldots, f_m$ are convex functions and $h_1, \ldots, h_p$ are affine functions ($h_j(x) = a_j^\top x - b_j$). The **primal optimal value** is $p^* = \inf\{f_0(x) : x \text{ feasible}\}$.
+</TheoremBlock>
+
+The affineness requirement on the equality constraints is not a minor technicality — it's what keeps the feasible set convex. A nonlinear equality constraint $h(x) = 0$ generally defines a non-convex surface, which would destroy the convexity of the problem.
+
+Now we introduce the central object: the Lagrangian function. The idea is to relax the hard constraints into a *penalty* term weighted by dual variables.
+
+<TheoremBlock type="definition" number={2} title="The Lagrangian Function">
+The **Lagrangian** associated with the standard form problem is the function $\mathcal{L} : \mathbb{R}^n \times \mathbb{R}^m \times \mathbb{R}^p \to \mathbb{R}$ defined by
+
+$$\mathcal{L}(x, \lambda, \nu) = f_0(x) + \sum_{i=1}^{m} \lambda_i f_i(x) + \sum_{j=1}^{p} \nu_j h_j(x)$$
+
+where $\lambda \in \mathbb{R}^m$ with $\lambda_i \geq 0$ are the **dual variables** (or **Lagrange multipliers**) for the inequality constraints, and $\nu \in \mathbb{R}^p$ are the dual variables for the equality constraints.
+</TheoremBlock>
+
+Think of $\lambda_i$ as a *price* on violating the $i$-th constraint. When $f_i(x) > 0$ (the constraint is violated), the term $\lambda_i f_i(x)$ adds a positive penalty to the objective. When $f_i(x) < 0$ (the constraint has slack), the term is negative — it *rewards* having extra room. The dual variable $\lambda_i$ controls how aggressively we penalize violations.
+
+Now we minimize the Lagrangian over $x$ to obtain a function of the dual variables alone.
+
+<TheoremBlock type="definition" number={3} title="The Lagrange Dual Function">
+The **Lagrange dual function** $g : \mathbb{R}^m \times \mathbb{R}^p \to \mathbb{R} \cup \{-\infty\}$ is
+
+$$g(\lambda, \nu) = \inf_{x} \mathcal{L}(x, \lambda, \nu) = \inf_{x} \left( f_0(x) + \sum_{i=1}^{m} \lambda_i f_i(x) + \sum_{j=1}^{p} \nu_j h_j(x) \right)$$
+
+The **dual problem** is
+
+$$\text{maximize} \quad g(\lambda, \nu) \qquad \text{subject to} \quad \lambda \geq 0$$
+
+with **dual optimal value** $d^* = \sup\{g(\lambda, \nu) : \lambda \geq 0\}$.
+</TheoremBlock>
+
+The dual function has a remarkable structural property that does not depend on convexity of the primal problem.
+
+<TheoremBlock type="proposition" number={1} title="Concavity of the Dual Function">
+The dual function $g(\lambda, \nu)$ is concave, even if the primal problem is not convex. Consequently, the dual problem is always a concave maximization problem.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any fixed $x$, the function $(\lambda, \nu) \mapsto \mathcal{L}(x, \lambda, \nu) = f_0(x) + \sum_i \lambda_i f_i(x) + \sum_j \nu_j h_j(x)$ is affine (and hence concave) in $(\lambda, \nu)$. The dual function $g(\lambda, \nu) = \inf_x \mathcal{L}(x, \lambda, \nu)$ is the pointwise infimum of a family of affine functions. Since the pointwise infimum of any collection of concave functions is concave, $g$ is concave.
+</TheoremBlock>
+
+This is a powerful result. No matter how ugly the primal problem is — non-convex objective, non-convex constraints, disconnected feasible set — the dual is always a concave maximization. The dual is a "convexification" of the primal, and it always produces useful lower bounds.
+
+**A concrete example.** Consider minimizing $f_0(x) = (x - 3)^2$ subject to $f_1(x) = x - 1.5 \leq 0$ (i.e., $x \leq 1.5$). The Lagrangian is $\mathcal{L}(x, \lambda) = (x-3)^2 + \lambda(x - 1.5)$. Minimizing over $x$ (take the derivative, set to zero): $2(x-3) + \lambda = 0$, so $x^*(\lambda) = 3 - \lambda/2$. Substituting back:
+
+$$g(\lambda) = (3 - \lambda/2 - 3)^2 + \lambda(3 - \lambda/2 - 1.5) = -\lambda^2/4 + 1.5\lambda$$
+
+This is a concave quadratic in $\lambda$, maximized at $\lambda^* = 3$ with $g(3) = 2.25$. The primal optimum is $f_0(1.5) = (1.5 - 3)^2 = 2.25$, so $p^* = d^* = 2.25$ — strong duality holds.
+
+<DualityExplorer client:visible />
+
+![The Lagrangian, dual function, and duality gap for parameterized constrained problems](/images/topics/lagrangian-duality/lagrangian-and-dual.png)
+
+---
+
+## Weak Duality
+
+The most fundamental inequality in optimization theory requires almost no assumptions.
+
+<TheoremBlock type="theorem" number={1} title="Weak Duality">
+For *any* optimization problem (not necessarily convex), the dual optimal value lower-bounds the primal optimal value:
+
+$$d^* \leq p^*$$
+
+More precisely, for any primal-feasible $\tilde{x}$ and any dual-feasible $(\tilde{\lambda}, \tilde{\nu})$ with $\tilde{\lambda} \geq 0$:
+
+$$g(\tilde{\lambda}, \tilde{\nu}) \leq f_0(\tilde{x})$$
+
+The difference $p^* - d^* \geq 0$ is called the **duality gap**.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $\tilde{x}$ be primal-feasible (so $f_i(\tilde{x}) \leq 0$ for all $i$ and $h_j(\tilde{x}) = 0$ for all $j$) and let $(\tilde{\lambda}, \tilde{\nu})$ be dual-feasible (so $\tilde{\lambda} \geq 0$). Then:
+
+$$g(\tilde{\lambda}, \tilde{\nu}) = \inf_{x} \mathcal{L}(x, \tilde{\lambda}, \tilde{\nu}) \leq \mathcal{L}(\tilde{x}, \tilde{\lambda}, \tilde{\nu}) = f_0(\tilde{x}) + \underbrace{\sum_{i} \tilde{\lambda}_i f_i(\tilde{x})}_{\leq 0} + \underbrace{\sum_{j} \tilde{\nu}_j h_j(\tilde{x})}_{= 0} \leq f_0(\tilde{x})$$
+
+The first inequality holds because the infimum over all $x$ is at most the value at a particular $x$. The second inequality uses $\tilde{\lambda}_i \geq 0$ and $f_i(\tilde{x}) \leq 0$ (so each product is non-positive) and $h_j(\tilde{x}) = 0$. Since this holds for all primal-feasible $\tilde{x}$ and dual-feasible $(\tilde{\lambda}, \tilde{\nu})$, taking the supremum over dual variables and infimum over primal variables gives $d^* \leq p^*$.
+</TheoremBlock>
+
+The proof is elegantly simple — just two inequalities and a sign argument. Note that we never used convexity. Weak duality holds for arbitrary optimization problems: non-convex objectives, non-convex constraints, discrete variables, anything. This universality is what makes the dual function so useful as a *bounding* tool even when we can't solve the primal exactly.
+
+The duality gap $p^* - d^*$ measures how much information we lose by passing to the dual. For non-convex problems, the gap can be strictly positive — the dual relaxation is too loose. The central question is: when does the gap close?
+
+![Weak duality: the dual provides a family of lower bounds on the primal optimal value](/images/topics/lagrangian-duality/weak-duality.png)
+
+---
+
+## Strong Duality & Slater's Condition
+
+Strong duality — the statement that $d^* = p^*$ — is the bridge that makes the dual problem as powerful as the primal. It holds for convex problems under a mild regularity condition.
+
+<TheoremBlock type="definition" number={4} title="Slater's Condition">
+A convex program satisfies **Slater's condition** (or is **Slater-qualified**) if there exists a point $\bar{x}$ in the relative interior of the feasible set such that
+
+$$f_i(\bar{x}) < 0 \quad \text{for all } i = 1, \ldots, m \qquad \text{and} \qquad h_j(\bar{x}) = 0 \quad \text{for all } j = 1, \ldots, p$$
+
+That is, there exists a **strictly feasible point** — one that satisfies all inequality constraints with strict inequality.
+</TheoremBlock>
+
+Slater's condition is saying that the feasible set has a non-empty interior (it's not "infinitely thin"). The inequality constraints must have room to breathe — you can't have the feasible set consist entirely of points where some constraint is active. The equality constraints, being affine, must still be satisfied exactly.
+
+<TheoremBlock type="theorem" number={2} title="Strong Duality (Slater)">
+If a convex program satisfies Slater's condition and the primal optimal value $p^*$ is finite, then **strong duality** holds:
+
+$$d^* = p^*$$
+
+Moreover, the dual optimum is attained: there exist $\lambda^* \geq 0$ and $\nu^*$ such that $g(\lambda^*, \nu^*) = d^* = p^*$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We prove this via the separating hyperplane theorem applied to the **perturbation set**. Define the set
+
+$$\mathcal{G} = \{(u, v, t) \in \mathbb{R}^m \times \mathbb{R}^p \times \mathbb{R} : \exists\, x \text{ with } f_i(x) \leq u_i,\; h_j(x) = v_j,\; f_0(x) \leq t\}$$
+
+This is a convex set (because $f_0, f_i$ are convex and $h_j$ are affine). The primal optimal value corresponds to the point $(0, 0, p^*)$: the best objective value achievable when no constraint is perturbed.
+
+Consider the point $(0, 0, p^* - \epsilon)$ for any $\epsilon > 0$. This point lies *outside* $\mathcal{G}$ (because $p^*$ is optimal — we can't do better). By the supporting hyperplane theorem (from [Convex Analysis](/topics/convex-analysis)), there exists a hyperplane separating $(0, 0, p^* - \epsilon)$ from $\mathcal{G}$. Taking $\epsilon \to 0$, we obtain a supporting hyperplane at $(0, 0, p^*)$.
+
+The normal to this hyperplane gives us the dual variables: $(\lambda^*, \nu^*, \alpha)$ with $\lambda^* \geq 0$ and $\alpha \geq 0$. The separating hyperplane condition gives, for all $(u, v, t) \in \mathcal{G}$:
+
+$$\lambda^{*\top} u + \nu^{*\top} v + \alpha t \geq \lambda^{*\top} \cdot 0 + \nu^{*\top} \cdot 0 + \alpha \cdot p^* = \alpha p^*$$
+
+Slater's condition ensures $\alpha > 0$ (the hyperplane is not vertical — it has a non-trivial component in the $t$-direction). Dividing by $\alpha$ and rearranging, this gives $g(\lambda^*/\alpha, \nu^*/\alpha) \geq p^*$. Combined with weak duality $g \leq p^*$, we conclude $d^* = p^*$.
+</TheoremBlock>
+
+**When Slater fails.** If the feasible set has no interior — for example, if the inequality constraints all hold with equality — then the separating hyperplane might be vertical ($\alpha = 0$), and the dual may not recover the primal value. A concrete example: minimize $e^{-x}$ subject to $x^2 \leq 0$. The only feasible point is $x = 0$, so $p^* = e^0 = 1$. The dual function is $g(\lambda) = \inf_x (e^{-x} + \lambda x^2)$. For any finite $\lambda \geq 0$, the infimum is driven toward zero as $x \to +\infty$ (the exponential decays faster than the quadratic grows for any fixed $\lambda$), so $g(\lambda) \leq 0$ for all $\lambda$. Hence $d^* = 0 < 1 = p^*$ — a positive duality gap, because the feasible set is a single point with no interior.
+
+**LP strong duality.** For linear programs, strong duality holds without Slater's condition — the LP duality theorem guarantees $d^* = p^*$ whenever the primal is feasible and bounded. This is because the Lagrangian is linear in $x$, so the infimum is either $-\infty$ or attained at a vertex.
+
+![Strong duality and Slater's condition: strict interior guarantees zero duality gap](/images/topics/lagrangian-duality/strong-duality-slater.png)
+
+---
+
+## KKT Conditions
+
+The **Karush–Kuhn–Tucker conditions** are the first-order necessary and sufficient conditions for optimality in convex programs with strong duality. They are the constrained analogue of the unconstrained condition $\nabla f(x^*) = 0$.
+
+<TheoremBlock type="definition" number={5} title="Karush–Kuhn–Tucker (KKT) Conditions">
+A primal-dual triple $(x^*, \lambda^*, \nu^*)$ satisfies the **KKT conditions** for the standard form convex program if all four of the following hold:
+
+1. **Stationarity:** $\nabla f_0(x^*) + \sum_{i=1}^{m} \lambda_i^* \nabla f_i(x^*) + \sum_{j=1}^{p} \nu_j^* \nabla h_j(x^*) = 0$
+2. **Primal feasibility:** $f_i(x^*) \leq 0$ for all $i$ and $h_j(x^*) = 0$ for all $j$
+3. **Dual feasibility:** $\lambda_i^* \geq 0$ for all $i$
+4. **Complementary slackness:** $\lambda_i^* f_i(x^*) = 0$ for all $i$
+</TheoremBlock>
+
+Stationarity says that the gradient of the Lagrangian with respect to $x$ vanishes at the optimum — the objective gradient is cancelled by a non-negative combination of the constraint gradients. Geometrically, $-\nabla f_0(x^*)$ lies in the cone spanned by the active constraint gradients $\{\nabla f_i(x^*) : f_i(x^*) = 0\}$.
+
+<TheoremBlock type="theorem" number={3} title="KKT Necessary Conditions">
+If strong duality holds (i.e., $p^* = d^*$ and the dual optimum is attained), and $x^*$ is primal-optimal and $(\lambda^*, \nu^*)$ is dual-optimal, then $(x^*, \lambda^*, \nu^*)$ satisfies the KKT conditions.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $x^*$ is primal-optimal and $(\lambda^*, \nu^*)$ is dual-optimal, and strong duality holds:
+
+$$f_0(x^*) = p^* = d^* = g(\lambda^*, \nu^*) = \inf_x \mathcal{L}(x, \lambda^*, \nu^*)$$
+
+We also know (from the weak duality proof) that
+
+$$g(\lambda^*, \nu^*) \leq \mathcal{L}(x^*, \lambda^*, \nu^*) = f_0(x^*) + \sum_i \lambda_i^* f_i(x^*) + \sum_j \nu_j^* h_j(x^*) \leq f_0(x^*)$$
+
+The last inequality uses $\lambda_i^* \geq 0$, $f_i(x^*) \leq 0$, and $h_j(x^*) = 0$. Since the left and right sides are equal (both equal $p^* = d^*$), every inequality in the chain must hold with equality.
+
+**Complementary slackness:** The equality $\sum_i \lambda_i^* f_i(x^*) = 0$ with each term $\lambda_i^* f_i(x^*) \leq 0$ forces $\lambda_i^* f_i(x^*) = 0$ for each $i$.
+
+**Stationarity:** The equality $\inf_x \mathcal{L}(x, \lambda^*, \nu^*) = \mathcal{L}(x^*, \lambda^*, \nu^*)$ means $x^*$ minimizes $\mathcal{L}(\cdot, \lambda^*, \nu^*)$. Since the Lagrangian is convex in $x$ (as a sum of convex functions weighted by non-negative coefficients plus affine functions), the first-order condition gives $\nabla_x \mathcal{L}(x^*, \lambda^*, \nu^*) = 0$, which is exactly the stationarity condition.
+
+**Primal and dual feasibility** hold by assumption ($x^*$ is primal-feasible, $\lambda^* \geq 0$).
+</TheoremBlock>
+
+The converse is even more powerful for convex problems.
+
+<TheoremBlock type="theorem" number={4} title="KKT Sufficient for Convex Programs">
+For a convex program, if $(x^*, \lambda^*, \nu^*)$ satisfies the KKT conditions, then $x^*$ is primal-optimal, $(\lambda^*, \nu^*)$ is dual-optimal, and strong duality holds with zero duality gap.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Suppose the KKT conditions hold. Stationarity means $x^*$ minimizes $\mathcal{L}(x, \lambda^*, \nu^*)$ over $x$ (since for a convex function, $\nabla f = 0$ implies global minimum). Therefore:
+
+$$g(\lambda^*, \nu^*) = \inf_x \mathcal{L}(x, \lambda^*, \nu^*) = \mathcal{L}(x^*, \lambda^*, \nu^*) = f_0(x^*) + \underbrace{\sum_i \lambda_i^* f_i(x^*)}_{= 0 \text{ (comp. slack.)}} + \underbrace{\sum_j \nu_j^* h_j(x^*)}_{= 0 \text{ (primal feas.)}} = f_0(x^*)$$
+
+So $g(\lambda^*, \nu^*) = f_0(x^*)$. By weak duality, $d^* \leq p^* \leq f_0(x^*)$. But $d^* \geq g(\lambda^*, \nu^*) = f_0(x^*)$. Therefore $d^* = p^* = f_0(x^*)$: strong duality holds, $x^*$ is primal-optimal, and $(\lambda^*, \nu^*)$ is dual-optimal.
+</TheoremBlock>
+
+Together, Theorems 3 and 4 give the complete picture for convex programs with Slater's condition: the KKT conditions are **necessary and sufficient** for optimality. This is the constrained analogue of "set the gradient to zero and solve."
+
+<KKTExplorer client:visible />
+
+![KKT conditions: stationarity, complementary slackness, and sufficiency for convex programs](/images/topics/lagrangian-duality/kkt-conditions.png)
+
+---
+
+## Complementary Slackness
+
+Complementary slackness deserves special attention because it is the condition that does the most work in applications.
+
+<TheoremBlock type="theorem" number={5} title="Complementary Slackness">
+If strong duality holds and $(x^*, \lambda^*, \nu^*)$ is a primal-dual optimal pair, then for each inequality constraint $i$:
+
+$$\lambda_i^* f_i(x^*) = 0$$
+
+That is, either $\lambda_i^* = 0$ (the multiplier is zero — the constraint is "free") or $f_i(x^*) = 0$ (the constraint is **active** — it holds with equality). Both can be zero simultaneously, but they cannot both be strictly positive/negative.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+This was established in the proof of Theorem 3. The chain of equalities $g(\lambda^*, \nu^*) = \mathcal{L}(x^*, \lambda^*, \nu^*) = f_0(x^*)$ forces $\sum_i \lambda_i^* f_i(x^*) = 0$. Since each term satisfies $\lambda_i^* \geq 0$ and $f_i(x^*) \leq 0$, each product $\lambda_i^* f_i(x^*) \leq 0$. A sum of non-positive terms equals zero only if each term is zero.
+</TheoremBlock>
+
+The economic interpretation is clean: $\lambda_i^*$ is the *price* you're paying for constraint $i$. If the constraint has slack ($f_i(x^*) < 0$ — you have unused capacity), the price is zero — you wouldn't pay anything to relax a constraint that isn't binding. If the constraint is active ($f_i(x^*) = 0$ — you're at the limit), then the multiplier $\lambda_i^* > 0$ tells you how much the optimal value would improve per unit of relaxation.
+
+This insight is what identifies the **support vectors** in an SVM: the data points where the margin constraint is active ($\alpha_i^* > 0$) are exactly the ones that determine the decision boundary. All other points have $\alpha_i^* = 0$ and can be removed without changing the solution.
+
+---
+
+## Saddle Point Interpretation
+
+The KKT conditions have an elegant reformulation in terms of saddle points of the Lagrangian.
+
+<TheoremBlock type="definition" number={6} title="Saddle Point of the Lagrangian">
+A point $(x^*, \lambda^*, \nu^*)$ with $\lambda^* \geq 0$ is a **saddle point** of the Lagrangian if
+
+$$\mathcal{L}(x^*, \lambda, \nu) \leq \mathcal{L}(x^*, \lambda^*, \nu^*) \leq \mathcal{L}(x, \lambda^*, \nu^*)$$
+
+for all $x$, all $\lambda \geq 0$, and all $\nu$. That is, $x^*$ minimizes $\mathcal{L}$ and $(\lambda^*, \nu^*)$ maximizes it.
+</TheoremBlock>
+
+The Lagrangian is a "game" between two players. The primal player chooses $x$ to minimize $\mathcal{L}$; the dual player chooses $(\lambda, \nu)$ to maximize it. At a saddle point, neither player can improve their position unilaterally. This is the minimax interpretation:
+
+$$\max_{\lambda \geq 0, \nu} \min_{x} \mathcal{L}(x, \lambda, \nu) = \min_{x} \max_{\lambda \geq 0, \nu} \mathcal{L}(x, \lambda, \nu)$$
+
+When strong duality holds, the max and min commute — the order of play doesn't matter. This is the *minimax theorem* applied to the Lagrangian.
+
+<TheoremBlock type="theorem" number={6} title="Saddle Point Equivalence">
+For a convex program, $(x^*, \lambda^*, \nu^*)$ is a saddle point of $\mathcal{L}$ if and only if $x^*$ is primal-optimal, $(\lambda^*, \nu^*)$ is dual-optimal, and strong duality holds.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**($\Rightarrow$)** Suppose $(x^*, \lambda^*, \nu^*)$ is a saddle point. The right inequality $\mathcal{L}(x^*, \lambda^*, \nu^*) \leq \mathcal{L}(x, \lambda^*, \nu^*)$ for all $x$ means $x^*$ minimizes $\mathcal{L}(\cdot, \lambda^*, \nu^*)$, so $g(\lambda^*, \nu^*) = \mathcal{L}(x^*, \lambda^*, \nu^*)$.
+
+The left inequality $\mathcal{L}(x^*, \lambda, \nu) \leq \mathcal{L}(x^*, \lambda^*, \nu^*)$ for all $\lambda \geq 0$ and $\nu$. Taking $\lambda = 0, \nu = 0$: $f_0(x^*) \leq \mathcal{L}(x^*, \lambda^*, \nu^*)$. The maximization over $(\lambda, \nu)$ of the left side, evaluated at $x^*$ feasible, forces $x^*$ to be primal-feasible (otherwise we could make $\mathcal{L}(x^*, \lambda, \nu) \to +\infty$). With $x^*$ feasible: $f_0(x^*) = g(\lambda^*, \nu^*)$, giving zero duality gap.
+
+**($\Leftarrow$)** If $x^*$, $(\lambda^*, \nu^*)$ are primal and dual optimal with zero gap, then KKT holds (Theorem 3). Stationarity gives the right inequality; the left inequality follows because for feasible $x^*$, $\mathcal{L}(x^*, \lambda, \nu) = f_0(x^*) + \sum_i \lambda_i f_i(x^*) + \sum_j \nu_j h_j(x^*)$ is maximized at $(\lambda^*, \nu^*)$ by complementary slackness.
+</TheoremBlock>
+
+<SaddlePointExplorer client:visible />
+
+![The Lagrangian as a saddle surface: minimize over x, maximize over λ](/images/topics/lagrangian-duality/saddle-point.png)
+
+---
+
+## Sensitivity Analysis
+
+Dual variables are not just abstract quantities needed to state the KKT conditions — they have a concrete interpretation as **shadow prices** that measure how sensitive the optimal value is to constraint perturbations.
+
+<TheoremBlock type="theorem" number={7} title="Sensitivity via Dual Variables">
+Consider the perturbed problem: minimize $f_0(x)$ subject to $f_i(x) \leq u_i$ and $h_j(x) = v_j$, with optimal value $p^*(u, v)$. If strong duality holds and the dual optimum $(\lambda^*, \nu^*)$ is attained for the unperturbed problem ($u = 0, v = 0$), then
+
+$$\frac{\partial p^*}{\partial u_i}\bigg|_{u=0} = -\lambda_i^* \qquad \text{and} \qquad \frac{\partial p^*}{\partial v_j}\bigg|_{v=0} = -\nu_j^*$$
+
+That is, the optimal dual variable $\lambda_i^*$ is the **shadow price** of constraint $i$: it measures the rate at which the optimal value decreases when the constraint is relaxed.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The dual function for the perturbed problem is
+
+$$g_u(\lambda, \nu) = \inf_x \left[ f_0(x) + \sum_i \lambda_i(f_i(x) - u_i) + \sum_j \nu_j(h_j(x) - v_j) \right] = g(\lambda, \nu) - \lambda^\top u - \nu^\top v$$
+
+By strong duality for the perturbed problem (assuming Slater holds for small perturbations):
+
+$$p^*(u, v) = \max_{\lambda \geq 0, \nu} g_u(\lambda, \nu) = \max_{\lambda \geq 0, \nu} \left[ g(\lambda, \nu) - \lambda^\top u - \nu^\top v \right]$$
+
+At $u = 0, v = 0$: $p^*(0, 0) = g(\lambda^*, \nu^*)$, and the maximizer is $(\lambda^*, \nu^*)$. By the envelope theorem (the derivative of the optimum with respect to a parameter equals the partial derivative of the objective at the optimal point):
+
+$$\frac{\partial p^*}{\partial u_i}\bigg|_{u=0} = \frac{\partial}{\partial u_i}\left[g(\lambda^*, \nu^*) - (\lambda^*)^\top u - (\nu^*)^\top v\right]_{u=0} = -\lambda_i^*$$
+
+The same argument gives $\partial p^*/\partial v_j = -\nu_j^*$.
+</TheoremBlock>
+
+The sign makes economic sense. A positive $\lambda_i^*$ means the constraint $f_i(x) \leq 0$ is active and costly. Increasing $u_i$ (relaxing the constraint to $f_i(x) \leq u_i$) gives more room, which *decreases* the optimal objective by approximately $\lambda_i^*$ per unit of relaxation. A large shadow price means the constraint is bottleneck — relaxing it yields large improvements.
+
+**Resource allocation example.** Suppose a factory maximizes profit subject to material constraints. If the shadow price of steel is \$7.50/kg and the shadow price of copper is \$0/kg, then buying one more kilogram of steel improves profit by \$7.50, while copper has slack — the current supply isn't a binding limit. This tells the manager exactly where to invest.
+
+<SensitivityExplorer client:visible />
+
+![Sensitivity analysis: shadow prices and the perturbation function](/images/topics/lagrangian-duality/sensitivity-analysis.png)
+
+---
+
+## Application: The SVM Dual
+
+The hard-margin support vector machine is perhaps the most celebrated application of Lagrangian duality in machine learning. The dual formulation reveals the kernel trick, identifies the support vectors via complementary slackness, and reduces the problem to a tractable QP.
+
+**The primal.** Given linearly separable training data $\{(x_i, y_i)\}_{i=1}^n$ with $x_i \in \mathbb{R}^d$ and $y_i \in \{-1, +1\}$, the hard-margin SVM solves:
+
+$$\text{minimize} \quad \frac{1}{2}\|w\|^2 \qquad \text{subject to} \quad y_i(w^\top x_i + b) \geq 1,\; i = 1, \ldots, n$$
+
+The objective minimizes $\|w\|^2$, which maximizes the margin $2/\|w\|$. The constraints require each point to be on the correct side of the margin.
+
+**The Lagrangian.** Introducing multipliers $\alpha_i \geq 0$ for each constraint:
+
+$$\mathcal{L}(w, b, \alpha) = \frac{1}{2}\|w\|^2 - \sum_{i=1}^{n} \alpha_i \left[ y_i(w^\top x_i + b) - 1 \right]$$
+
+**KKT stationarity.** Setting the gradient of $\mathcal{L}$ with respect to $w$ and $b$ to zero:
+
+$$\frac{\partial \mathcal{L}}{\partial w} = 0 \implies w^* = \sum_{i=1}^{n} \alpha_i^* y_i x_i$$
+
+$$\frac{\partial \mathcal{L}}{\partial b} = 0 \implies \sum_{i=1}^{n} \alpha_i^* y_i = 0$$
+
+The first equation is remarkable: the optimal weight vector is a *linear combination of the training points*, weighted by the dual variables. Only points with $\alpha_i^* > 0$ contribute — these are the **support vectors**.
+
+**The dual QP.** Substituting the stationarity conditions back into the Lagrangian:
+
+$$\text{maximize} \quad \sum_{i=1}^{n} \alpha_i - \frac{1}{2} \sum_{i,j} \alpha_i \alpha_j y_i y_j (x_i^\top x_j) \qquad \text{subject to} \quad \alpha_i \geq 0, \quad \sum_i \alpha_i y_i = 0$$
+
+<TheoremBlock type="remark" title="Why the SVM Dual Reveals the Kernel Trick">
+The dual objective depends on the data *only through the inner products* $x_i^\top x_j$. This means we can replace $x_i^\top x_j$ with a kernel function $k(x_i, x_j) = \phi(x_i)^\top \phi(x_j)$ — computing inner products in a high-dimensional (even infinite-dimensional) feature space without ever explicitly mapping the data. This is the **kernel trick**, and it is a direct consequence of the dual formulation. The primal objective $\frac{1}{2}\|w\|^2$ depends on $w$ explicitly, which lives in the feature space — the kernel trick would not be visible from the primal alone.
+</TheoremBlock>
+
+**Complementary slackness identifies support vectors.** By complementary slackness, $\alpha_i^*(y_i(w^{*\top} x_i + b^*) - 1) = 0$ for each $i$. Either $\alpha_i^* = 0$ (the point doesn't contribute to $w^*$) or $y_i(w^{*\top} x_i + b^*) = 1$ (the point lies exactly on the margin). Points with $\alpha_i^* > 0$ are the **support vectors** — they sit on the margin boundary and fully determine the classifier. All other points could be removed without changing the solution.
+
+```python
+import numpy as np
+from scipy.optimize import minimize as sp_minimize
+
+def svm_dual(X, y):
+    """Solve the hard-margin SVM dual via scipy."""
+    n = X.shape[0]
+    Q = np.outer(y, y) * (X @ X.T)  # Gram matrix
+
+    def neg_dual(alpha):
+        return -np.sum(alpha) + 0.5 * alpha @ Q @ alpha
+
+    def neg_dual_grad(alpha):
+        return -np.ones(n) + Q @ alpha
+
+    constraints = [{'type': 'eq', 'fun': lambda a: a @ y}]
+    bounds = [(0, None)] * n
+    result = sp_minimize(neg_dual, np.zeros(n), jac=neg_dual_grad,
+                         bounds=bounds, constraints=constraints, method='SLSQP')
+    alpha = result.x
+
+    # Recover w* = sum alpha_i y_i x_i
+    w = (alpha * y) @ X
+    # Recover b* from a support vector
+    sv = np.where(alpha > 1e-6)[0]
+    b = np.mean(y[sv] - X[sv] @ w)
+    return w, b, alpha
+```
+
+<SVMDualExplorer client:visible />
+
+![The SVM dual: decision boundary, support vectors, and complementary slackness](/images/topics/lagrangian-duality/svm-dual.png)
+
+---
+
+## Application: Water-Filling & Portfolio Optimization
+
+Two more applications where the KKT conditions yield closed-form or near-closed-form solutions.
+
+### Water-Filling for Channel Capacity
+
+In information theory, the **water-filling** problem allocates power across $n$ parallel channels to maximize total capacity:
+
+$$\text{maximize} \quad \sum_{i=1}^{n} \log(1 + x_i / \alpha_i) \qquad \text{subject to} \quad \sum_{i=1}^{n} x_i = P,\; x_i \geq 0$$
+
+where $\alpha_i > 0$ is the noise level of channel $i$, $x_i$ is the power allocated to channel $i$, and $P$ is the total power budget.
+
+<TheoremBlock type="remark" title="Water-Filling as KKT in Closed Form">
+Writing the KKT stationarity condition for the Lagrangian $\mathcal{L} = \sum_i \log(1 + x_i/\alpha_i) - \nu(\sum_i x_i - P) + \sum_i \mu_i x_i$ and applying complementary slackness ($\mu_i x_i = 0$), we get the **water-filling solution**:
+
+$$x_i^* = \max\!\left(0,\; \frac{1}{\nu^*} - \alpha_i\right)$$
+
+The dual variable $\nu^*$ (the "water level") is determined by the budget constraint $\sum_i x_i^* = P$. The name comes from the visualization: imagine pouring water (power) over an irregular terrain (the noise levels $\alpha_i$); the water settles to a uniform level $1/\nu^*$, filling the noisiest channels last.
+</TheoremBlock>
+
+```python
+import numpy as np
+from scipy.optimize import brentq
+
+def water_filling(alphas, P_total):
+    """Water-filling solution via bisection for the water level."""
+    def budget_residual(nu_inv):
+        alloc = np.maximum(0, nu_inv - alphas)
+        return np.sum(alloc) - P_total
+
+    nu_inv_star = brentq(budget_residual, max(alphas), max(alphas) + P_total + 10)
+    x_star = np.maximum(0, nu_inv_star - alphas)
+    return x_star, 1.0 / nu_inv_star
+```
+
+### Mean-Variance Portfolio Optimization
+
+In Markowitz portfolio theory, we trace the **efficient frontier** by solving a family of constrained problems:
+
+$$\text{minimize} \quad \frac{1}{2} w^\top \Sigma w \qquad \text{subject to} \quad \mu^\top w \geq r_{\min},\; \mathbf{1}^\top w = 1,\; w \geq 0$$
+
+where $\Sigma$ is the return covariance matrix, $\mu$ is the expected return vector, and $r_{\min}$ is the minimum acceptable return. The dual variable $\lambda^*$ for the return constraint is the **risk-return tradeoff price**: it tells you how much additional variance you must accept per unit of additional expected return.
+
+By varying $r_{\min}$ from the minimum-variance portfolio to the maximum-return portfolio and solving the KKT conditions at each point, we trace the efficient frontier — the Pareto-optimal set of portfolios. The shadow price $\lambda^*$ is the slope of the efficient frontier at each point.
+
+![Water-filling, portfolio efficient frontier, and portfolio weights along the frontier](/images/topics/lagrangian-duality/applications.png)
+
+---
+
+## Computational Notes
+
+### CVXPY with Automatic Dual Extraction
+
+[CVXPY](https://www.cvxpy.org/) is a Python-embedded modeling language for disciplined convex programming. It automatically solves the dual alongside the primal and exposes the dual variables directly.
+
+```python
+import cvxpy as cp
+
+x = cp.Variable(2)
+objective = cp.Minimize((x[0] - 3)**2 + (x[1] - 2)**2)
+constraints = [
+    x[0] + x[1] <= 3,     # Resource constraint
+    x[0] >= 0, x[1] >= 0  # Non-negativity
+]
+prob = cp.Problem(objective, constraints)
+prob.solve()
+
+print(f"Optimal value: {prob.value:.4f}")
+print(f"Optimal x: {x.value}")
+for i, c in enumerate(constraints):
+    print(f"Constraint {i} dual value (shadow price): {c.dual_value:.4f}")
+```
+
+The `.dual_value` attribute gives $\lambda_i^*$ directly. This is how you extract shadow prices in practice — no manual KKT derivation needed.
+
+### scipy.optimize with SLSQP
+
+For problems not in disciplined convex form, `scipy.optimize.minimize` with `method='SLSQP'` handles nonlinear constraints:
+
+```python
+from scipy.optimize import minimize
+
+result = minimize(
+    fun=lambda x: (x[0] - 3)**2 + (x[1] - 2)**2,
+    x0=[0.0, 0.0],
+    method='SLSQP',
+    constraints=[
+        {'type': 'ineq', 'fun': lambda x: 3 - x[0] - x[1]},  # x0 + x1 <= 3
+    ],
+    bounds=[(0, None), (0, None)]
+)
+print(f"Optimal value: {result.fun:.6f}")
+print(f"Optimal x: {result.x}")
+```
+
+### Interior-Point / Barrier Methods
+
+Interior-point methods approach the constrained optimum from the *interior* of the feasible set by adding a logarithmic barrier that blows up at the constraint boundary:
+
+$$\min_x \; t \cdot f_0(x) - \sum_{i=1}^{m} \log(-f_i(x))$$
+
+As the barrier parameter $t \to \infty$, the solution traces the **central path** toward the true constrained optimum. At each point on the central path, the barrier Hessian system is a perturbed KKT system — interior-point methods are solving KKT conditions with a controlled perturbation. The convergence rate is typically $O(\sqrt{m}\log(1/\epsilon))$ Newton steps, where $m$ is the number of constraints.
+
+```python
+def barrier_method(f0, grad_f0, constraints, x0, t_init=1, mu=10, tol=1e-8):
+    """Conceptual barrier method — solve a sequence of unconstrained problems."""
+    x = x0.copy()
+    t = t_init
+    while True:
+        # Phase 1: centering — minimize t*f0(x) + barrier using Newton's method
+        for _ in range(100):  # Inner Newton iterations
+            barrier_grad = sum(-1.0 / c['fun'](x) * c['grad'](x) for c in constraints)
+            total_grad = t * grad_f0(x) + barrier_grad
+            x = x - 0.01 * total_grad  # Simplified: use Newton step in practice
+
+        # Phase 2: increase t
+        if len(constraints) / t < tol:
+            break
+        t *= mu
+
+    return x
+```
+
+**Constraint diagnostics.** After solving, verify the KKT conditions numerically:
+1. **Stationarity residual:** $\|\nabla f_0(x^*) + \sum_i \lambda_i^* \nabla f_i(x^*)\|$ should be near zero.
+2. **Complementary slackness:** $|\lambda_i^* f_i(x^*)|$ should be near zero for each $i$.
+3. **Primal feasibility:** $\max_i f_i(x^*)$ should be $\leq 0$ (within tolerance).
+4. **Dual feasibility:** $\min_i \lambda_i^*$ should be $\geq 0$.
+
+![Computational notes: CVXPY, scipy, and the barrier method convergence](/images/topics/lagrangian-duality/computational-notes.png)
+
+---
+
+## Connections & Further Reading
+
+Lagrangian duality is the theoretical core of constrained optimization, connecting the convex analysis foundations to the algorithmic methods in the rest of the Optimization track and beyond.
+
+| Topic | Connection |
+|-------|-----------|
+| **[Convex Analysis](/topics/convex-analysis)** | Every result here rests on convex analysis. Weak duality follows from the infimum structure; strong duality uses the separating hyperplane theorem; KKT stationarity extends the subdifferential condition $0 \in \partial f(x^*)$ to constrained settings. Conjugate functions are the engine of Lagrangian duality: the dual function $g(\lambda) = -f_0^*(-A^\top\lambda) - b^\top\lambda$ for linear constraints. |
+| **[Gradient Descent & Convergence](/topics/gradient-descent)** | Interior-point methods solve the KKT system via Newton's method on the barrier-perturbed equations. The convergence analysis of these solvers relies on the smoothness and strong convexity framework. The barrier parameter $t$ controls the tradeoff between centering accuracy and constraint satisfaction. |
+| **[Proximal Methods](/topics/proximal-methods)** | ADMM is a dual decomposition method: it applies Douglas–Rachford splitting to the dual of the consensus problem. The augmented Lagrangian $\mathcal{L}_\rho(x, \lambda) = \mathcal{L}(x, \lambda) + \frac{\rho}{2}\|Ax - b\|^2$ is a proximal regularization of the standard Lagrangian, connecting the dual update $\lambda^{k+1} = \lambda^k + \rho(Ax^{k+1} - b)$ to proximal point iterations. |
+| **[The Spectral Theorem](/topics/spectral-theorem)** | Quadratic programs require the objective Hessian to be PSD for convexity. The eigendecomposition determines the condition number $\kappa(P)$ that governs interior-point convergence. For SDPs, the spectral theorem on the matrix variable provides the optimality structure. |
+| **[Singular Value Decomposition](/topics/svd)** | The SVM dual involves the Gram matrix $K_{ij} = x_i^\top x_j$. For kernel SVMs, the SVD of the feature matrix reveals the effective dimensionality and condition number of $K$, governing the dual QP's numerical behavior. |
+| **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** | Nuclear norm minimization $\min \|X\|_*$ subject to linear constraints is the convex relaxation of rank-constrained optimization. The dual of this problem involves the spectral norm, and the duality theory developed here establishes the tightness of the relaxation. |
+
+### The Optimization Track (Complete)
+
+```
+Convex Analysis
+    ├── Gradient Descent & Convergence
+    │       └── Proximal Methods
+    └── Lagrangian Duality & KKT (this topic)
+```
+
+This topic completes the Optimization track. The four topics form a coherent progression: **Convex Analysis** provides the mathematical foundations (convex sets, functions, subdifferentials, separation theorems), **Gradient Descent** develops the unconstrained optimization theory (smooth, strongly convex, accelerated), **Proximal Methods** extends to non-smooth and composite objectives (proximal operators, splitting, ADMM), and **Lagrangian Duality** addresses constrained optimization with the full KKT machinery.
+
+Potential future directions that build on this foundation include second-order cone programming (SOCP), semidefinite programming (SDP), robust optimization, and bilevel optimization — but these are beyond the current curriculum scope.

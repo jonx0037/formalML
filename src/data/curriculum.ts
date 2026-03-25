@@ -25,9 +25,7 @@ export const tracks = [
     label: 'Optimization',
     description:
       'Convex analysis, gradient methods, and the theoretical tools behind modern training algorithms.',
-    planned: [
-      'Lagrangian Duality & KKT',
-    ],
+    planned: [],
   },
   {
     domain: 'geometry',
