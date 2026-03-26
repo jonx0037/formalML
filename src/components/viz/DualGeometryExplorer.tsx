@@ -257,7 +257,7 @@ export default function DualGeometryExplorer() {
       }
 
       // Draggable start point
-      const startDot = g.append('circle')
+      g.append('circle')
         .attr('cx', xScale(startMu))
         .attr('cy', yScale(startSig))
         .attr('r', 8)
@@ -266,15 +266,8 @@ export default function DualGeometryExplorer() {
         .style('stroke-width', 2)
         .style('cursor', 'grab');
 
-      startDot.call(
-        d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setStartMu(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
-          setStartSig(Math.max(SIG_RANGE[0] + DRAG_PAD_Y_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_Y_HI, yScale.invert(event.y))));
-        })
-      );
-
       // Draggable end point
-      const endDot = g.append('circle')
+      g.append('circle')
         .attr('cx', xScale(endMu))
         .attr('cy', yScale(endSig))
         .attr('r', 8)
@@ -283,12 +276,22 @@ export default function DualGeometryExplorer() {
         .style('stroke-width', 2)
         .style('cursor', 'grab');
 
-      endDot.call(
-        d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setEndMu(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
-          setEndSig(Math.max(SIG_RANGE[0] + DRAG_PAD_Y_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_Y_HI, yScale.invert(event.y))));
+      // Drag on SVG — move whichever point is closer
+      let draggingStart = true;
+      svg.call(d3.drag<SVGSVGElement, unknown>()
+        .on('start', (event) => {
+          const mx = xScale.invert(event.x - margin.left);
+          const my = yScale.invert(event.y - margin.top);
+          const ds = (mx - startMu) ** 2 + (my - startSig) ** 2;
+          const de = (mx - endMu) ** 2 + (my - endSig) ** 2;
+          draggingStart = ds <= de;
         })
-      );
+        .on('drag', (event) => {
+          const mu = Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x - margin.left)));
+          const sig = Math.max(SIG_RANGE[0] + DRAG_PAD_Y_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_Y_HI, yScale.invert(event.y - margin.top)));
+          if (draggingStart) { setStartMu(mu); setStartSig(sig); }
+          else { setEndMu(mu); setEndSig(sig); }
+        }));
 
       // Labels
       g.append('text').attr('x', xScale(startMu) + 10).attr('y', yScale(startSig) - 10)

@@ -102,24 +102,31 @@ export default function DivergenceExplorer() {
         .style('stroke', 'var(--color-border)').style('stroke-width', 1.5).style('stroke-dasharray', '4,3');
 
       // Point 1 (p)
-      const dot1 = g.append('circle')
+      g.append('circle')
         .attr('cx', xScale(mu1)).attr('cy', yScale(sig1))
         .attr('r', 8).style('fill', TEAL).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
-      dot1.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-        setMu1(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
-        setSig1(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
-      }));
-
       // Point 2 (q)
-      const dot2 = g.append('circle')
+      g.append('circle')
         .attr('cx', xScale(mu2)).attr('cy', yScale(sig2))
         .attr('r', 8).style('fill', PURPLE).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
-      dot2.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-        setMu2(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
-        setSig2(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
-      }));
+      // Drag on left SVG — move whichever point is closer
+      let draggingP = true;
+      svg.call(d3.drag<SVGSVGElement, unknown>()
+        .on('start', (event) => {
+          const mx = xScale.invert(event.x - margin.left);
+          const my = yScale.invert(event.y - margin.top);
+          const d1 = (mx - mu1) ** 2 + (my - sig1) ** 2;
+          const d2 = (mx - mu2) ** 2 + (my - sig2) ** 2;
+          draggingP = d1 <= d2;
+        })
+        .on('drag', (event) => {
+          const mu = Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x - margin.left)));
+          const sig = Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y - margin.top)));
+          if (draggingP) { setMu1(mu); setSig1(sig); }
+          else { setMu2(mu); setSig2(sig); }
+        }));
 
       // Labels
       g.append('text').attr('x', xScale(mu1) - 12).attr('y', yScale(sig1) - 12)

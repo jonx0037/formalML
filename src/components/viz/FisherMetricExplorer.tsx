@@ -168,7 +168,7 @@ export default function FisherMetricExplorer() {
         }
 
         // Draggable point
-        const dot = g.append('circle')
+        g.append('circle')
           .attr('cx', xScale(paramX))
           .attr('cy', yScale(paramY))
           .attr('r', 7)
@@ -177,14 +177,13 @@ export default function FisherMetricExplorer() {
           .style('stroke-width', 2)
           .style('cursor', 'grab');
 
-        const drag = d3.drag<SVGCircleElement, unknown>()
+        svg.call(d3.drag<SVGSVGElement, unknown>()
           .on('drag', (event) => {
-            const mu = xScale.invert(event.x);
-            const sig = yScale.invert(event.y);
+            const mu = xScale.invert(event.x - margin.left);
+            const sig = yScale.invert(event.y - margin.top);
             setParamX(Math.max(GAUSSIAN_MU_RANGE[0], Math.min(GAUSSIAN_MU_RANGE[1], mu)));
             setParamY(Math.max(GAUSSIAN_SIG_RANGE[0] + GAUSSIAN_SIG_PAD, Math.min(GAUSSIAN_SIG_RANGE[1] - 0.1, sig)));
-          });
-        dot.call(drag);
+          }));
 
       } else {
         // 1D families: Bernoulli or Exponential
@@ -233,13 +232,11 @@ export default function FisherMetricExplorer() {
           .style('stroke-width', 2)
           .style('cursor', 'grab');
 
-        const dotSel = g.select<SVGCircleElement>('circle');
-        const drag = d3.drag<SVGCircleElement, unknown>()
+        svg.call(d3.drag<SVGSVGElement, unknown>()
           .on('drag', (event) => {
-            const t = xScale.invert(event.x);
+            const t = xScale.invert(event.x - margin.left);
             setParamX(Math.max(domain[0], Math.min(domain[1], t)));
-          });
-        dotSel.call(drag);
+          }));
       }
 
       // Title
