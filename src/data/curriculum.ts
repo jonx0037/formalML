@@ -40,7 +40,6 @@ export const tracks = [
     description:
       'Entropy, divergences, and the theoretical limits that underpin compression, coding, and learning.',
     planned: [
-      'Shannon Entropy & Mutual Information',
       'KL Divergence & f-Divergences',
       'Rate-Distortion Theory',
       'Minimum Description Length',
