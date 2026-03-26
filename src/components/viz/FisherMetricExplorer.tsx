@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -18,6 +18,16 @@ const SM_BREAKPOINT = 640;
 const TEAL = dimensionColors[0];
 const PURPLE = dimensionColors[1];
 const AMBER = '#D97706';
+
+const GAUSSIAN_MU_RANGE: [number, number] = [-3, 3];
+const GAUSSIAN_SIG_RANGE: [number, number] = [0, 3];
+const GAUSSIAN_SIG_PAD = 0.15;
+const BERNOULLI_DOMAIN: [number, number] = [0.02, 0.98];
+const EXPONENTIAL_DOMAIN: [number, number] = [0.1, 5];
+const ELLIPSE_MU_RANGE: [number, number] = [-2.5, 2.5];
+const ELLIPSE_SIG_RANGE: [number, number] = [0.4, 2.8];
+const ELLIPSE_SCALE = 0.15;
+const CURRENT_ELLIPSE_SCALE = 0.25;
 
 type Family = 'gaussian' | 'bernoulli' | 'exponential';
 
@@ -57,17 +67,16 @@ export default function FisherMetricExplorer() {
   const ellipseGrid = useMemo(() => {
     if (!showEllipses || family !== 'gaussian') return [];
     const grid: { cx: number; cy: number; rx: number; ry: number }[] = [];
-    for (let mu = -2.5; mu <= 2.5; mu += 1) {
-      for (let sig = 0.4; sig <= 2.8; sig += 0.4) {
+    for (let mu = ELLIPSE_MU_RANGE[0]; mu <= ELLIPSE_MU_RANGE[1]; mu += 1) {
+      for (let sig = ELLIPSE_SIG_RANGE[0]; sig <= ELLIPSE_SIG_RANGE[1]; sig += 0.4) {
         const m = fisherMetricGaussian(sig);
         const e = metricEigendecomp(m.g);
         // Semi-axes proportional to 1/sqrt(eigenvalue) — the "unit ball" in the metric
-        const scale = 0.15;
         grid.push({
           cx: mu,
           cy: sig,
-          rx: scale / Math.sqrt(e.eigenvalues[0]),
-          ry: scale / Math.sqrt(e.eigenvalues[1]),
+          rx: ELLIPSE_SCALE / Math.sqrt(e.eigenvalues[0]),
+          ry: ELLIPSE_SCALE / Math.sqrt(e.eigenvalues[1]),
         });
       }
     }
@@ -88,11 +97,13 @@ export default function FisherMetricExplorer() {
       };
     } else if (family === 'bernoulli') {
       const p = Math.max(0.01, Math.min(0.99, paramX));
+      // Score for Bernoulli: s_p(x) = x/p - (1-x)/(1-p)
       return {
         xs: [0, 1],
-        scoreMu: [(1 - p) / (p * (1 - p) + 1e-12) * -1 + 1 / p, -1 / (1 - p)].map((_, i) =>
-          i === 0 ? 1 / p - 1 : -1 / (1 - p) + 1
-        ),
+        scoreMu: [
+          -1 / (1 - p),  // s_p(x=0) = 0/p - 1/(1-p)
+          1 / p,          // s_p(x=1) = 1/p - 0/(1-p)
+        ],
         scoreSigma: null,
         labels: ['s_p(x=0)', 's_p(x=1)'],
       };
@@ -112,8 +123,8 @@ export default function FisherMetricExplorer() {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
       if (family === 'gaussian') {
-        const xScale = d3.scaleLinear().domain([-3, 3]).range([0, w]);
-        const yScale = d3.scaleLinear().domain([0, 3]).range([h, 0]);
+        const xScale = d3.scaleLinear().domain(GAUSSIAN_MU_RANGE).range([0, w]);
+        const yScale = d3.scaleLinear().domain(GAUSSIAN_SIG_RANGE).range([h, 0]);
 
         // Axes
         g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(xScale).ticks(6))
@@ -143,9 +154,8 @@ export default function FisherMetricExplorer() {
         // Current point ellipse (highlighted)
         if (metricData.dim === 2) {
           const eigen = metricData.eigen;
-          const scale = 0.25;
-          const rx = scale / Math.sqrt(eigen.eigenvalues[0]);
-          const ry = scale / Math.sqrt(eigen.eigenvalues[1]);
+          const rx = CURRENT_ELLIPSE_SCALE / Math.sqrt(eigen.eigenvalues[0]);
+          const ry = CURRENT_ELLIPSE_SCALE / Math.sqrt(eigen.eigenvalues[1]);
           g.append('ellipse')
             .attr('cx', xScale(paramX))
             .attr('cy', yScale(paramY))
@@ -171,14 +181,14 @@ export default function FisherMetricExplorer() {
           .on('drag', (event) => {
             const mu = xScale.invert(event.x);
             const sig = yScale.invert(event.y);
-            setParamX(Math.max(-3, Math.min(3, mu)));
-            setParamY(Math.max(0.15, Math.min(2.9, sig)));
+            setParamX(Math.max(GAUSSIAN_MU_RANGE[0], Math.min(GAUSSIAN_MU_RANGE[1], mu)));
+            setParamY(Math.max(GAUSSIAN_SIG_RANGE[0] + GAUSSIAN_SIG_PAD, Math.min(GAUSSIAN_SIG_RANGE[1] - 0.1, sig)));
           });
         dot.call(drag);
 
       } else {
         // 1D families: Bernoulli or Exponential
-        const domain: [number, number] = family === 'bernoulli' ? [0.02, 0.98] : [0.1, 5];
+        const domain: [number, number] = family === 'bernoulli' ? BERNOULLI_DOMAIN : EXPONENTIAL_DOMAIN;
         const xScale = d3.scaleLinear().domain(domain).range([0, w]);
         const yScale = d3.scaleLinear().domain([0, family === 'bernoulli' ? 30 : 120]).range([h, 0]);
 
@@ -285,7 +295,7 @@ export default function FisherMetricExplorer() {
 
         // Legend
         g.append('text').attr('x', w - 5).attr('y', 10).style('fill', TEAL)
-          .style('text-anchor', 'end').style('font-size', '11px').text('sᵤ(x; θ)');
+          .style('text-anchor', 'end').style('font-size', '11px').text('s_μ(x; θ)');
         g.append('text').attr('x', w - 5).attr('y', 24).style('fill', PURPLE)
           .style('text-anchor', 'end').style('font-size', '11px').text('sσ(x; θ)');
 
@@ -354,7 +364,7 @@ export default function FisherMetricExplorer() {
         svg.append('text').attr('x', rightWidth / 2).attr('y', 16)
           .style('fill', 'var(--color-text-primary)').style('text-anchor', 'middle')
           .style('font-size', '13px').style('font-weight', '600')
-          .text(showScore ? 'Score Functions' : 'Metric Information');
+          .text(showScore && scoreData && family === 'gaussian' ? 'Score Functions' : 'Metric Information');
       }
     },
     [family, paramX, paramY, showScore, scoreData, metricData, rightWidth]
@@ -377,8 +387,8 @@ export default function FisherMetricExplorer() {
               const f = e.target.value as Family;
               setFamily(f);
               if (f === 'gaussian') { setParamX(0); setParamY(1); }
-              else if (f === 'bernoulli') { setParamX(0.5); }
-              else { setParamX(1); }
+              else if (f === 'bernoulli') { setParamX(0.5); setShowScore(false); }
+              else { setParamX(1); setShowScore(false); }
             }}
             className="rounded border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-2 py-0.5 text-[var(--color-text-primary)]"
           >

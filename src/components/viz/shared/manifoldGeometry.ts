@@ -809,6 +809,8 @@ export function gaussianChristoffel(sigma: number): ChristoffelSymbols {
   return { gamma };
 }
 
+const SIGMA_MIN = 0.01;
+
 /** RK4 geodesic solver on the Gaussian Fisher manifold.
  *  Coordinates (μ, σ) with σ > 0.
  *  Returns points using GeodesicPointXY (x=μ, y=σ). */
@@ -846,7 +848,7 @@ export function solveGeodesicGaussian(
     result.push({ t: i * dt, x: mu, y: sig, dx: dmu, dy: dsig });
 
     // Stop if σ gets too small
-    if (sig < 0.01) break;
+    if (sig < SIGMA_MIN) break;
 
     if (i < nSteps) {
       const k1 = deriv(state);
@@ -860,7 +862,7 @@ export function solveGeodesicGaussian(
         v + (dt / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j])
       );
       // Clamp σ > 0
-      if (state[1] < 0.01) state[1] = 0.01;
+      if (state[1] < SIGMA_MIN) state[1] = SIGMA_MIN;
     }
   }
 
@@ -912,43 +914,26 @@ export function hellingerDistGaussian(
   return 1 - coeff * Math.exp(exponent);
 }
 
-/** α-divergence between two Gaussians (numerical for general α).
+/** α-divergence between two Gaussians (closed-form).
  *  Falls back to KL for α near ±1, Hellinger for α near 0. */
 export function alphaDivGaussian(
   mu1: number, sigma1: number,
   mu2: number, sigma2: number,
   alpha: number
 ): number {
-  if (Math.abs(alpha - 1) < 0.05) return klDivGaussian(mu1, sigma1, mu2, sigma2);
-  if (Math.abs(alpha + 1) < 0.05) return klDivGaussian(mu2, sigma2, mu1, sigma1);
-  if (Math.abs(alpha) < 0.05) return 2 * hellingerDistGaussian(mu1, sigma1, mu2, sigma2);
+  const ALPHA_THRESHOLD = 0.05;
+  if (Math.abs(alpha - 1) < ALPHA_THRESHOLD) return klDivGaussian(mu1, sigma1, mu2, sigma2);
+  if (Math.abs(alpha + 1) < ALPHA_THRESHOLD) return klDivGaussian(mu2, sigma2, mu1, sigma1);
+  if (Math.abs(alpha) < ALPHA_THRESHOLD) return 2 * hellingerDistGaussian(mu1, sigma1, mu2, sigma2);
 
-  // For Gaussians, the α-divergence has a closed form:
-  // D_α = (4/(1-α²)) (1 - exp(-ρ²_α / 2))
-  // where ρ²_α encodes the parameters
+  // D_α = (4/(1-α²)) (1 - ∫ p^a q^b dx), with a = (1+α)/2, b = (1-α)/2
+  // For Gaussians the integral ∫ p^a q^b dx has closed form via log-space.
   const a = (1 + alpha) / 2;
   const b = (1 - alpha) / 2;
   const s1sq = sigma1 * sigma1;
   const s2sq = sigma2 * sigma2;
-  const sigmaAlpha = a * s1sq + b * s2sq;
-  const muDiff2 = (mu1 - mu2) ** 2;
-  const exponent = -a * b * muDiff2 / (2 * sigmaAlpha);
-  const integrand =
-    Math.pow(sigma1, -a) *
-    Math.pow(sigma2, -b) *
-    Math.pow(sigmaAlpha, -0.5) *
-    Math.sqrt(2 * Math.PI * s1sq * s2sq / (2 * Math.PI)) *
-    Math.exp(exponent);
 
-  // Simplified: for Gaussians the integral ∫ p^a q^b dx has closed form
-  const integral =
-    Math.pow(sigma1, 2 * a) ** (-0.5) *
-    Math.pow(sigma2, 2 * b) ** (-0.5) *
-    Math.pow(a * s1sq + b * s2sq, -0.5) *
-    Math.exp(-a * b * muDiff2 / (2 * (a * s1sq + b * s2sq)));
-
-  // Normalize: the integral is ∫ p^a q^b dx where p, q are Gaussian densities
-  // = (2π)^(-(a+b-1)/2) * σ₁^(-a) * σ₂^(-b) * (a/σ₁² + b/σ₂²)^(-1/2) * exp(...)
+  // ∫ p^a q^b dx = (2π)^(-(a+b-1)/2) σ₁^(-a) σ₂^(-b) (a/σ₁² + b/σ₂²)^(-1/2) exp(...)
   const varComb = a / s1sq + b / s2sq;
   const meanComb = a * mu1 / s1sq + b * mu2 / s2sq;
   const logInt =

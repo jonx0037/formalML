@@ -20,6 +20,24 @@ const TEAL = dimensionColors[0];
 const PURPLE = dimensionColors[1];
 const AMBER = '#D97706';
 
+const MU_RANGE: [number, number] = [-3, 3];
+const SIG_RANGE: [number, number] = [0, 3.5];
+const DRAG_PAD = 0.5;
+const DRAG_PAD_SIG_LO = 0.2;
+const DRAG_PAD_SIG_HI = 0.3;
+const GEODESIC_T_MAX = 2.5;
+const GEODESIC_INITIAL_SPEED = 0.5;
+const KL_CONTOUR_GRID_SIZE = 60;
+const KL_CONTOUR_THRESHOLDS = [0.1, 0.3, 0.6, 1.0, 1.5, 2.5, 4.0];
+const CONVERGENCE_THRESHOLD = 0.001;
+const GRADIENT_LEARNING_RATE = 0.05;
+const GRADIENT_STARTS = [
+  { mu: -2, sigma: 2.5 },
+  { mu: 2, sigma: 0.3 },
+  { mu: -1.5, sigma: 0.5 },
+  { mu: 1.5, sigma: 2.5 },
+];
+
 const fmt = (x: number) => x.toFixed(2);
 
 interface TrajectoryPoint {
@@ -53,7 +71,7 @@ function runGradientDescent(
     pts.push({ mu, sigma });
 
     // Convergence check
-    if (Math.abs(mu - targetMu) < 0.001 && Math.abs(sigma - targetSig) < 0.001) break;
+    if (Math.abs(mu - targetMu) < CONVERGENCE_THRESHOLD && Math.abs(sigma - targetSig) < CONVERGENCE_THRESHOLD) break;
   }
   return pts;
 }
@@ -79,15 +97,14 @@ export default function StatisticalGeodesicExplorer() {
   const geodesics = useMemo(() => {
     if (showNatGrad) return [];
     const nRays = showFan ? 12 : 1;
-    const tMax = 2.5;
     const rays: { x: number; y: number }[][] = [];
 
     for (let r = 0; r < nRays; r++) {
       const angle = showFan ? (2 * Math.PI * r) / nRays : Math.PI / 4;
-      const speed = 0.5;
+      const speed = GEODESIC_INITIAL_SPEED;
       const dmu = speed * Math.cos(angle);
       const dsig = speed * Math.sin(angle);
-      const pts = solveGeodesicGaussian(startMu, startSig, dmu, dsig, tMax, 200);
+      const pts = solveGeodesicGaussian(startMu, startSig, dmu, dsig, GEODESIC_T_MAX, 200);
       rays.push(
         pts
           .filter((p) => p.y > 0.05 && p.y < 4 && Math.abs(p.x) < 4)
@@ -100,9 +117,9 @@ export default function StatisticalGeodesicExplorer() {
   // ── KL contour data ──────────────────────────────────────────────
   const klContours = useMemo(() => {
     if (!showKLContours) return null;
-    const nGrid = 60;
-    const muRange: [number, number] = [-3, 3];
-    const sigRange: [number, number] = [0.15, 3.5];
+    const nGrid = KL_CONTOUR_GRID_SIZE;
+    const muRange: [number, number] = MU_RANGE;
+    const sigRange: [number, number] = [SIG_RANGE[0] + DRAG_PAD_SIG_LO, SIG_RANGE[1]];
     const grid: number[] = [];
 
     for (let j = 0; j < nGrid; j++) {
@@ -114,7 +131,7 @@ export default function StatisticalGeodesicExplorer() {
     }
 
     const contourGen = d3.contours().size([nGrid, nGrid])
-      .thresholds([0.1, 0.3, 0.6, 1.0, 1.5, 2.5, 4.0]);
+      .thresholds(KL_CONTOUR_THRESHOLDS);
     return { contours: contourGen(grid), nGrid, muRange, sigRange };
   }, [showKLContours, startMu, startSig]);
 
@@ -122,13 +139,8 @@ export default function StatisticalGeodesicExplorer() {
   const gradTrajectories = useMemo(() => {
     if (!showNatGrad) return { euclidean: [], natural: [] };
 
-    const starts = [
-      { mu: -2, sigma: 2.5 },
-      { mu: 2, sigma: 0.3 },
-      { mu: -1.5, sigma: 0.5 },
-      { mu: 1.5, sigma: 2.5 },
-    ];
-    const lr = 0.05;
+    const starts = GRADIENT_STARTS;
+    const lr = GRADIENT_LEARNING_RATE;
 
     const euclidean = starts.map((s) =>
       runGradientDescent(s.mu, s.sigma, targetMu, targetSig, lr, false)
@@ -173,8 +185,8 @@ export default function StatisticalGeodesicExplorer() {
       const h = HEIGHT - margin.top - margin.bottom;
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-      const xScale = d3.scaleLinear().domain([-3, 3]).range([0, w]);
-      const yScale = d3.scaleLinear().domain([0, 3.5]).range([h, 0]);
+      const xScale = d3.scaleLinear().domain(MU_RANGE).range([0, w]);
+      const yScale = d3.scaleLinear().domain(SIG_RANGE).range([h, 0]);
 
       // Axes
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(xScale).ticks(6))
@@ -235,8 +247,8 @@ export default function StatisticalGeodesicExplorer() {
           .attr('r', 8).style('fill', AMBER).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
         targetDot.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setTargetMu(Math.max(-2.5, Math.min(2.5, xScale.invert(event.x))));
-          setTargetSig(Math.max(0.2, Math.min(3.2, yScale.invert(event.y))));
+          setTargetMu(Math.max(MU_RANGE[0] + DRAG_PAD, Math.min(MU_RANGE[1] - DRAG_PAD, xScale.invert(event.x))));
+          setTargetSig(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
         }));
 
         g.append('text').attr('x', xScale(targetMu) + 10).attr('y', yScale(targetSig) - 10)
@@ -269,8 +281,8 @@ export default function StatisticalGeodesicExplorer() {
           .attr('r', 8).style('fill', AMBER).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
         startDot.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setStartMu(Math.max(-2.5, Math.min(2.5, xScale.invert(event.x))));
-          setStartSig(Math.max(0.2, Math.min(3.2, yScale.invert(event.y))));
+          setStartMu(Math.max(MU_RANGE[0] + DRAG_PAD, Math.min(MU_RANGE[1] - DRAG_PAD, xScale.invert(event.x))));
+          setStartSig(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
         }));
       }
 

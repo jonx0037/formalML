@@ -18,6 +18,12 @@ const TEAL = dimensionColors[0];
 const PURPLE = dimensionColors[1];
 const AMBER = '#D97706';
 
+const MU_RANGE: [number, number] = [-3, 3];
+const SIG_RANGE: [number, number] = [0, 3];
+const DRAG_PAD_X = 0.2;
+const DRAG_PAD_SIG_LO = 0.15;
+const DRAG_PAD_SIG_HI = 0.1;
+
 type DivType = 'kl-forward' | 'kl-reverse' | 'hellinger' | 'fisher-rao';
 
 const fmt = (x: number) => x.toFixed(4);
@@ -74,8 +80,8 @@ export default function DivergenceExplorer() {
       const h = HEIGHT - margin.top - margin.bottom;
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-      const xScale = d3.scaleLinear().domain([-3, 3]).range([0, w]);
-      const yScale = d3.scaleLinear().domain([0, 3]).range([h, 0]);
+      const xScale = d3.scaleLinear().domain(MU_RANGE).range([0, w]);
+      const yScale = d3.scaleLinear().domain(SIG_RANGE).range([h, 0]);
 
       // Axes
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(xScale).ticks(6))
@@ -101,8 +107,8 @@ export default function DivergenceExplorer() {
         .attr('r', 8).style('fill', TEAL).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
       dot1.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-        setMu1(Math.max(-2.8, Math.min(2.8, xScale.invert(event.x))));
-        setSig1(Math.max(0.15, Math.min(2.9, yScale.invert(event.y))));
+        setMu1(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
+        setSig1(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
       }));
 
       // Point 2 (q)
@@ -111,8 +117,8 @@ export default function DivergenceExplorer() {
         .attr('r', 8).style('fill', PURPLE).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
       dot2.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-        setMu2(Math.max(-2.8, Math.min(2.8, xScale.invert(event.x))));
-        setSig2(Math.max(0.15, Math.min(2.9, yScale.invert(event.y))));
+        setMu2(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
+        setSig2(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
       }));
 
       // Labels
@@ -174,7 +180,7 @@ export default function DivergenceExplorer() {
       const area = d3.area<number>()
         .x((_, i) => xScale(xs[i]))
         .y0((_, i) => yScale(Math.min(p1[i], p2[i])))
-        .y1((_, i) => yScale(0));
+        .y1((_, i) => yScale(Math.max(p1[i], p2[i])));
 
       g.append('path')
         .datum(d3.range(nPts))

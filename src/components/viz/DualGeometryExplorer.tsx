@@ -5,7 +5,6 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import { dimensionColors } from './shared/colorScales';
 import {
   naturalToExpectation,
-  expectationToNatural,
   solveGeodesicGaussian,
   fisherMetricGaussian,
 } from './shared/manifoldGeometry';
@@ -19,6 +18,12 @@ const TEAL = dimensionColors[0];
 const PURPLE = dimensionColors[1];
 const AMBER = '#D97706';
 const GREEN = '#059669';
+
+const MU_RANGE: [number, number] = [-3, 3];
+const SIG_RANGE: [number, number] = [0, 3.5];
+const DRAG_PAD_X = 0.2;
+const DRAG_PAD_Y_LO = 0.15;
+const DRAG_PAD_Y_HI = 0.2;
 
 type CoordGrid = 'none' | 'theta' | 'eta';
 
@@ -189,8 +194,8 @@ export default function DualGeometryExplorer() {
       const h = HEIGHT - margin.top - margin.bottom;
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-      const xScale = d3.scaleLinear().domain([-3, 3]).range([0, w]);
-      const yScale = d3.scaleLinear().domain([0, 3.5]).range([h, 0]);
+      const xScale = d3.scaleLinear().domain(MU_RANGE).range([0, w]);
+      const yScale = d3.scaleLinear().domain(SIG_RANGE).range([h, 0]);
 
       // Axes
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(xScale).ticks(6))
@@ -263,8 +268,8 @@ export default function DualGeometryExplorer() {
 
       startDot.call(
         d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setStartMu(Math.max(-2.8, Math.min(2.8, xScale.invert(event.x))));
-          setStartSig(Math.max(0.15, Math.min(3.3, yScale.invert(event.y))));
+          setStartMu(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
+          setStartSig(Math.max(SIG_RANGE[0] + DRAG_PAD_Y_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_Y_HI, yScale.invert(event.y))));
         })
       );
 
@@ -280,8 +285,8 @@ export default function DualGeometryExplorer() {
 
       endDot.call(
         d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setEndMu(Math.max(-2.8, Math.min(2.8, xScale.invert(event.x))));
-          setEndSig(Math.max(0.15, Math.min(3.3, yScale.invert(event.y))));
+          setEndMu(Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x))));
+          setEndSig(Math.max(SIG_RANGE[0] + DRAG_PAD_Y_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_Y_HI, yScale.invert(event.y))));
         })
       );
 
