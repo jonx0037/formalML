@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -72,12 +72,9 @@ function forwardKLFit(
 
 /** Reverse KL optimal single Gaussian: find highest mode */
 function reverseKLFit(
-  xGrid: number[],
-  targetPdf: number[],
   mus: number[],
   sigmas: number[]
 ): { mu: number; sigma: number } {
-  // Find the mode with the highest peak density
   let bestMode = 0;
   let bestDensity = -Infinity;
   for (let j = 0; j < mus.length; j++) {
@@ -90,37 +87,6 @@ function reverseKLFit(
   return { mu: mus[bestMode], sigma: sigmas[bestMode] };
 }
 
-/** Forward KL optimal 2-Gaussian mixture: EM-like initialization */
-function forwardKLMixFit(
-  xGrid: number[],
-  targetPdf: number[],
-  mus: number[],
-  sigmas: number[]
-): { mus: number[]; sigmas: number[]; weights: number[] } {
-  // Use the actual component parameters as starting point
-  const k = Math.min(mus.length, 2);
-  return {
-    mus: mus.slice(0, k),
-    sigmas: sigmas.slice(0, k),
-    weights: Array(k).fill(1 / k),
-  };
-}
-
-/** Reverse KL optimal 2-Gaussian mixture */
-function reverseKLMixFit(
-  xGrid: number[],
-  targetPdf: number[],
-  mus: number[],
-  sigmas: number[]
-): { mus: number[]; sigmas: number[]; weights: number[] } {
-  const k = Math.min(mus.length, 2);
-  return {
-    mus: mus.slice(0, k),
-    sigmas: sigmas.slice(0, k),
-    weights: Array(k).fill(1 / k),
-  };
-}
-
 // ── Component ────────────────────────────────────────────────────────
 
 export default function ForwardReverseKLExplorer() {
@@ -129,7 +95,6 @@ export default function ForwardReverseKLExplorer() {
 
   const [separation, setSeparation] = useState(4);
   const [presetKey, setPresetKey] = useState<string>('bimodal_sym');
-  const [fitFamily, setFitFamily] = useState<'single' | 'mixture'>('single');
 
   const isStacked = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
 
@@ -149,30 +114,16 @@ export default function ForwardReverseKLExplorer() {
     [xGrid, preset]
   );
 
-  // Compute fits
+  // Compute single-Gaussian fits
   const forwardFit = useMemo(() => {
-    if (fitFamily === 'single') {
-      const { mu, sigma } = forwardKLFit(xGrid, targetPdf);
-      return gaussianPdf(xGrid, mu, sigma);
-    }
-    const { mus, sigmas, weights } = forwardKLMixFit(
-      xGrid, targetPdf, preset.mus, preset.sigmas
-    );
-    return gmmPdf(xGrid, mus, sigmas, weights);
-  }, [xGrid, targetPdf, fitFamily, preset]);
+    const { mu, sigma } = forwardKLFit(xGrid, targetPdf);
+    return gaussianPdf(xGrid, mu, sigma);
+  }, [xGrid, targetPdf]);
 
   const reverseFit = useMemo(() => {
-    if (fitFamily === 'single') {
-      const { mu, sigma } = reverseKLFit(
-        xGrid, targetPdf, preset.mus, preset.sigmas
-      );
-      return gaussianPdf(xGrid, mu, sigma);
-    }
-    const { mus, sigmas, weights } = reverseKLMixFit(
-      xGrid, targetPdf, preset.mus, preset.sigmas
-    );
-    return gmmPdf(xGrid, mus, sigmas, weights);
-  }, [xGrid, targetPdf, fitFamily, preset]);
+    const { mu, sigma } = reverseKLFit(preset.mus, preset.sigmas);
+    return gaussianPdf(xGrid, mu, sigma);
+  }, [xGrid, preset]);
 
   // ── Density panels ─────────────────────────────────────────────────
   const panelWidth = isStacked
@@ -481,27 +432,9 @@ export default function ForwardReverseKLExplorer() {
             ))}
           </select>
         </label>
-        <label style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-          Fit family:
-          <select
-            value={fitFamily}
-            onChange={(e) =>
-              setFitFamily(e.target.value as 'single' | 'mixture')
-            }
-            style={{
-              marginLeft: '6px',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-surface)',
-              color: 'var(--color-text)',
-              fontSize: '13px',
-            }}
-          >
-            <option value="single">Single Gaussian</option>
-            <option value="mixture">Mixture of 2</option>
-          </select>
-        </label>
+        <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+          Fit: single Gaussian
+        </span>
       </div>
 
       {/* Three density plots */}

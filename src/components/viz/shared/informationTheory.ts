@@ -212,7 +212,10 @@ export function hellingerDistance(p: number[], q: number[]): number {
   return sum;
 }
 
-/** Rényi divergence of order α in nats. α → 1 gives KL (in nats). */
+/** Rényi divergence of order α in nats (natural log, not bits).
+ *  This follows the standard convention for Rényi divergence.
+ *  Note: klDivergence() above returns bits; to convert bits → nats, multiply by Math.LN2.
+ *  α → 1 gives KL divergence (in nats). */
 export function renyiDivergence(
   p: number[],
   q: number[],

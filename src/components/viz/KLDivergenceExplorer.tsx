@@ -33,10 +33,13 @@ function uniformDist(k: number): number[] {
 }
 
 function initialP(k: number): number[] {
-  if (k === 2) return normalize([0.7, 0.3]);
-  if (k === 3) return normalize([0.5, 0.3, 0.2]);
-  if (k === 4) return normalize([0.4, 0.3, 0.2, 0.1]);
-  return normalize(Array.from({ length: k }, (_, i) => k - i));
+  const presets: Record<number, number[]> = {
+    2: [0.7, 0.3],
+    3: [0.5, 0.3, 0.2],
+    4: [0.4, 0.3, 0.2, 0.1],
+    6: [0.3, 0.25, 0.18, 0.12, 0.1, 0.05],
+  };
+  return normalize(presets[k] ?? Array.from({ length: k }, (_, i) => k - i));
 }
 
 // ── Component ────────────────────────────────────────────────────────

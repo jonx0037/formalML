@@ -29,27 +29,24 @@ interface DivDef {
   compute: (p: number[], q: number[]) => number;
 }
 
+// All generator functions use natural log (nats) — the standard convention
+// for f-divergences. The compute functions also return nats for consistency
+// with the generator plots. klDivergence/jensenShannonDivergence return bits,
+// so we convert: bits * ln(2) = nats.
 const DIVERGENCES: DivDef[] = [
   {
     key: 'kl',
     label: 'KL',
     color: dimensionColors[0],
     generator: (t) => (t > 0 ? t * Math.log(t) : 0),
-    compute: (p, q) => klDivergence(p, q) * Math.LN2, // convert bits to nats for chart
+    compute: (p, q) => klDivergence(p, q) * Math.LN2,
   },
   {
     key: 'rev_kl',
     label: 'Reverse KL',
     color: '#DC2626',
     generator: (t) => (t > 0 ? -Math.log(t) : Infinity),
-    compute: (p, q) => {
-      let s = 0;
-      for (let i = 0; i < p.length; i++) {
-        if (q[i] > 0 && p[i] > 0) s += q[i] * Math.log(q[i] / p[i]);
-        else if (q[i] > 0 && p[i] <= 0) return Infinity;
-      }
-      return s;
-    },
+    compute: (p, q) => klDivergence(q, p) * Math.LN2,
   },
   {
     key: 'chi2',
@@ -329,7 +326,7 @@ export default function FDivergenceFamilyExplorer() {
     for (let i = 0; i < 500; i++) {
       const p = sampleDirichlet(pinskerK, rng);
       const q = sampleDirichlet(pinskerK, rng);
-      const kl = klDivergence(p, q) * Math.LN2; // nats
+      const kl = klDivergence(p, q) * Math.LN2; // convert bits → nats (Pinsker bound uses nats)
       const tv = totalVariation(p, q);
       if (Number.isFinite(kl) && Number.isFinite(tv)) {
         points.push({ kl, tv });
