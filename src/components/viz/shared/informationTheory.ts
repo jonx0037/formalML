@@ -131,3 +131,137 @@ export function normalize(probs: number[]): number[] {
   if (sum === 0) return probs.map(() => 1 / probs.length);
   return probs.map((p) => p / sum);
 }
+
+// ---------------------------------------------------------------------------
+// Divergence functions (added for KL Divergence & f-Divergences topic)
+// ---------------------------------------------------------------------------
+
+/** Cross-entropy H(p, q) = -sum p(x) log2 q(x). Returns Infinity if q(x) = 0 where p(x) > 0. */
+export function crossEntropy(p: number[], q: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    if (p[i] > 0 && q[i] <= 0) return Infinity;
+    if (p[i] > 0) sum += p[i] * Math.log2(q[i]);
+  }
+  return -sum;
+}
+
+/** KL divergence D_KL(p || q) in bits. Returns Infinity if q(x) = 0 where p(x) > 0. */
+export function klDivergence(p: number[], q: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    if (p[i] > 0 && q[i] <= 0) return Infinity;
+    if (p[i] > 0) sum += p[i] * Math.log2(p[i] / q[i]);
+  }
+  return sum;
+}
+
+/** General f-divergence D_f(p || q) = sum q(x) f(p(x)/q(x)). */
+export function fDivergence(
+  p: number[],
+  q: number[],
+  f: (t: number) => number
+): number {
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    if (q[i] <= 0) {
+      if (p[i] > 0) return Infinity;
+      continue;
+    }
+    sum += q[i] * f(p[i] / q[i]);
+  }
+  return sum;
+}
+
+/** Jensen-Shannon divergence JS(p || q) = (D_KL(p||m) + D_KL(q||m))/2 where m = (p+q)/2. In bits. */
+export function jensenShannonDivergence(p: number[], q: number[]): number {
+  const m = p.map((pi, i) => (pi + q[i]) / 2);
+  return (klDivergence(p, m) + klDivergence(q, m)) / 2;
+}
+
+/** Total variation distance TV(p, q) = (1/2) sum |p(x) - q(x)|. */
+export function totalVariation(p: number[], q: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    sum += Math.abs(p[i] - q[i]);
+  }
+  return sum / 2;
+}
+
+/** Chi-squared divergence sum (p(x) - q(x))^2 / q(x). */
+export function chiSquaredDivergence(p: number[], q: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    if (q[i] <= 0) {
+      if (p[i] > 0) return Infinity;
+      continue;
+    }
+    const diff = p[i] - q[i];
+    sum += (diff * diff) / q[i];
+  }
+  return sum;
+}
+
+/** Squared Hellinger distance sum (sqrt(p(x)) - sqrt(q(x)))^2. */
+export function hellingerDistance(p: number[], q: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    const diff = Math.sqrt(p[i]) - Math.sqrt(q[i]);
+    sum += diff * diff;
+  }
+  return sum;
+}
+
+/** Rényi divergence of order α in nats. α → 1 gives KL (in nats). */
+export function renyiDivergence(
+  p: number[],
+  q: number[],
+  alpha: number
+): number {
+  if (Math.abs(alpha - 1) < 1e-10) {
+    // Limit α → 1: KL divergence in nats
+    let sum = 0;
+    for (let i = 0; i < p.length; i++) {
+      if (p[i] > 0 && q[i] <= 0) return Infinity;
+      if (p[i] > 0) sum += p[i] * Math.log(p[i] / q[i]);
+    }
+    return sum;
+  }
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    if (p[i] > 0 && q[i] <= 0) return Infinity;
+    if (p[i] > 0) sum += Math.pow(p[i], alpha) * Math.pow(q[i], 1 - alpha);
+  }
+  if (sum <= 0) return Infinity;
+  return Math.log(sum) / (alpha - 1);
+}
+
+/** Gaussian PDF evaluated at each point in x. */
+export function gaussianPdf(
+  x: number[],
+  mu: number,
+  sigma: number
+): number[] {
+  const coeff = 1 / (sigma * Math.sqrt(2 * Math.PI));
+  const denom = 2 * sigma * sigma;
+  return x.map((xi) => coeff * Math.exp(-((xi - mu) ** 2) / denom));
+}
+
+/** Gaussian mixture PDF evaluated at each point in x. */
+export function gmmPdf(
+  x: number[],
+  mus: number[],
+  sigmas: number[],
+  weights: number[]
+): number[] {
+  const k = mus.length;
+  return x.map((xi) => {
+    let density = 0;
+    for (let j = 0; j < k; j++) {
+      const coeff = 1 / (sigmas[j] * Math.sqrt(2 * Math.PI));
+      density +=
+        weights[j] * coeff * Math.exp(-((xi - mus[j]) ** 2) / (2 * sigmas[j] * sigmas[j]));
+    }
+    return density;
+  });
+}
