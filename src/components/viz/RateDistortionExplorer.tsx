@@ -200,8 +200,7 @@ export default function RateDistortionExplorer() {
       .attr('r', 7)
       .style('fill', '#534AB7')
       .style('stroke', '#fff')
-      .style('stroke-width', 2)
-      .style('cursor', 'ew-resize');
+      .style('stroke-width', 2);
 
     // --- Right panel: Tangent line detail ---
     const rOffset = isSmall ? 0 : leftW;

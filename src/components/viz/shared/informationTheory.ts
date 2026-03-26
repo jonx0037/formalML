@@ -343,6 +343,17 @@ export function blahutArimotoStep(
     newQ[j] = Math.max(newQ[j], EPS);
   }
 
+  // Renormalize q(x̂) so it remains a valid probability distribution after EPS floor
+  let qSum = 0;
+  for (let j = 0; j < nXhat; j++) {
+    qSum += newQ[j];
+  }
+  if (qSum > 0) {
+    for (let j = 0; j < nXhat; j++) {
+      newQ[j] /= qSum;
+    }
+  }
+
   // Compute joint p(x, x̂) = p(x) p(x̂|x)
   let rate = 0;
   let distortion = 0;

@@ -11,8 +11,9 @@ const MARGIN = { top: 30, right: 20, bottom: 50, left: 55 };
 const SIGMA2_OPTIONS = [0.5, 1, 2, 4];
 
 function vaeOperatingPoint(beta: number, sigma2: number) {
-  // Operating point on Gaussian R(D) at slope s = -1/beta (in nats → bits conversion)
-  const D = beta * sigma2 / (1 + beta); // D = β σ² / (1 + β) for Gaussian
+  // Operating point on Gaussian R(D) where β weights the KL term in the β-VAE ELBO.
+  // For R(D) = ½ log₂(σ²/D), the optimal D at a given β is D = σ² / (1 + β).
+  const D = sigma2 / (1 + beta);
   const R = rateDistortionGaussian(sigma2, D);
   return { D, R };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -319,13 +319,13 @@ export default function InformationBottleneckExplorer() {
   );
 
   const handleBeta = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Log scale: slider value 0-1 maps to beta 0.1-50
+    // Log scale: slider value 0-1 maps to beta 0.1-100
     const t = parseFloat(e.target.value);
-    const b = 0.1 * Math.pow(500, t);
+    const b = 0.1 * Math.pow(1000, t);
     setBeta(b);
   }, []);
 
-  const betaSliderVal = Math.log(beta / 0.1) / Math.log(500);
+  const betaSliderVal = Math.log(beta / 0.1) / Math.log(1000);
 
   return (
     <div ref={containerRef} className="my-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">

@@ -205,9 +205,11 @@ By the covering lemma, this succeeds with high probability if $R > I(X; \hat{X})
 
 **Converse.** By the data processing inequality, for any encoder-decoder pair with index $M \in \{1, \ldots, 2^{nR}\}$:
 
-$$nR \geq H(M) \geq I(X^n; \hat{X}^n) = \sum_{i=1}^n I(X_i; \hat{X}_i | X^{i-1}, \hat{X}^{i-1}) \geq \sum_{i=1}^n I(X_i; \hat{X}_i)$$
+$$nR \geq H(M) \geq I(X^n; \hat{X}^n) = \sum_{i=1}^n I(X_i; \hat{X}_i | X^{i-1}, \hat{X}^{i-1})$$
 
-where the last inequality uses that conditioning reduces mutual information. By the convexity of $R(D)$ and Jensen's inequality applied to the per-symbol distortions $d_i = d(X_i, \hat{X}_i)$:
+For a memoryless source, $X_i$ is independent of $(X^{i-1}, \hat{X}^{i-1})$, so each conditional mutual information satisfies $I(X_i; \hat{X}_i | X^{i-1}, \hat{X}^{i-1}) \geq I(X_i; \hat{X}_i)$ — conditioning on independent variables cannot increase the information $\hat{X}_i$ carries about $X_i$. Therefore $I(X^n; \hat{X}^n) \geq \sum_{i=1}^n I(X_i; \hat{X}_i)$.
+
+By the convexity of $R(D)$ and Jensen's inequality applied to the per-symbol distortions $d_i = d(X_i, \hat{X}_i)$:
 
 $$R \geq \frac{1}{n}\sum_{i=1}^n R(d_i) \geq R\!\left(\frac{1}{n}\sum_{i=1}^n d_i\right) = R(D_n)$$
 
@@ -285,7 +287,7 @@ $$D(s) = \sum_x \sum_{\hat{x}} p(x)\, p_s(\hat{x}|x)\, d(x, \hat{x})$$
 where $p_s(\hat{x}|x) \propto q_s(\hat{x}) \exp\!\big(s\, d(x, \hat{x})\big)$ is the optimal test channel at slope $s$, and $q_s(\hat{x})$ is its marginal. The slope $s$ is the Lagrange multiplier from the [Lagrangian dual](/topics/lagrangian-duality) of the rate-distortion optimization.
 </TheoremBlock>
 
-For the binary source, the slope parameter is $s = \log_2\!\big((1-D)/D\big)$ and the test channel is BSC($D$). For the Gaussian source, $s = -1/(2D \ln 2)$, and the test channel adds $\mathcal{N}(0, D)$ noise.
+For the binary source, the slope parameter is $s = \log_2\!\big(D/(1-D)\big)$ and the test channel is BSC($D$). For the Gaussian source, $s = -1/(2D \ln 2)$, and the test channel adds $\mathcal{N}(0, D)$ noise.
 
 <TheoremBlock type="proposition" number={2} title="Shannon Lower Bound">
 For any continuous source $X$ with differential entropy $h(X)$ and squared error distortion:
@@ -412,15 +414,21 @@ The "cost" of representing $x$ by $t$ is the [KL divergence](/topics/kl-divergen
 </TheoremBlock>
 
 <TheoremBlock type="proof">
-We want to minimize $I(X; T)$ subject to $I(T; Y) \geq I_0$. Using the Markov chain $T - X - Y$ (the representation $T$ depends on $Y$ only through $X$):
+We want to minimize $I(X; T)$ subject to $I(T; Y) \geq I_0$. Using the Markov chain $T - X - Y$ (the representation $T$ depends on $Y$ only through $X$), we proceed in three steps.
 
-$$I(T; Y) = \sum_t p(t)\, D_{\mathrm{KL}}\!\big(p(y|t) \| p(y)\big) = H(Y) - H(Y|T)$$
+**Step 1: Decompose the relevance constraint.** Write mutual information as a conditional entropy difference:
 
-The constraint $I(T; Y) \geq I_0$ is equivalent to bounding the expected KL distortion:
+$$I(T; Y) = H(Y) - H(Y|T)$$
 
-$$\mathbb{E}\big[D_{\mathrm{KL}}\!\big(p(y|x) \| p(y|t)\big)\big] \leq D$$
+So $I(T; Y) \geq I_0$ is equivalent to $H(Y|T) \leq H(Y) - I_0$.
 
-for $D = H(Y|T) - H(Y|X)$. This is exactly a rate-distortion problem with the KL distortion measure $d_{IB}$.
+**Step 2: Introduce the KL distortion.** By the Markov chain $T - X - Y$, we have $p(y|t) = \sum_x p(x|t)\, p(y|x)$. The gap between conditional entropies decomposes as:
+
+$$H(Y|T) - H(Y|X) = \sum_t p(t) \sum_x p(x|t)\, D_{\mathrm{KL}}\!\big(p(y|x) \| p(y|t)\big) = \mathbb{E}\big[d_{IB}(X, T)\big]$$
+
+where $d_{IB}(x, t) = D_{\mathrm{KL}}\!\big(p(y|x) \| p(y|t)\big)$ is the KL distortion measure. This is non-negative (by Gibbs' inequality) and equals zero only when $T$ preserves the full conditional $p(y|x)$.
+
+**Step 3: Reformulate as rate-distortion.** Since $H(Y|X)$ is a constant of the source, the constraint $H(Y|T) \leq H(Y) - I_0$ becomes $\mathbb{E}[d_{IB}(X, T)] \leq D$ for $D = H(Y) - I_0 - H(Y|X) = I(X;Y) - I_0$. The IB objective $\min I(X; T)$ subject to this expected distortion constraint is exactly the rate-distortion problem with the distortion measure $d_{IB}$.
 </TheoremBlock>
 
 <TheoremBlock type="proposition" number={4} title="IB Curve Properties">
