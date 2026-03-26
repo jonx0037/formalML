@@ -9,6 +9,7 @@ import {
   klDivGaussian,
   klDivGradient,
   fisherRaoDistanceGaussian,
+  clamp,
 } from './shared/manifoldGeometry';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -242,13 +243,17 @@ export default function StatisticalGeodesicExplorer() {
         });
 
         // Target point
-        const targetDot = g.append('circle')
+        g.append('circle')
           .attr('cx', xScale(targetMu)).attr('cy', yScale(targetSig))
           .attr('r', 8).style('fill', AMBER).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
-        targetDot.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setTargetMu(Math.max(MU_RANGE[0] + DRAG_PAD, Math.min(MU_RANGE[1] - DRAG_PAD, xScale.invert(event.x))));
-          setTargetSig(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
+        const overlay = g.append('rect')
+          .attr('width', w).attr('height', h)
+          .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+        overlay.call(d3.drag<SVGRectElement, unknown>().on('drag', (event) => {
+          setTargetMu(clamp(xScale.invert(event.x), MU_RANGE[0] + DRAG_PAD, MU_RANGE[1] - DRAG_PAD));
+          setTargetSig(clamp(yScale.invert(event.y), SIG_RANGE[0] + DRAG_PAD_SIG_LO, SIG_RANGE[1] - DRAG_PAD_SIG_HI));
         }));
 
         g.append('text').attr('x', xScale(targetMu) + 10).attr('y', yScale(targetSig) - 10)
@@ -276,13 +281,17 @@ export default function StatisticalGeodesicExplorer() {
         });
 
         // Start point
-        const startDot = g.append('circle')
+        g.append('circle')
           .attr('cx', xScale(startMu)).attr('cy', yScale(startSig))
           .attr('r', 8).style('fill', AMBER).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
-        startDot.call(d3.drag<SVGCircleElement, unknown>().on('drag', (event) => {
-          setStartMu(Math.max(MU_RANGE[0] + DRAG_PAD, Math.min(MU_RANGE[1] - DRAG_PAD, xScale.invert(event.x))));
-          setStartSig(Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y))));
+        const overlay = g.append('rect')
+          .attr('width', w).attr('height', h)
+          .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+        overlay.call(d3.drag<SVGRectElement, unknown>().on('drag', (event) => {
+          setStartMu(clamp(xScale.invert(event.x), MU_RANGE[0] + DRAG_PAD, MU_RANGE[1] - DRAG_PAD));
+          setStartSig(clamp(yScale.invert(event.y), SIG_RANGE[0] + DRAG_PAD_SIG_LO, SIG_RANGE[1] - DRAG_PAD_SIG_HI));
         }));
       }
 

@@ -8,6 +8,7 @@ import {
   fisherMetricBernoulli,
   fisherMetricExponential,
   metricEigendecomp,
+  clamp,
 } from './shared/manifoldGeometry';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -168,7 +169,7 @@ export default function FisherMetricExplorer() {
         }
 
         // Draggable point
-        const dot = g.append('circle')
+        g.append('circle')
           .attr('cx', xScale(paramX))
           .attr('cy', yScale(paramY))
           .attr('r', 7)
@@ -177,14 +178,16 @@ export default function FisherMetricExplorer() {
           .style('stroke-width', 2)
           .style('cursor', 'grab');
 
-        const drag = d3.drag<SVGCircleElement, unknown>()
+        // Invisible overlay for drag — limited to the plot area
+        const overlay = g.append('rect')
+          .attr('width', w).attr('height', h)
+          .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+        overlay.call(d3.drag<SVGRectElement, unknown>()
           .on('drag', (event) => {
-            const mu = xScale.invert(event.x);
-            const sig = yScale.invert(event.y);
-            setParamX(Math.max(GAUSSIAN_MU_RANGE[0], Math.min(GAUSSIAN_MU_RANGE[1], mu)));
-            setParamY(Math.max(GAUSSIAN_SIG_RANGE[0] + GAUSSIAN_SIG_PAD, Math.min(GAUSSIAN_SIG_RANGE[1] - 0.1, sig)));
-          });
-        dot.call(drag);
+            setParamX(clamp(xScale.invert(event.x), GAUSSIAN_MU_RANGE[0], GAUSSIAN_MU_RANGE[1]));
+            setParamY(clamp(yScale.invert(event.y), GAUSSIAN_SIG_RANGE[0] + GAUSSIAN_SIG_PAD, GAUSSIAN_SIG_RANGE[1] - 0.1));
+          }));
 
       } else {
         // 1D families: Bernoulli or Exponential
@@ -233,13 +236,14 @@ export default function FisherMetricExplorer() {
           .style('stroke-width', 2)
           .style('cursor', 'grab');
 
-        const dotSel = g.select<SVGCircleElement>('circle');
-        const drag = d3.drag<SVGCircleElement, unknown>()
+        const overlay = g.append('rect')
+          .attr('width', w).attr('height', h)
+          .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+        overlay.call(d3.drag<SVGRectElement, unknown>()
           .on('drag', (event) => {
-            const t = xScale.invert(event.x);
-            setParamX(Math.max(domain[0], Math.min(domain[1], t)));
-          });
-        dotSel.call(drag);
+            setParamX(clamp(xScale.invert(event.x), domain[0], domain[1]));
+          }));
       }
 
       // Title
