@@ -769,3 +769,196 @@ export function ellipsoidCurvature(theta: number, a = 1, b = 1): number {
   const denom = a * a * cosTh * cosTh + b * b * sinTh * sinTh;
   return (b * b) / (denom * denom);
 }
+
+// ─── Information Geometry Utilities ───
+// Shared by FisherMetricExplorer, DualGeometryExplorer,
+// DivergenceExplorer, StatisticalGeodesicExplorer
+
+/** Fisher information for Bernoulli(p): g(p) = 1/(p(1-p)) */
+export function fisherMetricBernoulli(p: number): number {
+  const clamped = Math.max(1e-8, Math.min(1 - 1e-8, p));
+  return 1 / (clamped * (1 - clamped));
+}
+
+/** Fisher information for Exp(λ): g(λ) = 1/λ² */
+export function fisherMetricExponential(lambda: number): number {
+  const clamped = Math.max(1e-8, lambda);
+  return 1 / (clamped * clamped);
+}
+
+/** Christoffel symbols for the Gaussian Fisher manifold.
+ *  Coordinates: x⁰ = μ, x¹ = σ.
+ *  Metric: g = diag(1/σ², 2/σ²).
+ *  Nonzero: Γ^μ_{μσ} = Γ^μ_{σμ} = -1/σ,
+ *           Γ^σ_{μμ} = 1/(2σ),
+ *           Γ^σ_{σσ} = -1/σ */
+export function gaussianChristoffel(sigma: number): ChristoffelSymbols {
+  const s = Math.max(1e-12, sigma);
+  const gamma: number[][][] = [
+    // k = 0 (μ)
+    [
+      [0, -1 / s],       // Γ^μ_{μμ}=0, Γ^μ_{μσ}=-1/σ
+      [-1 / s, 0],       // Γ^μ_{σμ}=-1/σ, Γ^μ_{σσ}=0
+    ],
+    // k = 1 (σ)
+    [
+      [1 / (2 * s), 0],  // Γ^σ_{μμ}=1/(2σ), Γ^σ_{μσ}=0
+      [0, -1 / s],       // Γ^σ_{σμ}=0, Γ^σ_{σσ}=-1/σ
+    ],
+  ];
+  return { gamma };
+}
+
+/** RK4 geodesic solver on the Gaussian Fisher manifold.
+ *  Coordinates (μ, σ) with σ > 0.
+ *  Returns points using GeodesicPointXY (x=μ, y=σ). */
+export function solveGeodesicGaussian(
+  mu0: number,
+  sigma0: number,
+  dmu0: number,
+  dsigma0: number,
+  tMax: number,
+  nSteps = 300
+): GeodesicPointXY[] {
+  const dt = tMax / nSteps;
+  const result: GeodesicPointXY[] = [];
+
+  let state = [mu0, sigma0, dmu0, dsigma0];
+
+  function deriv(s: number[]): number[] {
+    const [_mu, sig, dmu, dsig] = s;
+    const chris = gaussianChristoffel(sig);
+    const g = chris.gamma;
+    // dd(x^k) = -Γ^k_{ij} dx^i dx^j
+    const ddmu = -(
+      g[0][0][0] * dmu * dmu + g[0][0][1] * dmu * dsig +
+      g[0][1][0] * dsig * dmu + g[0][1][1] * dsig * dsig
+    );
+    const ddsig = -(
+      g[1][0][0] * dmu * dmu + g[1][0][1] * dmu * dsig +
+      g[1][1][0] * dsig * dmu + g[1][1][1] * dsig * dsig
+    );
+    return [dmu, dsig, ddmu, ddsig];
+  }
+
+  for (let i = 0; i <= nSteps; i++) {
+    const [mu, sig, dmu, dsig] = state;
+    result.push({ t: i * dt, x: mu, y: sig, dx: dmu, dy: dsig });
+
+    // Stop if σ gets too small
+    if (sig < 0.01) break;
+
+    if (i < nSteps) {
+      const k1 = deriv(state);
+      const s2 = state.map((v, j) => v + 0.5 * dt * k1[j]);
+      const k2 = deriv(s2);
+      const s3 = state.map((v, j) => v + 0.5 * dt * k2[j]);
+      const k3 = deriv(s3);
+      const s4 = state.map((v, j) => v + dt * k3[j]);
+      const k4 = deriv(s4);
+      state = state.map((v, j) =>
+        v + (dt / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j])
+      );
+      // Clamp σ > 0
+      if (state[1] < 0.01) state[1] = 0.01;
+    }
+  }
+
+  return result;
+}
+
+/** Fisher-Rao distance between two univariate Gaussians.
+ *  Uses Rao's formula for ds² = (1/σ²)(dμ² + 2 dσ²). */
+export function fisherRaoDistanceGaussian(
+  mu1: number, sigma1: number,
+  mu2: number, sigma2: number
+): number {
+  const s1 = Math.max(1e-12, sigma1);
+  const s2 = Math.max(1e-12, sigma2);
+  const arg = 1 + ((mu1 - mu2) ** 2 + 2 * (s1 - s2) ** 2) / (4 * s1 * s2);
+  return Math.sqrt(2) * Math.acosh(Math.max(1, arg));
+}
+
+/** Convert Gaussian natural parameters (η₁, η₂) to (μ, σ²).
+ *  η₁ = μ/σ², η₂ = -1/(2σ²) → σ² = -1/(2η₂), μ = η₁ σ² */
+export function naturalToExpectation(
+  eta1: number, eta2: number
+): { mu: number; sigma2: number } {
+  const sigma2 = -1 / (2 * Math.min(-1e-12, eta2));
+  const mu = eta1 * sigma2;
+  return { mu, sigma2 };
+}
+
+/** Convert Gaussian (μ, σ²) to natural parameters (η₁, η₂).
+ *  η₁ = μ/σ², η₂ = -1/(2σ²) */
+export function expectationToNatural(
+  mu: number, sigma2: number
+): { eta1: number; eta2: number } {
+  const s2 = Math.max(1e-12, sigma2);
+  return { eta1: mu / s2, eta2: -1 / (2 * s2) };
+}
+
+/** Squared Hellinger distance between two Gaussians.
+ *  H²(p, q) = 1 - √(2 σ₁ σ₂ / (σ₁² + σ₂²)) exp(-¼ (μ₁-μ₂)² / (σ₁² + σ₂²)) */
+export function hellingerDistGaussian(
+  mu1: number, sigma1: number,
+  mu2: number, sigma2: number
+): number {
+  const s1sq = sigma1 * sigma1;
+  const s2sq = sigma2 * sigma2;
+  const sumSq = s1sq + s2sq;
+  const coeff = Math.sqrt(2 * sigma1 * sigma2 / sumSq);
+  const exponent = -0.25 * (mu1 - mu2) ** 2 / sumSq;
+  return 1 - coeff * Math.exp(exponent);
+}
+
+/** α-divergence between two Gaussians (numerical for general α).
+ *  Falls back to KL for α near ±1, Hellinger for α near 0. */
+export function alphaDivGaussian(
+  mu1: number, sigma1: number,
+  mu2: number, sigma2: number,
+  alpha: number
+): number {
+  if (Math.abs(alpha - 1) < 0.05) return klDivGaussian(mu1, sigma1, mu2, sigma2);
+  if (Math.abs(alpha + 1) < 0.05) return klDivGaussian(mu2, sigma2, mu1, sigma1);
+  if (Math.abs(alpha) < 0.05) return 2 * hellingerDistGaussian(mu1, sigma1, mu2, sigma2);
+
+  // For Gaussians, the α-divergence has a closed form:
+  // D_α = (4/(1-α²)) (1 - exp(-ρ²_α / 2))
+  // where ρ²_α encodes the parameters
+  const a = (1 + alpha) / 2;
+  const b = (1 - alpha) / 2;
+  const s1sq = sigma1 * sigma1;
+  const s2sq = sigma2 * sigma2;
+  const sigmaAlpha = a * s1sq + b * s2sq;
+  const muDiff2 = (mu1 - mu2) ** 2;
+  const exponent = -a * b * muDiff2 / (2 * sigmaAlpha);
+  const integrand =
+    Math.pow(sigma1, -a) *
+    Math.pow(sigma2, -b) *
+    Math.pow(sigmaAlpha, -0.5) *
+    Math.sqrt(2 * Math.PI * s1sq * s2sq / (2 * Math.PI)) *
+    Math.exp(exponent);
+
+  // Simplified: for Gaussians the integral ∫ p^a q^b dx has closed form
+  const integral =
+    Math.pow(sigma1, 2 * a) ** (-0.5) *
+    Math.pow(sigma2, 2 * b) ** (-0.5) *
+    Math.pow(a * s1sq + b * s2sq, -0.5) *
+    Math.exp(-a * b * muDiff2 / (2 * (a * s1sq + b * s2sq)));
+
+  // Normalize: the integral is ∫ p^a q^b dx where p, q are Gaussian densities
+  // = (2π)^(-(a+b-1)/2) * σ₁^(-a) * σ₂^(-b) * (a/σ₁² + b/σ₂²)^(-1/2) * exp(...)
+  const varComb = a / s1sq + b / s2sq;
+  const meanComb = a * mu1 / s1sq + b * mu2 / s2sq;
+  const logInt =
+    -0.5 * (a + b - 1) * Math.log(2 * Math.PI) -
+    a * Math.log(sigma1) -
+    b * Math.log(sigma2) -
+    0.5 * Math.log(varComb) +
+    0.5 * meanComb * meanComb / varComb -
+    0.5 * (a * mu1 * mu1 / s1sq + b * mu2 * mu2 / s2sq);
+
+  const intVal = Math.exp(logInt);
+  return (4 / (1 - alpha * alpha)) * (1 - intVal);
+}

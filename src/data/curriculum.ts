@@ -32,9 +32,7 @@ export const tracks = [
     label: 'Differential Geometry',
     description:
       'Smooth manifolds, Riemannian metrics, and information geometry for probabilistic models.',
-    planned: [
-      'Information Geometry & Fisher Metric',
-    ],
+    planned: [],
   },
   {
     domain: 'information-theory',
