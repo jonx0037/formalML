@@ -1,0 +1,731 @@
+---
+title: "Information Geometry & Fisher Metric"
+subtitle: "The Fisher information metric, α-connections, and divergence functions on statistical manifolds"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "smooth-manifolds"
+  - "riemannian-geometry"
+  - "geodesics-curvature"
+tags:
+  - "differential-geometry"
+  - "information-geometry"
+  - "fisher-metric"
+  - "divergence-functions"
+  - "natural-gradient"
+  - "alpha-connections"
+  - "cramer-rao"
+domain: "geometry"
+videoId: null
+notebookPath: "notebooks/information-geometry/04_information_geometry.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/information-geometry.mdx"
+datePublished: 2026-03-25
+estimatedReadTime: 55
+abstract: "Information geometry equips the space of probability distributions with a Riemannian metric — the Fisher information — revealing that statistical inference is fundamentally geometric. The Fisher metric, defined as the covariance of score functions, is the unique Riemannian metric (up to scale) that is invariant under sufficient statistics (Čencov's theorem). For the Gaussian family, the Fisher metric is the Poincaré upper half-plane metric with constant negative curvature K = -1/2, and the Fisher-Rao distance recovers the Mahalanobis distance. Amari's α-connections extend the Levi-Civita connection to a one-parameter family, with the e-connection (α = 1) and m-connection (α = -1) forming a dual pair whose dually flat structure on exponential families underlies the Legendre duality between natural and expectation parameters. Divergence functions — KL divergence, α-divergences, and Bregman divergences — encode non-symmetric notions of distance whose infinitesimal form recovers the Fisher metric, and the generalized Pythagorean theorem governs optimal projections in variational inference. The Cramér–Rao bound is a direct geometric consequence of Cauchy-Schwarz in the Fisher inner product, connecting curvature to estimation precision. Natural gradient descent, which premultiplies gradients by the inverse Fisher matrix, achieves reparameterization-invariant optimization and is approximated by Adam through its diagonal second-moment estimates."
+connections:
+  - topic: "riemannian-geometry"
+    relationship: "Information geometry instantiates Riemannian geometry on statistical manifolds: the Fisher metric is a specific Riemannian metric, the Levi-Civita connection is the α = 0 member of Amari's α-connection family, and parallel transport on the Gaussian manifold is parallel transport on the Poincaré half-plane."
+  - topic: "smooth-manifolds"
+    relationship: "Statistical manifolds inherit their smooth structure from the parameter space. Charts on the Gaussian manifold are parameterizations (μ, σ) or (η₁, η₂), and the tangent space at a distribution is spanned by score functions — the derivatives of the log-likelihood."
+  - topic: "geodesics-curvature"
+    relationship: "Fisher-Rao geodesics on the Gaussian manifold are semicircles in the Poincaré half-plane, exactly the geodesics computed by the geodesic equation. The Gaussian curvature K = -1/2 appears via the Riemann tensor machinery, and the Gauss-Bonnet theorem constrains the topology of statistical manifolds."
+  - topic: "spectral-theorem"
+    relationship: "The Fisher information matrix is symmetric positive definite, and its eigendecomposition reveals the principal directions of statistical information — the directions in parameter space along which estimation is most and least precise."
+  - topic: "pca-low-rank"
+    relationship: "Natural gradient descent on the Fisher manifold is the information-geometric version of preconditioning with the Hessian. The Fisher metric plays the same role for statistical models that the covariance matrix plays for PCA: it defines the natural inner product on the parameter space."
+  - topic: "persistent-homology"
+    relationship: "The Euler characteristic appears in the Gauss–Bonnet theorem for statistical manifolds, connecting the topology of the parameter space to the integral of Fisher-Rao curvature — a link between topological data analysis and information geometry."
+references:
+  - type: "book"
+    title: "Methods of Information Geometry"
+    authors: "Amari & Nagaoka"
+    year: 2000
+    note: "The foundational monograph on information geometry: α-connections, duality, divergences, and applications to statistics and machine learning"
+  - type: "book"
+    title: "Information Geometry and Its Applications"
+    authors: "Amari"
+    year: 2016
+    note: "Amari's comprehensive update covering modern applications including neural networks, machine learning, and signal processing"
+  - type: "book"
+    title: "Differential-Geometrical Methods in Statistics"
+    authors: "Amari"
+    year: 1985
+    note: "The original Lecture Notes in Statistics volume that introduced α-connections and dually flat geometry to statistics"
+  - type: "paper"
+    title: "Natural Gradient Works Efficiently in Learning"
+    authors: "Amari"
+    year: 1998
+    url: "https://doi.org/10.1162/089976698300017746"
+    note: "Introduced natural gradient descent — steepest descent in the Fisher-Rao metric — and proved its reparameterization invariance and efficiency"
+  - type: "paper"
+    title: "Information and the Accuracy Attainable in the Estimation of Statistical Parameters"
+    authors: "Rao"
+    year: 1945
+    url: "https://doi.org/10.1007/978-1-4612-0919-5_16"
+    note: "Rao's seminal paper introducing the Fisher information metric as a Riemannian metric on statistical manifolds — the birth of information geometry"
+  - type: "paper"
+    title: "Optimizing Neural Networks with Kronecker-factored Approximate Curvature"
+    authors: "Martens & Grosse"
+    year: 2015
+    url: "https://arxiv.org/abs/1503.05671"
+    note: "K-FAC: practical natural gradient for deep learning using block-diagonal Kronecker-factored Fisher approximation"
+  - type: "paper"
+    title: "Statistical Decision Rules and Optimal Inference"
+    authors: "Čencov"
+    year: 1982
+    note: "Čencov's uniqueness theorem: the Fisher metric is the unique (up to scale) Riemannian metric invariant under sufficient statistics"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import FisherMetricExplorer from '../../components/viz/FisherMetricExplorer.tsx';
+import DualGeometryExplorer from '../../components/viz/DualGeometryExplorer.tsx';
+import DivergenceExplorer from '../../components/viz/DivergenceExplorer.tsx';
+import StatisticalGeodesicExplorer from '../../components/viz/StatisticalGeodesicExplorer.tsx';
+
+## Overview & Motivation
+
+The space of probability distributions is not just a set — it is a *Riemannian manifold* with a canonical metric. This observation, due independently to Rao (1945) and later systematized by Amari (1985), places statistical inference squarely inside the Riemannian framework we built in [Riemannian Geometry](/topics/riemannian-geometry) and [Geodesics & Curvature](/topics/geodesics-curvature).
+
+Here is the key intuition. Consider two pairs of Gaussians:
+- $\mathcal{N}(0, 1)$ and $\mathcal{N}(0.01, 1)$ — the means differ by $0.01$, variance is $1$.
+- $\mathcal{N}(0, 0.01)$ and $\mathcal{N}(0.01, 0.01)$ — the means differ by the *same* $0.01$, but the variance is $0.01$.
+
+In Euclidean parameter space, these two pairs are the same distance apart: $|\Delta\mu| = 0.01$. But statistically, the second pair is far more distinguishable — a variance of $0.01$ means the distributions are tightly concentrated, so a shift of $0.01$ in the mean is *enormous* relative to the spread. The Fisher information metric captures this: the "true" distance between distributions depends on *where you are* in parameter space, exactly as a Riemannian metric varies from point to point on a manifold.
+
+This topic brings together the three pillars of the Differential Geometry track. The parameter space of a statistical model is a [smooth manifold](/topics/smooth-manifolds). The Fisher information defines a [Riemannian metric](/topics/riemannian-geometry) on this manifold. And the resulting [geodesics and curvature](/topics/geodesics-curvature) have direct statistical meaning: geodesics are the paths of natural gradient descent, and curvature controls the precision of statistical estimation via the Cramér–Rao bound.
+
+### What We Cover
+
+1. **Statistical manifolds** — parametric families as smooth manifolds, identifiability, and Čencov's uniqueness theorem
+2. **The Fisher information metric** — score functions, the Fisher matrix, and why it is a Riemannian metric
+3. **Classical families** — the Gaussian manifold as the Poincaré half-plane, Bernoulli geometry, and exponential families
+4. **$\alpha$-connections** — Amari's one-parameter family, $e$/$m$-duality, and dually flat manifolds
+5. **Divergence functions** — KL divergence, $\alpha$-divergences, Bregman divergences, and the generalized Pythagorean theorem
+6. **Geodesics** — Fisher-Rao geodesics, the Mahalanobis distance, and hyperbolic geometry of variance
+7. **The Cramér–Rao bound** — curvature and estimation precision, efficient estimators
+8. **Computational notes** — symbolic Fisher metric, Christoffel symbols, geodesic solvers, natural gradient
+9. **Information geometry in ML** — natural gradient descent, variational inference, Adam, and optimal transport
+
+### Prerequisites
+
+This topic builds directly on all three preceding topics in the Differential Geometry track:
+- [Smooth Manifolds](/topics/smooth-manifolds) — charts, tangent spaces, and the differential structure that parameter spaces inherit
+- [Riemannian Geometry](/topics/riemannian-geometry) — metric tensors, the Levi-Civita connection, parallel transport, and the machinery for measuring lengths and angles
+- [Geodesics & Curvature](/topics/geodesics-curvature) — the geodesic equation, curvature tensors, and the Gauss–Bonnet theorem
+
+We also draw on the [Spectral Theorem](/topics/spectral-theorem) for eigendecomposition of the Fisher matrix, and connect to [PCA & Low-Rank Approximation](/topics/pca-low-rank) through the lens of preconditioning.
+
+---
+
+## Statistical Manifolds & Parametric Families
+
+<TheoremBlock type="definition" number={1} title="Statistical Model">
+A *parametric statistical model* is a family $\mathcal{S} = \{p_\theta : \theta \in \Theta\}$ of probability distributions on a sample space $\mathcal{X}$, where:
+
+1. $\Theta \subseteq \mathbb{R}^n$ is an open subset (the *parameter space*),
+2. The map $\theta \mapsto p_\theta(x)$ is smooth (infinitely differentiable) for each $x \in \mathcal{X}$,
+3. The map $\theta \mapsto p_\theta$ is injective (*identifiability*): distinct parameters give distinct distributions.
+
+Under these conditions, $\mathcal{S}$ inherits the smooth manifold structure of $\Theta$. The dimension of the statistical manifold is $n = \dim(\Theta)$.
+</TheoremBlock>
+
+The identifiability requirement (condition 3) ensures that the parameter space faithfully represents the set of distributions — there is no redundancy. Without identifiability, the Fisher metric degenerates: it becomes only positive semi-definite rather than positive definite, because some parameter directions produce no change in the distribution.
+
+**Examples.** The Gaussian family $\mathcal{N}(\mu, \sigma^2)$ has parameter space $\Theta = \mathbb{R} \times \mathbb{R}_+$, a 2-dimensional manifold. The Bernoulli family $\text{Ber}(p)$ has $\Theta = (0, 1)$, a 1-dimensional manifold. The exponential family $\text{Exp}(\lambda)$ has $\Theta = \mathbb{R}_+$. The multinomial on $k$ categories, $\text{Mult}(p_1, \ldots, p_k)$ with $\sum p_i = 1$, has $\Theta$ equal to the open $(k-1)$-simplex.
+
+Each point $\theta \in \Theta$ represents an entire probability distribution $p_\theta$. As we move through the parameter space, we trace out a path through the space of distributions. The tangent space at $\theta$ consists of directions in which we can perturb the parameter — and, as we will see, these tangent vectors can be identified with score functions.
+
+![Statistical manifolds: the Gaussian family as curves in function space, the parameter space as a 2D manifold, and the identifiability requirement](/images/topics/information-geometry/info-geo-01-statistical-manifolds.png)
+
+---
+
+## The Fisher Information Metric
+
+With the smooth manifold structure in place, we now equip the parameter space with a Riemannian metric. The construction proceeds in three steps: define the score function, take its covariance, and verify that the result is a valid Riemannian metric.
+
+<TheoremBlock type="definition" number={2} title="Score Function">
+The *score function* of a statistical model $\{p_\theta\}$ is the gradient of the log-likelihood with respect to the parameters:
+
+$$s_i(x; \theta) = \frac{\partial}{\partial \theta^i} \log p_\theta(x)$$
+
+The score function $s_i$ measures the sensitivity of the log-likelihood to changes in the $i$-th parameter.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Zero Mean of the Score">
+For any statistical model satisfying the regularity conditions of Definition 1, the score has zero mean:
+
+$$\mathbb{E}_\theta[s_i(x; \theta)] = 0 \quad \text{for all } i \text{ and } \theta$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We compute directly, using the fact that $\int p_\theta(x) \, dx = 1$:
+
+$$\mathbb{E}_\theta[s_i] = \int \frac{\partial}{\partial \theta^i} \log p_\theta(x) \cdot p_\theta(x) \, dx = \int \frac{\frac{\partial}{\partial \theta^i} p_\theta(x)}{p_\theta(x)} \cdot p_\theta(x) \, dx = \int \frac{\partial}{\partial \theta^i} p_\theta(x) \, dx$$
+
+Interchanging the derivative and integral (justified by the smoothness assumption):
+
+$$= \frac{\partial}{\partial \theta^i} \int p_\theta(x) \, dx = \frac{\partial}{\partial \theta^i} 1 = 0 \qquad \square$$
+</TheoremBlock>
+
+Since the score has zero mean, its covariance matrix is simply $\mathbb{E}[s_i \, s_j]$. This covariance is the Fisher information matrix.
+
+<TheoremBlock type="definition" number={3} title="Fisher Information Matrix">
+The *Fisher information matrix* of a statistical model $\{p_\theta\}$ is the $n \times n$ matrix
+
+$$g_{ij}(\theta) = \mathbb{E}_\theta\bigl[s_i(x; \theta) \, s_j(x; \theta)\bigr] = \int \frac{\partial \log p_\theta}{\partial \theta^i} \frac{\partial \log p_\theta}{\partial \theta^j} \, p_\theta(x) \, dx$$
+
+Equivalently, under the same regularity conditions:
+
+$$g_{ij}(\theta) = -\mathbb{E}_\theta\!\left[\frac{\partial^2 \log p_\theta(x)}{\partial \theta^i \, \partial \theta^j}\right]$$
+</TheoremBlock>
+
+The equivalence of the two forms is a standard computation: differentiate the zero-mean identity $\mathbb{E}[s_i] = 0$ with respect to $\theta^j$ and use the product rule.
+
+<TheoremBlock type="theorem" number={1} title="Fisher Information is a Riemannian Metric">
+Under the identifiability condition (Definition 1), the Fisher information matrix $g_{ij}(\theta)$ satisfies:
+
+1. **Symmetry:** $g_{ij} = g_{ji}$ (by definition, since $s_i \, s_j = s_j \, s_i$).
+2. **Positive semi-definiteness:** For any vector $v \in \mathbb{R}^n$,
+$$\sum_{i,j} g_{ij} v^i v^j = \mathbb{E}\!\left[\left(\sum_i v^i s_i\right)^{\!2}\right] \geq 0$$
+3. **Positive definiteness:** If $\sum g_{ij} v^i v^j = 0$, then $\sum v^i s_i(x; \theta) = 0$ for $p_\theta$-almost all $x$, which means $\sum v^i \frac{\partial}{\partial \theta^i} \log p_\theta(x) = 0$ a.s. By identifiability, this forces $v = 0$.
+4. **Smoothness:** $g_{ij}(\theta)$ is smooth in $\theta$ because $p_\theta$ is smooth.
+
+Hence $(\Theta, g)$ is a Riemannian manifold.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Properties (1) and (2) are immediate from the definition. For (3), suppose $\sum g_{ij} v^i v^j = 0$. Then $\mathbb{E}[(\sum v^i s_i)^2] = 0$, so $\sum v^i s_i(x; \theta) = 0$ for $p_\theta$-a.e. $x$. This means
+
+$$\sum_i v^i \frac{\partial}{\partial \theta^i} \log p_\theta(x) = 0 \quad \text{a.e.}$$
+
+Exponentiating, $p_{\theta + tv}(x) / p_\theta(x) \to 1$ to first order in $t$ for all directions $v$. By identifiability, $p_{\theta+tv} \neq p_\theta$ for $v \neq 0$ and small $t$, so we must have $v = 0$. Property (4) follows from the smoothness of $\theta \mapsto p_\theta$ and the dominated convergence theorem for the expectation integral. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Čencov's Uniqueness Theorem">
+The Fisher information metric is the unique Riemannian metric on the space of probability distributions, up to a positive constant factor, that is invariant under sufficient statistics (Markov embeddings).
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Significance of Čencov's Theorem">
+We state Čencov's theorem without proof (the full proof requires the theory of Markov kernels — see Čencov 1982). The significance is profound: the Fisher metric is not one choice among many possible Riemannian metrics on statistical manifolds. It is *the* canonical choice, determined uniquely by the natural invariance requirement that statistical geometry should not depend on the particular representation of the data.
+</TheoremBlock>
+
+<FisherMetricExplorer client:visible />
+
+![The Fisher information metric: score function, Fisher matrix formula, and metric ellipses on the Gaussian parameter space](/images/topics/information-geometry/info-geo-02-fisher-metric.png)
+
+---
+
+## Fisher Metric for Classical Families
+
+We now compute the Fisher metric explicitly for three canonical parametric families. Each reveals different geometric structure.
+
+<TheoremBlock type="example" number={1} title="Gaussian Family">
+For the Gaussian family $\mathcal{N}(\mu, \sigma^2)$ with parameters $\theta = (\mu, \sigma)$:
+
+$$\log p(x; \mu, \sigma) = -\log \sigma - \frac{(x - \mu)^2}{2\sigma^2} - \frac{1}{2}\log(2\pi)$$
+
+The score functions are:
+
+$$s_\mu = \frac{x - \mu}{\sigma^2}, \qquad s_\sigma = -\frac{1}{\sigma} + \frac{(x - \mu)^2}{\sigma^3}$$
+
+Computing the expectations $g_{ij} = \mathbb{E}[s_i s_j]$:
+- $g_{11} = \mathbb{E}[s_\mu^2] = \mathbb{E}\!\left[\frac{(x-\mu)^2}{\sigma^4}\right] = \frac{1}{\sigma^2}$
+- $g_{22} = \mathbb{E}[s_\sigma^2] = \mathbb{E}\!\left[\frac{1}{\sigma^2} - \frac{2(x-\mu)^2}{\sigma^4} + \frac{(x-\mu)^4}{\sigma^6}\right] = \frac{2}{\sigma^2}$
+- $g_{12} = \mathbb{E}[s_\mu \, s_\sigma] = 0$ (by the symmetry of odd moments)
+
+The Fisher metric is:
+
+$$g = \frac{1}{\sigma^2}\begin{pmatrix} 1 & 0 \\ 0 & 2 \end{pmatrix}$$
+
+The Riemannian line element is $ds^2 = \frac{1}{\sigma^2}(d\mu^2 + 2 \, d\sigma^2)$. Up to the constant factor of $2$ in the $d\sigma^2$ term, this is the **Poincaré upper half-plane metric** on the half-plane $\{(\mu, \sigma) : \sigma > 0\}$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Gaussian Curvature of the Gaussian Manifold">
+The Gaussian family $(\Theta, g)$ with the Fisher metric has constant negative sectional curvature $K = -\frac{1}{2}$.
+</TheoremBlock>
+
+This is computed by applying the Riemann curvature tensor formula from [Geodesics & Curvature](/topics/geodesics-curvature) to the Fisher metric $g = \text{diag}(1/\sigma^2, 2/\sigma^2)$. The Gaussian manifold is a surface of constant negative curvature — a hyperbolic space. This means that the space of Gaussian distributions, equipped with the Fisher metric, has the same local geometry as the Poincaré half-plane.
+
+<TheoremBlock type="example" number={2} title="Bernoulli Family">
+For the Bernoulli family $\text{Ber}(p)$ with parameter $\theta = p \in (0, 1)$:
+
+$$\log p(x; p) = x \log p + (1 - x)\log(1 - p)$$
+
+The score is $s_p = \frac{x}{p} - \frac{1-x}{1-p}$, and the Fisher information is:
+
+$$g(p) = \mathbb{E}[s_p^2] = \frac{1}{p(1-p)}$$
+
+This diverges as $p \to 0$ or $p \to 1$: the boundary of the parameter space is at *infinite* Fisher-Rao distance from any interior point. The Bernoulli manifold, despite being a bounded interval $(0, 1)$ in Euclidean terms, is a complete Riemannian manifold of infinite diameter.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="Fisher Metric for Exponential Families">
+For an exponential family in natural parameters,
+
+$$p(x; \eta) = h(x) \exp\!\bigl(\eta^T T(x) - A(\eta)\bigr)$$
+
+the Fisher metric is the Hessian of the log-partition function:
+
+$$g_{ij}(\eta) = \frac{\partial^2 A}{\partial \eta^i \, \partial \eta^j} = \text{Cov}_\eta(T_i, T_j)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The score function in natural parameters is:
+
+$$s_i(x; \eta) = \frac{\partial}{\partial \eta^i}\!\left[\eta^T T(x) - A(\eta)\right] = T_i(x) - \frac{\partial A}{\partial \eta^i}$$
+
+Since $\mathbb{E}[T_i] = \frac{\partial A}{\partial \eta^i}$ (the mean parameters are the gradient of the log-partition function), the score has the form $s_i = T_i - \mathbb{E}[T_i]$. Therefore:
+
+$$g_{ij} = \mathbb{E}[s_i \, s_j] = \mathbb{E}[(T_i - \mathbb{E}[T_i])(T_j - \mathbb{E}[T_j])] = \text{Cov}(T_i, T_j)$$
+
+For the Hessian form, differentiate $\mathbb{E}[T_i] = \frac{\partial A}{\partial \eta^i}$ again:
+
+$$g_{ij} = \text{Cov}(T_i, T_j) = \frac{\partial}{\partial \eta^j} \mathbb{E}[T_i] = \frac{\partial^2 A}{\partial \eta^i \, \partial \eta^j} \qquad \square$$
+</TheoremBlock>
+
+This is a striking result: for exponential families, the Fisher metric is simply the Hessian of a single scalar function $A(\eta)$. The convexity of $A(\eta)$ (a standard property of log-partition functions) guarantees positive definiteness — the Fisher metric is automatically a valid Riemannian metric.
+
+![Fisher metric for classical families: Gaussian = Poincaré half-plane, Bernoulli Fisher information, exponential family Hessian](/images/topics/information-geometry/info-geo-03-classical-families.png)
+
+---
+
+## $\alpha$-Connections and Dual Geometry
+
+The Levi-Civita connection from [Riemannian Geometry](/topics/riemannian-geometry) is the unique torsion-free, metric-compatible connection. Amari's key insight (1985) is that statistical manifolds carry not one but a *one-parameter family* of connections — the $\alpha$-connections — and the interplay between them reveals the deepest geometric structure.
+
+<TheoremBlock type="definition" number={4} title="α-Connection">
+For $\alpha \in \mathbb{R}$, the *$\alpha$-connection* $\nabla^{(\alpha)}$ on a statistical manifold has Christoffel symbols:
+
+$$\Gamma^{(\alpha)}_{ij,k} = \mathbb{E}\!\left[\left(\partial_i \partial_j \log p_\theta\right) \partial_k \log p_\theta\right] + \frac{1 - \alpha}{2}\,\mathbb{E}\!\left[\partial_i \log p_\theta \cdot \partial_j \log p_\theta \cdot \partial_k \log p_\theta\right]$$
+
+where $\partial_i = \frac{\partial}{\partial \theta^i}$.
+
+Special cases:
+- $\alpha = 0$: the **Levi-Civita connection** (the Riemannian geometry default)
+- $\alpha = 1$: the **$e$-connection** (exponential connection)
+- $\alpha = -1$: the **$m$-connection** (mixture connection)
+</TheoremBlock>
+
+The $\alpha$-connections differ from the Levi-Civita connection by a cubic tensor (the *skewness tensor* or *Amari-Chentsov tensor*) that vanishes when $\alpha = 0$. The crucial property is *duality*.
+
+<TheoremBlock type="theorem" number={4} title="Duality of α-Connections">
+The $\alpha$-connection and the $(-\alpha)$-connection are *dual* with respect to the Fisher metric:
+
+$$X\,g(Y, Z) = g\!\left(\nabla^{(\alpha)}_X Y,\, Z\right) + g\!\left(Y,\, \nabla^{(-\alpha)}_X Z\right)$$
+
+for all vector fields $X, Y, Z$ on the statistical manifold.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write $X = \partial_k$, $Y = \partial_i$, $Z = \partial_j$ in local coordinates. The left side is $\partial_k g_{ij}$. The right side is:
+
+$$g_{lj}\,\Gamma^{(\alpha)\,l}_{ki} + g_{il}\,\Gamma^{(-\alpha)\,l}_{kj}$$
+
+Using the definition of the $\alpha$-Christoffel symbols and the symmetry of the Fisher metric, the third-moment terms from $\Gamma^{(\alpha)}$ and $\Gamma^{(-\alpha)}$ have opposite signs (the $\frac{1-\alpha}{2}$ factor becomes $\frac{1+\alpha}{2}$ upon negating $\alpha$) and cancel in the sum. What remains is exactly the Levi-Civita compatibility equation $\partial_k g_{ij} = g_{lj}\,\Gamma^{(0)\,l}_{ki} + g_{il}\,\Gamma^{(0)\,l}_{kj}$, which holds because $\nabla^{(0)}$ is metric-compatible. $\square$
+</TheoremBlock>
+
+The most important instance of duality is between the $e$-connection ($\alpha = 1$) and the $m$-connection ($\alpha = -1$). This duality underlies the entire structure of exponential families.
+
+<TheoremBlock type="definition" number={5} title="Dually Flat Manifold">
+A statistical manifold is *dually flat* if there exist coordinate systems $\theta$ (*natural parameters*) and $\eta$ (*expectation parameters*) such that:
+
+- The $e$-connection ($\alpha = 1$) is flat in $\theta$-coordinates: all Christoffel symbols $\Gamma^{(1)\,k}_{ij} = 0$.
+- The $m$-connection ($\alpha = -1$) is flat in $\eta$-coordinates: all Christoffel symbols $\Gamma^{(-1)\,k}_{ij} = 0$.
+- The *Legendre transform* links the two coordinate systems:
+
+$$\eta_i = \frac{\partial A}{\partial \theta^i}, \qquad \theta^i = \frac{\partial A^*}{\partial \eta_i}$$
+
+where $A(\theta)$ is the log-partition function and $A^*(\eta) = \sup_\theta\{\theta \cdot \eta - A(\theta)\}$ is its convex conjugate.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={5} title="Exponential Families are Dually Flat">
+Every exponential family is a dually flat manifold. The natural parameters $\eta$ are $e$-affine coordinates and the expectation parameters $\mu = \mathbb{E}[T(x)]$ are $m$-affine coordinates.
+</TheoremBlock>
+
+For the Gaussian family $\mathcal{N}(\mu, \sigma^2)$, the natural parameters are $\eta_1 = \mu/\sigma^2$ and $\eta_2 = -1/(2\sigma^2)$, and the expectation parameters are $\mu_1 = \mathbb{E}[X] = \mu$ and $\mu_2 = \mathbb{E}[X^2] = \mu^2 + \sigma^2$. Straight lines in $(\eta_1, \eta_2)$-space are $e$-geodesics; straight lines in $(\mu_1, \mu_2)$-space are $m$-geodesics. These are generically different curves.
+
+<DualGeometryExplorer client:visible />
+
+![Dual geometry: α-connection geodesics, dually flat structure, θ- vs η-coordinate grids](/images/topics/information-geometry/info-geo-04-dual-geometry.png)
+
+---
+
+## Divergence Functions
+
+Divergence functions measure the "distance" between probability distributions, but they are *not* true distances — they violate symmetry and/or the triangle inequality. Nevertheless, they encode the geometry of statistical manifolds and are fundamental to inference and learning.
+
+<TheoremBlock type="definition" number={6} title="KL Divergence">
+The *Kullback–Leibler divergence* from $p$ to $q$ is:
+
+$$D_{\mathrm{KL}}(p \,\|\, q) = \int p(x) \log \frac{p(x)}{q(x)} \, dx$$
+
+Properties:
+1. $D_{\mathrm{KL}}(p \,\|\, q) \geq 0$ (Gibbs' inequality), with equality iff $p = q$.
+2. $D_{\mathrm{KL}}(p \,\|\, q) \neq D_{\mathrm{KL}}(q \,\|\, p)$ in general — KL divergence is *not symmetric*.
+3. KL divergence does *not* satisfy the triangle inequality.
+</TheoremBlock>
+
+Despite not being a distance, KL divergence has a deep connection to the Fisher metric.
+
+<TheoremBlock type="proposition" number={3} title="Fisher Metric as Hessian of KL Divergence">
+The Fisher information matrix is the Hessian of the KL divergence:
+
+$$g_{ij}(\theta) = \frac{\partial^2}{\partial \theta'^i \, \partial \theta'^j} D_{\mathrm{KL}}(p_\theta \,\|\, p_{\theta'}) \bigg|_{\theta' = \theta}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Taylor-expand $D_{\mathrm{KL}}(p_\theta \,\|\, p_{\theta'})$ around $\theta' = \theta$. At $\theta' = \theta$, the divergence is zero. The first-order term vanishes:
+
+$$\frac{\partial}{\partial \theta'^i} D_{\mathrm{KL}}(p_\theta \,\|\, p_{\theta'}) \bigg|_{\theta'=\theta} = -\int p_\theta(x) \frac{\partial_i p_\theta(x)}{p_\theta(x)} \, dx = -\frac{\partial}{\partial \theta^i} \int p_\theta \, dx = 0$$
+
+For the second-order term:
+
+$$\frac{\partial^2}{\partial \theta'^i \, \partial \theta'^j} D_{\mathrm{KL}}(p_\theta \,\|\, p_{\theta'}) \bigg|_{\theta'=\theta} = -\int p_\theta \frac{\partial^2 \log p_{\theta'}}{\partial \theta'^i \, \partial \theta'^j}\bigg|_{\theta'=\theta} dx = -\mathbb{E}_\theta\!\left[\frac{\partial^2 \log p_\theta}{\partial \theta^i \, \partial \theta^j}\right] = g_{ij}(\theta)$$
+
+Thus $D_{\mathrm{KL}}(p_\theta \,\|\, p_{\theta+\delta}) \approx \frac{1}{2} g_{ij}(\theta) \, \delta^i \, \delta^j$ for small $\delta$. The Fisher metric is the *infinitesimal* KL divergence. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={7} title="α-Divergence">
+The *$\alpha$-divergence* is a one-parameter family interpolating between forward and reverse KL:
+
+$$D_\alpha(p \,\|\, q) = \frac{4}{1 - \alpha^2}\left(1 - \int p(x)^{(1+\alpha)/2} \, q(x)^{(1-\alpha)/2} \, dx\right)$$
+
+Special cases:
+- $\alpha \to +1$: $D_{\mathrm{KL}}(p \,\|\, q)$ (forward KL)
+- $\alpha \to -1$: $D_{\mathrm{KL}}(q \,\|\, p)$ (reverse KL)
+- $\alpha = 0$: $D_0(p \,\|\, q) = 2\!\left(1 - \int \sqrt{p \, q} \, dx\right)$, twice the squared Hellinger distance
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={8} title="Bregman Divergence">
+For a strictly convex, differentiable function $F : \mathbb{R}^n \to \mathbb{R}$, the *Bregman divergence* is:
+
+$$D_F(x \,\|\, y) = F(x) - F(y) - \langle \nabla F(y),\, x - y \rangle$$
+
+For exponential families, the KL divergence is a Bregman divergence with $F = A$ (the log-partition function):
+
+$$D_{\mathrm{KL}}(p_\eta \,\|\, p_{\eta'}) = D_A(\eta' \,\|\, \eta)$$
+</TheoremBlock>
+
+The generalized Pythagorean theorem connects divergences to the dual geometry of $\alpha$-connections.
+
+<TheoremBlock type="theorem" number={6} title="Generalized Pythagorean Theorem">
+On a dually flat manifold, let $p$, $q$, $r$ be three distributions such that $q$ is the $m$-projection of $r$ onto an $e$-flat submanifold containing $p$ (i.e., the $e$-geodesic from $r$ to $q$ is orthogonal to the $m$-flat submanifold at $q$). Then:
+
+$$D_{\mathrm{KL}}(p \,\|\, r) = D_{\mathrm{KL}}(p \,\|\, q) + D_{\mathrm{KL}}(q \,\|\, r)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+In a dually flat manifold, the KL divergence is a Bregman divergence: $D_{\mathrm{KL}}(p_\theta \,\|\, p_{\theta'}) = A(\theta) + A^*(\eta') - \theta \cdot \eta'$ where $\eta' = \nabla A(\theta')$. Expanding the right side:
+
+$$D_{\mathrm{KL}}(p \,\|\, q) + D_{\mathrm{KL}}(q \,\|\, r) = \bigl[A(\theta_p) + A^*(\eta_q) - \theta_p \cdot \eta_q\bigr] + \bigl[A(\theta_q) + A^*(\eta_r) - \theta_q \cdot \eta_r\bigr]$$
+
+The orthogonality condition says $(\theta_r - \theta_q) \cdot (\eta_p - \eta_q) = 0$, i.e., $\theta_r \cdot \eta_p - \theta_r \cdot \eta_q - \theta_q \cdot \eta_p + \theta_q \cdot \eta_q = 0$. Using $A(\theta_q) + A^*(\eta_q) = \theta_q \cdot \eta_q$ (the Legendre identity), we can simplify the sum to:
+
+$$A(\theta_p) + A^*(\eta_r) - \theta_p \cdot \eta_r = D_{\mathrm{KL}}(p \,\|\, r) \qquad \square$$
+</TheoremBlock>
+
+This theorem is the information-geometric foundation of variational inference: minimizing $D_{\mathrm{KL}}(q \,\|\, p^*)$ over a variational family is an $m$-projection, and the Pythagorean theorem guarantees that the optimal $q$ decomposes the divergence into an "explained" part and an irreducible "approximation error."
+
+<DivergenceExplorer client:visible />
+
+![Divergence functions: KL asymmetry, α-divergence family, Pythagorean theorem diagram](/images/topics/information-geometry/info-geo-05-divergences.png)
+
+---
+
+## Geodesics on Statistical Manifolds
+
+The Fisher information metric defines geodesics on statistical manifolds via the geodesic equation from [Geodesics & Curvature](/topics/geodesics-curvature). These geodesics have concrete statistical interpretations and differ dramatically from Euclidean straight lines.
+
+For the Gaussian family, the Fisher metric $ds^2 = \frac{1}{\sigma^2}(d\mu^2 + 2 \, d\sigma^2)$ is (up to a constant) the Poincaré upper half-plane metric. The geodesics are:
+- **Vertical lines:** $\mu = \text{const}$, $\sigma$ varies — changing the variance while keeping the mean fixed.
+- **Semicircles** centered on the $\mu$-axis — the shortest paths between distributions with different means and variances.
+
+These are precisely the geodesics of hyperbolic geometry, consistent with the constant curvature $K = -1/2$.
+
+<TheoremBlock type="proposition" number={4} title="Fisher-Rao Distance for Gaussians with Equal Variance">
+For $\mathcal{N}(\mu_1, \sigma^2)$ and $\mathcal{N}(\mu_2, \sigma^2)$ (same variance):
+
+$$d_{\mathrm{FR}} = \frac{|\mu_1 - \mu_2|}{\sigma}$$
+
+This is the *Mahalanobis distance*.
+</TheoremBlock>
+
+The Fisher-Rao distance naturally produces the Mahalanobis distance — the standard "number of standard deviations" between means. This is not a coincidence: the Fisher metric *is* the infinitesimal Mahalanobis metric.
+
+<TheoremBlock type="proposition" number={5} title="Fisher-Rao Distance for Gaussians with Equal Means">
+For $\mathcal{N}(\mu, \sigma_1^2)$ and $\mathcal{N}(\mu, \sigma_2^2)$ (same mean):
+
+$$d_{\mathrm{FR}} = \sqrt{2} \, \bigl|\log(\sigma_1 / \sigma_2)\bigr|$$
+
+Distances along the variance axis are *logarithmic* — the geometry is hyperbolic.
+</TheoremBlock>
+
+The logarithmic scaling means that doubling $\sigma$ from $1$ to $2$ is the same Fisher-Rao distance as doubling from $100$ to $200$. This is the natural scale for variance: what matters is the *ratio*, not the absolute difference.
+
+<TheoremBlock type="remark" title="Infinitesimal Relationship: KL and Fisher-Rao">
+For infinitesimally close distributions $p_\theta$ and $p_{\theta + \delta}$:
+
+$$D_{\mathrm{KL}}(p_\theta \,\|\, p_{\theta+\delta}) \approx \frac{1}{2} \, d_{\mathrm{FR}}(\theta, \theta + \delta)^2$$
+
+The KL divergence is the squared Fisher-Rao distance at infinitesimal scale. But for distributions that are not close, these quantities diverge: the Fisher-Rao distance is a true metric (symmetric, satisfies triangle inequality), while the KL divergence is neither.
+</TheoremBlock>
+
+<StatisticalGeodesicExplorer client:visible />
+
+![Fisher-Rao geodesics, Fisher-Rao distance vs KL divergence, hyperbolic distance for variance](/images/topics/information-geometry/info-geo-06-geodesics.png)
+
+---
+
+## The Cramér–Rao Bound
+
+The Cramér–Rao bound connects the Fisher information metric to the fundamental limits of statistical estimation. It is the information-geometric version of the uncertainty principle: curvature (Fisher information) controls precision (estimator variance).
+
+<TheoremBlock type="theorem" number={7} title="Cramér–Rao Lower Bound">
+Let $T(X)$ be an unbiased estimator of $\theta^i$ (i.e., $\mathbb{E}_\theta[T] = \theta^i$). Then:
+
+$$\mathrm{Var}_\theta(T) \geq [g^{-1}(\theta)]_{ii}$$
+
+More generally, for the covariance matrix of any unbiased estimator $\mathbf{T}$ of $\theta$:
+
+$$\mathrm{Cov}_\theta(\mathbf{T}) \succeq g^{-1}(\theta)$$
+
+where $\succeq$ denotes the Loewner (positive semidefinite) ordering.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We prove the scalar case using Cauchy-Schwarz in $L^2(p_\theta)$, which is precisely the inner product defined by the Fisher metric.
+
+Since $T$ is unbiased, $\mathbb{E}[T] = \theta$, so:
+
+$$\mathrm{Cov}(T, s) = \mathbb{E}[T \cdot s] - \mathbb{E}[T] \cdot \mathbb{E}[s] = \mathbb{E}[T \cdot s] - \theta \cdot 0 = \mathbb{E}[T \cdot s]$$
+
+We compute $\mathbb{E}[T \cdot s]$ by differentiating the unbiasedness condition:
+
+$$\frac{d}{d\theta} \mathbb{E}_\theta[T] = \frac{d}{d\theta} \int T(x) \, p_\theta(x) \, dx = \int T(x) \frac{\partial p_\theta}{\partial \theta} dx = \int T(x) \, s(x;\theta) \, p_\theta(x) \, dx = \mathbb{E}[T \cdot s]$$
+
+Since $\frac{d}{d\theta}\theta = 1$, we have $\mathrm{Cov}(T, s) = 1$.
+
+Now apply Cauchy-Schwarz:
+
+$$1 = |\mathrm{Cov}(T, s)|^2 \leq \mathrm{Var}(T) \cdot \mathrm{Var}(s) = \mathrm{Var}(T) \cdot g(\theta)$$
+
+Therefore $\mathrm{Var}(T) \geq 1/g(\theta) = [g^{-1}(\theta)]_{11}$. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={9} title="Efficient Estimator">
+An unbiased estimator $T$ is *efficient* if it achieves the Cramér–Rao bound with equality:
+
+$$\mathrm{Var}(T) = \frac{1}{g(\theta)}$$
+
+Efficient estimators exist only when the score function is a linear function of $T$. The maximum likelihood estimator (MLE) is *asymptotically efficient*: as the sample size $n \to \infty$, the MLE achieves the bound.
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Geometric Interpretation">
+The Cramér–Rao bound has a clean geometric interpretation. The Fisher metric measures the "curvature" of the log-likelihood surface:
+
+- **Large $g(\theta)$** means the log-likelihood is sharply peaked — samples carry a lot of information about $\theta$, so estimation is precise (low variance).
+- **Small $g(\theta)$** means the log-likelihood is flat — samples are uninformative about $\theta$, so estimation is imprecise (high variance).
+
+The bound $\mathrm{Var}(T) \geq 1/g(\theta)$ says: no estimator, no matter how clever, can beat the information content of the data. This is the statistical analogue of the Heisenberg uncertainty principle — but with the Fisher information playing the role of Planck's constant.
+</TheoremBlock>
+
+![The Cramér–Rao bound: Fisher information and precision, the inequality diagram, MLE convergence](/images/topics/information-geometry/info-geo-07-cramer-rao.png)
+
+---
+
+## Computational Notes
+
+The computations of information geometry can be automated symbolically and solved numerically.
+
+### Symbolic Fisher Metric Derivation
+
+Using SymPy, we can derive the Fisher metric for the Gaussian family from scratch:
+
+```python
+import sympy as sp
+
+x, mu, sigma = sp.symbols('x mu sigma', real=True)
+sigma = sp.Symbol('sigma', positive=True)
+
+# Log-likelihood
+log_p = -sp.log(sigma) - (x - mu)**2 / (2 * sigma**2) - sp.log(sp.sqrt(2 * sp.pi))
+
+# Score functions
+s_mu = sp.diff(log_p, mu)          # (x - mu) / sigma^2
+s_sigma = sp.diff(log_p, sigma)    # -1/sigma + (x-mu)^2 / sigma^3
+
+# Fisher matrix entries via E[s_i * s_j]
+# Using E[(x-mu)^2] = sigma^2, E[(x-mu)^4] = 3*sigma^4
+g_11 = sp.Rational(1, 1) / sigma**2
+g_22 = sp.Rational(2, 1) / sigma**2
+g_12 = sp.Integer(0)
+print(f"Fisher metric: diag({g_11}, {g_22})")
+# Output: Fisher metric: diag(sigma**(-2), 2/sigma**2)
+```
+
+### Christoffel Symbols for the Gaussian Manifold
+
+With coordinates $(\mu, \sigma)$ and metric $g = \text{diag}(1/\sigma^2, 2/\sigma^2)$:
+
+```python
+# Christoffel symbols: Gamma^k_{ij} = (1/2) g^{kl}(d_i g_{jl} + d_j g_{il} - d_l g_{ij})
+# For diagonal metric g = diag(f, h) where f = 1/sigma^2, h = 2/sigma^2:
+# Nonzero symbols:
+#   Gamma^sigma_{mu,mu}    = -f'/(2h)   = (2/sigma^3) / (2 * 2/sigma^2) = 1/(2*sigma)
+#   Gamma^mu_{mu,sigma}    = f'/(2f)    = (-2/sigma^3) / (2/sigma^2) = -1/sigma
+#   Gamma^sigma_{sigma,sigma} = h'/(2h) = (-4/sigma^3) / (2 * 2/sigma^2) = -1/sigma
+```
+
+### Numerical Geodesic Solver
+
+The geodesic equation on the Gaussian manifold is the ODE system:
+
+$$\ddot{\mu} + 2\,\Gamma^\mu_{\mu\sigma}\,\dot{\mu}\dot{\sigma} = 0, \qquad \ddot{\sigma} + \Gamma^\sigma_{\mu\mu}\,\dot{\mu}^2 + \Gamma^\sigma_{\sigma\sigma}\,\dot{\sigma}^2 = 0$$
+
+We solve this with a 4th-order Runge-Kutta integrator:
+
+```python
+import numpy as np
+
+def geodesic_step_gaussian(state, dt):
+    """Single RK4 step for the geodesic ODE on the Gaussian manifold."""
+    mu, sigma, dmu, dsigma = state
+
+    def derivs(s):
+        mu, sig, dm, ds = s
+        ddmu = (2 / sig) * dm * ds        # -2 * Gamma^mu_{mu,sigma} * dmu * dsigma
+        ddsig = -dm**2 / (2*sig) + ds**2 / sig  # Gamma terms
+        return np.array([dm, ds, ddmu, ddsig])
+
+    k1 = derivs(state)
+    k2 = derivs(state + 0.5*dt*k1)
+    k3 = derivs(state + 0.5*dt*k2)
+    k4 = derivs(state + dt*k3)
+    return state + (dt/6) * (k1 + 2*k2 + 2*k3 + k4)
+```
+
+### Natural Gradient Implementation
+
+Side-by-side comparison of Euclidean and natural gradient descent minimizing $D_{\mathrm{KL}}(\mathcal{N}(0,1) \,\|\, \mathcal{N}(\mu, \sigma^2))$:
+
+```python
+def gradient_descent(mu, sigma, target_mu, target_sigma, lr, natural=False, steps=100):
+    """Euclidean or natural gradient descent on KL divergence."""
+    trajectory = [(mu, sigma)]
+    for _ in range(steps):
+        # Euclidean gradient of D_KL(target || model)
+        grad_mu = (mu - target_mu) / sigma**2
+        grad_sigma = 1/sigma - (target_sigma**2 + (target_mu - mu)**2) / sigma**3
+
+        if natural:
+            # Fisher metric inverse: g^{-1} = diag(sigma^2, sigma^2/2)
+            nat_mu = sigma**2 * grad_mu
+            nat_sigma = (sigma**2 / 2) * grad_sigma
+            mu -= lr * nat_mu
+            sigma -= lr * nat_sigma
+        else:
+            mu -= lr * grad_mu
+            sigma -= lr * grad_sigma
+
+        sigma = max(sigma, 0.01)  # Keep sigma positive
+        trajectory.append((mu, sigma))
+    return trajectory
+```
+
+### Fisher-Rao Distance Matrix
+
+Pairwise Fisher-Rao distances between Gaussians using Rao's formula:
+
+```python
+def fisher_rao_distance(mu1, s1, mu2, s2):
+    """Closed-form Fisher-Rao distance for univariate Gaussians."""
+    return np.sqrt(2) * np.arccosh(
+        1 + ((mu1 - mu2)**2 + 2*(s1 - s2)**2) / (4 * s1 * s2)
+    )
+```
+
+Note that this formula uses the half-plane metric $ds^2 = \frac{1}{\sigma^2}(d\mu^2 + 2\,d\sigma^2)$, which includes the factor of $2$ in the $d\sigma^2$ term. The $\text{arccosh}$ reflects the hyperbolic nature of the geometry.
+
+![Computational information geometry: numerical geodesics, natural vs Euclidean gradient, Fisher-Rao distance matrix](/images/topics/information-geometry/info-geo-08-computational.png)
+
+---
+
+## Information Geometry in Machine Learning
+
+Information geometry provides the natural mathematical framework for understanding and improving several core machine learning algorithms.
+
+### Natural Gradient Descent
+
+Standard gradient descent updates parameters as $\theta_{t+1} = \theta_t - \eta \, \nabla L(\theta_t)$, using the Euclidean gradient. But the Euclidean gradient depends on the parameterization: reparameterizing the same model changes the gradient direction. This is undesirable — the "steepest descent" direction should be an intrinsic property of the model, not an artifact of how we chose to write down its parameters.
+
+Amari's natural gradient (1998) fixes this by using the Fisher-Rao metric:
+
+$$\theta_{t+1} = \theta_t - \eta \, g^{-1}(\theta_t) \, \nabla L(\theta_t)$$
+
+The natural gradient $\tilde{\nabla} L = g^{-1} \nabla L$ is the steepest descent direction in the Riemannian metric defined by the Fisher information. It is:
+
+- **Reparameterization invariant:** changing coordinates $\theta \to \phi(\theta)$ does not change the natural gradient direction (it transforms covariantly).
+- **Asymptotically efficient:** for maximum likelihood estimation, natural gradient descent converges to the optimal rate.
+- **Follows geodesics approximately:** the natural gradient flow traces out curves that are close to Fisher-Rao geodesics.
+
+### Variational Inference as $m$-Projection
+
+Variational inference minimizes $D_{\mathrm{KL}}(q \,\|\, p^*)$ over a variational family $\mathcal{Q}$ to approximate an intractable posterior $p^*$. In information-geometric terms, this is the *$m$-projection* of $p^*$ onto $\mathcal{Q}$: the distribution in $\mathcal{Q}$ closest to $p^*$ in the $m$-connection sense.
+
+When $\mathcal{Q}$ is an exponential family (a dually flat manifold), the generalized Pythagorean theorem guarantees:
+
+$$D_{\mathrm{KL}}(q \,\|\, p^*) = D_{\mathrm{KL}}(q \,\|\, q^*) + D_{\mathrm{KL}}(q^* \,\|\, p^*)$$
+
+where $q^*$ is the optimal variational approximation. The second term is the irreducible approximation error (determined by the expressiveness of $\mathcal{Q}$), and the first term is what the optimization eliminates.
+
+### Adam as Approximate Natural Gradient
+
+The Adam optimizer (Kingma & Ba, 2015) maintains running estimates of the first and second moments of the gradient. The second moment estimate $v_t \approx \mathbb{E}[(\nabla L)^2]$ is a diagonal approximation to the Fisher information matrix: $\text{diag}(v_t) \approx \text{diag}(g(\theta))$. The Adam update
+
+$$\theta_{t+1} = \theta_t - \eta \, \frac{m_t}{\sqrt{v_t} + \epsilon}$$
+
+is therefore an approximate natural gradient step with a diagonal Fisher matrix.
+
+K-FAC (Martens & Grosse, 2015) improves on this by using a block-diagonal, Kronecker-factored approximation to the full Fisher matrix. For a neural network layer with input $a$ and output gradient $g$, K-FAC approximates the Fisher block as $\mathbb{E}[a a^T] \otimes \mathbb{E}[g g^T]$, which is far cheaper to invert than the full Fisher matrix while capturing more curvature structure than Adam's diagonal.
+
+### Optimal Transport Connections
+
+The Fisher-Rao metric and the Wasserstein distance define *different geometries* on the space of distributions:
+
+- **Fisher-Rao** measures *informational distance*: how distinguishable are two distributions from finite samples?
+- **Wasserstein** measures *physical distance*: what is the cost of transporting mass from one distribution to the other?
+
+Otto (2001) showed that the Wasserstein space carries a formal Riemannian structure where the gradient flow of the KL divergence is the Fokker-Planck equation. The interplay between these two geometries — informational and physical — is an active research frontier connecting information geometry to optimal transport theory.
+
+### Loss Landscape Curvature
+
+The curvature of the loss landscape at a minimum affects generalization. The "flat minima" conjecture (Hochreiter & Schmidhuber, 1997; Keskar et al., 2017) suggests that minima occupying large, flat regions of the loss surface generalize better than sharp minima. The Fisher information matrix at convergence is related to the Hessian of the loss, and its eigenspectrum characterizes the sharpness of the minimum.
+
+Specifically, for a model trained with maximum likelihood, the Fisher information matrix equals the expected Hessian of the negative log-likelihood. The eigenvalues of $g(\theta^*)$ at the converged parameters $\theta^*$ measure the curvature in each direction: large eigenvalues correspond to sharp directions, and the [Spectral Theorem](/topics/spectral-theorem) guarantees that these principal curvature directions exist and are orthogonal.
+
+![Information geometry in ML: reparameterization invariance, VI as m-projection, Adam vs natural gradient convergence](/images/topics/information-geometry/info-geo-09-ml-applications.png)
+
+---
+
+## Connections & Further Reading
+
+Information Geometry & Fisher Metric is the capstone of the **Differential Geometry** track. It connects back to every topic in the track and forward to applications across the curriculum:
+
+| Connected Topic | Domain | Relationship |
+|---|---|---|
+| [Smooth Manifolds](/topics/smooth-manifolds) | Differential Geometry | Parameter spaces as smooth manifolds; tangent spaces spanned by score functions |
+| [Riemannian Geometry](/topics/riemannian-geometry) | Differential Geometry | Fisher metric as Riemannian metric; Levi-Civita as $\alpha=0$ connection |
+| [Geodesics & Curvature](/topics/geodesics-curvature) | Differential Geometry | Fisher-Rao geodesics; curvature $K=-1/2$ for Gaussians; Gauss-Bonnet theorem |
+| [The Spectral Theorem](/topics/spectral-theorem) | Linear Algebra | Eigendecomposition of Fisher matrix reveals principal information directions |
+| [PCA & Low-Rank Approximation](/topics/pca-low-rank) | Linear Algebra | Natural gradient as Fisher preconditioning; covariance structure |
+| [Persistent Homology](/topics/persistent-homology) | Topology & TDA | Euler characteristic in Gauss-Bonnet for statistical manifolds |
+
+### Completing the Differential Geometry Track
+
+With this topic, the four-part Differential Geometry track is complete:
+
+1. **Smooth Manifolds** (intermediate) — the foundational structure: charts, tangent spaces, and smooth maps
+2. **Riemannian Geometry** (advanced) — metric tensors, connections, and parallel transport
+3. **Geodesics & Curvature** (intermediate) — geodesic equations, curvature tensors, and the Gauss-Bonnet theorem
+4. **Information Geometry & Fisher Metric** (advanced) — the Fisher metric on statistical manifolds, $\alpha$-connections, and natural gradient descent
+
+The track moves from abstract manifold structure through Riemannian geometry to the concrete, application-rich setting of statistical manifolds — where the geometric machinery built in the first three topics has direct consequences for machine learning.
