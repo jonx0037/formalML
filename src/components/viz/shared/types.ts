@@ -126,3 +126,24 @@ export interface GPConfig {
   noiseVariance: number;
 }
 
+// ─── Information Theory Types ───
+
+export interface DiscreteDistribution {
+  labels: string[];
+  probabilities: number[];
+}
+
+export interface JointDistribution {
+  xLabels: string[];
+  yLabels: string[];
+  joint: number[][]; // joint[i][j] = p(x_i, y_j)
+}
+
+export interface HuffmanNode {
+  symbol?: string;
+  probability: number;
+  code?: string;
+  left?: HuffmanNode;
+  right?: HuffmanNode;
+}
+

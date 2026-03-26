@@ -1,0 +1,667 @@
+---
+title: "Shannon Entropy & Mutual Information"
+subtitle: "Information content, entropy, and mutual information — the quantities that measure uncertainty, surprise, and statistical dependence"
+status: "published"
+difficulty: "foundational"
+prerequisites:
+  - "measure-theoretic-probability"
+tags:
+  - "information-theory"
+  - "entropy"
+  - "mutual-information"
+  - "source-coding"
+  - "data-processing-inequality"
+  - "differential-entropy"
+domain: "information-theory"
+videoId: null
+notebookPath: "notebooks/shannon-entropy/01_shannon_entropy.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/shannon-entropy.mdx"
+datePublished: 2026-03-27
+estimatedReadTime: 50
+abstract: "Shannon entropy quantifies the irreducible uncertainty in a random variable — the minimum average number of bits needed to encode its outcomes. We develop the theory from the axioms that uniquely characterize entropy (Khinchin's theorem), through joint and conditional entropy with their chain rules, to mutual information as the symmetric measure of statistical dependence between random variables. The data processing inequality establishes that post-processing cannot create information, providing the theoretical foundation for representation learning. Differential entropy extends these ideas to continuous distributions, where the maximum-entropy distribution for fixed variance is Gaussian—a result that connects to the central role of Gaussians throughout statistics and machine learning. Shannon's source coding theorem makes entropy operationally meaningful: the entropy rate of a source is the fundamental limit of lossless compression, achieved by prefix codes satisfying Kraft's inequality. Applications to machine learning include cross-entropy loss as the KL divergence from the true distribution, mutual information for feature selection, and the InfoMax principle for representation learning."
+connections:
+  - topic: "measure-theoretic-probability"
+    relationship: "Entropy is defined as the expectation of the negative log-likelihood: H(X) = E[-log p(X)]. The Lebesgue integral and Radon–Nikodym derivative are essential for differential entropy, and conditional expectation underlies conditional entropy."
+  - topic: "convex-analysis"
+    relationship: "Entropy is a concave function of the probability distribution — Jensen's inequality gives the maximum entropy property of the uniform distribution. Mutual information optimization (channel capacity, rate-distortion) involves convex programs."
+  - topic: "information-geometry"
+    relationship: "The Fisher information metric is the Hessian of KL divergence, which is defined in terms of entropy: D_KL(p||q) = H(p,q) - H(p). Shannon entropy is the starting point for the divergence functions that equip statistical manifolds with geometric structure."
+  - topic: "bayesian-nonparametrics"
+    relationship: "Maximum entropy priors (the principle of maximum entropy) select the least informative prior consistent with known constraints, connecting entropy maximization to Bayesian inference."
+references:
+  - type: "book"
+    title: "Elements of Information Theory"
+    authors: "Cover & Thomas"
+    year: 2006
+    note: "The standard reference — Chapters 2-4 cover entropy, mutual information, and source coding"
+  - type: "book"
+    title: "Information Theory, Inference, and Learning Algorithms"
+    authors: "MacKay"
+    year: 2003
+    note: "Chapters 2, 4, 5 — information theory with a Bayesian and ML perspective"
+  - type: "paper"
+    title: "A Mathematical Theory of Communication"
+    authors: "Shannon"
+    year: 1948
+    url: "https://doi.org/10.1002/j.1538-7305.1948.tb01338.x"
+    note: "The foundational paper — defines entropy, mutual information, and proves the source coding theorem"
+  - type: "book"
+    title: "Information Theory and Statistics"
+    authors: "Kullback"
+    year: 1968
+    note: "Classical treatment of the connection between information theory and statistical inference"
+  - type: "book"
+    title: "Entropy and Information Theory"
+    authors: "Gray"
+    year: 2011
+    note: "Rigorous measure-theoretic treatment of entropy and entropy rate for stationary processes"
+  - type: "paper"
+    title: "Estimating Mutual Information"
+    authors: "Kraskov, Stögbauer & Grassberger"
+    year: 2004
+    url: "https://doi.org/10.1103/PhysRevE.69.066138"
+    note: "k-nearest-neighbor mutual information estimator — the standard non-parametric method"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import EntropyExplorer from '../../components/viz/EntropyExplorer.tsx';
+import MutualInformationDiagram from '../../components/viz/MutualInformationDiagram.tsx';
+import DataProcessingExplorer from '../../components/viz/DataProcessingExplorer.tsx';
+import SourceCodingExplorer from '../../components/viz/SourceCodingExplorer.tsx';
+
+## Overview & Motivation
+
+How much information does a random variable carry? How many bits do we need, at minimum, to encode a message? When two variables are statistically dependent, how much does knowing one tell us about the other?
+
+These questions have precise, quantitative answers — and they all flow from a single idea that Claude Shannon published in 1948: **entropy**. Shannon showed that the uncertainty in a random variable has a unique, canonical measure, and that this measure controls the fundamental limits of data compression, communication, and statistical inference.
+
+For machine learning, information theory is not optional background. Cross-entropy loss — the default objective for classification — is an information-theoretic quantity. Mutual information drives feature selection. The data processing inequality explains why deep representations can lose but never create information about the input. The maximum-entropy principle connects to Bayesian inference through the choice of priors. And **KL Divergence & f-Divergences** *(coming soon)*, the next topic on this track, builds directly on the entropy framework we develop here.
+
+### What We Cover
+
+1. **Information content and Shannon entropy** — the surprise of an outcome and the average surprise of a distribution
+2. **Joint and conditional entropy** — uncertainty in pairs of variables and the chain rule
+3. **Mutual information** — the symmetric measure of statistical dependence
+4. **The data processing inequality** — why post-processing cannot create information
+5. **Differential entropy** — the continuous extension and the maximum-entropy role of the Gaussian
+6. **Source coding and compression** — Shannon's theorem, Kraft's inequality, and Huffman coding
+7. **Entropy rate** — entropy for stochastic processes and Markov chains
+8. **Connections to ML** — cross-entropy loss, MI feature selection, and the InfoMax principle
+
+### Prerequisites
+
+This topic builds on:
+- [Measure-Theoretic Probability](/topics/measure-theoretic-probability) — entropy is defined as the expectation $E[-\log p(X)]$, differential entropy requires the Lebesgue integral, and conditional entropy uses conditional expectation
+
+---
+
+## Information Content & Shannon Entropy
+
+Imagine playing a guessing game. Your friend picks a card from a deck and you must guess which one. If the deck has 2 cards, one guess suffices — that's 1 bit of uncertainty. A deck of 8 cards takes 3 guesses in the worst case — 3 bits. The pattern is clear: the uncertainty in a uniform draw over $n$ outcomes is $\log_2 n$ bits.
+
+But what if the outcomes are not equally likely? Shannon's key insight was to define the *information content* (or *surprise*) of a single outcome, and then take the average to get the entropy.
+
+<TheoremBlock type="definition" number={1} title="Information Content (Surprise)">
+The **information content** (or **self-information**) of an outcome $x$ with probability $p(x)$ is
+
+$$I(x) = -\log_2 p(x) \quad \text{[bits]}$$
+
+An outcome with probability $p = 1/2$ carries $1$ bit of information. An outcome with probability $p = 1/8$ carries $3$ bits. Common events carry little surprise; rare events carry a lot.
+</TheoremBlock>
+
+The choice of $\log_2$ gives units of bits. Using $\ln$ gives nats; using $\log_{10}$ gives hartleys. The choice of base is a convention — we use bits throughout this topic.
+
+<TheoremBlock type="definition" number={2} title="Shannon Entropy">
+The **Shannon entropy** of a discrete random variable $X$ with probability mass function $p$ over a finite alphabet $\mathcal{X}$ is
+
+$$H(X) = E[-\log_2 p(X)] = -\sum_{x \in \mathcal{X}} p(x) \log_2 p(x) \quad \text{[bits]}$$
+
+with the convention $0 \log_2 0 = 0$ (justified by continuity: $\lim_{p \to 0^+} p \log p = 0$).
+</TheoremBlock>
+
+Entropy is the average surprise — the expected number of bits needed to encode a randomly drawn outcome. It is the fundamental measure of uncertainty in information theory.
+
+The **binary entropy function** is the special case for a Bernoulli random variable with parameter $p$:
+
+$$H_b(p) = -p \log_2 p - (1-p) \log_2(1-p)$$
+
+This reaches its maximum of $1$ bit at $p = 1/2$ (a fair coin) and drops to $0$ at $p = 0$ or $p = 1$ (a certain outcome).
+
+### Properties of Entropy
+
+<TheoremBlock type="proposition" number={1} title="Non-negativity of Entropy">
+$H(X) \geq 0$ for all discrete random variables $X$, with equality if and only if $X$ is deterministic (one outcome has probability $1$).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Each term $-p(x) \log_2 p(x) \geq 0$ since $0 \leq p(x) \leq 1$ implies $\log_2 p(x) \leq 0$. The sum of non-negative terms is non-negative. Equality holds when all terms are zero, which requires each $p(x)$ to be either $0$ or $1$ — i.e., $X$ is deterministic.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Entropy Maximized by the Uniform Distribution">
+For a random variable $X$ over $k$ outcomes, $H(X) \leq \log_2 k$, with equality if and only if $X$ is uniformly distributed.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $u(x) = 1/k$ be the uniform distribution. By the log-sum inequality (or equivalently, by the non-negativity of KL divergence):
+
+$$0 \leq D_{KL}(p \| u) = \sum_x p(x) \log_2 \frac{p(x)}{1/k} = -H(X) + \log_2 k$$
+
+Rearranging gives $H(X) \leq \log_2 k$. Equality holds iff $D_{KL}(p \| u) = 0$, i.e., $p = u$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={3} title="Concavity of Entropy">
+$H(X)$ is a concave function of the probability distribution $p$: for distributions $p_1, p_2$ and $\lambda \in [0, 1]$,
+
+$$H(\lambda p_1 + (1-\lambda) p_2) \geq \lambda H(p_1) + (1-\lambda) H(p_2)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $f(t) = -t \log t$ is concave (its second derivative $-1/t$ is negative for $t > 0$), we have for each $x$:
+
+$$-[\lambda p_1(x) + (1-\lambda) p_2(x)] \log[\lambda p_1(x) + (1-\lambda) p_2(x)] \geq -\lambda p_1(x) \log p_1(x) - (1-\lambda) p_2(x) \log p_2(x)$$
+
+Summing over $x$ gives the result.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={8} title="Khinchin's Uniqueness Theorem">
+Shannon entropy is the unique function $H(p_1, \ldots, p_k)$ satisfying four axioms: (1) continuity in the $p_i$, (2) maximality at the uniform distribution, (3) invariance under adding zero-probability outcomes, and (4) the chain rule $H(X, Y) = H(X) + H(Y|X)$. Any function satisfying these axioms is a positive multiple of $H(X) = -\sum p_i \log p_i$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Khinchin's theorem tells us that entropy is not an arbitrary choice — it is the only sensible measure of uncertainty satisfying natural consistency requirements. The chain rule (axiom 4) is the key structural axiom.
+</TheoremBlock>
+
+Explore the interactive visualization below. Drag the bars to change the probability distribution and watch entropy respond in real time.
+
+<EntropyExplorer client:visible />
+
+![Entropy for various distributions](/images/topics/shannon-entropy/entropy-distributions.png)
+
+---
+
+## Joint Entropy & Conditional Entropy
+
+When we have two random variables, we can ask about their combined uncertainty and how much knowing one reduces uncertainty about the other.
+
+<TheoremBlock type="definition" number={3} title="Joint Entropy">
+The **joint entropy** of discrete random variables $X$ and $Y$ is
+
+$$H(X, Y) = -\sum_{x \in \mathcal{X}} \sum_{y \in \mathcal{Y}} p(x, y) \log_2 p(x, y)$$
+
+This is the total uncertainty in the pair $(X, Y)$ — the average number of bits needed to encode both outcomes.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={4} title="Conditional Entropy">
+The **conditional entropy** of $Y$ given $X$ is
+
+$$H(Y | X) = \sum_{x \in \mathcal{X}} p(x) \, H(Y | X = x) = -\sum_{x, y} p(x, y) \log_2 p(y | x)$$
+
+This is the average remaining uncertainty in $Y$ after observing $X$.
+</TheoremBlock>
+
+The chain rule connects these quantities.
+
+<TheoremBlock type="theorem" number={1} title="Chain Rule for Entropy">
+$$H(X, Y) = H(X) + H(Y | X)$$
+
+More generally, for $n$ random variables:
+
+$$H(X_1, X_2, \ldots, X_n) = \sum_{i=1}^{n} H(X_i | X_1, \ldots, X_{i-1})$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+$$H(X, Y) = -\sum_{x,y} p(x,y) \log_2 p(x,y)$$
+$$= -\sum_{x,y} p(x,y) \log_2 [p(x) \, p(y|x)]$$
+$$= -\sum_{x,y} p(x,y) \log_2 p(x) - \sum_{x,y} p(x,y) \log_2 p(y|x)$$
+$$= -\sum_x p(x) \log_2 p(x) + \left( -\sum_{x,y} p(x,y) \log_2 p(y|x) \right)$$
+$$= H(X) + H(Y|X)$$
+
+The general case follows by induction: $p(x_1, \ldots, x_n) = p(x_1) \prod_{i=2}^{n} p(x_i | x_1, \ldots, x_{i-1})$, and taking $-E[\log_2(\cdot)]$ of both sides telescopes.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Conditioning Reduces Entropy">
+$$H(Y | X) \leq H(Y)$$
+
+with equality if and only if $X$ and $Y$ are independent.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We need to show that $H(Y) - H(Y|X) \geq 0$. This difference is the mutual information $I(X; Y)$ (defined in the next section), and its non-negativity follows from the non-negativity of KL divergence:
+
+$$I(X;Y) = \sum_{x,y} p(x,y) \log_2 \frac{p(x,y)}{p(x)p(y)} = D_{KL}(p_{XY} \| p_X p_Y) \geq 0$$
+
+Equality holds iff $p(x,y) = p(x)p(y)$ for all $x, y$ — independence.
+</TheoremBlock>
+
+In plain language: information can only reduce (or maintain) uncertainty, never increase it. Knowing something extra about the world cannot make you *more* confused on average.
+
+![Joint and conditional entropy](/images/topics/shannon-entropy/joint-conditional-entropy.png)
+
+---
+
+## Mutual Information
+
+Mutual information captures how much knowing one variable tells us about another. It is the fundamental measure of statistical dependence in information theory.
+
+<TheoremBlock type="definition" number={5} title="Mutual Information">
+The **mutual information** between discrete random variables $X$ and $Y$ is
+
+$$I(X; Y) = H(X) - H(X|Y) = H(Y) - H(Y|X) = H(X) + H(Y) - H(X,Y)$$
+
+Equivalently:
+
+$$I(X; Y) = \sum_{x \in \mathcal{X}} \sum_{y \in \mathcal{Y}} p(x,y) \log_2 \frac{p(x,y)}{p(x) \, p(y)}$$
+</TheoremBlock>
+
+Mutual information is the KL divergence from the joint distribution to the product of marginals: $I(X;Y) = D_{KL}(p_{XY} \| p_X p_Y)$. It measures how far the joint distribution is from independence.
+
+<TheoremBlock type="proposition" number={4} title="Non-negativity of Mutual Information">
+$I(X; Y) \geq 0$, with equality if and only if $X$ and $Y$ are independent.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+$I(X;Y) = D_{KL}(p_{XY} \| p_X p_Y) \geq 0$ by the non-negativity of KL divergence (which follows from Jensen's inequality applied to the convex function $-\log$). Equality holds iff $p(x,y) = p(x)p(y)$ for all $x, y$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={5} title="Symmetry of Mutual Information">
+$I(X; Y) = I(Y; X)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+From the definition: $I(X;Y) = H(X) + H(Y) - H(X,Y) = H(Y) + H(X) - H(Y,X) = I(Y;X)$, since joint entropy is symmetric: $H(X,Y) = H(Y,X)$.
+</TheoremBlock>
+
+This is remarkable: conditioning is asymmetric ($H(Y|X) \neq H(X|Y)$ in general), but mutual information is perfectly symmetric. Knowing $X$ tells you the same amount about $Y$ as knowing $Y$ tells you about $X$.
+
+<TheoremBlock type="proposition" number={6} title="Mutual Information and Independence">
+$I(X; Y) = 0$ if and only if $X$ and $Y$ are independent.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+This is a direct consequence of Proposition 4: $I(X;Y) = D_{KL}(p_{XY} \| p_X p_Y) = 0$ iff $p(x,y) = p(x)p(y)$ everywhere.
+</TheoremBlock>
+
+### The Information Diagram
+
+The relationships between $H(X)$, $H(Y)$, $H(X,Y)$, $H(X|Y)$, $H(Y|X)$, and $I(X;Y)$ are best visualized as a Venn diagram — the *information diagram*. Two overlapping circles represent $H(X)$ and $H(Y)$; the overlap is $I(X;Y)$; the left crescent is $H(X|Y)$; the right crescent is $H(Y|X)$; and the union is $H(X,Y)$.
+
+<MutualInformationDiagram client:visible />
+
+![Information diagram (Venn-style)](/images/topics/shannon-entropy/information-diagram.png)
+
+### Conditional Mutual Information and Chain Rule
+
+<TheoremBlock type="definition" number={6} title="Conditional Mutual Information">
+The **conditional mutual information** of $X$ and $Y$ given $Z$ is
+
+$$I(X; Y | Z) = H(X | Z) - H(X | Y, Z)$$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="Chain Rule for Mutual Information">
+$$I(X_1, X_2, \ldots, X_n ; Y) = \sum_{i=1}^{n} I(X_i ; Y | X_1, \ldots, X_{i-1})$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply the chain rule for entropy to $H(X_1, \ldots, X_n | Y)$ and $H(X_1, \ldots, X_n)$:
+
+$$I(X_1, \ldots, X_n ; Y) = H(X_1, \ldots, X_n) - H(X_1, \ldots, X_n | Y)$$
+$$= \sum_{i} H(X_i | X_1, \ldots, X_{i-1}) - \sum_{i} H(X_i | X_1, \ldots, X_{i-1}, Y)$$
+$$= \sum_{i} [H(X_i | X_1, \ldots, X_{i-1}) - H(X_i | X_1, \ldots, X_{i-1}, Y)]$$
+$$= \sum_{i} I(X_i ; Y | X_1, \ldots, X_{i-1})$$
+</TheoremBlock>
+
+---
+
+## The Data Processing Inequality
+
+The data processing inequality (DPI) is one of the most important results in information theory for machine learning. It formalizes a simple but powerful idea: **you cannot create information by processing data**.
+
+<TheoremBlock type="definition" number={7} title="Markov Chain">
+Random variables $X$, $Y$, $Z$ form a **Markov chain**, written $X \to Y \to Z$, if $Z$ is conditionally independent of $X$ given $Y$:
+
+$$p(z | x, y) = p(z | y) \quad \text{for all } x, y, z$$
+
+Equivalently, $X$ and $Z$ are independent given $Y$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={4} title="Data Processing Inequality">
+If $X \to Y \to Z$ is a Markov chain, then
+
+$$I(X; Z) \leq I(X; Y)$$
+
+Post-processing cannot increase mutual information. Equality holds if and only if $Z$ is a **sufficient statistic** of $Y$ for $X$ — that is, $I(X; Y | Z) = 0$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By the chain rule for mutual information:
+
+$$I(X; Y, Z) = I(X; Z) + I(X; Y | Z) = I(X; Y) + I(X; Z | Y)$$
+
+Since $X \to Y \to Z$ is Markov, $X \perp Z \mid Y$, so $I(X; Z | Y) = 0$. Therefore:
+
+$$I(X; Z) + I(X; Y | Z) = I(X; Y)$$
+
+Since $I(X; Y | Z) \geq 0$ (non-negativity of conditional MI), we get $I(X; Z) \leq I(X; Y)$.
+
+Equality holds iff $I(X; Y | Z) = 0$, meaning $Y$ provides no additional information about $X$ beyond what $Z$ already captures.
+</TheoremBlock>
+
+The DPI has profound implications for representation learning. Every layer in a neural network processes its input: if we have $X \to Z_1 \to Z_2 \to \cdots \to Z_L$, then $I(X; Z_1) \geq I(X; Z_2) \geq \cdots \geq I(X; Z_L)$. Information about the input can only decrease through the network. A good representation is one that preserves the *relevant* information about the target while discarding noise.
+
+Explore the DPI interactively — adjust the channel type and noise level to see how information degrades through processing.
+
+<DataProcessingExplorer client:visible />
+
+![Data processing inequality](/images/topics/shannon-entropy/data-processing-inequality.png)
+
+---
+
+## Differential Entropy
+
+What happens when we move from discrete to continuous random variables? The naive approach — replacing sums with integrals — gives *differential entropy*, but with some important caveats.
+
+<TheoremBlock type="definition" number={8} title="Differential Entropy">
+For a continuous random variable $X$ with probability density function $f(x)$, the **differential entropy** is
+
+$$h(X) = -\int_{-\infty}^{\infty} f(x) \log_2 f(x) \, dx \quad \text{[bits]}$$
+
+assuming the integral exists.
+</TheoremBlock>
+
+Unlike discrete entropy, differential entropy can be negative — it is not a true measure of "information" in the same absolute sense. However, *differences* of differential entropies are well-behaved, and mutual information $I(X;Y) = h(X) - h(X|Y)$ is non-negative even for continuous variables.
+
+### Key properties
+
+**Translation invariance.** $h(X + c) = h(X)$ for any constant $c$. Shifting a distribution does not change its uncertainty.
+
+**Non-invariance under scaling.** If $Y = aX$ for $a \neq 0$, then $h(Y) = h(X) + \log_2 |a|$. Stretching a distribution increases its entropy; compressing it decreases entropy. This is why differential entropy can be negative — concentrate a distribution enough and $h(X) < 0$.
+
+### Maximum Entropy Distribution
+
+<TheoremBlock type="theorem" number={5} title="Gaussian Maximizes Entropy for Fixed Variance">
+Among all continuous distributions with mean $\mu$ and variance $\sigma^2$, the Gaussian $\mathcal{N}(\mu, \sigma^2)$ uniquely maximizes differential entropy:
+
+$$h(X) \leq \frac{1}{2} \log_2(2\pi e \sigma^2) \quad \text{[bits]}$$
+
+with equality if and only if $X \sim \mathcal{N}(\mu, \sigma^2)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $f$ be any density with mean $\mu$ and variance $\sigma^2$, and let $\phi$ be the Gaussian density $\mathcal{N}(\mu, \sigma^2)$. We have:
+
+$$0 \leq D_{KL}(f \| \phi) = \int f(x) \log_2 \frac{f(x)}{\phi(x)} \, dx = -h(f) - \int f(x) \log_2 \phi(x) \, dx$$
+
+Now compute $\int f(x) \log_2 \phi(x) \, dx$. Since $\phi(x) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp(-\frac{(x-\mu)^2}{2\sigma^2})$:
+
+$$\int f(x) \log_2 \phi(x) \, dx = -\frac{1}{2}\log_2(2\pi\sigma^2) - \frac{E[(X-\mu)^2]}{2\sigma^2} \log_2 e = -\frac{1}{2}\log_2(2\pi e \sigma^2)$$
+
+where we used $E[(X-\mu)^2] = \sigma^2$. Substituting back:
+
+$$0 \leq -h(f) + \frac{1}{2}\log_2(2\pi e \sigma^2)$$
+
+so $h(f) \leq \frac{1}{2}\log_2(2\pi e \sigma^2) = h(\phi)$. Equality holds iff $D_{KL}(f \| \phi) = 0$, i.e., $f = \phi$.
+</TheoremBlock>
+
+This result explains why Gaussians appear everywhere in statistics and ML: they are the "least informative" distributions for a given variance. When we assume Gaussian noise or Gaussian priors, we are making the maximum-entropy assumption — committing to the distribution that introduces the least extra structure beyond the constraint on variance.
+
+![Differential entropy: Gaussian vs. uniform](/images/topics/shannon-entropy/differential-entropy.png)
+
+![Maximum entropy distributions](/images/topics/shannon-entropy/maximum-entropy.png)
+
+### Mutual information for continuous variables
+
+While differential entropy has quirks (negativity, scale-dependence), mutual information remains perfectly well-defined for continuous variables:
+
+$$I(X;Y) = h(X) + h(Y) - h(X,Y) = \int \int f(x,y) \log_2 \frac{f(x,y)}{f(x) f(y)} \, dx \, dy$$
+
+This is non-negative and equals zero iff $X$ and $Y$ are independent, just as in the discrete case. The scale-dependent artifacts cancel in the difference.
+
+---
+
+## Source Coding & Compression
+
+Shannon entropy is not just an abstract measure of uncertainty — it has a concrete operational meaning: **the entropy of a source is the fundamental limit of lossless data compression**. Shannon's source coding theorem makes this precise.
+
+### Prefix codes and Kraft's inequality
+
+<TheoremBlock type="definition" number={9} title="Prefix Code">
+A **prefix code** (or **instantaneous code**) assigns a binary codeword $c(x)$ to each symbol $x$ such that no codeword is a prefix of another. Prefix codes are uniquely decodable without lookahead.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={6} title="Kraft's Inequality">
+A prefix code with codeword lengths $\ell_1, \ell_2, \ldots, \ell_k$ exists if and only if
+
+$$\sum_{i=1}^{k} 2^{-\ell_i} \leq 1$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Necessity.** Model the binary code as a complete binary tree of depth $\ell_{\max}$. Each codeword of length $\ell_i$ "claims" a subtree of $2^{\ell_{\max} - \ell_i}$ leaves. Since the prefix property forbids overlap, the total claimed leaves cannot exceed $2^{\ell_{\max}}$:
+
+$$\sum_{i=1}^{k} 2^{\ell_{\max} - \ell_i} \leq 2^{\ell_{\max}}$$
+
+Dividing by $2^{\ell_{\max}}$ gives $\sum 2^{-\ell_i} \leq 1$.
+
+**Sufficiency.** Given lengths satisfying the inequality, assign codewords greedily in order of non-decreasing length, at each step choosing the lexicographically first available codeword. The Kraft inequality guarantees that codewords never run out.
+</TheoremBlock>
+
+### Shannon's source coding theorem
+
+<TheoremBlock type="theorem" number={7} title="Shannon's Source Coding Theorem">
+For a discrete random variable $X$ with entropy $H(X)$:
+
+1. **Converse.** Any uniquely decodable code must satisfy $E[\ell(X)] \geq H(X)$.
+2. **Achievability.** There exists a prefix code with $E[\ell(X)] < H(X) + 1$.
+
+In particular, the Huffman code achieves $H(X) \leq E[\ell_{\text{Huffman}}(X)] < H(X) + 1$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Converse.** By Kraft's inequality, any code with lengths $\ell(x)$ defines a sub-probability distribution $q(x) = 2^{-\ell(x)} / Z$ where $Z = \sum 2^{-\ell(x)} \leq 1$. Since $\ell(x) = -\log_2 q(x) - \log_2 Z$:
+
+$$E[\ell(X)] = -\sum_x p(x) \log_2 q(x) - \log_2 Z$$
+
+Since $-\sum_x p(x) \log_2 q(x) = H(X) + D_{KL}(p \| q) \geq H(X)$ and $-\log_2 Z \geq 0$ because $Z \leq 1$:
+
+$$E[\ell(X)] = H(X) + D_{KL}(p \| q) - \log_2 Z \geq H(X)$$
+
+**Achievability.** Set $\ell(x) = \lceil -\log_2 p(x) \rceil$. Then $\ell(x) < -\log_2 p(x) + 1$, so:
+
+$$E[\ell(X)] < -\sum_x p(x) \log_2 p(x) + 1 = H(X) + 1$$
+
+These lengths satisfy Kraft's inequality: $\sum 2^{-\ell(x)} \leq \sum 2^{\log_2 p(x)} = \sum p(x) = 1$.
+</TheoremBlock>
+
+The Huffman algorithm builds an optimal prefix code by iteratively merging the two lowest-probability symbols. Explore the construction below.
+
+<SourceCodingExplorer client:visible />
+
+![Huffman tree example](/images/topics/shannon-entropy/huffman-tree.png)
+
+![Source coding: entropy as compression limit](/images/topics/shannon-entropy/source-coding-theorem.png)
+
+### Code blocks: Huffman coding in Python
+
+```python
+import heapq
+
+class HuffmanNode:
+    def __init__(self, symbol=None, prob=0, left=None, right=None):
+        self.symbol = symbol
+        self.prob = prob
+        self.left = left
+        self.right = right
+
+    def __lt__(self, other):
+        return self.prob < other.prob
+
+def build_huffman_tree(symbols, probs):
+    heap = [HuffmanNode(s, p) for s, p in zip(symbols, probs)]
+    heapq.heapify(heap)
+    while len(heap) > 1:
+        left = heapq.heappop(heap)
+        right = heapq.heappop(heap)
+        merged = HuffmanNode(prob=left.prob + right.prob, left=left, right=right)
+        heapq.heappush(heap, merged)
+    return heap[0]
+
+def get_codes(node, prefix='', codes=None):
+    if codes is None:
+        codes = {}
+    if node.symbol is not None:
+        codes[node.symbol] = prefix if prefix else '0'
+    else:
+        if node.left:
+            get_codes(node.left, prefix + '0', codes)
+        if node.right:
+            get_codes(node.right, prefix + '1', codes)
+    return codes
+```
+
+---
+
+## Entropy Rate
+
+So far we have studied entropy for single random variables and pairs. For stochastic processes — sequences of random variables — the relevant quantity is the *entropy rate*: the per-symbol uncertainty in the long run.
+
+<TheoremBlock type="definition" number={10} title="Entropy Rate">
+For a stationary stochastic process $\{X_1, X_2, X_3, \ldots\}$, the **entropy rate** is
+
+$$\mathcal{H} = \lim_{n \to \infty} H(X_n \mid X_{n-1}, \ldots, X_1)$$
+
+when the limit exists. Equivalently:
+
+$$\mathcal{H} = \lim_{n \to \infty} \frac{1}{n} H(X_1, X_2, \ldots, X_n)$$
+</TheoremBlock>
+
+For an i.i.d. process, $\mathcal{H} = H(X_1)$ — each symbol carries its full entropy. But for processes with memory (like Markov chains), the entropy rate is strictly less than $H(X_1)$ because past observations reduce uncertainty about the next symbol.
+
+<TheoremBlock type="proposition" number={7} title="Entropy Rate of a Stationary Markov Chain">
+For a stationary Markov chain with transition matrix $P$ and stationary distribution $\pi$, the entropy rate is
+
+$$\mathcal{H} = -\sum_{i} \pi_i \sum_{j} P_{ij} \log_2 P_{ij} = \sum_{i} \pi_i \, H(P_{i \cdot})$$
+
+where $H(P_{i \cdot})$ is the entropy of the $i$-th row of the transition matrix.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+In stationarity, $H(X_n | X_{n-1}) = \sum_i P(X_{n-1} = i) \, H(X_n | X_{n-1} = i) = \sum_i \pi_i \, H(P_{i\cdot})$.
+
+By the Markov property, $H(X_n | X_{n-1}, \ldots, X_1) = H(X_n | X_{n-1})$, so the limit defining $\mathcal{H}$ is reached exactly:
+
+$$\mathcal{H} = H(X_n | X_{n-1}) = \sum_i \pi_i \, H(P_{i\cdot}) = -\sum_i \pi_i \sum_j P_{ij} \log_2 P_{ij}$$
+</TheoremBlock>
+
+The entropy rate of a Markov chain is a weighted average of the entropies of each row of the transition matrix, weighted by the stationary distribution. States visited more often contribute more to the overall rate.
+
+![Entropy rate: Markov chains](/images/topics/shannon-entropy/entropy-rate.png)
+
+---
+
+## Computational Notes
+
+### Computing entropy in NumPy
+
+```python
+import numpy as np
+
+def entropy(probs):
+    """Shannon entropy in bits. Convention: 0 log 0 = 0."""
+    p = np.asarray(probs, dtype=float)
+    p = p[p > 0]  # filter zeros
+    return -np.sum(p * np.log2(p))
+
+# Examples
+probs_uniform = np.array([0.25, 0.25, 0.25, 0.25])
+print(f"Uniform(4): H = {entropy(probs_uniform):.4f} bits")  # 2.0000
+
+probs_peaked = np.array([0.9, 0.05, 0.03, 0.02])
+print(f"Peaked:     H = {entropy(probs_peaked):.4f} bits")    # 0.6095
+```
+
+### Mutual information from a joint table
+
+```python
+def mutual_information(joint):
+    """I(X;Y) from a 2D joint probability array."""
+    joint = np.asarray(joint, dtype=float)
+    p_x = joint.sum(axis=1)
+    p_y = joint.sum(axis=0)
+    return entropy(p_x) + entropy(p_y) - entropy(joint.ravel())
+
+joint = np.array([[0.3, 0.1],
+                   [0.1, 0.5]])
+print(f"I(X;Y) = {mutual_information(joint):.4f} bits")
+```
+
+### Plug-in vs. k-NN mutual information estimation
+
+For continuous data, we can estimate MI using either a **plug-in estimator** (discretize into bins, compute the histogram MI) or the **k-nearest-neighbor estimator** of Kraskov, Stögbauer & Grassberger (2004), which avoids binning artifacts:
+
+```python
+import numpy as np
+
+# Plug-in estimator: discretize and compute
+def mi_plugin(x, y, bins='auto'):
+    """Plug-in MI estimator via 2D histogram."""
+    hist_2d, _, _ = np.histogram2d(x, y, bins=bins)
+    hist_2d = hist_2d / hist_2d.sum()  # normalize to joint PMF
+    p_x = hist_2d.sum(axis=1)
+    p_y = hist_2d.sum(axis=0)
+    return entropy(p_x) + entropy(p_y) - entropy(hist_2d.ravel())
+```
+
+The plug-in estimator is biased for small samples (tends to overestimate MI) and sensitive to bin width. The k-NN estimator is consistent and adaptive, making it the preferred method for continuous MI estimation.
+
+### Cross-entropy loss and entropy
+
+The cross-entropy loss used in classification is an information-theoretic quantity:
+
+$$H(p, q) = -\sum_i p_i \log_2 q_i = H(p) + D_{KL}(p \| q)$$
+
+For one-hot labels ($p$ is a point mass), $H(p) = 0$, so $H(p, q) = D_{KL}(p \| q)$. Minimizing cross-entropy loss is equivalent to minimizing the KL divergence from the model's predicted distribution to the true label distribution.
+
+```python
+import torch
+import torch.nn.functional as F
+
+# PyTorch cross-entropy loss
+logits = torch.tensor([[1.0, 2.0, 0.5, 0.1]])  # raw model outputs
+target = torch.tensor([1])                        # true class
+
+loss = F.cross_entropy(logits, target)
+print(f"Cross-entropy loss: {loss.item():.4f} nats")
+
+# This equals -log(softmax(logits)[target])
+probs = F.softmax(logits, dim=1)
+manual_loss = -torch.log(probs[0, target[0]])
+print(f"Manual check:       {manual_loss.item():.4f} nats")
+```
+
+### Mutual information for feature selection
+
+Rank features by their mutual information with the target variable to identify the most informative features:
+
+$$I(X_i; Y) = H(Y) - H(Y | X_i)$$
+
+This non-parametric criterion captures arbitrary (not just linear) dependencies, making it more powerful than correlation for feature selection in classification tasks.
+
+![Cross-entropy loss and MI feature selection](/images/topics/shannon-entropy/cross-entropy-loss.png)
+
+---
+
+## Connections & Further Reading
+
+Shannon entropy opens the door to a rich web of information-theoretic quantities and their applications across machine learning, statistics, and beyond.
+
+### Downstream on this track
+
+- **KL Divergence & f-Divergences** *(coming soon)* — the asymmetric divergence $D_{KL}(p \| q) = H(p, q) - H(p)$ generalizes to the broader family of $f$-divergences, each inducing a different geometry on the space of distributions.
+- **Rate-Distortion Theory** *(coming soon)* — Shannon's lossy source coding theorem: the minimum rate $R(D)$ for encoding a source at distortion level $D$ is an optimization over mutual information.
+- **Minimum Description Length** *(coming soon)* — model selection via code length: the best model minimizes the total description length (model code + data-given-model code), connecting entropy to statistical learning theory.
+
+### Cross-track connections
+
+- **[Measure-Theoretic Probability](/topics/measure-theoretic-probability)** — entropy is $E[-\log p(X)]$; differential entropy requires the Lebesgue integral; conditional entropy uses conditional expectation via the Radon–Nikodym theorem.
+- **[Convex Analysis](/topics/convex-analysis)** — entropy is concave in $p$; Jensen's inequality proves uniform maximality; channel capacity and rate-distortion optimization are convex programs.
+- **[Information Geometry & Fisher Metric](/topics/information-geometry)** — the Fisher metric is the Hessian of KL divergence, which is defined in terms of entropy. The entropy and divergence functions developed here are the starting point for the geometric structure on statistical manifolds.
+- **[Bayesian Nonparametrics](/topics/bayesian-nonparametrics)** — the maximum entropy principle selects the least informative prior consistent with known constraints, connecting entropy to Bayesian inference and the choice of non-informative priors.
