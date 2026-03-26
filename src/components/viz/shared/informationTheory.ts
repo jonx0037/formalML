@@ -62,13 +62,15 @@ export function mutualInformation(joint: number[][]): number {
   return entropy(pX) + entropy(pY) - jointEntropy(joint);
 }
 
-/** Differential entropy of a Gaussian N(mu, sigma^2) in nats, converted to bits. */
+/** Differential entropy of a Gaussian N(mu, sigma^2) in bits. */
 export function gaussianDifferentialEntropy(sigma: number): number {
   // h(X) = 0.5 * log2(2 * pi * e * sigma^2)
   return 0.5 * Math.log2(2 * Math.PI * Math.E * sigma * sigma);
 }
 
-/** Build a Huffman tree from symbols and probabilities. */
+/** Build a Huffman tree from symbols and probabilities.
+ *  Uses repeated sorting (O(k² log k)) rather than a heap — acceptable
+ *  for the small k values (≤8) used in the visualizations. */
 export function buildHuffmanTree(
   symbols: string[],
   probs: number[]

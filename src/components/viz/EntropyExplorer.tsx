@@ -125,50 +125,49 @@ export default function EntropyExplorer() {
         .style('font-size', '10px')
         .text('1/k');
 
-      // Draggable bars
-      const bars = g.selectAll<SVGRectElement, number>('.bar')
-        .data(probs)
+      // Draggable bars — bind {prob, index} to avoid indexOf ambiguity
+      const barData = probs.map((p, i) => ({ p, i }));
+      const bars = g.selectAll<SVGRectElement, { p: number; i: number }>('.bar')
+        .data(barData)
         .enter()
         .append('rect')
         .attr('class', 'bar')
-        .attr('x', (_, i) => xScale(i)!)
-        .attr('y', (d) => yScale(d))
+        .attr('x', (d) => xScale(d.i)!)
+        .attr('y', (d) => yScale(d.p))
         .attr('width', xScale.bandwidth())
-        .attr('height', (d) => h - yScale(d))
+        .attr('height', (d) => h - yScale(d.p))
         .attr('fill', TEAL)
         .attr('rx', 2)
         .style('cursor', 'ns-resize');
 
       // Drag behavior
-      const drag = d3.drag<SVGRectElement, number>()
-        .on('drag', function (event, _d) {
-          const i = probs.indexOf(_d);
-          if (i < 0) return;
+      const drag = d3.drag<SVGRectElement, { p: number; i: number }>()
+        .on('drag', function (event, d) {
           const newVal = Math.max(0.001, yScale.invert(Math.max(0, Math.min(h, event.y))));
           const updated = [...probs];
-          updated[i] = newVal;
+          updated[d.i] = newVal;
           setProbs(normalize(updated));
         });
 
       bars.call(drag);
 
       // Entropy display
-      g.append('text')
+      const entropyText = g.append('text')
         .attr('x', w / 2)
         .attr('y', -10)
-        .attr('text-anchor', 'middle')
+        .attr('text-anchor', 'middle');
+
+      entropyText.append('tspan')
         .style('fill', 'var(--color-text)')
         .style('font-size', '14px')
         .style('font-weight', '600')
         .text(`H(X) = ${fmt(H)} bits`);
 
-      g.append('text')
-        .attr('x', w / 2)
-        .attr('y', -10)
-        .attr('text-anchor', 'middle')
-        .attr('dx', `${fmt(H).length * 4 + 70}`)
+      entropyText.append('tspan')
+        .attr('dx', '0.8em')
         .style('fill', PURPLE)
         .style('font-size', '11px')
+        .style('font-weight', '500')
         .text(`(max = ${fmt(maxH)})`);
 
       // Tick styling

@@ -9,7 +9,6 @@ import {
   conditionalEntropy,
   mutualInformation,
   marginal,
-  normalize,
 } from './shared/informationTheory';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -64,10 +63,16 @@ export default function MutualInformationDiagram() {
 
   const handlePreset = useCallback((p: Preset) => {
     setPreset(p);
-    const n = Math.min(nx, ny);
-    if (p === 'independent') setJoint(makeIndependent(nx, ny));
-    else if (p === 'correlated') setJoint(makeCorrelated(n));
-    else if (p === 'noisy') setJoint(makeNoisy(n));
+    if (p === 'independent') {
+      setJoint(makeIndependent(nx, ny));
+    } else {
+      // Correlated/noisy presets require a square grid
+      const n = Math.min(nx, ny) as GridSize;
+      if (nx !== n) setNx(n);
+      if (ny !== n) setNy(n);
+      if (p === 'correlated') setJoint(makeCorrelated(n));
+      else if (p === 'noisy') setJoint(makeNoisy(n));
+    }
   }, [nx, ny]);
 
   const handleGridChange = useCallback((axis: 'x' | 'y', val: GridSize) => {
@@ -438,8 +443,6 @@ export default function MutualInformationDiagram() {
           {hoveredRegion === 'mi' && `I(X;Y) = H(X) − H(X|Y) = H(Y) − H(Y|X) = ${fmt(quantities.mi)} bits`}
           {hoveredRegion === 'hXgY' && `H(X|Y) = H(X) − I(X;Y) = ${fmt(quantities.hXgY)} bits`}
           {hoveredRegion === 'hYgX' && `H(Y|X) = H(Y) − I(X;Y) = ${fmt(quantities.hYgX)} bits`}
-          {hoveredRegion === 'hX' && `H(X) = H(X|Y) + I(X;Y) = ${fmt(quantities.hX)} bits`}
-          {hoveredRegion === 'hY' && `H(Y) = H(Y|X) + I(X;Y) = ${fmt(quantities.hY)} bits`}
         </div>
       )}
     </div>

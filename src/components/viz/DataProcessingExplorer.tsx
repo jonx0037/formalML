@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -52,10 +52,11 @@ function computeMI(channel: Channel, noise: number): { iXY: number; iXZ: number;
       const sigma2 = 0.5; // fixed second-stage noise
       const snr1 = 1 / (sigma1 * sigma1);
       const snr_total = 1 / (sigma1 * sigma1 + sigma2 * sigma2);
-      const snr2 = 1 / (sigma2 * sigma2);
+      const varY = 1 + sigma1 * sigma1; // Var(Y) = Var(X) + Var(N1) with Var(X) = 1
+      const snrYZ = varY / (sigma2 * sigma2);
       const iXY = 0.5 * Math.log2(1 + snr1);
       const iXZ = 0.5 * Math.log2(1 + snr_total);
-      const iYZ = 0.5 * Math.log2(1 + snr2);
+      const iYZ = 0.5 * Math.log2(1 + snrYZ);
       return { iXY, iXZ, iYZ };
     }
     case 'quantization': {
@@ -71,6 +72,8 @@ function computeMI(channel: Channel, noise: number): { iXY: number; iXZ: number;
       const iXY = Math.max(0, 1 - noise);
       return { iXY, iXZ: iXY, iYZ: iXY };
     }
+    default:
+      throw new Error(`Unhandled channel type: ${channel}`);
   }
 }
 
@@ -81,8 +84,7 @@ export default function DataProcessingExplorer() {
 
   const [channel, setChannel] = useState<Channel>('bsc');
   const [noise, setNoise] = useState(0.15);
-
-  const isStacked = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
+  const markerId = useId().replace(/:/g, '');
 
   const { iXY, iXZ, iYZ } = useMemo(() => computeMI(channel, noise), [channel, noise]);
 
@@ -112,19 +114,19 @@ export default function DataProcessingExplorer() {
           .attr('x2', x2).attr('y2', nodeY)
           .attr('stroke', 'var(--color-border)')
           .attr('stroke-width', 2)
-          .attr('marker-end', 'url(#arrow)');
+          .attr('marker-end', `url(#arrow-${markerId})`);
       }
 
       // Arrow marker
       svg.append('defs').append('marker')
-        .attr('id', 'arrow')
+        .attr('id', `arrow-${markerId}`)
         .attr('viewBox', '0 0 10 10')
         .attr('refX', 9).attr('refY', 5)
         .attr('markerWidth', 8).attr('markerHeight', 8)
         .attr('orient', 'auto-start-reverse')
         .append('path')
         .attr('d', 'M 0 0 L 10 5 L 0 10 z')
-        .attr('fill', 'var(--color-border)');
+        .style('fill', 'var(--color-border)');
 
       // Nodes
       for (const node of nodePositions) {
@@ -215,7 +217,7 @@ export default function DataProcessingExplorer() {
           .text('(equality — sufficient statistic)');
       }
     },
-    [containerWidth, iXY, iXZ, iYZ, channel]
+    [containerWidth, iXY, iXZ, iYZ, channel, markerId]
   );
 
   // ── MI vs. noise plot ───────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -63,8 +63,7 @@ export default function SourceCodingExplorer() {
 
   const [k, setK] = useState(5);
   const [probs, setProbs] = useState(() => defaultProbs(5));
-  const [animStep, setAnimStep] = useState(-1); // -1 = show full tree
-  const animRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showTree, setShowTree] = useState(true);
 
   const isStacked = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
   const symbols = useMemo(() => symbolLabels(k), [k]);
@@ -72,7 +71,7 @@ export default function SourceCodingExplorer() {
   const handleKChange = useCallback((newK: number) => {
     setK(newK);
     setProbs(defaultProbs(newK));
-    setAnimStep(-1);
+    setShowTree(true);
   }, []);
 
   // ── Computed values ──────────────────────────────────────────────
@@ -80,29 +79,6 @@ export default function SourceCodingExplorer() {
   const tree = useMemo(() => buildHuffmanTree(symbols, probs), [symbols, probs]);
   const codes = useMemo(() => huffmanCodes(tree), [tree]);
   const avgLen = useMemo(() => expectedCodeLength(symbols, probs, codes), [symbols, probs, codes]);
-
-  // ── Animation ──────────────────────────────────────────────────
-  const startAnimation = useCallback(() => {
-    if (animRef.current) clearTimeout(animRef.current);
-    setAnimStep(0);
-    const totalSteps = k - 1; // number of merge steps
-    let step = 0;
-    const tick = () => {
-      step++;
-      if (step >= totalSteps) {
-        setAnimStep(-1); // show full tree
-        return;
-      }
-      setAnimStep(step);
-      animRef.current = setTimeout(tick, 600);
-    };
-    animRef.current = setTimeout(tick, 600);
-  }, [k]);
-
-  const resetAnimation = useCallback(() => {
-    if (animRef.current) clearTimeout(animRef.current);
-    setAnimStep(-1);
-  }, []);
 
   // ── Distribution bar chart (left) ──────────────────────────────
   const distWidth = isStacked ? containerWidth : Math.floor(containerWidth * 0.35);
@@ -137,26 +113,25 @@ export default function SourceCodingExplorer() {
         .style('fill', 'var(--color-text-secondary)')
         .style('font-size', '12px');
 
-      // Draggable bars
-      const bars = g.selectAll<SVGRectElement, number>('.bar')
-        .data(probs)
+      // Draggable bars — bind {prob, index} to avoid indexOf ambiguity
+      const barData = probs.map((p, i) => ({ p, i }));
+      const bars = g.selectAll<SVGRectElement, { p: number; i: number }>('.bar')
+        .data(barData)
         .enter()
         .append('rect')
-        .attr('x', (_, i) => xScale(symbols[i])!)
-        .attr('y', (d) => yScale(d))
+        .attr('x', (d) => xScale(symbols[d.i])!)
+        .attr('y', (d) => yScale(d.p))
         .attr('width', xScale.bandwidth())
-        .attr('height', (d) => h - yScale(d))
+        .attr('height', (d) => h - yScale(d.p))
         .attr('fill', TEAL)
         .attr('rx', 2)
         .style('cursor', 'ns-resize');
 
-      const drag = d3.drag<SVGRectElement, number>()
-        .on('drag', function (event, _d) {
-          const i = probs.indexOf(_d);
-          if (i < 0) return;
+      const drag = d3.drag<SVGRectElement, { p: number; i: number }>()
+        .on('drag', function (event, d) {
           const newVal = Math.max(0.001, yScale.invert(Math.max(0, Math.min(h, event.y))));
           const updated = [...probs];
-          updated[i] = newVal;
+          updated[d.i] = newVal;
           setProbs(normalize(updated));
         });
 
@@ -277,7 +252,7 @@ export default function SourceCodingExplorer() {
         .style('font-weight', '500')
         .text('Huffman Tree');
     },
-    [treeWidth, tree, codes, animStep]
+    [treeWidth, tree, codes]
   );
 
   // ── Comparison table (right) ───────────────────────────────────
@@ -307,7 +282,7 @@ export default function SourceCodingExplorer() {
         </label>
 
         <button
-          onClick={startAnimation}
+          onClick={() => setShowTree((v) => !v)}
           className="rounded px-3 py-1 text-sm font-medium"
           style={{
             backgroundColor: 'var(--color-definition-bg)',
@@ -315,26 +290,14 @@ export default function SourceCodingExplorer() {
             border: `1px solid ${TEAL}`,
           }}
         >
-          Build Tree
-        </button>
-
-        <button
-          onClick={resetAnimation}
-          className="rounded px-3 py-1 text-sm font-medium"
-          style={{
-            backgroundColor: 'transparent',
-            color: 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          Reset
+          {showTree ? 'Hide Tree' : 'Show Tree'}
         </button>
       </div>
 
       {/* Main panels */}
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-2`}>
         <svg ref={distRef} width={distWidth} height={DIST_HEIGHT} />
-        <svg ref={treeRef} width={treeWidth} height={TREE_HEIGHT} />
+        {showTree && <svg ref={treeRef} width={treeWidth} height={TREE_HEIGHT} />}
 
         {/* Comparison table */}
         <div
