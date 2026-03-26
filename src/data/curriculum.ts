@@ -33,7 +33,6 @@ export const tracks = [
     description:
       'Smooth manifolds, Riemannian metrics, and information geometry for probabilistic models.',
     planned: [
-      'Geodesics & Curvature',
       'Information Geometry & Fisher Metric',
     ],
   },

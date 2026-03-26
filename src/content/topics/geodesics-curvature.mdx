@@ -1,0 +1,692 @@
+---
+title: "Geodesics & Curvature"
+subtitle: "Geodesic equations, curvature tensors, and the Gauss–Bonnet theorem"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "riemannian-geometry"
+tags:
+  - "differential-geometry"
+  - "geodesics"
+  - "curvature"
+  - "riemann-tensor"
+  - "gauss-bonnet"
+  - "jacobi-fields"
+domain: "geometry"
+videoId: null
+notebookPath: "notebooks/geodesics-curvature/03_geodesics_curvature.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/geodesics-curvature.mdx"
+datePublished: 2026-03-25
+estimatedReadTime: 50
+abstract: "Geodesics are the 'straightest possible' curves on a Riemannian manifold — the paths of zero acceleration with respect to the Levi-Civita connection. The geodesic equation is a second-order ODE whose solutions encode the manifold's intrinsic geometry: on the sphere, geodesics are great circles; on the hyperbolic plane, they are semicircles in the upper half-plane model. The exponential map packages geodesics into a local diffeomorphism from each tangent space to the manifold, and the resulting normal coordinates make the metric Euclidean to first order, with curvature appearing at second order. The Riemann curvature tensor measures the failure of parallel transport to be path-independent, and its contractions — sectional, Ricci, and scalar curvature — capture progressively coarser geometric information. The Gauss–Bonnet theorem connects curvature to topology: the total Gaussian curvature of a closed surface equals 2π times the Euler characteristic, making it a topological invariant independent of the metric. Jacobi fields describe how nearby geodesics spread or converge, with the sign of sectional curvature controlling the behavior: positive curvature focuses geodesics (leading to conjugate points), while negative curvature causes exponential divergence. The Bonnet–Myers and Cartan–Hadamard theorems draw global topological conclusions from curvature bounds, and the Rauch comparison theorem makes these estimates precise."
+connections:
+  - topic: "riemannian-geometry"
+    relationship: "Geodesics and curvature are the central objects defined by the Riemannian metric and the Levi-Civita connection. The Christoffel symbols from Riemannian Geometry enter directly into the geodesic equation and the Riemann tensor formula. Parallel transport, introduced there, is path-dependent precisely because of curvature."
+  - topic: "smooth-manifolds"
+    relationship: "The manifold structure from Smooth Manifolds — charts, tangent spaces, and the differential — provides the setting for geodesics and curvature. Normal coordinates around a point are a special chart constructed via the exponential map, and the Jacobi equation lives in the tangent bundle."
+  - topic: "spectral-theorem"
+    relationship: "The Riemann curvature tensor at a point defines a symmetric operator on the space of 2-planes in the tangent space, and its eigenvalues are the principal sectional curvatures. The Spectral Theorem guarantees diagonalization of the Ricci tensor, whose eigenvalues are the principal Ricci curvatures."
+  - topic: "persistent-homology"
+    relationship: "The Gauss–Bonnet theorem connects Gaussian curvature to the Euler characteristic, which is computed by persistent homology via the alternating sum of Betti numbers. This links the continuous curvature integral to the combinatorial topological invariants of TDA."
+  - topic: "simplicial-complexes"
+    relationship: "The Euler characteristic chi(M) = V - E + F appearing in the Gauss–Bonnet theorem is computed from any triangulation of the manifold into a simplicial complex, connecting the differential geometry of curvature to the combinatorial topology of simplicial complexes."
+references:
+  - type: "book"
+    title: "Introduction to Riemannian Manifolds"
+    authors: "Lee"
+    year: 2018
+    note: "Chapters 5-10: The primary graduate reference for geodesics, curvature, the exponential map, Jacobi fields, and comparison theorems"
+  - type: "book"
+    title: "Riemannian Geometry"
+    authors: "do Carmo"
+    year: 1992
+    note: "Chapters 3-8: Classical treatment of geodesics, curvature, Jacobi fields, and the Gauss–Bonnet theorem with excellent geometric intuition"
+  - type: "book"
+    title: "Semi-Riemannian Geometry with Applications to Relativity"
+    authors: "O'Neill"
+    year: 1983
+    note: "Chapters 5-8: Curvature, geodesics, and Jacobi fields in the semi-Riemannian setting with applications to general relativity"
+  - type: "book"
+    title: "Comparison Theorems in Riemannian Geometry"
+    authors: "Cheeger & Ebin"
+    year: 1975
+    note: "The definitive reference for Rauch, Bonnet–Myers, Cartan–Hadamard, and Bishop–Gromov comparison theorems"
+  - type: "paper"
+    title: "Ricci Curvature of Markov Chains on Metric Spaces"
+    authors: "Ollivier"
+    year: 2009
+    url: "https://doi.org/10.1016/j.jfa.2008.11.001"
+    note: "Extends Ricci curvature to discrete metric spaces and Markov chains — the foundation for graph Ricci curvature in ML"
+  - type: "paper"
+    title: "Exploring Generalization in Deep Learning"
+    authors: "Neyshabur, Bhojanapalli, McAllester & Srebro"
+    year: 2017
+    url: "https://doi.org/10.48550/arXiv.1706.08947"
+    note: "Connects loss landscape curvature (sharpness of minima) to generalization bounds in deep learning"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import GeodesicExplorer from '../../components/viz/GeodesicExplorer.tsx';
+import CurvatureExplorer from '../../components/viz/CurvatureExplorer.tsx';
+import GaussBonnetExplorer from '../../components/viz/GaussBonnetExplorer.tsx';
+import JacobiFieldExplorer from '../../components/viz/JacobiFieldExplorer.tsx';
+
+## Overview & Motivation
+
+In [Riemannian Geometry](/topics/riemannian-geometry), we equipped smooth manifolds with a metric tensor $g$ and built the Levi-Civita connection $\nabla$ — the unique torsion-free, metric-compatible covariant derivative. With this machinery, we could measure lengths, angles, and areas, and we could parallel-transport vectors along curves. But we left the most fundamental geometric questions unanswered: what are the "straight lines" on a curved space? How do we quantify how much a manifold deviates from being flat? And what are the global consequences of local curvature?
+
+This topic answers all three. **Geodesics** are the curves of zero acceleration — the closest thing to straight lines on a Riemannian manifold. On the sphere $S^2$, they are great circles; on the hyperbolic plane, they are semicircles orthogonal to the boundary in the Poincaré disk model. The **geodesic equation** is a system of second-order ODEs whose solutions encode the manifold's intrinsic geometry, and the **exponential map** packages these solutions into a smooth map from each tangent space to the manifold.
+
+The **Riemann curvature tensor** measures the failure of parallel transport to be path-independent. Its contractions — **sectional**, **Ricci**, and **scalar curvature** — capture progressively coarser geometric information, from the curvature of individual 2-planes to a single scalar summary at each point.
+
+The climax is the **Gauss–Bonnet theorem**: the total Gaussian curvature of a closed surface equals $2\pi\chi(M)$, where $\chi(M)$ is the Euler characteristic. This is a profound bridge between *local geometry* (curvature at each point) and *global topology* (the shape of the manifold as a whole). You can deform a sphere into any potato-shaped blob, and the total curvature remains $4\pi$ — because the Euler characteristic $\chi(S^2) = 2$ is a topological invariant, computable via the Betti numbers from [Persistent Homology](/topics/persistent-homology) or the $V - E + F$ formula from [Simplicial Complexes](/topics/simplicial-complexes).
+
+**Jacobi fields** describe how nearby geodesics spread or converge, with the sign of curvature controlling the behavior. Positive curvature focuses geodesics (like meridians on a sphere converging at the poles); negative curvature causes exponential divergence (like geodesics on a saddle surface). The **comparison theorems** — Bonnet–Myers, Cartan–Hadamard, Rauch, and Bishop–Gromov — draw sweeping global conclusions from curvature bounds.
+
+For machine learning, curvature appears in manifold learning (the curvature of data manifolds determines how well local linear approximations work), natural gradient descent (geodesics in the Fisher metric parameter space), loss landscape analysis (flat minima generalize better than sharp ones), and graph analysis (Ollivier–Ricci curvature detects community structure).
+
+### What We Cover
+
+1. **Geodesics** — the geodesic equation, existence and uniqueness, constant speed, great circles on $S^2$
+2. **The exponential map** — normal coordinates, the injectivity radius, curvature at second order
+3. **The Riemann curvature tensor** — definition, coordinate formula, symmetries, flatness criterion
+4. **Sectional, Ricci, and scalar curvature** — the contraction hierarchy, Schur's lemma
+5. **The Gauss–Bonnet theorem** — angle excess, the global theorem, topological constraints
+6. **Jacobi fields** — the Jacobi equation, conjugate points, curvature and geodesic deviation
+7. **Comparison theorems** — Bonnet–Myers, Cartan–Hadamard, Rauch, Bishop–Gromov
+8. **Computational notes** — symbolic Riemann tensor computation, numerical geodesic solvers
+9. **Curvature in ML** — manifold learning, natural gradient, loss landscapes, graph Ricci curvature
+
+### Prerequisites
+
+This topic builds directly on [Riemannian Geometry](/topics/riemannian-geometry). We use the Levi-Civita connection and its Christoffel symbols $\Gamma^k_{ij}$ throughout — these enter the geodesic equation, the Riemann tensor formula, and the Jacobi equation. Parallel transport from that topic is exactly what curvature measures the path-dependence of. The [Smooth Manifolds](/topics/smooth-manifolds) foundation (charts, tangent spaces, the differential) provides the underlying language.
+
+---
+
+## Geodesics: Curves of Zero Acceleration
+
+On a Riemannian manifold $(M, g)$ with the Levi-Civita connection $\nabla$, a geodesic is a curve whose velocity vector is parallel along itself — it has zero covariant acceleration.
+
+<TheoremBlock type="definition" number={1} title="Geodesic">
+Let $(M, g)$ be a Riemannian manifold with Levi-Civita connection $\nabla$. A smooth curve $\gamma : I \to M$ is a **geodesic** if
+
+$$
+\nabla_{\gamma'(t)} \gamma'(t) = 0 \quad \text{for all } t \in I.
+$$
+
+Equivalently, $\gamma$ parallel-transports its own velocity vector.
+</TheoremBlock>
+
+The definition says that geodesics are "unaccelerated" — not that they are the shortest paths (though they locally are). Think of a geodesic as what you get when you walk forward without turning: you follow the curvature of the manifold, but you never steer.
+
+In local coordinates $\gamma(t) = (x^1(t), \ldots, x^n(t))$, writing out $\nabla_{\gamma'}\gamma' = 0$ using the Christoffel symbols gives the **geodesic equation**:
+
+$$
+\ddot{x}^k + \Gamma^k_{ij}\, \dot{x}^i \dot{x}^j = 0, \quad k = 1, \ldots, n,
+$$
+
+where $\dot{x}^i = dx^i/dt$ and $\ddot{x}^k = d^2 x^k / dt^2$. This is a system of $n$ second-order ODEs — the Christoffel symbols act as "correction terms" that account for the curvature of the coordinate system. On flat $\mathbb{R}^n$ with Cartesian coordinates, all $\Gamma^k_{ij} = 0$ and the geodesic equation reduces to $\ddot{x}^k = 0$: straight lines.
+
+**Example: great circles on $S^2$.** On the unit sphere with the round metric $g = d\theta^2 + \sin^2\!\theta\, d\varphi^2$, the nonzero Christoffel symbols are $\Gamma^\theta_{\varphi\varphi} = -\sin\theta\cos\theta$ and $\Gamma^\varphi_{\theta\varphi} = \Gamma^\varphi_{\varphi\theta} = \cot\theta$. The geodesic equation becomes:
+
+$$
+\ddot{\theta} - \sin\theta\cos\theta\, \dot{\varphi}^2 = 0, \qquad \ddot{\varphi} + 2\cot\theta\, \dot{\theta}\, \dot{\varphi} = 0.
+$$
+
+The solutions are exactly the great circles — intersections of the sphere with planes through the origin. The equator $\theta(t) = \pi/2$, $\varphi(t) = t$ is the simplest example: the first equation gives $0 - (1)(0)(1) = 0$ and the second gives $0 + 0 = 0$.
+
+![Geodesics on the sphere, the geodesic equation, and numerical solutions](/images/topics/geodesics-curvature/geodesics-equation.png)
+
+The geodesic equation is a second-order ODE, and the standard existence-uniqueness theorem from ODE theory applies immediately.
+
+<TheoremBlock type="theorem" number={1} title="Existence and Uniqueness of Geodesics">
+Let $(M, g)$ be a Riemannian manifold, $p \in M$, and $v \in T_pM$. There exists a unique maximal geodesic $\gamma : I \to M$ (where $I$ is the largest open interval containing $0$) such that $\gamma(0) = p$ and $\gamma'(0) = v$.
+</TheoremBlock>
+
+The word *maximal* means we extend the geodesic as far as it will go. On a compact manifold like $S^2$, every geodesic extends to all of $\mathbb{R}$. On an incomplete manifold (like $\mathbb{R}^2$ with a point removed), a geodesic may "fall off the edge" in finite time. A Riemannian manifold is **complete** if every geodesic extends to all of $\mathbb{R}$ — equivalently, by the Hopf–Rinow theorem, if it is complete as a metric space.
+
+An immediate consequence of the geodesic equation and the metric compatibility of $\nabla$ is that geodesics travel at constant speed.
+
+<TheoremBlock type="proposition" number={1} title="Geodesics Have Constant Speed">
+If $\gamma$ is a geodesic, then $\|\gamma'(t)\|_g = g(\gamma'(t), \gamma'(t))^{1/2}$ is constant.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We compute the derivative of the squared speed:
+
+$$
+\frac{d}{dt} g(\gamma', \gamma') = 2\, g(\nabla_{\gamma'}\gamma', \gamma') = 2\, g(0, \gamma') = 0,
+$$
+
+where we used: (1) metric compatibility of $\nabla$, which gives $\frac{d}{dt}g(V, W) = g(\nabla_{\gamma'} V, W) + g(V, \nabla_{\gamma'} W)$; and (2) the geodesic condition $\nabla_{\gamma'}\gamma' = 0$. Since $g(\gamma', \gamma')$ is constant, so is $\|\gamma'\|_g$.
+</TheoremBlock>
+
+Constant speed means we can parametrize geodesics by arc length without reparametrization. A geodesic with $\|\gamma'(0)\|_g = 1$ is a **unit-speed geodesic**, and the parameter $t$ measures the distance traveled along the curve.
+
+---
+
+## The Exponential Map & Normal Coordinates
+
+The exponential map packages the initial-value problem for geodesics into a single smooth map from each tangent space to the manifold.
+
+<TheoremBlock type="definition" number={2} title="Exponential Map">
+Let $(M, g)$ be a Riemannian manifold and $p \in M$. For $v \in T_pM$ such that the geodesic $\gamma_v$ with $\gamma_v(0) = p$ and $\gamma_v'(0) = v$ is defined at $t = 1$, the **exponential map** at $p$ is
+
+$$
+\exp_p : \mathcal{U} \subseteq T_pM \to M, \quad \exp_p(v) = \gamma_v(1),
+$$
+
+where $\mathcal{U}$ is the set of all such $v$.
+</TheoremBlock>
+
+The name "exponential" comes from Lie group theory: for matrix Lie groups, the Riemannian exponential map coincides with the matrix exponential. The key observation is the rescaling property: $\exp_p(tv) = \gamma_v(t)$. So the geodesic in the direction $v$ is the image of the ray $t \mapsto tv$ in the tangent space under $\exp_p$. Straight lines through the origin in $T_pM$ map to geodesics through $p$ in $M$.
+
+<TheoremBlock type="theorem" number={2} title="Normal Neighborhood Theorem">
+For each $p \in M$, there exists $\varepsilon > 0$ such that $\exp_p$ maps the open ball $B_\varepsilon(0) \subset T_pM$ diffeomorphically onto an open neighborhood of $p$ in $M$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The differential of $\exp_p$ at the origin is the identity: $d(\exp_p)_0 = \mathrm{id}_{T_pM}$. This follows because for any $v \in T_pM$:
+
+$$
+d(\exp_p)_0(v) = \frac{d}{dt}\bigg|_{t=0} \exp_p(tv) = \frac{d}{dt}\bigg|_{t=0} \gamma_v(t) = \gamma_v'(0) = v.
+$$
+
+Since $d(\exp_p)_0$ is invertible, the inverse function theorem guarantees that $\exp_p$ is a local diffeomorphism near $0$.
+</TheoremBlock>
+
+This theorem is the gateway to a particularly nice coordinate system.
+
+<TheoremBlock type="definition" number={3} title="Normal Coordinates">
+Let $\{e_1, \ldots, e_n\}$ be an orthonormal basis for $T_pM$. The **normal coordinates** (or Riemannian normal coordinates) at $p$ are the coordinates $(x^1, \ldots, x^n)$ defined by
+
+$$
+q = \exp_p\!\left(\sum_i x^i e_i\right)
+$$
+
+for $q$ in a normal neighborhood of $p$.
+</TheoremBlock>
+
+Normal coordinates have remarkable properties at the center point $p$:
+
+- **The metric is Euclidean:** $g_{ij}(p) = \delta_{ij}$.
+- **Christoffel symbols vanish:** $\Gamma^k_{ij}(p) = 0$.
+- **Geodesics through $p$ are straight lines:** $\gamma(t) = (tv^1, \ldots, tv^n)$ in these coordinates.
+- **Curvature appears at second order:** $g_{ij}(x) = \delta_{ij} - \frac{1}{3} R_{ikjl}(p)\, x^k x^l + O(|x|^3)$.
+
+The last property is the most profound: to first order, every Riemannian manifold looks Euclidean. The *deviation* from flatness is controlled by the Riemann curvature tensor, and it appears only at second order. This is why we needed the full machinery of connections and curvature tensors — first-order information cannot distinguish a curved manifold from a flat one.
+
+<TheoremBlock type="definition" number={4} title="Injectivity Radius">
+The **injectivity radius** at $p$ is
+
+$$
+\mathrm{inj}(p) = \sup\{r > 0 : \exp_p|_{B_r(0)} \text{ is a diffeomorphism}\}.
+$$
+
+The **injectivity radius of $M$** is $\mathrm{inj}(M) = \inf_{p \in M} \mathrm{inj}(p)$.
+</TheoremBlock>
+
+On the unit sphere $S^2$, the injectivity radius at every point is $\pi$ — the antipodal point. Geodesics from the north pole are great circles that converge at the south pole (distance $\pi$), and $\exp_p$ is a diffeomorphism on the open hemisphere of radius $\pi$. Beyond $\pi$, the exponential map is no longer injective: multiple geodesics from $p$ reach the same point.
+
+![The exponential map, tangent space domain, and normal coordinates](/images/topics/geodesics-curvature/exponential-map.png)
+
+<GeodesicExplorer client:visible />
+
+---
+
+## The Riemann Curvature Tensor
+
+With geodesics and the exponential map in hand, we now attack the central question: how do we measure the curvature of a Riemannian manifold? The answer is the Riemann curvature tensor — a $(1,3)$-tensor that captures everything about the intrinsic curvature.
+
+<TheoremBlock type="definition" number={5} title="Riemann Curvature Endomorphism">
+The **Riemann curvature endomorphism** is the $(1,3)$-tensor field $R$ defined by
+
+$$
+R(X, Y)Z = \nabla_X \nabla_Y Z - \nabla_Y \nabla_X Z - \nabla_{[X,Y]} Z
+$$
+
+for smooth vector fields $X, Y, Z$ on $M$.
+</TheoremBlock>
+
+The definition looks abstract, but the geometric meaning is concrete: $R(X, Y)Z$ measures the **failure of parallel transport to be path-independent**. If we parallel-transport $Z$ first in the $X$ direction, then in the $Y$ direction, versus first in $Y$ then in $X$, the results differ by exactly $R(X, Y)Z$ (after correcting for the Lie bracket term). On flat $\mathbb{R}^n$, parallel transport is path-independent, and $R = 0$ identically.
+
+In local coordinates, the components $R^l_{\;ijk}$ are computed from the Christoffel symbols:
+
+$$
+R^l_{\;ijk} = \partial_i \Gamma^l_{jk} - \partial_j \Gamma^l_{ik} + \Gamma^l_{im}\Gamma^m_{jk} - \Gamma^l_{jm}\Gamma^m_{ik}.
+$$
+
+The fully covariant Riemann tensor $R_{ijkl} = g_{lm} R^m_{\;ijk}$ has a rich set of symmetries that drastically reduce the number of independent components.
+
+<TheoremBlock type="theorem" number={3} title="Symmetries of the Riemann Tensor">
+The Riemann curvature tensor satisfies:
+
+1. **Skew symmetry in the first pair:** $R_{ijkl} = -R_{jikl}$
+2. **Skew symmetry in the second pair:** $R_{ijkl} = -R_{ijlk}$
+3. **Pair symmetry:** $R_{ijkl} = R_{klij}$
+4. **First Bianchi identity:** $R_{ijkl} + R_{iklj} + R_{iljk} = 0$
+
+These symmetries reduce the number of independent components from $n^4$ to $\frac{n^2(n^2-1)}{12}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We prove the first Bianchi identity. Let $X$, $Y$, $Z$ be vector fields. By definition of $R$ and the torsion-free property of the Levi-Civita connection ($\nabla_X Y - \nabla_Y X = [X, Y]$), we compute:
+
+$$
+R(X, Y)Z + R(Y, Z)X + R(Z, X)Y
+$$
+$$
+= \nabla_X\nabla_Y Z - \nabla_Y\nabla_X Z - \nabla_{[X,Y]}Z + \text{cyclic permutations}.
+$$
+
+Using the torsion-free property to replace Lie brackets $[X, Y] = \nabla_X Y - \nabla_Y X$, all terms cancel in pairs. The key step is that each $\nabla_X\nabla_Y Z$ term appears once with a plus sign and once with a minus sign in the cyclic sum, and the bracket correction terms $\nabla_{[X,Y]}Z$ supply the missing cancellations. The detailed computation requires expanding all nine terms and checking that they cancel; we omit the bookkeeping but the mechanism is the torsion-free property applied systematically.
+</TheoremBlock>
+
+The component count formula gives concrete numbers: in dimension 2, there is exactly **1 independent component** (the manifold's curvature is determined by a single function). In dimension 3, there are 6. In dimension 4 (spacetime in general relativity), there are 20.
+
+![The Riemann curvature tensor: path-dependence, components, and the sphere](/images/topics/geodesics-curvature/riemann-curvature-tensor.png)
+
+The Riemann tensor provides a complete local characterization of flatness.
+
+<TheoremBlock type="theorem" number={4} title="Flatness Criterion">
+A Riemannian manifold $(M, g)$ is **locally isometric to Euclidean space** if and only if $R = 0$ everywhere. Equivalently, $R = 0$ if and only if parallel transport is path-independent in some neighborhood of every point.
+</TheoremBlock>
+
+This theorem closes the circle: the Riemann tensor is the complete obstruction to flatness. A manifold with $R = 0$ is *locally* indistinguishable from $\mathbb{R}^n$ — though it may still be globally different (a flat torus has $R = 0$ but is not diffeomorphic to $\mathbb{R}^2$).
+
+---
+
+## Sectional, Ricci, and Scalar Curvature
+
+The full Riemann tensor carries a lot of information — in dimension $n$, it has $n^2(n^2-1)/12$ independent components. We extract scalar-valued curvature quantities by successively contracting indices, creating a hierarchy from most to least informative.
+
+<TheoremBlock type="definition" number={6} title="Sectional Curvature">
+For a 2-dimensional subspace (2-plane) $\sigma = \mathrm{span}\{v, w\} \subset T_pM$, the **sectional curvature** is
+
+$$
+K(\sigma) = K(v, w) = \frac{R(v, w, w, v)}{\|v\|^2\|w\|^2 - \langle v, w\rangle^2}.
+$$
+
+The denominator is the squared area of the parallelogram spanned by $v$ and $w$, ensuring $K(\sigma)$ depends only on the plane $\sigma$, not on the choice of spanning vectors.
+</TheoremBlock>
+
+Sectional curvature has a clean geometric interpretation: $K(\sigma)$ is the Gaussian curvature of the 2-dimensional surface formed by geodesics tangent to $\sigma$ at $p$. The spaces of constant sectional curvature are the most symmetric Riemannian manifolds:
+
+- $S^n(r)$: $K = 1/r^2$ (positive constant — the sphere)
+- $\mathbb{R}^n$: $K = 0$ (flat — Euclidean space)
+- $\mathbb{H}^n$: $K = -1$ (negative constant — hyperbolic space)
+
+<TheoremBlock type="definition" number={7} title="Ricci Curvature">
+The **Ricci curvature** is the trace of the Riemann curvature endomorphism over one pair of indices:
+
+$$
+\mathrm{Ric}(v, w) = \sum_{i=1}^n R(e_i, v, w, e_i), \qquad \text{i.e., } \mathrm{Ric}_{ij} = R^k_{\;kij},
+$$
+
+where $\{e_i\}$ is an orthonormal basis for $T_pM$.
+</TheoremBlock>
+
+The Ricci curvature $\mathrm{Ric}(v, v)$ averages the sectional curvatures of all 2-planes containing $v$. It governs **volume comparison**: positive Ricci curvature means geodesic balls grow more slowly than in flat space (this is the content of the Bishop–Gromov theorem in §8).
+
+<TheoremBlock type="definition" number={8} title="Scalar Curvature">
+The **scalar curvature** is the full trace of the Ricci tensor:
+
+$$
+S = g^{ij}\mathrm{Ric}_{ij} = \sum_{i < j} K(e_i, e_j).
+$$
+
+It is a single real number at each point — the coarsest curvature invariant.
+</TheoremBlock>
+
+The **contraction hierarchy** from most to least informative:
+
+$$
+R_{ijkl} \;\xrightarrow{\text{trace over one index}}\; \mathrm{Ric}_{ij} \;\xrightarrow{\text{trace again}}\; S.
+$$
+
+Each contraction loses information. The full Riemann tensor determines both Ricci and scalar curvature, but not vice versa (except in low dimensions). In dimension 2, **all three are equivalent**: $K = S/2$ and $\mathrm{Ric} = K\, g$, so the single Gaussian curvature function $K$ contains all curvature information.
+
+![Sectional, Ricci, and scalar curvature hierarchy](/images/topics/geodesics-curvature/sectional-ricci-scalar-curvature.png)
+
+A natural question: if the sectional curvature at each point happens to be the same for all 2-planes (but may vary from point to point), does it follow that $K$ is actually constant on all of $M$? In dimension $\geq 3$, the answer is yes.
+
+<TheoremBlock type="proposition" number={2} title="Schur's Lemma">
+If $\dim(M) \geq 3$ and the sectional curvature $K(\sigma)$ at each point $p$ depends only on $p$ (not on the choice of 2-plane $\sigma$), then $K$ is constant on all of $M$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The assumption says $K(p) = K(\sigma)$ for all 2-planes $\sigma \subset T_pM$. This is equivalent to the Riemann tensor having the special form $R_{ijkl} = K(p)(g_{ik}g_{jl} - g_{il}g_{jk})$. Taking the covariant divergence and using the second Bianchi identity $\nabla_m R_{ijkl} + \nabla_i R_{jmkl} + \nabla_j R_{mikl} = 0$ (contracted form), we obtain $(n-1)(n-2)\, \nabla K = 0$ where $n = \dim M$. Since $n \geq 3$, the coefficient $(n-1)(n-2) \neq 0$, and therefore $\nabla K = 0$, meaning $K$ is constant. (This argument fails in dimension 2, where $(n-1)(n-2) = 0$; indeed, surfaces can have non-constant Gaussian curvature.)
+</TheoremBlock>
+
+<CurvatureExplorer client:visible />
+
+---
+
+## The Gauss–Bonnet Theorem
+
+The Gauss–Bonnet theorem is the crown jewel of two-dimensional Riemannian geometry. It connects *local geometry* (the Gaussian curvature at each point) to *global topology* (the Euler characteristic of the manifold). This is a paradigmatic result in the broader theme of "index theorems" that relate analytic and topological data.
+
+We start with the local version, which is elementary and beautiful.
+
+<TheoremBlock type="theorem" number={5} title="Local Gauss–Bonnet (Angle Excess)">
+Let $\Delta$ be a geodesic triangle on a Riemannian surface $(M^2, g)$ with interior angles $\alpha_1, \alpha_2, \alpha_3$. Then
+
+$$
+\int_\Delta K\, dA = (\alpha_1 + \alpha_2 + \alpha_3) - \pi.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof uses Green's theorem on the manifold. Consider the geodesic triangle $\Delta$ with vertices $A, B, C$ and edges that are geodesic segments. The geodesic curvature of each edge is zero (because the edges are geodesics). By the general Gauss–Bonnet formula for a region with piecewise smooth boundary:
+
+$$
+\int_\Delta K\, dA + \int_{\partial\Delta} \kappa_g\, ds + \sum_i (\pi - \alpha_i) = 2\pi,
+$$
+
+where $\kappa_g$ is the geodesic curvature of the boundary and $(\pi - \alpha_i)$ are the exterior angles at the vertices. Since $\kappa_g = 0$ along geodesic edges, we get $\int_\Delta K\, dA = 2\pi - \sum_i(\pi - \alpha_i) = \sum_i \alpha_i - \pi$.
+</TheoremBlock>
+
+This is the **angle excess formula**: the integral of curvature over a geodesic triangle equals the deviation of the angle sum from $\pi$.
+
+- **Positive curvature ($K > 0$):** Angles sum to more than $\pi$ — "fat" triangles. On a sphere, a geodesic triangle with three right angles ($\alpha_i = \pi/2$) has angle sum $3\pi/2$, and the area of this triangle is $\pi/2$ times $r^2$.
+- **Zero curvature ($K = 0$):** Angles sum to exactly $\pi$ — Euclidean geometry.
+- **Negative curvature ($K < 0$):** Angles sum to less than $\pi$ — "thin" triangles.
+
+The global version integrates over the entire manifold.
+
+<TheoremBlock type="theorem" number={6} title="Global Gauss–Bonnet">
+Let $(M^2, g)$ be a compact oriented Riemannian 2-manifold without boundary. Then
+
+$$
+\int_M K\, dA = 2\pi\, \chi(M),
+$$
+
+where $\chi(M)$ is the Euler characteristic of $M$.
+</TheoremBlock>
+
+The Euler characteristic $\chi(M)$ is a topological invariant: $\chi(S^2) = 2$, $\chi(T^2) = 0$, and $\chi(\Sigma_g) = 2 - 2g$ for a surface of genus $g$. (Recall from [Simplicial Complexes](/topics/simplicial-complexes) that $\chi = V - E + F$ for any triangulation, and from [Persistent Homology](/topics/persistent-homology) that $\chi = \beta_0 - \beta_1 + \beta_2$ via the alternating sum of Betti numbers.)
+
+The consequences are immediate and powerful:
+
+1. **$S^2$ cannot carry a flat metric.** Since $\chi(S^2) = 2 \neq 0$, any metric on $S^2$ must have $\int K\, dA = 4\pi \neq 0$, so $K$ cannot vanish everywhere.
+2. **The torus admits a flat metric.** Since $\chi(T^2) = 0$, the total curvature of *any* metric on $T^2$ is zero. Positive curvature on the outer edge of a torus is exactly cancelled by negative curvature on the inner edge.
+3. **Surfaces of genus $\geq 2$ cannot have $K \geq 0$ everywhere.** Since $\chi(\Sigma_g) < 0$ for $g \geq 2$, the total curvature is negative, which forces $K < 0$ somewhere.
+4. **Total curvature is a topological invariant.** You can deform the metric however you like — stretch, compress, bend — and $\int K\, dA$ remains unchanged. The geometry changes; the topology does not.
+
+![The Gauss–Bonnet theorem: angle excess, the global theorem, and verification on the sphere](/images/topics/geodesics-curvature/gauss-bonnet-theorem.png)
+
+<GaussBonnetExplorer client:visible />
+
+*Remark.* The Gauss–Bonnet theorem generalizes to higher even dimensions as the **Chern–Gauss–Bonnet theorem**. In dimension $2n$, the integrand is the Pfaffian of the curvature form rather than the scalar curvature. The 2-dimensional case is special because the Pfaffian reduces to the Gaussian curvature $K$.
+
+---
+
+## Jacobi Fields & Geodesic Deviation
+
+Geodesics tell us about single paths on a manifold. To understand the *geometry around* a geodesic — how neighboring geodesics behave — we study Jacobi fields.
+
+<TheoremBlock type="definition" number={9} title="Jacobi Field">
+Let $\gamma$ be a geodesic on $(M, g)$. A vector field $J$ along $\gamma$ is a **Jacobi field** if it satisfies the **Jacobi equation**:
+
+$$
+\nabla_{\gamma'}\nabla_{\gamma'} J + R(J, \gamma')\gamma' = 0.
+$$
+</TheoremBlock>
+
+The geometric meaning: consider a one-parameter family of geodesics $\gamma_s(t)$ with $\gamma_0 = \gamma$. The variation vector $J(t) = \frac{\partial}{\partial s}\big|_{s=0} \gamma_s(t)$ is a Jacobi field along $\gamma$. So Jacobi fields describe the *infinitesimal deviation* between nearby geodesics.
+
+The Jacobi equation is a second-order linear ODE along $\gamma$. Since the initial data $(J(0), \nabla_{\gamma'} J(0))$ live in the $n$-dimensional tangent space, the space of Jacobi fields along $\gamma$ is $2n$-dimensional.
+
+**The sign of sectional curvature determines Jacobi field behavior.** This is the key geometric insight. For a space of constant sectional curvature $K$, the Jacobi equation has explicit solutions. If $J(0) = 0$ and $\nabla_{\gamma'} J(0) = e$ (a unit vector perpendicular to $\gamma'$), then $|J(t)|$ equals:
+
+| Curvature | Jacobi field norm | Behavior |
+|-----------|-----------|----------|
+| $K > 0$ | $\sin(\sqrt{K}\, t) / \sqrt{K}$ | Oscillates — geodesics converge |
+| $K = 0$ | $t$ | Linear growth — geodesics spread steadily |
+| $K \lt 0$ | $\sinh(\sqrt{\lvert K \rvert}\, t) / \sqrt{\lvert K \rvert}$ | Exponential growth — geodesics diverge |
+
+Positive curvature *focuses* geodesics: neighboring geodesics starting parallel will eventually cross. Negative curvature *defocuses* them: neighbors diverge exponentially.
+
+<TheoremBlock type="definition" number={10} title="Conjugate Point">
+A point $q = \gamma(t_0)$ is **conjugate** to $p = \gamma(0)$ along $\gamma$ if there exists a non-zero Jacobi field $J$ with $J(0) = 0$ and $J(t_0) = 0$.
+</TheoremBlock>
+
+At a conjugate point, a family of geodesics from $p$ "refocuses" — the envelope of nearby geodesics passes through zero. On $S^n$, the conjugate point to the north pole along any geodesic is the south pole at distance $\pi$ (where every meridian meets).
+
+![Jacobi fields: positive, zero, and negative curvature](/images/topics/geodesics-curvature/jacobi-fields.png)
+
+<JacobiFieldExplorer client:visible />
+
+Conjugate points mark the boundary of where geodesics are optimal.
+
+<TheoremBlock type="theorem" number={7} title="Geodesics Do Not Minimize Past Conjugate Points">
+Let $\gamma$ be a geodesic from $p$ with a conjugate point $q = \gamma(t_0)$. Then $\gamma$ does not minimize length past $q$: for any $t_1 > t_0$, there exists a shorter curve from $p$ to $\gamma(t_1)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The idea is to construct a variation that shortens the geodesic. Let $J$ be the Jacobi field with $J(0) = 0$ and $J(t_0) = 0$. Because $J(t_0) = 0$ and $J$ is non-zero, the family of geodesics parametrized by $J$ has an envelope that passes through $\gamma(t_0)$. Near the conjugate point, this envelope "cuts the corner" — the geodesic $\gamma$ stops being locally distance-minimizing because nearby geodesics provide shortcuts. The precise argument uses the second variation formula: the second variation of arc length in the direction of the Jacobi field is zero at $t_0$ and becomes negative for $t > t_0$, giving a shorter nearby curve.
+</TheoremBlock>
+
+On $S^2$, this is visible: a great circle from the north pole to the south pole ($t = \pi$) is a shortest path, but continuing past the south pole is not optimal — the "other way around" is shorter.
+
+---
+
+## Comparison Theorems
+
+The comparison theorems are among the deepest results in Riemannian geometry. They extract global geometric and topological conclusions from *bounds* on curvature — you don't need to know the curvature exactly, just that it's above or below some threshold.
+
+<TheoremBlock type="theorem" number={8} title="Bonnet–Myers Theorem">
+Let $(M^n, g)$ be a complete Riemannian manifold with Ricci curvature satisfying $\mathrm{Ric} \geq (n-1)\kappa > 0$. Then:
+
+1. $\mathrm{diam}(M) \leq \pi / \sqrt{\kappa}$,
+2. $M$ is compact,
+3. $\pi_1(M)$ is finite (the fundamental group is finite).
+</TheoremBlock>
+
+The proof uses Jacobi fields: the positive Ricci curvature bound forces geodesics to have conjugate points within distance $\pi/\sqrt{\kappa}$, so no geodesic can minimize beyond that distance, bounding the diameter. Compactness follows from the Hopf–Rinow theorem. For the unit sphere $S^n$ with $\mathrm{Ric} = (n-1)$, the bound gives $\mathrm{diam} \leq \pi$, which is sharp.
+
+<TheoremBlock type="theorem" number={9} title="Cartan–Hadamard Theorem">
+Let $(M^n, g)$ be a complete, simply connected Riemannian manifold with non-positive sectional curvature ($K \leq 0$). Then:
+
+1. $\exp_p : T_pM \to M$ is a diffeomorphism (for any $p$),
+2. Any two points are connected by a unique geodesic,
+3. $M$ has no conjugate points.
+</TheoremBlock>
+
+This is the exact opposite of Bonnet–Myers. Non-positive curvature prevents geodesic focusing, so $\exp_p$ is a global diffeomorphism — the manifold is diffeomorphic to $\mathbb{R}^n$. The topology is completely determined by the curvature sign.
+
+The Rauch comparison theorem makes the relationship between curvature and Jacobi fields precise.
+
+<TheoremBlock type="theorem" number={10} title="Rauch Comparison Theorem">
+Let $\gamma$ be a geodesic in $(M, g)$ with sectional curvature $K_M \geq \kappa$ along $\gamma$, and let $\tilde{\gamma}$ be a geodesic in the space form $M_\kappa$ of constant curvature $\kappa$. Let $J$ and $\tilde{J}$ be Jacobi fields along $\gamma$ and $\tilde{\gamma}$ respectively, with $J(0) = \tilde{J}(0) = 0$ and $\|\nabla_{\gamma'} J(0)\| = \|\nabla_{\tilde{\gamma}'} \tilde{J}(0)\|$. Then for all $t$ before the first conjugate point:
+
+$$
+\|J(t)\| \leq \|\tilde{J}(t)\|.
+$$
+</TheoremBlock>
+
+The intuition: more curvature means more focusing, which means shorter Jacobi fields. A manifold with $K \geq \kappa$ has geodesic deviation bounded above by that of the constant-curvature space $M_\kappa$.
+
+<TheoremBlock type="theorem" number={11} title="Bishop–Gromov Volume Comparison">
+If $(M^n, g)$ is a complete Riemannian manifold with $\mathrm{Ric} \geq (n-1)\kappa$, then the ratio
+
+$$
+\frac{\mathrm{Vol}(B_r(p))}{\mathrm{Vol}_\kappa(r)}
+$$
+
+is non-increasing in $r$, where $\mathrm{Vol}_\kappa(r)$ is the volume of a ball of radius $r$ in the $n$-dimensional space form of curvature $\kappa$.
+</TheoremBlock>
+
+The Bishop–Gromov theorem says that positive Ricci curvature *constrains volume growth*. Geodesic balls in $M$ grow no faster than in the model space. This is the foundation of Gromov's convergence theory and has deep applications in geometric analysis, including the study of Ricci flow (the technique Perelman used to prove the Poincaré conjecture).
+
+![Comparison theorems: Bonnet–Myers, Cartan–Hadamard, and volume comparison](/images/topics/geodesics-curvature/comparison-theorems.png)
+
+---
+
+## Computational Notes
+
+Let's make the formalism concrete with two computational approaches: symbolic Riemann tensor computation via SymPy, and numerical geodesic solving via SciPy.
+
+### Symbolic Riemann tensor for $S^2$
+
+The following computes the full Riemann tensor, Ricci tensor, and scalar curvature for the sphere of radius $r$ using the coordinate formula $R^l_{\;ijk} = \partial_i \Gamma^l_{jk} - \partial_j \Gamma^l_{ik} + \Gamma^l_{im}\Gamma^m_{jk} - \Gamma^l_{jm}\Gamma^m_{ik}$:
+
+```python
+import sympy as sp
+from sympy import symbols, sin, cos, diff, trigsimp, Matrix, Rational, latex
+
+theta, phi = symbols('theta phi', positive=True)
+r = symbols('r', positive=True)
+
+# Metric tensor: g = r^2 dtheta^2 + r^2 sin^2(theta) dphi^2
+g = Matrix([[r**2, 0], [0, r**2 * sin(theta)**2]])
+g_inv = g.inv()
+coords = [theta, phi]
+n = 2
+
+# Christoffel symbols: Gamma^k_ij = (1/2) g^kl (d_j g_li + d_i g_lj - d_l g_ij)
+Gamma = [[[0]*n for _ in range(n)] for _ in range(n)]
+for k in range(n):
+    for i in range(n):
+        for j in range(n):
+            val = sum(
+                Rational(1,2) * g_inv[k,l] * (
+                    diff(g[l,i], coords[j]) +
+                    diff(g[l,j], coords[i]) -
+                    diff(g[i,j], coords[l])
+                ) for l in range(n)
+            )
+            Gamma[k][i][j] = trigsimp(val)
+
+# Riemann tensor: R^l_ijk
+R = [[[[0]*n for _ in range(n)] for _ in range(n)] for _ in range(n)]
+for l in range(n):
+    for i in range(n):
+        for j in range(n):
+            for k in range(n):
+                val = diff(Gamma[l][j][k], coords[i]) - diff(Gamma[l][i][k], coords[j])
+                for m in range(n):
+                    val += Gamma[l][i][m]*Gamma[m][j][k] - Gamma[l][j][m]*Gamma[m][i][k]
+                R[l][i][j][k] = trigsimp(val)
+# Result: R^theta_{phi,theta,phi} = sin^2(theta) / r^2 ... (details in notebook)
+
+# Ricci tensor: Ric_ij = R^k_kij
+Ric = Matrix(n, n, lambda i,j: trigsimp(sum(R[k][k][i][j] for k in range(n))))
+# Result: Ric = diag(1, sin^2(theta))
+
+# Scalar curvature: S = g^ij Ric_ij
+S_curv = trigsimp(sum(g_inv[i,j]*Ric[i,j] for i in range(n) for j in range(n)))
+# Result: S = 2/r^2, so K = S/2 = 1/r^2 (constant, as expected)
+```
+
+### Numerical geodesic solver
+
+The geodesic equation on $S^2$ is a system of 4 first-order ODEs (rewriting the 2 second-order equations):
+
+```python
+import numpy as np
+from scipy.integrate import solve_ivp
+
+def geodesic_ode(t, y):
+    """Geodesic equation on the unit sphere S^2."""
+    theta, phi, dtheta, dphi = y
+    sin_th, cos_th = np.sin(theta), np.cos(theta)
+    # Christoffel symbols: Gamma^theta_{phi,phi} = -sin*cos, Gamma^phi_{theta,phi} = cot
+    ddtheta = sin_th * cos_th * dphi**2
+    ddphi = -2 * (cos_th / (sin_th + 1e-15)) * dtheta * dphi
+    return [dtheta, dphi, ddtheta, ddphi]
+
+# Geodesic from (theta=pi/3, phi=0) in direction (dtheta=0, dphi=1)
+y0 = [np.pi/3, 0.0, 0.0, 1.0]
+sol = solve_ivp(geodesic_ode, [0, 2*np.pi], y0, max_step=0.01)
+# This traces a great circle (latitude circle at theta=pi/3 is NOT a geodesic;
+# this initial condition gives a great circle tilted relative to the equator)
+```
+
+### Jacobi field magnitude comparison
+
+The closed-form solutions for constant-curvature spaces make the effect of curvature on geodesic deviation concrete:
+
+```python
+def jacobi_magnitude(K, t):
+    """Jacobi field magnitude for constant sectional curvature K."""
+    if abs(K) < 1e-12:
+        return t  # flat case
+    elif K > 0:
+        return np.sin(np.sqrt(K) * t) / np.sqrt(K)
+    else:
+        return np.sinh(np.sqrt(-K) * t) / np.sqrt(-K)
+
+t = np.linspace(0, 3, 200)
+# K=1 (sphere): sin(t) — oscillates, first zero at t=pi (conjugate point)
+# K=0 (flat): t — linear growth
+# K=-1 (hyperbolic): sinh(t) — exponential growth
+```
+
+![Computational geodesics and curvature](/images/topics/geodesics-curvature/computational-geodesics-curvature.png)
+
+---
+
+## Connections to Machine Learning
+
+Geodesics and curvature are not just abstract geometry — they appear throughout modern machine learning, often in surprising ways.
+
+### Manifold learning and reach
+
+When data lies on a low-dimensional manifold $\mathcal{M}$ embedded in $\mathbb{R}^d$, the **curvature of $\mathcal{M}$** determines how well local linear approximations (tangent-space PCA) work. The **reach** of a manifold — roughly, the inverse of the maximum curvature — sets the scale at which the manifold is well-approximated by its tangent planes. Small reach (high curvature) means you need more samples to learn the manifold structure.
+
+### Geodesics in parameter space
+
+For a parametric family of distributions $\{p_\theta : \theta \in \Theta\}$, the Fisher information matrix $g_{ij}(\theta) = \mathbb{E}\!\left[\frac{\partial \log p_\theta}{\partial \theta^i}\frac{\partial \log p_\theta}{\partial \theta^j}\right]$ is a Riemannian metric on $\Theta$. **Geodesics in the Fisher metric** are the "straightest" paths through the parameter space, and they are generally *not* straight lines in the coordinate $\theta$.
+
+For the Gaussian family $\{N(\mu, \sigma^2)\}$ with parameters $(\mu, \sigma)$, the Fisher metric is $g = \frac{1}{\sigma^2}d\mu^2 + \frac{2}{\sigma^2}d\sigma^2$. The geodesics in this metric are curves in the upper half-plane $\sigma > 0$ that locally minimize the Fisher–Rao distance — the intrinsic distance between distributions. Natural gradient descent follows these geodesics rather than the Euclidean straight lines of standard gradient descent.
+
+### Loss landscape curvature and generalization
+
+Recent work (Neyshabur et al., 2017; Keskar et al., 2017) connects the curvature of the loss landscape $\mathcal{L}(\theta)$ to generalization. The Hessian $\nabla^2 \mathcal{L}$ at a minimum $\theta^*$ captures the local curvature:
+
+- **Flat minima** (small Hessian eigenvalues) tend to generalize better — the loss changes slowly in all directions, so the minimum is robust to perturbations.
+- **Sharp minima** (large Hessian eigenvalues) tend to generalize worse — the minimum is sensitive to small changes in parameters.
+
+This is a Riemannian story in disguise: the Hessian $\nabla^2 \mathcal{L}$ plays the role of a curvature tensor on the parameter space, and the "flatness" of a minimum is a statement about the sectional curvatures of the loss surface.
+
+### Ollivier–Ricci curvature on graphs
+
+Ollivier (2009) extended the concept of Ricci curvature to discrete metric spaces and graphs. For an edge $(x, y)$ in a graph, the **Ollivier–Ricci curvature** compares the Wasserstein distance between probability measures $\mu_x$ and $\mu_y$ (random walks from $x$ and $y$) to the graph distance $d(x, y)$:
+
+$$
+\kappa(x, y) = 1 - \frac{W_1(\mu_x, \mu_y)}{d(x, y)}.
+$$
+
+Positive curvature ($\kappa > 0$) indicates that neighbors of $x$ and $y$ are closer together than $x$ and $y$ themselves (community structure). Negative curvature ($\kappa < 0$) indicates tree-like or expander-like structure. Ricci flow on graphs — iteratively reweighting edges by their curvature — has been used for community detection and graph simplification.
+
+![Curvature in machine learning](/images/topics/geodesics-curvature/curvature-ml-connections.png)
+
+---
+
+## Connections & Further Reading
+
+### Within the Differential Geometry Track
+
+This topic completes the core technical machinery of the Differential Geometry track:
+
+- [Smooth Manifolds](/topics/smooth-manifolds) gave us the differentiable structure — charts, tangent spaces, the differential.
+- [Riemannian Geometry](/topics/riemannian-geometry) added the metric tensor, the Levi-Civita connection, and parallel transport.
+- **Geodesics & Curvature** (this topic) builds the geodesic equation, the exponential map, the Riemann tensor and its contractions, the Gauss–Bonnet theorem, Jacobi fields, and the comparison theorems.
+
+**Where this leads.**
+
+- **Information Geometry & Fisher Metric** *(coming soon)* — The Fisher information metric on statistical manifolds makes the parameter space of a model family into a Riemannian manifold. Geodesics in this space give the natural gradient, and the curvature of the statistical manifold determines the local geometry of the KL divergence. This topic provides the complete Riemannian foundation; Information Geometry builds the statistical superstructure.
+
+### Connections to Other Tracks
+
+- **[The Spectral Theorem](/topics/spectral-theorem)** — The Ricci tensor at each point is a symmetric bilinear form, and the Spectral Theorem guarantees its diagonalization. The eigenvalues are the **principal Ricci curvatures**, and the eigenvectors are the directions of maximum and minimum Ricci curvature.
+
+- **[Persistent Homology](/topics/persistent-homology)** and **[Simplicial Complexes](/topics/simplicial-complexes)** — The Euler characteristic $\chi(M)$ appearing in the Gauss–Bonnet theorem connects curvature integrals to topological invariants computed by TDA. The alternating sum of Betti numbers $\chi = \beta_0 - \beta_1 + \beta_2$ equals $\int K\, dA / (2\pi)$ for a closed surface.
+
+### Further Reading
+
+- **Lee (2018), Chapters 5–10** — The primary graduate reference for this material. Chapters 5–6 cover geodesics and the exponential map, Chapter 7 covers curvature, and Chapters 8–10 cover Jacobi fields and comparison theorems.
+- **do Carmo (1992), Chapters 3–8** — A more geometrically oriented treatment with excellent intuition. The Gauss–Bonnet chapter is particularly well-written.
+- **Cheeger & Ebin (1975)** — The definitive reference for comparison theorems, written at a more advanced level.
+- **Ollivier (2009)** — The foundational paper on discrete Ricci curvature for graphs and Markov chains.

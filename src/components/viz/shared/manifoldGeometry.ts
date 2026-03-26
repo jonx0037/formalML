@@ -531,3 +531,241 @@ export function ellipsoidPoint(theta: number, phi: number, a = 1, b = 0.6): Vec3
     z: b * Math.cos(theta),
   };
 }
+
+// ─── Geodesic & Curvature Utilities ───
+// Shared by GeodesicExplorer, CurvatureExplorer, GaussBonnetExplorer, JacobiFieldExplorer
+
+export interface GeodesicPoint {
+  t: number;
+  theta: number;
+  phi: number;
+  dtheta: number;
+  dphi: number;
+}
+
+export interface GeodesicPointXY {
+  t: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+}
+
+export interface JacobiFieldResult {
+  t: number;
+  magnitude: number;
+}
+
+/** RK4 geodesic solver on the unit sphere S².
+ *  Solves: d²θ/dt² − sinθ cosθ (dφ/dt)² = 0
+ *          d²φ/dt² + 2 cotθ (dθ/dt)(dφ/dt) = 0
+ */
+export function solveGeodesicS2(
+  theta0: number,
+  phi0: number,
+  dtheta0: number,
+  dphi0: number,
+  tMax: number,
+  nSteps = 300
+): GeodesicPoint[] {
+  const dt = tMax / nSteps;
+  const result: GeodesicPoint[] = [];
+
+  let state = [theta0, phi0, dtheta0, dphi0];
+
+  function deriv(s: number[]): number[] {
+    const [th, _ph, dth, dph] = s;
+    const sinTh = Math.sin(th);
+    const cosTh = Math.cos(th);
+    const cotTh = Math.abs(sinTh) > 1e-12 ? cosTh / sinTh : 0;
+    return [
+      dth,
+      dph,
+      sinTh * cosTh * dph * dph,       // −Γ^θ_{φφ} * dφ² = sinθ cosθ dφ²
+      -2 * cotTh * dth * dph,           // −2 Γ^φ_{θφ} * dθ dφ = −2 cotθ dθ dφ
+    ];
+  }
+
+  for (let i = 0; i <= nSteps; i++) {
+    const [th, ph, dth, dph] = state;
+    result.push({ t: i * dt, theta: th, phi: ph, dtheta: dth, dphi: dph });
+
+    if (i < nSteps) {
+      // RK4 step
+      const k1 = deriv(state);
+      const s2 = state.map((v, j) => v + 0.5 * dt * k1[j]);
+      const k2 = deriv(s2);
+      const s3 = state.map((v, j) => v + 0.5 * dt * k2[j]);
+      const k3 = deriv(s3);
+      const s4 = state.map((v, j) => v + dt * k3[j]);
+      const k4 = deriv(s4);
+      state = state.map((v, j) =>
+        v + (dt / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j])
+      );
+    }
+  }
+
+  return result;
+}
+
+/** Christoffel symbols for the Poincaré disk at (x, y).
+ *  Conformal metric g = λ² I where λ = 2/(1 − r²).
+ *  Γ^k_{ij} from the conformal formula. Indices: 0=x, 1=y. */
+export function poincareChristoffel(x: number, y: number): ChristoffelSymbols {
+  const r2 = x * x + y * y;
+  const denom = 1 - r2;
+  const factor = Math.abs(denom) > 1e-8 ? 2 / denom : 0;
+  // ∂_x ln λ = 2x/(1−r²),  ∂_y ln λ = 2y/(1−r²)
+  const dlnLx = factor * x;
+  const dlnLy = factor * y;
+
+  // For conformal metric g = e^{2f} δ (here f = ln λ):
+  //   Γ^k_{ij} = δ^k_i ∂_j f + δ^k_j ∂_i f − δ_{ij} ∂^k f
+  // where ∂^k f = δ^{kl} ∂_l f (since conformal metric's Christoffels
+  // are computed from the flat inverse for raising)
+  const gamma: number[][][] = [
+    // k = 0 (x)
+    [
+      [dlnLx, dlnLy],      // Γ^x_{xx} = ∂_x f, Γ^x_{xy} = ∂_y f
+      [dlnLy, -dlnLx],     // Γ^x_{yx} = ∂_y f, Γ^x_{yy} = −∂_x f
+    ],
+    // k = 1 (y)
+    [
+      [-dlnLy, dlnLx],     // Γ^y_{xx} = −∂_y f, Γ^y_{xy} = ∂_x f
+      [dlnLx, dlnLy],      // Γ^y_{yx} = ∂_x f, Γ^y_{yy} = ∂_y f
+    ],
+  ];
+  return { gamma };
+}
+
+/** RK4 geodesic solver on the Poincaré disk.
+ *  Coordinates (x, y) with x²+y² < 1. */
+export function solveGeodesicPoincare(
+  x0: number,
+  y0: number,
+  dx0: number,
+  dy0: number,
+  tMax: number,
+  nSteps = 300
+): GeodesicPointXY[] {
+  const dt = tMax / nSteps;
+  const result: GeodesicPointXY[] = [];
+
+  let state = [x0, y0, dx0, dy0];
+
+  function deriv(s: number[]): number[] {
+    const [px, py, vx, vy] = s;
+    const chris = poincareChristoffel(px, py);
+    const g = chris.gamma;
+    // ddx^k = −Γ^k_{ij} dx^i dx^j
+    const ddx = -(
+      g[0][0][0] * vx * vx + g[0][0][1] * vx * vy +
+      g[0][1][0] * vy * vx + g[0][1][1] * vy * vy
+    );
+    const ddy = -(
+      g[1][0][0] * vx * vx + g[1][0][1] * vx * vy +
+      g[1][1][0] * vy * vx + g[1][1][1] * vy * vy
+    );
+    return [vx, vy, ddx, ddy];
+  }
+
+  for (let i = 0; i <= nSteps; i++) {
+    const [px, py, vx, vy] = state;
+    result.push({ t: i * dt, x: px, y: py, dx: vx, dy: vy });
+
+    // Stop if we leave the disk
+    if (px * px + py * py > 0.98) break;
+
+    if (i < nSteps) {
+      const k1 = deriv(state);
+      const s2 = state.map((v, j) => v + 0.5 * dt * k1[j]);
+      const k2 = deriv(s2);
+      const s3 = state.map((v, j) => v + 0.5 * dt * k2[j]);
+      const k3 = deriv(s3);
+      const s4 = state.map((v, j) => v + dt * k3[j]);
+      const k4 = deriv(s4);
+      state = state.map((v, j) =>
+        v + (dt / 6) * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j])
+      );
+    }
+  }
+
+  return result;
+}
+
+/** Gaussian curvature of a torus at parameter v.
+ *  K = cos(v) / (r * (R + r*cos(v))) */
+export function torusCurvature(v: number, R = 2, r = 0.8): number {
+  return Math.cos(v) / (r * (R + r * Math.cos(v)));
+}
+
+/** Jacobi field magnitude for constant sectional curvature K.
+ *  K > 0: sin(√K t)/√K   (oscillates, zero at t = π/√K)
+ *  K = 0: t               (linear growth)
+ *  K < 0: sinh(√|K| t)/√|K|  (exponential growth) */
+export function jacobiFieldMagnitude(K: number, t: number): number {
+  if (Math.abs(K) < 1e-12) return t;
+  if (K > 0) {
+    const sqK = Math.sqrt(K);
+    return Math.sin(sqK * t) / sqK;
+  }
+  const sqK = Math.sqrt(-K);
+  return Math.sinh(sqK * t) / sqK;
+}
+
+/** Numerically integrate total curvature ∫∫ K(u,v) √det(g) du dv
+ *  over a parametric surface using the midpoint rule. */
+export function totalCurvature(
+  curvatureFn: (u: number, v: number) => number,
+  areaElementFn: (u: number, v: number) => number,
+  uRange: [number, number],
+  vRange: [number, number],
+  nU = 50,
+  nV = 50
+): number {
+  const du = (uRange[1] - uRange[0]) / nU;
+  const dv = (vRange[1] - vRange[0]) / nV;
+  let total = 0;
+  for (let i = 0; i < nU; i++) {
+    const u = uRange[0] + (i + 0.5) * du;
+    for (let j = 0; j < nV; j++) {
+      const v = vRange[0] + (j + 0.5) * dv;
+      total += curvatureFn(u, v) * areaElementFn(u, v) * du * dv;
+    }
+  }
+  return total;
+}
+
+/** Area element √det(g) for the torus parametrized by (u, v). */
+export function torusAreaElement(u: number, v: number, R = 2, r = 0.8): number {
+  return r * (R + r * Math.cos(v));
+}
+
+/** Area element for a sphere of radius rad. */
+export function sphereAreaElement(theta: number, _phi: number, rad = 1): number {
+  return rad * rad * Math.sin(theta);
+}
+
+/** Area element for an ellipsoid with semi-axes (a, a, b). */
+export function ellipsoidAreaElement(
+  theta: number,
+  _phi: number,
+  a = 1,
+  b = 1
+): number {
+  const sinTh = Math.sin(theta);
+  const cosTh = Math.cos(theta);
+  // For (a sinθ cosφ, a sinθ sinφ, b cosθ):
+  // |∂_θ × ∂_φ| = a sinθ √(a² cos²θ + b² sin²θ)
+  return a * sinTh * Math.sqrt(a * a * cosTh * cosTh + b * b * sinTh * sinTh);
+}
+
+/** Gaussian curvature of an ellipsoid (a, a, b) at colatitude θ. */
+export function ellipsoidCurvature(theta: number, a = 1, b = 1): number {
+  const sinTh = Math.sin(theta);
+  const cosTh = Math.cos(theta);
+  // For (a sinθ cosφ, a sinθ sinφ, b cosθ):
+  // K(θ) = b² / (a² cos²θ + b² sin²θ)²
+  const denom = a * a * cosTh * cosTh + b * b * sinTh * sinTh;
+  return (b * b) / (denom * denom);
+}
