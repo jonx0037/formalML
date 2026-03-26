@@ -6,7 +6,6 @@ import { dimensionColors } from './shared/colorScales';
 import {
   type Vec2,
   torusPoint,
-  spherePoint,
   orthoProject,
   isVisible,
   torusCurvature,
@@ -124,7 +123,7 @@ export default function CurvatureExplorer() {
             [cx + proj.x * scale + triSize * 0.87, cy - proj.y * scale + triSize * 0.5],
             [cx + proj.x * scale, cy - proj.y * scale - triSize],
           ];
-          // Bend edges based on curvature
+          // Small triangle indicator at the current point
           svg.append('path')
             .attr('d', tri(triPts))
             .style('fill', 'none')

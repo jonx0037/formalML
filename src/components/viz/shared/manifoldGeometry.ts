@@ -714,7 +714,7 @@ export function jacobiFieldMagnitude(K: number, t: number): number {
 }
 
 /** Numerically integrate total curvature ∫∫ K(u,v) √det(g) du dv
- *  over a parametric surface using the trapezoidal rule. */
+ *  over a parametric surface using the midpoint rule. */
 export function totalCurvature(
   curvatureFn: (u: number, v: number) => number,
   areaElementFn: (u: number, v: number) => number,
@@ -756,15 +756,16 @@ export function ellipsoidAreaElement(
   const sinTh = Math.sin(theta);
   const cosTh = Math.cos(theta);
   // For (a sinθ cosφ, a sinθ sinφ, b cosθ):
-  // |∂_θ × ∂_φ| = sinθ √(a⁴ sin²θ cos²θ/... ) ≈ a sinθ √(a² sin²θ + b² cos²θ)
-  return a * sinTh * Math.sqrt(a * a * sinTh * sinTh + b * b * cosTh * cosTh);
+  // |∂_θ × ∂_φ| = a sinθ √(a² cos²θ + b² sin²θ)
+  return a * sinTh * Math.sqrt(a * a * cosTh * cosTh + b * b * sinTh * sinTh);
 }
 
 /** Gaussian curvature of an ellipsoid (a, a, b) at colatitude θ. */
 export function ellipsoidCurvature(theta: number, a = 1, b = 1): number {
   const sinTh = Math.sin(theta);
   const cosTh = Math.cos(theta);
-  const denom = a * a * sinTh * sinTh + b * b * cosTh * cosTh;
-  // K = (a²b²) / denom²
-  return (a * a * b * b) / (denom * denom);
+  // For (a sinθ cosφ, a sinθ sinφ, b cosθ):
+  // K(θ) = b² / (a² cos²θ + b² sin²θ)²
+  const denom = a * a * cosTh * cosTh + b * b * sinTh * sinTh;
+  return (b * b) / (denom * denom);
 }

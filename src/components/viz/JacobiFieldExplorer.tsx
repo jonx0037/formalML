@@ -23,12 +23,11 @@ const fmt = (x: number) => x.toFixed(2);
 export default function JacobiFieldExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
 
-  const [K, setK] = useState(1.0);
+  const [kMagnitude, setKMagnitude] = useState(1.0);
   const [showConjugate, setShowConjugate] = useState(true);
   const [showNormPlot, setShowNormPlot] = useState(false);
 
-  const absK = Math.abs(K);
-  const tMax = absK > 0.01 ? Math.min(4, Math.PI / Math.sqrt(absK) * 1.3) : 4;
+  const tMax = kMagnitude > 0.01 ? Math.min(4, Math.PI / Math.sqrt(kMagnitude) * 1.3) : 4;
 
   const isStacked = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
   const panelWidth = isStacked ? containerWidth : Math.floor((containerWidth - 16) / 3);
@@ -40,7 +39,7 @@ export default function JacobiFieldExplorer() {
     const zero: { t: number; j: number }[] = [];
     const negative: { t: number; j: number }[] = [];
 
-    const posK = Math.abs(K) < 0.01 ? 0.01 : Math.abs(K);
+    const posK = kMagnitude < 0.01 ? 0.01 : kMagnitude;
 
     for (let i = 0; i <= nPts; i++) {
       const t = (i / nPts) * tMax;
@@ -50,10 +49,10 @@ export default function JacobiFieldExplorer() {
     }
 
     return { positive, zero, negative };
-  }, [K, tMax]);
+  }, [kMagnitude, tMax]);
 
   // ── Conjugate point location ───────────────────────────────────────
-  const conjugateT = absK > 0.01 ? Math.PI / Math.sqrt(absK) : null;
+  const conjugateT = kMagnitude > 0.01 ? Math.PI / Math.sqrt(kMagnitude) : null;
 
   // ── Draw a single Jacobi field panel ───────────────────────────────
   function drawPanel(
@@ -153,21 +152,21 @@ export default function JacobiFieldExplorer() {
     (svg) => {
       if (panelWidth <= 0) return;
       drawPanel(
-        svg as unknown as d3.Selection<SVGSVGElement, unknown, null, undefined>,
+        svg,
         fields.positive, TEAL, 'K > 0 (converge)',
-        `K = +${fmt(absK)}`,
+        `K = +${fmt(kMagnitude)}`,
         panelWidth, HEIGHT,
         showConjugate, conjugateT
       );
     },
-    [fields.positive, panelWidth, showConjugate, conjugateT, absK]
+    [fields.positive, panelWidth, showConjugate, conjugateT, kMagnitude]
   );
 
   const zeroRef = useD3<SVGSVGElement>(
     (svg) => {
       if (panelWidth <= 0) return;
       drawPanel(
-        svg as unknown as d3.Selection<SVGSVGElement, unknown, null, undefined>,
+        svg,
         fields.zero, SLATE, 'K = 0 (linear)',
         'K = 0',
         panelWidth, HEIGHT,
@@ -181,14 +180,14 @@ export default function JacobiFieldExplorer() {
     (svg) => {
       if (panelWidth <= 0) return;
       drawPanel(
-        svg as unknown as d3.Selection<SVGSVGElement, unknown, null, undefined>,
+        svg,
         fields.negative, PURPLE, 'K < 0 (diverge)',
-        `K = −${fmt(absK)}`,
+        `K = −${fmt(kMagnitude)}`,
         panelWidth, HEIGHT,
         false, null
       );
     },
-    [fields.negative, panelWidth, absK]
+    [fields.negative, panelWidth, kMagnitude]
   );
 
   // ── Norm plot ──────────────────────────────────────────────────────
@@ -240,7 +239,7 @@ export default function JacobiFieldExplorer() {
       const drawLine = (data: { t: number; j: number }[], color: string) => {
         const lineGen = d3.line<{ t: number; j: number }>()
           .x((d) => xScale(d.t))
-          .y((d) => yScale(Math.max(0, d.j)));
+          .y((d) => yScale(Math.abs(d.j)));
         g.append('path')
           .attr('d', lineGen(data))
           .attr('fill', 'none')
@@ -248,7 +247,7 @@ export default function JacobiFieldExplorer() {
           .style('stroke-width', '2');
       };
 
-      drawLine(fields.positive.filter((d) => d.j >= 0), TEAL);
+      drawLine(fields.positive, TEAL);
       drawLine(fields.zero, SLATE);
       drawLine(fields.negative, PURPLE);
 
@@ -312,11 +311,11 @@ export default function JacobiFieldExplorer() {
         <label className="flex items-center gap-1.5">
           <span style={{ color: 'var(--color-text-muted, #666)' }}>Curvature |K|:</span>
           <input
-            type="range" min={0.1} max={2} step={0.05} value={absK}
-            onChange={(e) => setK(parseFloat(e.target.value))}
+            type="range" min={0.1} max={2} step={0.05} value={kMagnitude}
+            onChange={(e) => setKMagnitude(parseFloat(e.target.value))}
             className="w-24"
           />
-          <span className="font-mono w-10">{fmt(absK)}</span>
+          <span className="font-mono w-10">{fmt(kMagnitude)}</span>
         </label>
 
         <label className="flex items-center gap-1.5">
@@ -329,7 +328,7 @@ export default function JacobiFieldExplorer() {
           <span style={{ color: 'var(--color-text-muted, #666)' }}>Show |J(t)| plot</span>
         </label>
 
-        {conjugateT !== null && (
+        {showConjugate && conjugateT !== null && (
           <span className="font-mono" style={{ color: RED }}>
             Conjugate at t = {fmt(conjugateT)}
           </span>

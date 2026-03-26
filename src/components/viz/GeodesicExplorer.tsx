@@ -120,45 +120,44 @@ export default function GeodesicExplorer() {
         if (showGrid) {
           const nGrid = 8;
           const gridMax = Math.PI * 0.4;
+
+          const drawGridLine = (pts: Vec2[]) => {
+            if (pts.length > 1) {
+              svg.append('path')
+                .attr('d', lineGen(pts))
+                .attr('fill', 'none')
+                .style('stroke', AMBER)
+                .style('stroke-width', '0.6')
+                .style('opacity', '0.25');
+            }
+          };
+
           for (let i = 0; i <= nGrid; i++) {
             const frac = (i / nGrid) * 2 - 1;
-            const gridLine: Vec2[] = [];
+
+            // Constant-θ lines (vary φ)
+            const hLine: Vec2[] = [];
             for (let j = 0; j <= 40; j++) {
               const s = (j / 40) * 2 - 1;
-              const gth = theta + frac * gridMax * 0.3;
-              const gph = phi + s * gridMax * 0.3 / (Math.sin(theta) + 1e-6);
-              const p3 = spherePoint(gth, gph);
-              if (isVisible(p3, rotY, rotX)) {
-                gridLine.push(orthoProject(p3, rotY, rotX));
-              }
+              const p3 = spherePoint(
+                theta + frac * gridMax * 0.3,
+                phi + s * gridMax * 0.3 / (Math.sin(theta) + 1e-6)
+              );
+              if (isVisible(p3, rotY, rotX)) hLine.push(orthoProject(p3, rotY, rotX));
             }
-            if (gridLine.length > 1) {
-              svg.append('path')
-                .attr('d', lineGen(gridLine))
-                .attr('fill', 'none')
-                .style('stroke', AMBER)
-                .style('stroke-width', '0.6')
-                .style('opacity', '0.25');
-            }
-            // Cross lines
-            const gridLine2: Vec2[] = [];
+            drawGridLine(hLine);
+
+            // Constant-φ lines (vary θ)
+            const vLine: Vec2[] = [];
             for (let j = 0; j <= 40; j++) {
               const s = (j / 40) * 2 - 1;
-              const gth = theta + s * gridMax * 0.3;
-              const gph = phi + frac * gridMax * 0.3 / (Math.sin(theta) + 1e-6);
-              const p3 = spherePoint(gth, gph);
-              if (isVisible(p3, rotY, rotX)) {
-                gridLine2.push(orthoProject(p3, rotY, rotX));
-              }
+              const p3 = spherePoint(
+                theta + s * gridMax * 0.3,
+                phi + frac * gridMax * 0.3 / (Math.sin(theta) + 1e-6)
+              );
+              if (isVisible(p3, rotY, rotX)) vLine.push(orthoProject(p3, rotY, rotX));
             }
-            if (gridLine2.length > 1) {
-              svg.append('path')
-                .attr('d', lineGen(gridLine2))
-                .attr('fill', 'none')
-                .style('stroke', AMBER)
-                .style('stroke-width', '0.6')
-                .style('opacity', '0.25');
-            }
+            drawGridLine(vLine);
           }
         }
 
@@ -337,31 +336,33 @@ export default function GeodesicExplorer() {
         .style('stroke', 'var(--color-text-muted, #999)')
         .style('stroke-width', '0.5');
 
-      // Injectivity radius circle
-      const injRad = surface === 'sphere' ? Math.PI : 3;
-      const injScale = Math.min(injRad * scale, Math.min(w, h) * 0.42);
-      svg.append('circle')
-        .attr('cx', cx)
-        .attr('cy', cy)
-        .attr('r', injScale)
-        .style('fill', 'none')
-        .style('stroke', PURPLE)
-        .style('stroke-width', '1')
-        .style('stroke-dasharray', '4,3')
-        .style('opacity', '0.6');
+      // Injectivity radius circle (only for sphere, where inj = π is finite)
+      const viewRadius = Math.min(w, h) * 0.42;
+      if (surface === 'sphere') {
+        const injScale = Math.min(Math.PI * scale, viewRadius);
+        svg.append('circle')
+          .attr('cx', cx)
+          .attr('cy', cy)
+          .attr('r', injScale)
+          .style('fill', 'none')
+          .style('stroke', PURPLE)
+          .style('stroke-width', '1')
+          .style('stroke-dasharray', '4,3')
+          .style('opacity', '0.6');
 
-      svg.append('text')
-        .attr('x', cx + injScale + 4)
-        .attr('y', cy - 4)
-        .style('fill', PURPLE)
-        .style('font-size', '10px')
-        .text(surface === 'sphere' ? 'inj = π' : 'inj = ∞');
+        svg.append('text')
+          .attr('x', cx + injScale + 4)
+          .attr('y', cy - 4)
+          .style('fill', PURPLE)
+          .style('font-size', '10px')
+          .text('inj = π');
+      }
 
       // Straight rays (pre-images of geodesics)
       const nRays = showAllRays ? 12 : 1;
       for (let r = 0; r < nRays; r++) {
         const angle = nRays === 1 ? dirAngle : dirAngle + (2 * Math.PI * r) / nRays;
-        const rayLen = Math.min(injScale, Math.min(w, h) * 0.42);
+        const rayLen = viewRadius;
         svg.append('line')
           .attr('x1', cx)
           .attr('y1', cy)
