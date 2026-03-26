@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -7,6 +7,7 @@ import {
   naturalToExpectation,
   solveGeodesicGaussian,
   fisherMetricGaussian,
+  clamp,
 } from './shared/manifoldGeometry';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ export default function DualGeometryExplorer() {
   const [showM, setShowM] = useState(true);
   const [showLC, setShowLC] = useState(false);
   const [coordGrid, setCoordGrid] = useState<CoordGrid>('none');
+  const draggingStartRef = useRef(true);
 
   const svgWidth = containerWidth;
 
@@ -276,20 +278,23 @@ export default function DualGeometryExplorer() {
         .style('stroke-width', 2)
         .style('cursor', 'grab');
 
-      // Drag on SVG — move whichever point is closer
-      let draggingStart = true;
-      svg.call(d3.drag<SVGSVGElement, unknown>()
+      // Invisible overlay for drag — limited to the plot area
+      const overlay = g.append('rect')
+        .attr('width', w).attr('height', h)
+        .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+      overlay.call(d3.drag<SVGRectElement, unknown>()
         .on('start', (event) => {
-          const mx = xScale.invert(event.x - margin.left);
-          const my = yScale.invert(event.y - margin.top);
+          const mx = xScale.invert(event.x);
+          const my = yScale.invert(event.y);
           const ds = (mx - startMu) ** 2 + (my - startSig) ** 2;
           const de = (mx - endMu) ** 2 + (my - endSig) ** 2;
-          draggingStart = ds <= de;
+          draggingStartRef.current = ds <= de;
         })
         .on('drag', (event) => {
-          const mu = Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x - margin.left)));
-          const sig = Math.max(SIG_RANGE[0] + DRAG_PAD_Y_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_Y_HI, yScale.invert(event.y - margin.top)));
-          if (draggingStart) { setStartMu(mu); setStartSig(sig); }
+          const mu = clamp(xScale.invert(event.x), MU_RANGE[0] + DRAG_PAD_X, MU_RANGE[1] - DRAG_PAD_X);
+          const sig = clamp(yScale.invert(event.y), SIG_RANGE[0] + DRAG_PAD_Y_LO, SIG_RANGE[1] - DRAG_PAD_Y_HI);
+          if (draggingStartRef.current) { setStartMu(mu); setStartSig(sig); }
           else { setEndMu(mu); setEndSig(sig); }
         }));
 

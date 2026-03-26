@@ -23,7 +23,7 @@ export function useResizeObserver<T extends HTMLElement>() {
     // ResizeObserver may not fire its initial callback reliably for
     // Astro client:visible islands that hydrate at their final size.
     // Fall back to reading dimensions after the next animation frame.
-    requestAnimationFrame(() => {
+    const rafId = requestAnimationFrame(() => {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w > 0 || h > 0) {
@@ -31,7 +31,10 @@ export function useResizeObserver<T extends HTMLElement>() {
       }
     });
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
   }, []);
 
   return { ref, ...dimensions };

@@ -1,3 +1,10 @@
+// ─── General Utilities ───
+
+/** Clamp a value between min and max */
+export function clamp(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val));
+}
+
 // ─── Smooth Manifold Geometry Utilities ───
 // Shared by ChartAtlasExplorer, TangentSpaceExplorer, SmoothMapExplorer, ManifoldGalleryExplorer
 

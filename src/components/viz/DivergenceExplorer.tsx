@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -7,6 +7,7 @@ import {
   klDivGaussian,
   hellingerDistGaussian,
   fisherRaoDistanceGaussian,
+  clamp,
 } from './shared/manifoldGeometry';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ export default function DivergenceExplorer() {
   const [mu2, setMu2] = useState(1.0);
   const [sig2, setSig2] = useState(1.5);
   const [divType, setDivType] = useState<DivType>('kl-forward');
+  const draggingPRef = useRef(true);
 
   const isStacked = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
   const leftWidth = isStacked ? containerWidth : Math.floor(containerWidth * 0.5);
@@ -111,20 +113,23 @@ export default function DivergenceExplorer() {
         .attr('cx', xScale(mu2)).attr('cy', yScale(sig2))
         .attr('r', 8).style('fill', PURPLE).style('stroke', '#fff').style('stroke-width', 2).style('cursor', 'grab');
 
-      // Drag on left SVG — move whichever point is closer
-      let draggingP = true;
-      svg.call(d3.drag<SVGSVGElement, unknown>()
+      // Invisible overlay for drag — limited to the plot area
+      const overlay = g.append('rect')
+        .attr('width', w).attr('height', h)
+        .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+      overlay.call(d3.drag<SVGRectElement, unknown>()
         .on('start', (event) => {
-          const mx = xScale.invert(event.x - margin.left);
-          const my = yScale.invert(event.y - margin.top);
+          const mx = xScale.invert(event.x);
+          const my = yScale.invert(event.y);
           const d1 = (mx - mu1) ** 2 + (my - sig1) ** 2;
           const d2 = (mx - mu2) ** 2 + (my - sig2) ** 2;
-          draggingP = d1 <= d2;
+          draggingPRef.current = d1 <= d2;
         })
         .on('drag', (event) => {
-          const mu = Math.max(MU_RANGE[0] + DRAG_PAD_X, Math.min(MU_RANGE[1] - DRAG_PAD_X, xScale.invert(event.x - margin.left)));
-          const sig = Math.max(SIG_RANGE[0] + DRAG_PAD_SIG_LO, Math.min(SIG_RANGE[1] - DRAG_PAD_SIG_HI, yScale.invert(event.y - margin.top)));
-          if (draggingP) { setMu1(mu); setSig1(sig); }
+          const mu = clamp(xScale.invert(event.x), MU_RANGE[0] + DRAG_PAD_X, MU_RANGE[1] - DRAG_PAD_X);
+          const sig = clamp(yScale.invert(event.y), SIG_RANGE[0] + DRAG_PAD_SIG_LO, SIG_RANGE[1] - DRAG_PAD_SIG_HI);
+          if (draggingPRef.current) { setMu1(mu); setSig1(sig); }
           else { setMu2(mu); setSig2(sig); }
         }));
 

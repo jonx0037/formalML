@@ -8,6 +8,7 @@ import {
   fisherMetricBernoulli,
   fisherMetricExponential,
   metricEigendecomp,
+  clamp,
 } from './shared/manifoldGeometry';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -177,12 +178,15 @@ export default function FisherMetricExplorer() {
           .style('stroke-width', 2)
           .style('cursor', 'grab');
 
-        svg.call(d3.drag<SVGSVGElement, unknown>()
+        // Invisible overlay for drag — limited to the plot area
+        const overlay = g.append('rect')
+          .attr('width', w).attr('height', h)
+          .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+        overlay.call(d3.drag<SVGRectElement, unknown>()
           .on('drag', (event) => {
-            const mu = xScale.invert(event.x - margin.left);
-            const sig = yScale.invert(event.y - margin.top);
-            setParamX(Math.max(GAUSSIAN_MU_RANGE[0], Math.min(GAUSSIAN_MU_RANGE[1], mu)));
-            setParamY(Math.max(GAUSSIAN_SIG_RANGE[0] + GAUSSIAN_SIG_PAD, Math.min(GAUSSIAN_SIG_RANGE[1] - 0.1, sig)));
+            setParamX(clamp(xScale.invert(event.x), GAUSSIAN_MU_RANGE[0], GAUSSIAN_MU_RANGE[1]));
+            setParamY(clamp(yScale.invert(event.y), GAUSSIAN_SIG_RANGE[0] + GAUSSIAN_SIG_PAD, GAUSSIAN_SIG_RANGE[1] - 0.1));
           }));
 
       } else {
@@ -232,10 +236,13 @@ export default function FisherMetricExplorer() {
           .style('stroke-width', 2)
           .style('cursor', 'grab');
 
-        svg.call(d3.drag<SVGSVGElement, unknown>()
+        const overlay = g.append('rect')
+          .attr('width', w).attr('height', h)
+          .style('fill', 'none').style('pointer-events', 'all').style('cursor', 'grab');
+
+        overlay.call(d3.drag<SVGRectElement, unknown>()
           .on('drag', (event) => {
-            const t = xScale.invert(event.x - margin.left);
-            setParamX(Math.max(domain[0], Math.min(domain[1], t)));
+            setParamX(clamp(xScale.invert(event.x), domain[0], domain[1]));
           }));
       }
 
