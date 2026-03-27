@@ -400,3 +400,113 @@ export function blahutArimoto(
 
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// MDL functions (added for Minimum Description Length topic)
+// ---------------------------------------------------------------------------
+
+/** Rissanen's universal code length for positive integers.
+ *  L*(n) = log2(n) + log2(log2(n)) + ... (sum positive terms) + log2(c0).
+ *  c0 ≈ 2.865064 is the normalizing constant. */
+export function logStar(n: number): number {
+  if (n <= 0) return 0;
+  const c0 = 2.865064;
+  let sum = Math.log2(c0);
+  let val = Math.log2(n);
+  while (val > 0) {
+    sum += val;
+    val = Math.log2(val);
+  }
+  return sum;
+}
+
+/** Log-gamma function ln(Γ(x)) via Lanczos approximation.
+ *  Returns the natural log of the gamma function. */
+export function logGamma(x: number): number {
+  if (x <= 0) return Infinity;
+  // For small integers, use exact factorial
+  if (x === 1 || x === 2) return 0;
+  // Lanczos approximation (g=7, n=9)
+  const g = 7;
+  const c = [
+    0.99999999999980993,
+    676.5203681218851,
+    -1259.1392167224028,
+    771.32342877765313,
+    -176.61502916214059,
+    12.507343278686905,
+    -0.13857109526572012,
+    9.9843695780195716e-6,
+    1.5056327351493116e-7,
+  ];
+  const t = x + g - 0.5;
+  let sum = c[0];
+  for (let i = 1; i < c.length; i++) {
+    sum += c[i] / (x - 1 + i);
+  }
+  return 0.5 * Math.log(2 * Math.PI) + (x - 0.5) * Math.log(t) - t + Math.log(sum);
+}
+
+/** Log binomial coefficient log2(C(n, k)) via logGamma for numerical stability. */
+export function logBinomial(n: number, k: number): number {
+  if (k < 0 || k > n) return -Infinity;
+  if (k === 0 || k === n) return 0;
+  // log2(C(n,k)) = (lnΓ(n+1) - lnΓ(k+1) - lnΓ(n-k+1)) / ln(2)
+  return (logGamma(n + 1) - logGamma(k + 1) - logGamma(n - k + 1)) / Math.LN2;
+}
+
+/** NML probability for Bernoulli model.
+ *  p_NML(k | n) = C(n,k) * (k/n)^k * ((n-k)/n)^(n-k) / COMP(n)
+ *  with convention 0^0 = 1.
+ *  @param k - number of successes
+ *  @param n - sample size
+ *  @param comp - parametric complexity COMP(n) (precomputed)
+ *  @returns { prob, logProb } in base-2 */
+export function bernoulliNML(
+  k: number,
+  n: number,
+  comp: number
+): { prob: number; logProb: number } {
+  // log2 of the MLE likelihood: C(n,k) * (k/n)^k * ((n-k)/n)^(n-k)
+  let logMLE = logBinomial(n, k);
+  // (k/n)^k term — convention 0^0 = 1 so add 0 when k=0
+  if (k > 0) logMLE += k * Math.log2(k / n);
+  // ((n-k)/n)^(n-k) term — convention 0^0 = 1 so add 0 when k=n
+  if (k < n) logMLE += (n - k) * Math.log2((n - k) / n);
+  const logProb = logMLE - Math.log2(comp);
+  return { prob: Math.pow(2, logProb), logProb };
+}
+
+/** Parametric complexity COMP for Bernoulli model with n observations.
+ *  COMP(n) = sum_{k=0}^{n} C(n,k) (k/n)^k ((n-k)/n)^(n-k).
+ *  Computed by direct summation (exact for n ≤ 1000). */
+export function bernoulliCOMP(n: number): number {
+  // Sum in log space for numerical stability, then accumulate
+  let total = 0;
+  for (let k = 0; k <= n; k++) {
+    let logTerm = logBinomial(n, k);
+    if (k > 0) logTerm += k * Math.log2(k / n);
+    if (k < n) logTerm += (n - k) * Math.log2((n - k) / n);
+    total += Math.pow(2, logTerm);
+  }
+  return total;
+}
+
+/** BIC score: -2 * logLikelihood + k * log(n).
+ *  @param logLik - maximized log-likelihood (natural log)
+ *  @param n - sample size
+ *  @param k - number of free parameters */
+export function bicScore(logLik: number, n: number, k: number): number {
+  return -2 * logLik + k * Math.log(n);
+}
+
+/** AIC score: -2 * logLikelihood + 2 * k. */
+export function aicScore(logLik: number, k: number): number {
+  return -2 * logLik + 2 * k;
+}
+
+/** Refined MDL score: -2 * logLik + k * log(n / (2π)).
+ *  Uses the asymptotic stochastic complexity (without Fisher correction). */
+export function mdlScore(logLik: number, n: number, k: number): number {
+  return -2 * logLik + k * Math.log(n / (2 * Math.PI));
+}

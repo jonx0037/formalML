@@ -39,9 +39,7 @@ export const tracks = [
     label: 'Information Theory',
     description:
       'Entropy, divergences, and the theoretical limits that underpin compression, coding, and learning.',
-    planned: [
-      'Minimum Description Length',
-    ],
+    planned: [],
   },
   {
     domain: 'graph-theory',
