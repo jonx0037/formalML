@@ -174,3 +174,12 @@ export interface GraphPartition {
   cheegerRatio: number;
 }
 
+// ─── Random Walks Types ───
+
+export interface WalkState {
+  currentVertex: number;
+  visitCounts: number[];
+  totalSteps: number;
+  trajectory: number[];
+}
+
