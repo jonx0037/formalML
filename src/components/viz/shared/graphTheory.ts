@@ -965,3 +965,392 @@ export function isBridge(graph: Graph, u: number, v: number): boolean {
   clonedAdj[v][u] = 0;
   return !isConnected({ n: graph.n, adjacency: clonedAdj, labels: graph.labels });
 }
+
+// ============================================================================
+// Random Walk Utilities
+// ============================================================================
+
+// === Random Walk Types ===
+
+export interface TransitionResult {
+  P: number[][];
+  stationary: number[];
+  spectralGap: number;
+  eigenvaluesP: number[];
+}
+
+export interface HittingTimeResult {
+  hittingTimes: number[][];
+  commuteTimes: number[][];
+  effectiveResistance: number[][];
+}
+
+export interface MixingProfile {
+  tvDistances: number[];
+  mixingTime: number;
+  spectralGap: number;
+  worstStartVertex: number;
+}
+
+// === Transition Matrix ===
+
+/** Transition matrix P = D^{-1}A for a random walk on a graph. */
+export function transitionMatrix(A: number[][]): number[][] {
+  const n = A.length;
+  const deg = degrees(A);
+  const P: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    if (deg[i] === 0) continue;
+    for (let j = 0; j < n; j++) {
+      P[i][j] = A[i][j] / deg[i];
+    }
+  }
+  return P;
+}
+
+/** Lazy transition matrix P_lazy = (1/2)(I + P). */
+export function lazyTransitionMatrix(A: number[][]): number[][] {
+  const P = transitionMatrix(A);
+  const n = P.length;
+  const Plazy: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      Plazy[i][j] = 0.5 * P[i][j];
+    }
+    Plazy[i][i] += 0.5;
+  }
+  return Plazy;
+}
+
+/** Stationary distribution π_i = d_i / (2m) for a simple random walk. */
+export function stationaryDistribution(A: number[][]): number[] {
+  const deg = degrees(A);
+  const twoM = deg.reduce((s, d) => s + d, 0);
+  if (twoM === 0) return deg.map(() => 1 / deg.length);
+  return deg.map((d) => d / twoM);
+}
+
+/**
+ * Full spectral analysis of the transition matrix.
+ * Eigendecomposes via the symmetric matrix S = D^{-1/2} A D^{-1/2}
+ * (whose eigenvalues equal those of P = D^{-1}A).
+ */
+export function analyzeTransitionMatrix(graph: Graph): TransitionResult {
+  const A = graph.adjacency;
+  const n = graph.n;
+  const P = transitionMatrix(A);
+  const pi = stationaryDistribution(A);
+
+  // Build the symmetric matrix S = D^{-1/2} A D^{-1/2}
+  const deg = degrees(A);
+  const S: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (A[i][j] !== 0 && deg[i] > 0 && deg[j] > 0) {
+        S[i][j] = A[i][j] / Math.sqrt(deg[i] * deg[j]);
+      }
+    }
+  }
+
+  const eigen = jacobiEigen(S);
+  // eigenvalues are sorted ascending by jacobiEigen; P eigenvalues = S eigenvalues
+  const eigenvaluesP = [...eigen.eigenvalues].reverse(); // descending
+
+  // Spectral gap: γ = 1 - λ_star where λ_star = max_{i≥2} |μ_i|
+  // eigenvaluesP[0] should be ~1; spectral gap uses the second-largest |eigenvalue|
+  let lambdaStar = 0;
+  for (let i = 1; i < eigenvaluesP.length; i++) {
+    lambdaStar = Math.max(lambdaStar, Math.abs(eigenvaluesP[i]));
+  }
+  const spectralGap = 1 - lambdaStar;
+
+  return { P, stationary: pi, spectralGap, eigenvaluesP };
+}
+
+// === Mixing Time ===
+
+/**
+ * Total variation distance between distributions p and q.
+ * TV(p, q) = (1/2) Σ |p_i - q_i|
+ */
+export function totalVariationDistance(p: number[], q: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < p.length; i++) {
+    sum += Math.abs(p[i] - q[i]);
+  }
+  return 0.5 * sum;
+}
+
+/**
+ * Compute the mixing profile: TV distance vs time for worst-case start vertex.
+ * Uses spectral decomposition: P^t(x,y) = π_y * (1 + Σ_{i≥2} μ_i^t * f_i(x)*f_i(y) / ‖f_i‖²_π)
+ * where f_i are right eigenvectors of S transformed back to P-eigenvectors.
+ */
+export function mixingProfile(
+  graph: Graph,
+  maxT: number,
+  epsilon: number,
+  lazy?: boolean
+): MixingProfile {
+  const A = graph.adjacency;
+  const n = graph.n;
+  const pi = stationaryDistribution(A);
+  const deg = degrees(A);
+
+  // Build symmetric matrix S = D^{-1/2} A D^{-1/2} (or lazy version)
+  const S: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (A[i][j] !== 0 && deg[i] > 0 && deg[j] > 0) {
+        S[i][j] = A[i][j] / Math.sqrt(deg[i] * deg[j]);
+      }
+    }
+  }
+  if (lazy) {
+    // S_lazy = (1/2)(I + S) — eigenvalues become (1 + μ)/2
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        S[i][j] *= 0.5;
+      }
+      S[i][i] += 0.5;
+    }
+  }
+
+  const eigen = jacobiEigen(S);
+  // eigenvalues ascending; eigenvectors[i] = i-th eigenvector
+  const mu = eigen.eigenvalues;   // ascending
+  const V = eigen.eigenvectors;   // V[i] = eigenvector for mu[i]
+
+  // Right eigenvectors of P: φ_i = D^{-1/2} v_i
+  // For TV computation, we need P^t(x, y) for each starting vertex x.
+  // P^t(x,y) = Σ_k μ_k^t * φ_k(x) * ψ_k(y)
+  // where ψ_k(y) = D^{1/2} v_k(y) are left eigenvectors (in row sense)
+  // Equivalently: P^t(x,y) = Σ_k μ_k^t * (D^{-1/2} v_k)(x) * (D^{1/2} v_k)(y)
+
+  // Pre-compute D^{-1/2} v_k and D^{1/2} v_k
+  const phi: number[][] = [];  // phi[k][x] = D^{-1/2}_x * v_k(x)
+  const psi: number[][] = [];  // psi[k][y] = D^{1/2}_y * v_k(y)
+  for (let k = 0; k < n; k++) {
+    const pk: number[] = new Array(n);
+    const sk: number[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const sqrtD = Math.sqrt(deg[i] || 1);
+      pk[i] = V[k][i] / sqrtD;
+      sk[i] = V[k][i] * sqrtD;
+    }
+    phi.push(pk);
+    psi.push(sk);
+  }
+
+  // For each t, compute TV(x) = max_x TV(P^t(x,.) , π) and find worst-case x
+  const tvDistances: number[] = new Array(maxT + 1);
+  let worstStartVertex = 0;
+  let mixingTime = maxT;
+  let foundMixing = false;
+
+  for (let t = 0; t <= maxT; t++) {
+    let maxTV = 0;
+    let worstX = 0;
+    for (let x = 0; x < n; x++) {
+      // Compute P^t(x, y) for all y
+      let tv = 0;
+      for (let y = 0; y < n; y++) {
+        let ptxy = 0;
+        for (let k = 0; k < n; k++) {
+          ptxy += Math.pow(mu[k], t) * phi[k][x] * psi[k][y];
+        }
+        tv += Math.abs(ptxy - pi[y]);
+      }
+      tv *= 0.5;
+      if (tv > maxTV) {
+        maxTV = tv;
+        worstX = x;
+      }
+    }
+    tvDistances[t] = maxTV;
+    if (t === 0) worstStartVertex = worstX;
+    if (!foundMixing && maxTV <= epsilon) {
+      mixingTime = t;
+      foundMixing = true;
+    }
+  }
+
+  // Spectral gap
+  let lambdaStar = 0;
+  for (let k = 0; k < n - 1; k++) { // all except the largest (≈1)
+    lambdaStar = Math.max(lambdaStar, Math.abs(mu[k]));
+  }
+  const spectralGap = 1 - lambdaStar;
+
+  return { tvDistances, mixingTime, spectralGap, worstStartVertex };
+}
+
+// === Hitting & Commute Times ===
+
+/**
+ * Solve a linear system Ax = b via Gaussian elimination with partial pivoting.
+ * A is m×m, b is length-m. Returns x. Modifies A and b in place.
+ */
+function solveLinearSystem(A: number[][], b: number[]): number[] {
+  const m = A.length;
+  // Forward elimination with partial pivoting
+  for (let col = 0; col < m; col++) {
+    // Find pivot
+    let maxVal = Math.abs(A[col][col]);
+    let maxRow = col;
+    for (let row = col + 1; row < m; row++) {
+      if (Math.abs(A[row][col]) > maxVal) {
+        maxVal = Math.abs(A[row][col]);
+        maxRow = row;
+      }
+    }
+    // Swap rows
+    [A[col], A[maxRow]] = [A[maxRow], A[col]];
+    [b[col], b[maxRow]] = [b[maxRow], b[col]];
+
+    if (Math.abs(A[col][col]) < 1e-12) continue;
+
+    // Eliminate below
+    for (let row = col + 1; row < m; row++) {
+      const factor = A[row][col] / A[col][col];
+      for (let k = col; k < m; k++) {
+        A[row][k] -= factor * A[col][k];
+      }
+      b[row] -= factor * b[col];
+    }
+  }
+
+  // Back substitution
+  const x = new Array(m).fill(0);
+  for (let row = m - 1; row >= 0; row--) {
+    if (Math.abs(A[row][row]) < 1e-12) continue;
+    let sum = b[row];
+    for (let k = row + 1; k < m; k++) {
+      sum -= A[row][k] * x[k];
+    }
+    x[row] = sum / A[row][row];
+  }
+  return x;
+}
+
+/**
+ * Compute all-pairs hitting times h(i,j).
+ * For each target j, solves (I - P_{-j}) h_j = 1 where P_{-j} is P
+ * with row and column j removed.
+ */
+export function allPairsHittingTimes(graph: Graph): number[][] {
+  const P = transitionMatrix(graph.adjacency);
+  const n = graph.n;
+  const h: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+
+  for (let j = 0; j < n; j++) {
+    // Build the reduced system (I - P_{-j}) h = 1
+    // Indices: all vertices except j
+    const indices = Array.from({ length: n }, (_, i) => i).filter((i) => i !== j);
+    const m = indices.length;
+    const A: number[][] = Array.from({ length: m }, () => new Array(m).fill(0));
+    const b: number[] = new Array(m).fill(1);
+
+    for (let ri = 0; ri < m; ri++) {
+      const i = indices[ri];
+      for (let ci = 0; ci < m; ci++) {
+        const k = indices[ci];
+        A[ri][ci] = (ri === ci ? 1 : 0) - P[i][k];
+      }
+    }
+
+    const sol = solveLinearSystem(A, b);
+    for (let ri = 0; ri < m; ri++) {
+      h[indices[ri]][j] = sol[ri];
+    }
+    // h[j][j] = 0 (already initialized)
+  }
+
+  return h;
+}
+
+/** Compute all-pairs commute times κ(i,j) = h(i,j) + h(j,i). */
+export function allPairsCommuteTimes(hittingTimes: number[][]): number[][] {
+  const n = hittingTimes.length;
+  const kappa: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      kappa[i][j] = hittingTimes[i][j] + hittingTimes[j][i];
+    }
+  }
+  return kappa;
+}
+
+/**
+ * Compute all-pairs effective resistance from the Laplacian pseudoinverse.
+ * R_eff(i,j) = (e_i - e_j)^T L^+ (e_i - e_j) = L^+_{ii} + L^+_{jj} - 2 L^+_{ij}
+ */
+export function allPairsEffectiveResistance(graph: Graph): number[][] {
+  const L = laplacian(graph.adjacency);
+  const n = graph.n;
+  const eigen = jacobiEigen(L);
+
+  // Pseudoinverse: L^+ = Σ_{λ_k > 0} (1/λ_k) v_k v_k^T
+  const Lplus: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let k = 0; k < n; k++) {
+    if (eigen.eigenvalues[k] < 1e-10) continue; // skip zero eigenvalues
+    const invLambda = 1 / eigen.eigenvalues[k];
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        Lplus[i][j] += invLambda * eigen.eigenvectors[k][i] * eigen.eigenvectors[k][j];
+      }
+    }
+  }
+
+  // R_eff(i,j) = L^+_{ii} + L^+_{jj} - 2 L^+_{ij}
+  const R: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const r = Lplus[i][i] + Lplus[j][j] - 2 * Lplus[i][j];
+      R[i][j] = r;
+      R[j][i] = r;
+    }
+  }
+  return R;
+}
+
+/** Full hitting time analysis for a graph. */
+export function analyzeHittingTimes(graph: Graph): HittingTimeResult {
+  const hittingTimes = allPairsHittingTimes(graph);
+  const commuteTimes = allPairsCommuteTimes(hittingTimes);
+  const effectiveResistance = allPairsEffectiveResistance(graph);
+  return { hittingTimes, commuteTimes, effectiveResistance };
+}
+
+// === Additional Graph Constructors ===
+
+/** Hypercube graph Q_d (2^d vertices, each pair connected iff they differ in exactly one bit). */
+export function hypercubeGraph(d: number): Graph {
+  const n = 1 << d; // 2^d
+  const adj: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let bit = 0; bit < d; bit++) {
+      const j = i ^ (1 << bit); // flip one bit
+      adj[i][j] = 1;
+    }
+  }
+  return { n, adjacency: adj };
+}
+
+/** BFS shortest path distance between two vertices. Returns Infinity if unreachable. */
+export function bfsDistance(graph: Graph, source: number, target: number): number {
+  if (source === target) return 0;
+  const visited = new Set<number>([source]);
+  const queue: [number, number][] = [[source, 0]];
+  while (queue.length > 0) {
+    const [u, dist] = queue.shift()!;
+    for (let v = 0; v < graph.n; v++) {
+      if (graph.adjacency[u][v] > 0 && !visited.has(v)) {
+        if (v === target) return dist + 1;
+        visited.add(v);
+        queue.push([v, dist + 1]);
+      }
+    }
+  }
+  return Infinity;
+}

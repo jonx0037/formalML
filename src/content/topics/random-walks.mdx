@@ -1,0 +1,573 @@
+---
+title: "Random Walks & Mixing"
+subtitle: "Markov chains on graphs — from the transition matrix to mixing times, hitting times, and the spectral gap"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "graph-laplacians"
+tags:
+  - "graph-theory"
+  - "random-walks"
+  - "markov-chains"
+  - "mixing-time"
+  - "spectral-gap"
+  - "hitting-time"
+domain: "graph-theory"
+videoId: null
+notebookPath: "notebooks/random-walks/02_random_walks.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/random-walks.mdx"
+datePublished: 2026-03-28
+estimatedReadTime: 45
+abstract: "A random walk on a graph is a Markov chain whose transition matrix P = D⁻¹A encodes local structure: at each step, the walker moves to a uniformly random neighbor. The stationary distribution π assigns probability proportional to degree, and the Perron–Frobenius theorem guarantees convergence for connected, non-bipartite graphs. The mixing time — how many steps until the walk's distribution is close to π in total variation — is governed by the spectral gap γ = 1 − λ₂(P), tying random walk convergence directly to the Laplacian eigenvalues from spectral graph theory. Hitting times and commute times provide complementary measures of graph distance with deep connections to electrical networks: the commute time between two vertices equals the effective resistance times the total edge weight. These ideas power modern graph algorithms from PageRank to DeepWalk, and the mixing time perspective motivates expander graphs — sparse graphs that mix as fast as dense ones."
+connections:
+  - topic: "graph-laplacians"
+    relationship: "The transition matrix P = D⁻¹A is the complement of the random walk Laplacian L_rw = I − P. The eigenvalues of P are μᵢ = 1 − λᵢ(L_rw), so the spectral gap of the walk equals the algebraic connectivity λ₂ of the normalized Laplacian."
+  - topic: "spectral-theorem"
+    relationship: "P is similar to D^{1/2} P D^{-1/2} = D^{-1/2} A D^{-1/2}, a real symmetric matrix. The Spectral Theorem guarantees real eigenvalues in [−1, 1] and an orthonormal eigenbasis, which underlies the spectral decomposition of P^t."
+  - topic: "measure-theoretic-probability"
+    relationship: "A random walk defines a sequence of random variables on the vertex set. Convergence in total variation is convergence in the L¹ norm on the probability simplex — a measure-theoretic statement about the walk's law."
+  - topic: "shannon-entropy"
+    relationship: "The KL divergence D_KL(P^t(x,·) ∥ π) decreases monotonically along the walk and reaches zero at stationarity. The stationary entropy H(π) = log n for regular graphs — maximum randomness. The spectral gap controls the rate of entropy production."
+  - topic: "concentration-inequalities"
+    relationship: "Chernoff-type bounds for sums of random variables along a Markov chain use the spectral gap to account for dependence — the walk mixes fast enough that consecutive samples are nearly independent."
+  - topic: "pca-low-rank"
+    relationship: "DeepWalk and node2vec learn vertex embeddings by running random walks and applying skip-gram (implicit low-rank matrix factorization). The embedding captures the random walk transition probabilities — a spectral approximation related to the Laplacian eigenvectors."
+references:
+  - type: "book"
+    title: "Markov Chains and Mixing Times"
+    authors: "Levin, Peres & Wilmer"
+    year: 2009
+    note: "The standard textbook — covers mixing times, spectral methods, coupling, and hitting times with full proofs"
+  - type: "book"
+    title: "Spectral Graph Theory"
+    authors: "Chung"
+    year: 1997
+    note: "Chapter 2 covers random walks on graphs and the connection between mixing and the normalized Laplacian spectrum"
+  - type: "paper"
+    title: "The PageRank Citation Ranking: Bringing Order to the Web"
+    authors: "Page, Brin, Motwani & Winograd"
+    year: 1999
+    url: "http://ilpubs.stanford.edu:8090/422/"
+    note: "PageRank = stationary distribution of a random walk with teleportation — the foundational application"
+  - type: "paper"
+    title: "DeepWalk: Online Learning of Social Representations"
+    authors: "Perozzi, Al-Rfou & Skiena"
+    year: 2014
+    url: "https://doi.org/10.1145/2623330.2623732"
+    note: "Random walks for vertex embedding — the bridge from Markov chains to representation learning"
+  - type: "paper"
+    title: "Faster Mixing via Average Conductance"
+    authors: "Lovász & Kannan"
+    year: 1999
+    url: "https://doi.org/10.1145/301250.301291"
+    note: "Sharper mixing time bounds via average conductance — extends Cheeger's inequality to the random walk setting"
+  - type: "book"
+    title: "Random Walks and Electric Networks"
+    authors: "Doyle & Snell"
+    year: 1984
+    note: "The classic treatment of the equivalence between random walk quantities and electrical network quantities"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import RandomWalkSimulator from '../../components/viz/RandomWalkSimulator.tsx';
+import MixingTimeExplorer from '../../components/viz/MixingTimeExplorer.tsx';
+import HittingTimeExplorer from '../../components/viz/HittingTimeExplorer.tsx';
+
+## Overview & Motivation
+
+In the [Graph Laplacians & Spectrum](/topics/graph-laplacians) topic, we studied graphs through the lens of the Laplacian matrix $L = D - A$ and its eigenvalues. The normalized Laplacian $\mathcal{L} = I - D^{-1/2}AD^{-1/2}$ made a brief appearance alongside the **transition matrix** $P = D^{-1}A$. Now we place $P$ center stage.
+
+A **random walk** on a graph is the simplest possible stochastic process on a network: at each step, the walker moves to a uniformly random neighbor. Despite this simplicity, the walk's behavior reveals deep structural properties:
+
+- **How quickly does the walk forget its starting position?** The *mixing time* measures convergence to the stationary distribution. Fast mixing implies good connectivity — the graph has no bottlenecks.
+
+- **How far apart are two vertices in "random walk distance"?** The *hitting time* $h(i,j)$ measures the expected number of steps to reach $j$ from $i$. Unlike shortest-path distance, hitting time is sensitive to the graph's branching structure and reflects the "difficulty" of finding a target by random exploration.
+
+- **What is the electrical interpretation?** Identifying edges with unit resistors turns the graph into an electrical network. The *effective resistance* between two vertices equals the commute time (normalized by total edge weight) — a beautiful equivalence between probability and physics.
+
+The spectral gap $\gamma = 1 - \lambda_2(P) = \lambda_2(\mathcal{L})$ is the key quantity: it controls mixing time ($t_{\mathrm{mix}} = \Theta(1/\gamma)$), bounds hitting times, and characterizes **Expander Graphs** *(coming soon)* — sparse graphs that mix as fast as dense ones.
+
+**Roadmap.** We build the theory in layers: define the walk and its transition matrix (§1), prove convergence to the stationary distribution (§2), quantify convergence speed via total variation and mixing time (§3–4), handle bipartite graphs with lazy walks (§5), develop hitting times and commute times (§6–7), and connect everything to applications (§8–9).
+
+---
+
+## 1. Markov Chains on Graphs
+
+### 1.1 The Transition Matrix
+
+A **random walk** on a graph $G = (V, E)$ with $|V| = n$ is a sequence of random variables $X_0, X_1, X_2, \ldots$ taking values in $V$, where at each step the walker moves to a uniformly random neighbor:
+
+$$\Pr[X_{t+1} = j \mid X_t = i] = P_{ij} = \frac{A_{ij}}{d_i}$$
+
+<TheoremBlock type="definition" number={1} title="Random Walk on a Graph">
+A **random walk** on a graph $G = (V, E)$ is a Markov chain $(X_t)_{t \geq 0}$ on the state space $V$ with transition probabilities $P_{ij} = A_{ij} / d_i$: at each step, the walker moves from its current vertex to a uniformly random neighbor.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={2} title="Transition Matrix">
+The **transition matrix** of the simple random walk on $G$ is:
+
+$$P = D^{-1}A$$
+
+where $D = \mathrm{diag}(d_1, \ldots, d_n)$ is the degree matrix. Each row of $P$ sums to 1 — $P$ is a **(row) stochastic matrix**.
+</TheoremBlock>
+
+The entry $P_{ij}$ gives the probability of stepping from vertex $i$ to vertex $j$ in one step. The matrix $P^t$ gives $t$-step transition probabilities: $(P^t)_{ij} = \Pr[X_t = j \mid X_0 = i]$.
+
+![Transition matrices for named graphs — heatmaps showing the row-stochastic structure of P for Path, Cycle, Complete, Star, Barbell, Grid, Hypercube, and Petersen graphs](/images/topics/random-walks/walk-trajectories.png)
+
+### 1.2 Irreducibility and Aperiodicity
+
+Two properties determine the walk's long-run behavior:
+
+- **Irreducible:** Every vertex can be reached from every other vertex (equivalently, $G$ is connected).
+- **Aperiodic:** The walk does not get trapped in a deterministic cycle. A connected graph has period 2 if and only if it is **bipartite**. All other connected graphs are aperiodic.
+
+Combining these:
+
+<TheoremBlock type="definition" number={3} title="Ergodic Chain">
+A Markov chain is *ergodic* if it is both irreducible and aperiodic. For graph random walks, this means $G$ is connected and non-bipartite.
+</TheoremBlock>
+
+<RandomWalkSimulator client:visible />
+
+---
+
+## 2. Stationary Distribution & Convergence
+
+### 2.1 The Stationary Distribution
+
+<TheoremBlock type="definition" number={4} title="Stationary Distribution">
+A probability distribution $\boldsymbol{\pi} \in \mathbb{R}^n$ is *stationary* for $P$ if $\boldsymbol{\pi}^T P = \boldsymbol{\pi}^T$. Equivalently, if the walk's initial distribution is $\boldsymbol{\pi}$, it remains $\boldsymbol{\pi}$ after any number of steps.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={1} title="Stationarity of π">
+The stationary distribution of the simple random walk on $G$ is $\pi_i = d_i / (2m)$ where $m = |E|$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify $\boldsymbol{\pi}^T P = \boldsymbol{\pi}^T$ directly:
+
+$$(\boldsymbol{\pi}^T P)_j = \sum_{i=1}^n \frac{d_i}{2m} \cdot \frac{A_{ij}}{d_i} = \frac{1}{2m}\sum_{i=1}^n A_{ij} = \frac{d_j}{2m} = \pi_j$$
+
+The degree in the numerator cancels, and $\sum_i A_{ij} = d_j$ since the column sum of the adjacency matrix equals the degree of vertex $j$.
+</TheoremBlock>
+
+The stationary distribution assigns probability proportional to degree. High-degree vertices are visited more often — they are "easier to find" because more edges lead to them. On a $d$-regular graph, all degrees are equal and $\boldsymbol{\pi} = (1/n, \ldots, 1/n)$ — the uniform distribution.
+
+<TheoremBlock type="corollary" number={1} title="Mixing of Regular Graphs">
+On a $d$-regular graph, the stationary distribution is uniform: $\boldsymbol{\pi} = (1/n, \ldots, 1/n)$.
+</TheoremBlock>
+
+### 2.2 Detailed Balance (Reversibility)
+
+<TheoremBlock type="theorem" number={2} title="Detailed Balance (Reversibility)">
+The simple random walk on any undirected graph is reversible: $\pi_i P_{ij} = \pi_j P_{ji}$ for all $i, j$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+$$\pi_i P_{ij} = \frac{d_i}{2m} \cdot \frac{A_{ij}}{d_i} = \frac{A_{ij}}{2m} = \frac{A_{ji}}{2m} = \frac{d_j}{2m} \cdot \frac{A_{ji}}{d_j} = \pi_j P_{ji}$$
+
+The equality $A_{ij} = A_{ji}$ follows from the graph being undirected.
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Reversibility and the Inner Product">
+Detailed balance means the walk is *time-reversible*: a video of the walk looks the same played forwards and backwards (in distribution). Algebraically, reversibility is equivalent to $P$ being self-adjoint with respect to the $\ell^2(\boldsymbol{\pi})$ inner product $\langle f, g \rangle_{\boldsymbol{\pi}} = \sum_i \pi_i f(i) g(i)$.
+</TheoremBlock>
+
+### 2.3 Convergence
+
+<TheoremBlock type="theorem" number={3} title="Convergence Theorem">
+If the random walk on $G$ is ergodic (connected, non-bipartite), then for any starting vertex $x$:
+
+$$\lim_{t \to \infty} P^t(x, \cdot) = \boldsymbol{\pi}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By the Perron–Frobenius theorem applied to the non-negative irreducible matrix $P$: the largest eigenvalue $\mu_1 = 1$ is simple (by irreducibility), and aperiodicity ensures $|\mu_i| < 1$ for all $i \geq 2$.
+
+The spectral decomposition gives:
+
+$$P^t = \boldsymbol{1}\boldsymbol{\pi}^T + \sum_{i=2}^n \mu_i^t \, \mathbf{f}_i \mathbf{w}_i^T$$
+
+Since $|\mu_i| < 1$, each term $\mu_i^t \to 0$ as $t \to \infty$, so $P^t \to \boldsymbol{1}\boldsymbol{\pi}^T$. That is, every row of $P^t$ converges to $\boldsymbol{\pi}$.
+</TheoremBlock>
+
+![Convergence of empirical visit frequencies to the stationary distribution for Complete, Cycle, and Barbell graphs — showing how graph topology controls convergence speed](/images/topics/random-walks/distribution-convergence.png)
+
+---
+
+## 3. Total Variation & Mixing Time
+
+The convergence theorem says the walk eventually reaches stationarity, but *how fast?* We need a distance measure between distributions.
+
+<TheoremBlock type="definition" number={5} title="Total Variation Distance">
+The **total variation distance** between probability distributions $p$ and $q$ on $V$ is:
+
+$$\|p - q\|_{\mathrm{TV}} = \frac{1}{2}\sum_{v \in V} |p(v) - q(v)|$$
+</TheoremBlock>
+
+Total variation ranges from 0 (identical distributions) to 1 (distributions with disjoint support). It has a clean probabilistic interpretation: $\|p - q\|_{\mathrm{TV}} = \max_{A \subseteq V} |p(A) - q(A)|$ — the maximum difference in probability assigned to any event.
+
+<TheoremBlock type="definition" number={6} title="Mixing Time">
+The **mixing time** to accuracy $\varepsilon$ is the worst-case time for the walk to get $\varepsilon$-close to stationarity:
+
+$$t_{\mathrm{mix}}(\varepsilon) = \max_{x \in V} \min\{t \geq 0 : \|P^t(x, \cdot) - \boldsymbol{\pi}\|_{\mathrm{TV}} \leq \varepsilon\}$$
+
+By convention, $t_{\mathrm{mix}} = t_{\mathrm{mix}}(1/4)$.
+</TheoremBlock>
+
+**Examples illustrating the range of mixing behaviors:**
+
+- **Complete graph $K_n$:** $t_{\mathrm{mix}} = 1$. Every vertex is adjacent to every other — the walk mixes in a single step.
+- **Cycle $C_n$:** $t_{\mathrm{mix}} = \Theta(n^2)$. The walk must diffuse around the ring.
+- **Path $P_n$:** $t_{\mathrm{mix}} = \Theta(n^2)$. Similar to the cycle, but without the wraparound.
+- **Barbell $B_k$:** $t_{\mathrm{mix}} = \Theta(k^3)$. The bridge is a bottleneck — the walk gets stuck in one clique.
+- **Hypercube $Q_d$:** $t_{\mathrm{mix}} = \Theta(d \log d)$. Fast mixing despite sparsity — each vertex has degree $d$ out of $2^d$ vertices.
+
+---
+
+## 4. Spectral Analysis of Mixing
+
+### 4.1 Spectral Decomposition of $P^t$
+
+<TheoremBlock type="theorem" number={4} title="Spectral Decomposition of P^t">
+Let $\mu_1 = 1 \geq \mu_2 \geq \cdots \geq \mu_n \geq -1$ be the eigenvalues of $P$, with corresponding right eigenvectors $\mathbf{f}_i$ (normalized in $\ell^2(\boldsymbol{\pi})$). Then:
+
+$$P^t(x, y) = \pi_y \left(1 + \sum_{i=2}^n \mu_i^t \frac{f_i(x) f_i(y)}{\|f_i\|_{\pi}^2}\right)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $P$ is similar to the symmetric matrix $S = D^{-1/2}AD^{-1/2}$ (via the [Spectral Theorem](/topics/spectral-theorem)), it has real eigenvalues and a complete eigenbasis. Write $P^t$ in the spectral decomposition:
+
+$$P^t = \sum_{i=1}^n \mu_i^t \, \mathbf{f}_i \otimes \mathbf{w}_i$$
+
+where $\mathbf{f}_i$ and $\mathbf{w}_i$ are right and left eigenvectors. The $i = 1$ term is $\boldsymbol{1} \boldsymbol{\pi}^T$ (since $P\boldsymbol{1} = \boldsymbol{1}$ and $\boldsymbol{\pi}^T P = \boldsymbol{\pi}^T$). For ergodic chains, $|\mu_i| < 1$ for $i \geq 2$, so each remaining term decays exponentially.
+</TheoremBlock>
+
+The rate of decay is controlled by $\lambda_\star = \max_{i \geq 2} |\mu_i|$, the second-largest eigenvalue *in absolute value*. This leads to:
+
+### 4.2 The Spectral Gap
+
+<TheoremBlock type="definition" number={7} title="Spectral Gap">
+The **spectral gap** of the random walk is:
+
+$$\gamma = 1 - \lambda_\star \quad \text{where} \quad \lambda_\star = \max_{i \geq 2}|\mu_i|$$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={2} title="Spectral Gap Equals λ₂(𝓛)">
+For non-bipartite graphs, $\lambda_\star = \mu_2$ and the spectral gap equals the second-smallest eigenvalue of the normalized Laplacian: $\gamma = 1 - \mu_2 = \lambda_2(\mathcal{L})$.
+</TheoremBlock>
+
+This is the bridge between random walks and [spectral graph theory](/topics/graph-laplacians): the same eigenvalue $\lambda_2(\mathcal{L})$ that measures algebraic connectivity in the Laplacian world controls mixing speed in the random walk world.
+
+### 4.3 Mixing Time Bounds
+
+<TheoremBlock type="theorem" number={5} title="Upper Mixing Time Bound">
+$$\|P^t(x, \cdot) - \boldsymbol{\pi}\|_{\mathrm{TV}} \leq \frac{1}{2}\sqrt{1/\pi_{\min}} \cdot \lambda_\star^t$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply Cauchy–Schwarz in $\ell^2(\boldsymbol{\pi})$. The total variation distance satisfies:
+
+$$\|P^t(x, \cdot) - \boldsymbol{\pi}\|_{\mathrm{TV}} = \frac{1}{2}\sum_y \left|\frac{P^t(x,y)}{\pi_y} - 1\right| \pi_y \leq \frac{1}{2}\sqrt{\sum_y \left(\frac{P^t(x,y)}{\pi_y} - 1\right)^2 \pi_y}$$
+
+The $\ell^2(\boldsymbol{\pi})$ norm of $P^t(x,\cdot)/\boldsymbol{\pi} - 1$ is bounded by $\sqrt{1/\pi_{\min}} \cdot \lambda_\star^t$ using the spectral decomposition.
+</TheoremBlock>
+
+This gives the mixing time bound: $t_{\mathrm{mix}} \leq \frac{1}{\gamma}\left(\frac{1}{2}\ln\frac{1}{\pi_{\min}} + \ln 2\right)$.
+
+<TheoremBlock type="theorem" number={6} title="Lower Mixing Time Bound">
+$$t_{\mathrm{mix}}(\varepsilon) \geq \frac{1}{\gamma}\ln\frac{1}{2\varepsilon}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Consider the second eigenvector test function. For the worst-case starting vertex, the TV distance at time $t$ is at least $(1/2)\lambda_\star^t$. Setting this equal to $\varepsilon$ and solving for $t$ gives the lower bound.
+</TheoremBlock>
+
+**Summary:** $t_{\mathrm{mix}} = \Theta\left(\frac{1}{\gamma} \ln\frac{1}{\pi_{\min}}\right)$. The spectral gap $\gamma$ is the dominant factor; the $\ln(1/\pi_{\min})$ term accounts for graphs with extreme degree variation.
+
+<MixingTimeExplorer client:visible />
+
+![Mixing time comparison: TV distance curves for graph families, showing how topology determines convergence speed](/images/topics/random-walks/mixing-time-comparison.png)
+
+![Spectral gap vs mixing time scatter plot across 150 random graphs — confirming the Θ(1/γ) relationship](/images/topics/random-walks/spectral-gap-mixing-scatter.png)
+
+---
+
+## 5. Lazy Random Walks
+
+What happens on bipartite graphs? The path graph $P_n$ and the grid graph are bipartite, so $P$ has eigenvalue $\mu_n = -1$ and the walk *oscillates* instead of converging. The distribution at even time steps differs from odd time steps. The fix is simple:
+
+<TheoremBlock type="definition" number={8} title="Lazy Random Walk">
+The **lazy random walk** has transition matrix:
+
+$$P_{\text{lazy}} = \frac{1}{2}(I + P)$$
+
+At each step, the walker stays put with probability $1/2$ and moves to a random neighbor with probability $1/2$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Lazy Walk Spectrum">
+If $\mu_1, \ldots, \mu_n$ are eigenvalues of $P$, then the eigenvalues of $P_{\text{lazy}}$ are $\mu_i^{(\text{lazy})} = (1 + \mu_i)/2$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+If $P\mathbf{v} = \mu_i \mathbf{v}$, then:
+
+$$P_{\text{lazy}} \mathbf{v} = \frac{1}{2}(I + P)\mathbf{v} = \frac{1 + \mu_i}{2}\mathbf{v}$$
+
+So $\mathbf{v}$ is an eigenvector of $P_{\text{lazy}}$ with eigenvalue $(1 + \mu_i)/2$.
+</TheoremBlock>
+
+Since $\mu_i \in [-1, 1]$, we have $\mu_i^{(\text{lazy})} \in [0, 1]$ — no negative eigenvalues, no oscillation. The lazy walk converges even on bipartite graphs, at the cost of halving the spectral gap: $\gamma_{\text{lazy}} = \gamma / 2$.
+
+![Lazy vs standard random walk on the bipartite path graph — the standard walk oscillates while the lazy walk converges smoothly](/images/topics/random-walks/lazy-vs-standard-bipartite.png)
+
+---
+
+## 6. Hitting Times & Commute Times
+
+Mixing time measures convergence of the *distribution* to stationarity. Hitting times measure something complementary: how long it takes a single walk to reach a specific target.
+
+<TheoremBlock type="definition" number={9} title="Hitting Time">
+The **hitting time** from $i$ to $j$ is the expected first passage time:
+
+$$h(i, j) = \mathbb{E}_i[\min\{t \geq 0 : X_t = j\}]$$
+
+with $h(j, j) = 0$ by convention.
+</TheoremBlock>
+
+Hitting times satisfy a linear recurrence: $h(i, j) = 1 + \sum_{k \neq j} P_{ik} \, h(k, j)$ for $i \neq j$.
+
+<TheoremBlock type="proposition" number={2} title="Hitting Time via Fundamental Matrix">
+For each target $j$, the hitting times $h(i, j)$ satisfy the linear system:
+
+$$(I - P_{\bar{j}}) \mathbf{h}_j = \mathbf{1}$$
+
+where $P_{\bar{j}}$ is the transition matrix with row and column $j$ removed.
+</TheoremBlock>
+
+Hitting times are **asymmetric** in general: $h(i, j) \neq h(j, i)$. On a star graph, the hub reaches any leaf in 1 step ($h(\text{hub}, \text{leaf}) = 1$), but a leaf must first return to the hub, then find the right leaf ($h(\text{leaf}_a, \text{leaf}_b) = 2(n-1)/(n-2) \approx 2$ for large $n$... but $h(\text{leaf}, \text{hub}) = 1$ while $h(\text{hub}, \text{leaf}) = n - 1$ in the return-time sense). The asymmetry reflects the graph's branching structure.
+
+<TheoremBlock type="definition" number={10} title="Commute Time">
+The **commute time** between $i$ and $j$ is the expected round-trip time:
+
+$$\kappa(i, j) = h(i, j) + h(j, i)$$
+
+Unlike hitting times, commute times are **symmetric**: $\kappa(i, j) = \kappa(j, i)$.
+</TheoremBlock>
+
+<HittingTimeExplorer client:visible />
+
+![Hitting time heatmaps for Path, Star, and Barbell graphs — showing the asymmetry of hitting times and the structure-dependent patterns](/images/topics/random-walks/hitting-time-heatmaps.png)
+
+---
+
+## 7. Effective Resistance & Electrical Networks
+
+The connection between random walks and electrical networks is one of the most beautiful results in combinatorics. Replace each edge with a unit resistor, and the graph becomes an electrical circuit. The Laplacian is the **conductance matrix**: applying Kirchhoff's laws gives $L\mathbf{v} = \mathbf{i}_{\text{ext}}$.
+
+<TheoremBlock type="definition" number={11} title="Effective Resistance">
+The **effective resistance** between vertices $i$ and $j$ is:
+
+$$R_{\text{eff}}(i, j) = (\mathbf{e}_i - \mathbf{e}_j)^T L^\dagger (\mathbf{e}_i - \mathbf{e}_j)$$
+
+where $L^\dagger$ is the Moore–Penrose pseudoinverse of the Laplacian and $\mathbf{e}_i$ is the $i$-th standard basis vector.
+</TheoremBlock>
+
+Effective resistance is a **metric** on $V$: it satisfies non-negativity, symmetry, and the triangle inequality. It behaves like physical resistance — adding edges decreases resistance (parallel paths), removing edges increases it.
+
+<TheoremBlock type="theorem" number={7} title="Commute Time–Effective Resistance Identity">
+$$\kappa(i, j) = 2m \cdot R_{\text{eff}}(i, j)$$
+
+where $m = |E|$ is the total number of edges.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Express $h(i,j)$ via the fundamental matrix $Z = (I - P + \boldsymbol{1}\boldsymbol{\pi}^T)^{-1}$: we have $h(i,j) = (Z_{jj} - Z_{ij})/\pi_j$. Adding $h(i,j) + h(j,i)$ and using $Z = L^\dagger + (1/n)\boldsymbol{1}\boldsymbol{1}^T$ (after appropriate normalization), the $Z$ entries telescope to give $\kappa(i,j) = 2m(L^\dagger_{ii} + L^\dagger_{jj} - 2L^\dagger_{ij}) = 2m \cdot R_{\text{eff}}(i,j)$.
+
+See Doyle & Snell (1984) for the complete derivation.
+</TheoremBlock>
+
+**Properties of effective resistance:**
+
+1. $R_{\text{eff}}(i,j) \geq 0$ with equality if and only if $i = j$.
+2. **Symmetric:** $R_{\text{eff}}(i,j) = R_{\text{eff}}(j,i)$.
+3. **Triangle inequality:** $R_{\text{eff}}(i,k) \leq R_{\text{eff}}(i,j) + R_{\text{eff}}(j,k)$.
+4. **Rayleigh monotonicity:** Adding edges can only decrease effective resistance.
+
+**Random Target Lemma:** $\sum_{i < j} R_{\text{eff}}(i,j) = n \cdot \mathrm{tr}(L^\dagger) = n \sum_{k=2}^n 1/\lambda_k$.
+
+![Effective resistance network visualization — edge widths proportional to resistance, showing how bottlenecks correspond to high resistance](/images/topics/random-walks/effective-resistance-network.png)
+
+---
+
+## 8. Applications: PageRank, DeepWalk, Label Propagation
+
+### 8.1 PageRank
+
+PageRank (Page, Brin, Motwani & Winograd, 1999) models a web surfer who follows links randomly, but occasionally "teleports" to a uniformly random page:
+
+$$P_{\text{PR}} = \alpha P + (1 - \alpha) \frac{1}{n}\mathbf{1}\mathbf{1}^T$$
+
+with $\alpha = 0.85$ typically. The teleportation term is a rank-one perturbation that guarantees ergodicity — even if the original graph is disconnected or bipartite.
+
+<TheoremBlock type="remark" title="PageRank as Perturbed Random Walk">
+The teleportation term guarantees a spectral gap of at least $1 - \alpha$, so PageRank converges in $O\left(\frac{1}{1 - \alpha} \log n\right)$ iterations regardless of graph structure. This is why power iteration converges fast for PageRank — the teleportation creates an artificial spectral gap.
+</TheoremBlock>
+
+![PageRank on a small web graph — node sizes proportional to PageRank score, comparing with the simple random walk stationary distribution](/images/topics/random-walks/pagerank-web-graph.png)
+
+### 8.2 DeepWalk and node2vec
+
+DeepWalk (Perozzi, Al-Rfou & Skiena, 2014) treats random walks as "sentences" and vertices as "words," then applies the skip-gram model from NLP to learn vertex embeddings. The key insight: DeepWalk implicitly factorizes a matrix related to $\log(\max(P^k, 1))$, connecting random walk statistics to low-rank matrix approximations studied in [PCA & Low-Rank Approximation](/topics/pca-low-rank).
+
+### 8.3 Label Propagation
+
+Label propagation spreads known labels through the graph:
+
+$$\mathbf{y}^{(t+1)} = \alpha P \mathbf{y}^{(t)} + (1 - \alpha) \mathbf{y}^{(0)}$$
+
+At convergence, each vertex's label is a discounted average of its neighbors' labels, weighted by the random walk transition probabilities. The mixing time determines how far labels spread — fast-mixing graphs propagate labels globally, while graphs with bottlenecks propagate locally.
+
+<TheoremBlock type="remark" title="Over-Smoothing in GNNs">
+Stacking $t$ GCN layers applies $P^t$ to the feature matrix. By the convergence theorem, $P^t \to \boldsymbol{1}\boldsymbol{\pi}^T$ — all vertex features collapse to a single vector. This is **over-smoothing**: the random walk convergence theorem in disguise. The number of useful GNN layers should roughly match $1/\gamma$, the mixing time. **Message Passing & GNNs** *(coming soon)* develops solutions to this problem.
+</TheoremBlock>
+
+---
+
+## 9. Computational Notes
+
+**Transition matrix construction.** Given an adjacency matrix $A$ (as a NumPy array or scipy sparse matrix), the transition matrix is $P = D^{-1}A$:
+
+```python
+import numpy as np
+
+def transition_matrix(A):
+    """P = D^{-1}A for simple random walk."""
+    D_inv = np.diag(1.0 / A.sum(axis=1))
+    return D_inv @ A
+```
+
+**Random walk simulation.** Simulate a walk and track visit frequencies:
+
+```python
+def simulate_walk(P, start, n_steps, rng=None):
+    """Simulate a random walk, return visit counts."""
+    rng = rng or np.random.default_rng()
+    n = len(P)
+    counts = np.zeros(n)
+    v = start
+    for _ in range(n_steps):
+        counts[v] += 1
+        v = rng.choice(n, p=P[v])
+    return counts / n_steps
+```
+
+**Mixing time estimation via spectral decomposition.** Compute TV distance at each step without matrix exponentiation:
+
+```python
+def mixing_profile(A, max_t=200):
+    """TV distance at each step via spectral decomposition."""
+    P = transition_matrix(A)
+    pi = A.sum(axis=1) / A.sum()
+    evals, evecs = np.linalg.eigh(
+        np.diag(1/np.sqrt(A.sum(axis=1))) @ A @ np.diag(1/np.sqrt(A.sum(axis=1)))
+    )
+    # evals of S = D^{-1/2}AD^{-1/2} equal evals of P
+    tv = []
+    for t in range(max_t + 1):
+        max_tv = 0
+        for x in range(len(A)):
+            dist = np.zeros(len(A))
+            for k in range(len(A)):
+                dist += evals[k]**t * evecs[:, k] * evecs[x, k]
+            dist = dist * np.sqrt(A.sum(axis=1)) / np.sqrt(A.sum(axis=1)[x])
+            max_tv = max(max_tv, 0.5 * np.sum(np.abs(dist - pi)))
+        tv.append(max_tv)
+    return tv
+```
+
+**Hitting time solver.** Solve the linear system for all-pairs hitting times:
+
+```python
+def all_pairs_hitting_times(A):
+    """Solve (I - P_{-j}) h_j = 1 for each target j."""
+    P = transition_matrix(A)
+    n = len(A)
+    H = np.zeros((n, n))
+    for j in range(n):
+        idx = [i for i in range(n) if i != j]
+        P_red = P[np.ix_(idx, idx)]
+        h = np.linalg.solve(np.eye(n-1) - P_red, np.ones(n-1))
+        for k, i in enumerate(idx):
+            H[i, j] = h[k]
+    return H
+```
+
+**Effective resistance.** Compute via the Laplacian pseudoinverse:
+
+```python
+def effective_resistance_matrix(A):
+    """R_eff(i,j) via Laplacian pseudoinverse."""
+    L = np.diag(A.sum(axis=1)) - A
+    evals, evecs = np.linalg.eigh(L)
+    # Pseudoinverse: invert nonzero eigenvalues
+    L_pinv = sum(
+        (1/lam) * np.outer(v, v)
+        for lam, v in zip(evals, evecs.T) if lam > 1e-10
+    )
+    R = np.zeros_like(A, dtype=float)
+    for i in range(len(A)):
+        for j in range(i+1, len(A)):
+            R[i,j] = R[j,i] = L_pinv[i,i] + L_pinv[j,j] - 2*L_pinv[i,j]
+    return R
+```
+
+**PageRank via power iteration.** The standard implementation using `networkx`:
+
+```python
+import networkx as nx
+
+G = nx.karate_club_graph()
+pr = nx.pagerank(G, alpha=0.85)
+
+# Manual power iteration
+A = nx.to_numpy_array(G)
+P = transition_matrix(A)
+n = len(A)
+alpha = 0.85
+P_pr = alpha * P + (1 - alpha) / n * np.ones((n, n))
+r = np.ones(n) / n
+for _ in range(100):
+    r = r @ P_pr
+```
+
+---
+
+## 10. Connections & Further Reading
+
+### Cross-Track and Within-Track Connections
+
+| Topic | Connection |
+|-------|------------|
+| **[Graph Laplacians & Spectrum](/topics/graph-laplacians)** | $P = D^{-1}A$ complements $L_{\text{rw}} = I - P$. The spectral gap $\gamma = \lambda_2(\mathcal{L})$ controls both algebraic connectivity and mixing time. |
+| **[The Spectral Theorem](/topics/spectral-theorem)** | $P$ is similar to the symmetric matrix $D^{-1/2}AD^{-1/2}$. The spectral decomposition of $P^t$ underlies every mixing bound. |
+| **[Shannon Entropy & Mutual Information](/topics/shannon-entropy)** | $D_{\mathrm{KL}}(P^t(x,\cdot) \| \boldsymbol{\pi})$ decreases monotonically along the walk. The stationary entropy $H(\boldsymbol{\pi}) = \log n$ if and only if the graph is regular. |
+| **[Measure-Theoretic Probability](/topics/measure-theoretic-probability)** | Convergence in total variation = convergence in $L^1$ on the probability simplex. The ergodic theorem says time averages converge almost surely. |
+| **[Concentration Inequalities](/topics/concentration-inequalities)** | Chernoff bounds for sums along a Markov chain use the spectral gap to account for dependence between consecutive samples. |
+| **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** | DeepWalk/node2vec embeddings implicitly factorize random walk probabilities — a spectral approximation related to Laplacian eigenvectors. |
+| **Expander Graphs** *(coming soon)* | Expanders are sparse graphs with $\gamma \geq c > 0$ — they mix in $O(\log n)$ steps. The spectral gap bound from §4 is tight for these graphs. |
+| **Message Passing & GNNs** *(coming soon)* | Over-smoothing in GNNs is the convergence theorem applied to feature propagation: $t$ layers ≈ $P^t$, and $P^t \to \boldsymbol{1}\boldsymbol{\pi}^T$ collapses features. GNN depth should respect the mixing time. |
+
+### Key Notation
+
+| Symbol | Name | Definition |
+|--------|------|------------|
+| $P$ | Transition matrix | $D^{-1}A$ |
+| $\boldsymbol{\pi}$ | Stationary distribution | $\pi_i = d_i/(2m)$ |
+| $\gamma$ | Spectral gap | $1 - \lambda_\star$ |
+| $t_{\mathrm{mix}}$ | Mixing time | Worst-case TV convergence to $\varepsilon$ |
+| $P_{\text{lazy}}$ | Lazy walk | $(I + P)/2$ |
+| $h(i,j)$ | Hitting time | Expected first passage time |
+| $\kappa(i,j)$ | Commute time | $h(i,j) + h(j,i) = 2m \cdot R_{\text{eff}}(i,j)$ |
+| $R_{\text{eff}}$ | Effective resistance | $(\mathbf{e}_i - \mathbf{e}_j)^T L^\dagger (\mathbf{e}_i - \mathbf{e}_j)$ |
