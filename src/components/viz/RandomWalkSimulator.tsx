@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   pathGraph, cycleGraph, completeGraph, starGraph, barbellGraph, gridGraph,
-  degrees, stationaryDistribution, totalVariationDistance,
+  stationaryDistribution, totalVariationDistance,
   type Graph,
 } from './shared/graphTheory';
 import type { WalkState } from './shared/types';
@@ -11,7 +11,6 @@ import type { WalkState } from './shared/types';
 // ─── Layout constants ───
 
 const SM_BREAKPOINT = 640;
-const MAX_NODES = 15;
 const GRAPH_PANEL_HEIGHT = 360;
 const BAR_CHART_HEIGHT = 200;
 const TV_CHART_HEIGHT = 180;
@@ -109,7 +108,6 @@ export default function RandomWalkSimulator() {
 
   // ─── Derived computations ───
 
-  const deg = useMemo(() => degrees(adj), [adj]);
   const stationaryDist = useMemo(() => stationaryDistribution(adj), [adj]);
 
   // Empirical visit frequency
@@ -195,12 +193,6 @@ export default function RandomWalkSimulator() {
       if (simRef.current) simRef.current.stop();
     };
   }, [adj, n, presetIdx, initSimulation]);
-
-  // Initial mount
-  useEffect(() => {
-    initSimulation(n, adj);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ─── Walk reset helper ───
 
@@ -303,8 +295,9 @@ export default function RandomWalkSimulator() {
     const edges = edgesFromAdj(adj);
 
     // Define glow filter for the walker
+    const walkerGlowId = `walker-glow-${Math.random().toString(36).slice(2)}`;
     const defs = svg.append('defs');
-    const filter = defs.append('filter').attr('id', 'walker-glow');
+    const filter = defs.append('filter').attr('id', walkerGlowId);
     filter
       .append('feGaussianBlur')
       .attr('stdDeviation', '4')
@@ -377,7 +370,7 @@ export default function RandomWalkSimulator() {
         .attr('r', 20)
         .style('fill', AMBER)
         .style('fill-opacity', '0.35')
-        .attr('filter', 'url(#walker-glow)');
+        .attr('filter', `url(#${walkerGlowId})`);
 
       // Walker circle
       walkerG

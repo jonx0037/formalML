@@ -3,9 +3,9 @@ import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   pathGraph, cycleGraph, completeGraph, barbellGraph, gridGraph, hypercubeGraph,
-  mixingProfile, analyzeTransitionMatrix, degrees,
+  mixingProfile, degrees,
   jacobiEigen,
-  type Graph, type MixingProfile, type TransitionResult,
+  type Graph, type MixingProfile,
 } from './shared/graphTheory';
 
 // ─── Layout constants ───
@@ -91,12 +91,21 @@ function computeDistributionAtTime(
 
   // P^t(x0, y) = Σ_k μ_k^t * φ_k(x0) * ψ_k(y)
   const dist: number[] = new Array(n).fill(0);
+  let totalMass = 0;
   for (let y = 0; y < n; y++) {
     let val = 0;
     for (let k = 0; k < n; k++) {
       val += Math.pow(mu[k], t) * phi[k][x0] * psi[k][y];
     }
-    dist[y] = Math.max(0, val); // clamp small negatives from numerical error
+    const clamped = Math.max(0, val); // clamp small negatives from numerical error
+    dist[y] = clamped;
+    totalMass += clamped;
+  }
+  // Renormalize so that dist sums to 1
+  if (totalMass > 0) {
+    for (let y = 0; y < n; y++) {
+      dist[y] /= totalMass;
+    }
   }
 
   return dist;
@@ -108,7 +117,6 @@ interface FamilyResult {
   key: string;
   graph: Graph;
   profile: MixingProfile;
-  transition: TransitionResult;
 }
 
 // ─── Component ───
@@ -159,8 +167,7 @@ export default function MixingTimeExplorer() {
       if (!selectedFamilies.has(fam.key)) continue;
       const graph = fam.build(sizeParam);
       const profile = mixingProfile(graph, MAX_TIME, EPSILON);
-      const transition = analyzeTransitionMatrix(graph);
-      results.set(fam.key, { key: fam.key, graph, profile, transition });
+      results.set(fam.key, { key: fam.key, graph, profile });
     }
     return results;
   }, [selectedFamilies, sizeParam]);
@@ -266,14 +273,6 @@ export default function MixingTimeExplorer() {
       if (simRef.current) simRef.current.stop();
     };
   }, [highlightedResult, highlightedFamily, sizeParam, leftPanelWidth, initSimulation]);
-
-  // Initial mount
-  useEffect(() => {
-    if (highlightedResult) {
-      initSimulation(highlightedResult.graph, leftPanelWidth);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ─── Graph panel rendering (left) ───
 
@@ -389,7 +388,7 @@ export default function MixingTimeExplorer() {
     const legendY = GRAPH_PANEL_HEIGHT - 24;
 
     const defs = svg.append('defs');
-    const gradientId = 'dist-gradient';
+    const gradientId = `dist-gradient-${Math.random().toString(36).slice(2)}`;
     const gradient = defs
       .append('linearGradient')
       .attr('id', gradientId)
@@ -762,6 +761,7 @@ export default function MixingTimeExplorer() {
                 onClick={(e) => {
                   // Click on the label area (not the checkbox) highlights the family
                   if ((e.target as HTMLElement).tagName !== 'INPUT') {
+                    e.preventDefault();
                     if (checked) {
                       handleFamilyHighlight(fam.key);
                     }

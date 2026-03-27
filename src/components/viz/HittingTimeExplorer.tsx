@@ -10,7 +10,6 @@ import {
 // ─── Layout constants ───
 
 const SM_BREAKPOINT = 640;
-const MAX_NODES = 15;
 const GRAPH_PANEL_HEIGHT = 380;
 const HEATMAP_CELL = 32;
 const BAR_PANEL_HEIGHT = 220;
@@ -104,7 +103,6 @@ export default function HittingTimeExplorer() {
 
   const pi = useMemo(() => stationaryDistribution(adjacency), [adjacency]);
   const deg = useMemo(() => degrees(adjacency), [adjacency]);
-  const twoM = useMemo(() => deg.reduce((s, d) => s + d, 0), [deg]);
 
   // Return times: h(i,i) = 1/π_i = 2m/d_i
   const returnTimes = useMemo(() => {
@@ -195,12 +193,6 @@ export default function HittingTimeExplorer() {
       if (simRef.current) simRef.current.stop();
     };
   }, [adjacency, n, presetIdx, initSimulation]);
-
-  // Initial mount
-  useEffect(() => {
-    initSimulation(n, adjacency);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ─── Interaction handlers ───
 

@@ -47,7 +47,7 @@ references:
     title: "The PageRank Citation Ranking: Bringing Order to the Web"
     authors: "Page, Brin, Motwani & Winograd"
     year: 1999
-    url: "http://ilpubs.stanford.edu:8090/422/"
+    url: "https://doi.org/10.2139/ssrn.1712064"
     note: "PageRank = stationary distribution of a random walk with teleportation — the foundational application"
   - type: "paper"
     title: "DeepWalk: Online Learning of Social Representations"
@@ -346,7 +346,7 @@ $$(I - P_{\bar{j}}) \mathbf{h}_j = \mathbf{1}$$
 where $P_{\bar{j}}$ is the transition matrix with row and column $j$ removed.
 </TheoremBlock>
 
-Hitting times are **asymmetric** in general: $h(i, j) \neq h(j, i)$. On a star graph, the hub reaches any leaf in 1 step ($h(\text{hub}, \text{leaf}) = 1$), but a leaf must first return to the hub, then find the right leaf ($h(\text{leaf}_a, \text{leaf}_b) = 2(n-1)/(n-2) \approx 2$ for large $n$... but $h(\text{leaf}, \text{hub}) = 1$ while $h(\text{hub}, \text{leaf}) = n - 1$ in the return-time sense). The asymmetry reflects the graph's branching structure.
+Hitting times are **asymmetric** in general: $h(i, j) \neq h(j, i)$. On a star graph $S_n$ with 1 hub and $n - 1$ leaves, any leaf reaches the hub in exactly 1 step ($h(\text{leaf}, \text{hub}) = 1$), but the hub must guess the right leaf: $h(\text{hub}, \text{leaf}) = n - 1$. To go from one leaf to another, the walker first steps to the hub (1 step) then searches for the target leaf ($n - 1$ steps on average), giving $h(\text{leaf}_a, \text{leaf}_b) = n$. The asymmetry reflects the graph's branching structure.
 
 <TheoremBlock type="definition" number={10} title="Commute Time">
 The **commute time** between $i$ and $j$ is the expected round-trip time:
@@ -469,9 +469,12 @@ def simulate_walk(P, start, n_steps, rng=None):
 def mixing_profile(A, max_t=200):
     """TV distance at each step via spectral decomposition."""
     P = transition_matrix(A)
-    pi = A.sum(axis=1) / A.sum()
+    deg = A.sum(axis=1)
+    deg = np.where(deg == 0, 1, deg)  # guard against isolated vertices
+    pi = deg / deg.sum()
+    inv_sqrt_deg = 1.0 / np.sqrt(deg)
     evals, evecs = np.linalg.eigh(
-        np.diag(1/np.sqrt(A.sum(axis=1))) @ A @ np.diag(1/np.sqrt(A.sum(axis=1)))
+        np.diag(inv_sqrt_deg) @ A @ np.diag(inv_sqrt_deg)
     )
     # evals of S = D^{-1/2}AD^{-1/2} equal evals of P
     tv = []

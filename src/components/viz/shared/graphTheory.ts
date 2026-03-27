@@ -1168,10 +1168,13 @@ export function mixingProfile(
       }
     }
     tvDistances[t] = maxTV;
+    // Track worst start vertex at t=0 (before any mixing)
     if (t === 0) worstStartVertex = worstX;
     if (!foundMixing && maxTV <= epsilon) {
       mixingTime = t;
       foundMixing = true;
+      // Update to the vertex that was hardest to mix at the boundary
+      worstStartVertex = worstX;
     }
   }
 

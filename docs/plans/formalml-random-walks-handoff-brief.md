@@ -92,7 +92,7 @@ references:
     title: "The PageRank Citation Ranking: Bringing Order to the Web"
     authors: "Page, Brin, Motwani & Winograd"
     year: 1999
-    url: "http://ilpubs.stanford.edu:8090/422/"
+    url: "https://doi.org/10.2139/ssrn.1712064"
     note: "PageRank = stationary distribution of a random walk with teleportation — the foundational application"
   - type: "paper"
     title: "DeepWalk: Online Learning of Social Representations"
