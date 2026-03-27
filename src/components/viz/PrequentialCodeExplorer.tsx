@@ -97,7 +97,8 @@ export default function PrequentialCodeExplorer() {
   const [isRunning, setIsRunning] = useState(false);
   const [seed, setSeed] = useState(42);
   const runRef = useRef(false);
-  const animRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const animRef = useRef<number | null>(null);
+  const lastTickRef = useRef(0);
 
   const sequence = useMemo(
     () => generateSequence(scenario, pBefore, pAfter, changePointFrac, seed),
@@ -141,7 +142,7 @@ export default function PrequentialCodeExplorer() {
     setCurrentStep(0);
     setIsRunning(false);
     runRef.current = false;
-    if (animRef.current) clearTimeout(animRef.current);
+    if (animRef.current) cancelAnimationFrame(animRef.current);
   }, [scenario, pBefore, pAfter, changePointFrac, seed]);
 
   const handleStep = useCallback(() => {
@@ -152,24 +153,28 @@ export default function PrequentialCodeExplorer() {
     if (isRunning) {
       runRef.current = false;
       setIsRunning(false);
-      if (animRef.current) clearTimeout(animRef.current);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
       return;
     }
     setIsRunning(true);
     runRef.current = true;
-    function tick() {
+    lastTickRef.current = performance.now();
+    function tick(now: number) {
       if (!runRef.current) return;
-      setCurrentStep(s => {
-        if (s >= N_OBS) {
-          runRef.current = false;
-          setIsRunning(false);
-          return s;
-        }
-        animRef.current = setTimeout(tick, 50);
-        return s + 1;
-      });
+      if (now - lastTickRef.current >= 50) {
+        lastTickRef.current = now;
+        setCurrentStep(s => {
+          if (s >= N_OBS) {
+            runRef.current = false;
+            setIsRunning(false);
+            return s;
+          }
+          return s + 1;
+        });
+      }
+      animRef.current = requestAnimationFrame(tick);
     }
-    tick();
+    animRef.current = requestAnimationFrame(tick);
   }, [isRunning]);
 
   const handleReset = useCallback(() => {
@@ -177,14 +182,14 @@ export default function PrequentialCodeExplorer() {
     setCurrentStep(0);
     setIsRunning(false);
     runRef.current = false;
-    if (animRef.current) clearTimeout(animRef.current);
+    if (animRef.current) cancelAnimationFrame(animRef.current);
   }, []);
 
   // Cleanup
   useEffect(() => {
     return () => {
       runRef.current = false;
-      if (animRef.current) clearTimeout(animRef.current);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
     };
   }, []);
 

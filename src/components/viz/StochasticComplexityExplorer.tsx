@@ -35,17 +35,16 @@ function bayesLogProb(k: number, n: number, prior: 'uniform' | 'jeffreys'): numb
 }
 
 function pluginMLELogProb(k: number, n: number): number {
-  // Plug-in MLE: p(k|n) = C(n,k) * theta_hat^k * (1-theta_hat)^(n-k) where theta_hat = k/n
-  // This is the same as the maximized likelihood — regret is 0 only for the observed k,
-  // but the distribution doesn't sum to 1 over all k (it's not properly normalized)
-  // Actually for plug-in, we use the MLE evaluated at the global MLE (theta=0.5 as default)
-  // Let's use theta=k/n but that gives regret=0 which isn't useful.
-  // Better: use a fixed theta plug-in, e.g., theta = 0.5
-  const theta = 0.5;
+  // Plug-in MLE: p(k|n) = C(n,k) * theta_hat^k * (1 - theta_hat)^(n-k)
+  // where theta_hat = k/n is the maximum-likelihood estimate for the Bernoulli parameter.
+  // This is the maximized likelihood for the observed k. It does not define
+  // a normalized distribution over all possible k, but is useful as a baseline code.
+  if (n === 0) return 0;
+  const thetaHat = k / n;
   const logBinom = logBinomial(n, k);
   let logLik = 0;
-  if (k > 0) logLik += k * Math.log2(theta);
-  if (k < n) logLik += (n - k) * Math.log2(1 - theta);
+  if (k > 0) logLik += k * Math.log2(thetaHat);
+  if (k < n) logLik += (n - k) * Math.log2(1 - thetaHat);
   return logBinom + logLik;
 }
 

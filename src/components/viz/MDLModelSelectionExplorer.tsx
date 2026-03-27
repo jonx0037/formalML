@@ -87,7 +87,7 @@ function generateTrueCoeffs(degree: number): number[] {
 
 const MAX_DEGREE = 12;
 const CONSISTENCY_NS = [20, 50, 100, 200, 500];
-const N_SIMS = 100;
+const N_SIMS = 30;
 
 export default function MDLModelSelectionExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();

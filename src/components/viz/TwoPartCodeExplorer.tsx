@@ -116,7 +116,8 @@ export default function TwoPartCodeExplorer() {
       const rss = computeRSS(data.xs, data.ys, coeffs);
       const sigmaHat2 = Math.max(rss / n, 1e-15);
       const modelLen = logStar(d + 1) + (d + 1) * BITS_PER_COEFF;
-      const dataLen = (n / 2) * Math.log2(2 * Math.PI * Math.E * sigmaHat2);
+      const dataLenRaw = (n / 2) * Math.log2(2 * Math.PI * Math.E * sigmaHat2);
+      const dataLen = Math.max(dataLenRaw, 0);
       const totalLen = modelLen + dataLen;
       results.push({ degree: d, coeffs, rss, modelLen, dataLen, totalLen });
     }
