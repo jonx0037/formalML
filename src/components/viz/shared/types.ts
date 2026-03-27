@@ -162,3 +162,15 @@ export interface RateDistortionPoint {
   distortion: number;
 }
 
+export interface GraphEdge {
+  source: number;
+  target: number;
+  weight: number;
+}
+
+export interface GraphPartition {
+  sides: [number[], number[]];
+  cutSize: number;
+  cheegerRatio: number;
+}
+
