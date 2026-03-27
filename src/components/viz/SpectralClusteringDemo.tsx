@@ -2,393 +2,466 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  moonsPoints, trueLabels, spectralLabels,
-  laplacianEigenvalues, spectralEmbedding,
-  spectralAccuracy, kmeansAccuracy,
-  SIGMA,
-} from '../../data/spectral-clustering-data';
+  twoMoons, twoCircles, threeBlobs, spiral,
+  knnGraph, epsilonBallGraph,
+  normalizedLaplacian, jacobiEigen,
+  kMeans,
+  type Graph,
+} from './shared/graphTheory';
 
-const STEP_LABELS = ['Data', 'Similarity', 'Laplacian', 'Embedding', 'Result'];
+type DatasetName = 'Two Moons' | 'Two Circles' | 'Three Blobs' | 'Spiral';
+type GraphMode = 'knn' | 'epsilon';
 
-const STEP_DESCRIPTIONS = [
-  '100 points forming two interleaving crescents. K-means fails on non-convex shapes like these.',
-  'Connect nearby points with edge weights from a Gaussian kernel (σ = 0.15).',
-  'The spectral gap after λ₁ reveals 2 clusters. The Spectral Theorem guarantees these eigenvalues are real and non-negative.',
-  'Plotting eigenvectors v₂ and v₃ as coordinates. The non-convex clusters become linearly separable.',
-  `K-means on the spectral embedding perfectly separates the moons (accuracy: ${(spectralAccuracy * 100).toFixed(0)}%).`,
-];
+const DATASETS: DatasetName[] = ['Two Moons', 'Two Circles', 'Three Blobs', 'Spiral'];
+const K_OPTIONS = [2, 3, 4];
+const N_POINTS = 100;
+const SEED = 42;
+const KNN_K = 7;
+const MAX_EDGES_SHOWN = 500;
+const MARGIN = { top: 28, right: 12, bottom: 12, left: 12 };
+const PANEL_TITLES = ['Input Data', 'Similarity Graph', 'Spectral Embedding', 'Clustering Result'];
+const MOBILE_BREAKPOINT = 640;
 
-const STEP_TITLES = [
-  'Two Moons Dataset',
-  'Similarity Graph',
-  'Laplacian Eigenvalues',
-  'Spectral Embedding',
-  'Spectral Clustering Result',
-];
+function generatePoints(name: DatasetName, noise: number): [number, number][] {
+  switch (name) {
+    case 'Two Moons': return twoMoons(N_POINTS, noise, SEED);
+    case 'Two Circles': return twoCircles(N_POINTS, noise, SEED);
+    case 'Three Blobs': return threeBlobs(N_POINTS, noise, SEED);
+    case 'Spiral': return spiral(N_POINTS, noise, SEED);
+  }
+}
 
-const COLORS = ['#2171b5', '#d94801'] as const;
-const MARGIN = { top: 24, right: 20, bottom: 40, left: 44 };
-const PANEL_HEIGHT = 350;
-const SIM_THRESHOLD = 0.01;
-const EDGE_DIST = 0.5;
-
-function gaussian(d: number, sigma: number): number {
-  return Math.exp(-(d * d) / (2 * sigma * sigma));
+function computeMedianPairwiseDist(points: [number, number][]): number {
+  const dists: number[] = [];
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const dx = points[i][0] - points[j][0];
+      const dy = points[i][1] - points[j][1];
+      dists.push(Math.sqrt(dx * dx + dy * dy));
+    }
+  }
+  dists.sort((a, b) => a - b);
+  return dists[Math.floor(dists.length / 2)];
 }
 
 export default function SpectralClusteringDemo() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [step, setStep] = useState(0);
+
+  const svgRef1 = useRef<SVGSVGElement>(null);
+  const svgRef2 = useRef<SVGSVGElement>(null);
+  const svgRef3 = useRef<SVGSVGElement>(null);
+  const svgRef4 = useRef<SVGSVGElement>(null);
+
+  const [datasetName, setDatasetName] = useState<DatasetName>('Two Moons');
+  const [kClusters, setKClusters] = useState(2);
+  const [graphMode, setGraphMode] = useState<GraphMode>('knn');
+  const [noise, setNoise] = useState(1.0);
+
+  const isMobile = containerWidth > 0 && containerWidth < MOBILE_BREAKPOINT;
 
   const panelWidth = useMemo(() => {
-    if (!containerWidth) return 500;
-    return Math.min(containerWidth - 16, 640);
-  }, [containerWidth]);
+    if (!containerWidth) return 280;
+    if (isMobile) return Math.min(containerWidth - 16, 480);
+    return Math.floor((containerWidth - 24) / 2);
+  }, [containerWidth, isMobile]);
 
-  // Pre-compute similarity edges once
-  const edges = useMemo(() => {
-    const result: { i: number; j: number; sim: number }[] = [];
-    for (let i = 0; i < moonsPoints.length; i++) {
-      for (let j = i + 1; j < moonsPoints.length; j++) {
-        const dx = moonsPoints[i].x - moonsPoints[j].x;
-        const dy = moonsPoints[i].y - moonsPoints[j].y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist <= EDGE_DIST) {
-          const sim = gaussian(dist, SIGMA);
-          if (sim > SIM_THRESHOLD) {
-            result.push({ i, j, sim });
-          }
+  const panelHeight = useMemo(() => Math.min(panelWidth, 320), [panelWidth]);
+
+  // --- Pipeline computation ---
+
+  const points = useMemo(
+    () => generatePoints(datasetName, noise),
+    [datasetName, noise],
+  );
+
+  const graph: Graph = useMemo(() => {
+    if (graphMode === 'knn') {
+      return knnGraph(points, KNN_K);
+    }
+    const median = computeMedianPairwiseDist(points);
+    const epsilon = median * 0.5;
+    return epsilonBallGraph(points, epsilon);
+  }, [points, graphMode]);
+
+  const eigenResult = useMemo(() => {
+    const Lnorm = normalizedLaplacian(graph.adjacency);
+    return jacobiEigen(Lnorm);
+  }, [graph]);
+
+  const spectralEmbedding = useMemo(() => {
+    // eigenvectors[i] is the i-th eigenvector (sorted by ascending eigenvalue).
+    // Skip eigenvector 0 (trivial), take eigenvectors 1..kClusters.
+    const k = Math.min(kClusters, eigenResult.eigenvectors.length - 1);
+    const n = points.length;
+    const rows: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      const row: number[] = [];
+      for (let j = 1; j <= k; j++) {
+        row.push(eigenResult.eigenvectors[j][i]);
+      }
+      rows.push(row);
+    }
+
+    // Ng-Jordan-Weiss: normalize each row to unit length
+    for (let i = 0; i < n; i++) {
+      let norm = 0;
+      for (let d = 0; d < rows[i].length; d++) norm += rows[i][d] * rows[i][d];
+      norm = Math.sqrt(norm);
+      if (norm > 1e-10) {
+        for (let d = 0; d < rows[i].length; d++) rows[i][d] /= norm;
+      }
+    }
+
+    return rows;
+  }, [eigenResult, kClusters, points.length]);
+
+  const clusterAssignments = useMemo(
+    () => kMeans(spectralEmbedding, kClusters, 20, SEED),
+    [spectralEmbedding, kClusters],
+  );
+
+  const clusterColors = useMemo(() => d3.schemeCategory10, []);
+
+  // Edges for Panel 2 — subsample if too many
+  const visibleEdges = useMemo(() => {
+    const allEdges: { i: number; j: number; w: number }[] = [];
+    const adj = graph.adjacency;
+    const n = graph.n;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (adj[i][j] > 0) {
+          allEdges.push({ i, j, w: adj[i][j] });
         }
       }
     }
-    return result;
-  }, []);
+    if (allEdges.length <= MAX_EDGES_SHOWN) return allEdges;
+    // Keep the strongest edges
+    allEdges.sort((a, b) => b.w - a.w);
+    return allEdges.slice(0, MAX_EDGES_SHOWN);
+  }, [graph]);
 
-  // Scatter extents for original points
-  const xExtent = useMemo(
-    () => d3.extent(moonsPoints, (p) => p.x) as [number, number],
-    [],
-  );
-  const yExtent = useMemo(
-    () => d3.extent(moonsPoints, (p) => p.y) as [number, number],
-    [],
-  );
+  // --- Rendering ---
 
-  // Embedding extents
-  const embXExtent = useMemo(
-    () => d3.extent(spectralEmbedding, (p) => p.v2) as [number, number],
-    [],
-  );
-  const embYExtent = useMemo(
-    () => d3.extent(spectralEmbedding, (p) => p.v3) as [number, number],
-    [],
-  );
-
+  // Panel 1: Input data (neutral gray)
   useEffect(() => {
-    if (!svgRef.current || panelWidth === 0) return;
-
-    const innerW = panelWidth - MARGIN.left - MARGIN.right;
-    const innerH = PANEL_HEIGHT - MARGIN.top - MARGIN.bottom;
-
-    const svg = d3.select(svgRef.current);
+    const svg = d3.select(svgRef1.current);
+    if (!svgRef1.current || panelWidth === 0) return;
     svg.selectAll('*').remove();
 
-    const g = svg.append('g');
+    const innerW = panelWidth - MARGIN.left - MARGIN.right;
+    const innerH = panelHeight - MARGIN.top - MARGIN.bottom;
+
+    const xExtent = d3.extent(points, (p) => p[0]) as [number, number];
+    const yExtent = d3.extent(points, (p) => p[1]) as [number, number];
+    const pad = 0.1;
+    const xScale = d3.scaleLinear()
+      .domain([xExtent[0] - pad, xExtent[1] + pad])
+      .range([MARGIN.left, MARGIN.left + innerW]);
+    const yScale = d3.scaleLinear()
+      .domain([yExtent[0] - pad, yExtent[1] + pad])
+      .range([MARGIN.top + innerH, MARGIN.top]);
 
     // Title
-    svg
-      .append('text')
+    svg.append('text')
       .attr('x', panelWidth / 2)
       .attr('y', 16)
       .attr('text-anchor', 'middle')
       .style('fill', 'var(--color-text)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 13)
+      .attr('font-size', 12)
       .attr('font-weight', 600)
-      .text(STEP_TITLES[step]);
+      .text(PANEL_TITLES[0]);
 
-    function renderEigenvalueBarChart() {
-      const barData = laplacianEigenvalues;
-      const xScale = d3
-        .scaleBand<number>()
-        .domain(barData.map((_, i) => i))
-        .range([MARGIN.left, MARGIN.left + innerW])
-        .padding(0.2);
+    // Points in neutral gray
+    svg.selectAll('.pt')
+      .data(points)
+      .join('circle')
+      .attr('class', 'pt')
+      .attr('cx', (p) => xScale(p[0]))
+      .attr('cy', (p) => yScale(p[1]))
+      .attr('r', 3.5)
+      .attr('fill', '#999')
+      .attr('fill-opacity', 0.75)
+      .style('stroke', 'var(--color-surface)')
+      .attr('stroke-width', 0.5);
+  }, [points, panelWidth, panelHeight]);
 
-      const yMax = d3.max(barData) as number;
-      const yScale = d3
-        .scaleLinear()
-        .domain([0, yMax * 1.1])
-        .range([MARGIN.top + innerH, MARGIN.top]);
+  // Panel 2: Similarity graph
+  useEffect(() => {
+    const svg = d3.select(svgRef2.current);
+    if (!svgRef2.current || panelWidth === 0) return;
+    svg.selectAll('*').remove();
 
-      // Bars
-      g.selectAll('.bar')
-        .data(barData)
-        .join('rect')
-        .attr('class', 'bar')
-        .attr('x', (_, i) => xScale(i)!)
-        .attr('y', (d) => yScale(d))
-        .attr('width', xScale.bandwidth())
-        .attr('height', (d) => MARGIN.top + innerH - yScale(d))
-        .attr('fill', (_, i) => (i === 0 ? '#999' : COLORS[0]))
-        .attr('fill-opacity', 0.8)
-        .attr('rx', 2);
+    const innerW = panelWidth - MARGIN.left - MARGIN.right;
+    const innerH = panelHeight - MARGIN.top - MARGIN.bottom;
 
-      // Spectral gap annotation: bracket between bar 1 and bar 2
-      const x1 = xScale(1)! + xScale.bandwidth() / 2;
-      const x2 = xScale(2)! + xScale.bandwidth() / 2;
-      const y1 = yScale(barData[1]);
-      const y2 = yScale(barData[2]);
-      const bracketX = (x1 + x2) / 2;
-      const bracketTop = Math.min(y1, y2) - 16;
+    const xExtent = d3.extent(points, (p) => p[0]) as [number, number];
+    const yExtent = d3.extent(points, (p) => p[1]) as [number, number];
+    const pad = 0.1;
+    const xScale = d3.scaleLinear()
+      .domain([xExtent[0] - pad, xExtent[1] + pad])
+      .range([MARGIN.left, MARGIN.left + innerW]);
+    const yScale = d3.scaleLinear()
+      .domain([yExtent[0] - pad, yExtent[1] + pad])
+      .range([MARGIN.top + innerH, MARGIN.top]);
 
-      g.append('line')
-        .attr('x1', x1).attr('y1', y1 - 4)
-        .attr('x2', x1).attr('y2', bracketTop)
-        .style('stroke', 'var(--color-text)')
-        .attr('stroke-width', 1.5)
-        .attr('stroke-opacity', 0.6);
-      g.append('line')
-        .attr('x1', x1).attr('y1', bracketTop)
-        .attr('x2', x2).attr('y2', bracketTop)
-        .style('stroke', 'var(--color-text)')
-        .attr('stroke-width', 1.5)
-        .attr('stroke-opacity', 0.6);
-      g.append('line')
-        .attr('x1', x2).attr('y1', bracketTop)
-        .attr('x2', x2).attr('y2', y2 - 4)
-        .style('stroke', 'var(--color-text)')
-        .attr('stroke-width', 1.5)
-        .attr('stroke-opacity', 0.6);
-      g.append('text')
-        .attr('x', bracketX)
-        .attr('y', bracketTop - 6)
-        .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-text)')
-        .style('font-family', 'var(--font-sans)')
-        .attr('font-size', 10)
-        .attr('font-weight', 600)
-        .text('spectral gap');
+    // Title
+    svg.append('text')
+      .attr('x', panelWidth / 2)
+      .attr('y', 16)
+      .attr('text-anchor', 'middle')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
+      .attr('font-size', 12)
+      .attr('font-weight', 600)
+      .text(PANEL_TITLES[1]);
 
-      // X axis labels
-      g.selectAll('.xlabel')
-        .data(barData)
-        .join('text')
-        .attr('class', 'xlabel')
-        .attr('x', (_, i) => xScale(i)! + xScale.bandwidth() / 2)
-        .attr('y', MARGIN.top + innerH + 16)
-        .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-text)')
-        .style('font-family', 'var(--font-sans)')
-        .attr('font-size', 10)
-        .attr('opacity', 0.7)
-        .text((_, i) => `λ${i}`);
+    // Max weight for opacity scaling
+    const maxW = d3.max(visibleEdges, (e) => e.w) ?? 1;
 
-      // Y axis
-      const yAxis = d3.axisLeft(yScale).ticks(5).tickSize(-innerW);
-      const yAxisG = g
-        .append('g')
-        .attr('transform', `translate(${MARGIN.left}, 0)`)
-        .call(yAxis);
-      yAxisG.selectAll('line').style('stroke', 'var(--color-border)').attr('stroke-opacity', 0.3);
-      yAxisG.selectAll('path').style('stroke', 'none');
-      yAxisG.selectAll('text')
-        .style('fill', 'var(--color-text)')
-        .style('font-family', 'var(--font-sans)')
-        .attr('font-size', 9)
-        .attr('opacity', 0.6);
-    }
+    // Edges
+    svg.selectAll('.edge')
+      .data(visibleEdges)
+      .join('line')
+      .attr('class', 'edge')
+      .attr('x1', (e) => xScale(points[e.i][0]))
+      .attr('y1', (e) => yScale(points[e.i][1]))
+      .attr('x2', (e) => xScale(points[e.j][0]))
+      .attr('y2', (e) => yScale(points[e.j][1]))
+      .style('stroke', 'var(--color-text)')
+      .attr('stroke-opacity', (e) => 0.05 + 0.5 * (e.w / maxW))
+      .attr('stroke-width', (e) => 0.3 + 0.7 * (e.w / maxW));
 
-    function renderScatterPlot() {
-      const pad = 0.15;
-      let xDomain: [number, number];
-      let yDomain: [number, number];
-      let xLabel = '';
-      let yLabel = '';
+    // Points
+    svg.selectAll('.pt')
+      .data(points)
+      .join('circle')
+      .attr('class', 'pt')
+      .attr('cx', (p) => xScale(p[0]))
+      .attr('cy', (p) => yScale(p[1]))
+      .attr('r', 3)
+      .attr('fill', '#999')
+      .attr('fill-opacity', 0.8)
+      .style('stroke', 'var(--color-surface)')
+      .attr('stroke-width', 0.5);
+  }, [points, visibleEdges, panelWidth, panelHeight]);
 
-      if (step === 3) {
-        xDomain = [embXExtent[0] - pad, embXExtent[1] + pad];
-        yDomain = [embYExtent[0] - pad, embYExtent[1] + pad];
-        xLabel = 'v₂';
-        yLabel = 'v₃';
-      } else {
-        xDomain = [xExtent[0] - pad, xExtent[1] + pad];
-        yDomain = [yExtent[0] - pad, yExtent[1] + pad];
-      }
+  // Panel 3: Spectral embedding
+  useEffect(() => {
+    const svg = d3.select(svgRef3.current);
+    if (!svgRef3.current || panelWidth === 0) return;
+    svg.selectAll('*').remove();
 
-      const xScale = d3.scaleLinear().domain(xDomain).range([MARGIN.left, MARGIN.left + innerW]);
-      const yScale = d3.scaleLinear().domain(yDomain).range([MARGIN.top + innerH, MARGIN.top]);
+    const innerW = panelWidth - MARGIN.left - MARGIN.right;
+    const innerH = panelHeight - MARGIN.top - MARGIN.bottom;
 
-      // Similarity edges (step 1 only)
-      if (step === 1) {
-        g.selectAll('.edge')
-          .data(edges)
-          .join('line')
-          .attr('class', 'edge')
-          .attr('x1', (e) => xScale(moonsPoints[e.i].x))
-          .attr('y1', (e) => yScale(moonsPoints[e.i].y))
-          .attr('x2', (e) => xScale(moonsPoints[e.j].x))
-          .attr('y2', (e) => yScale(moonsPoints[e.j].y))
-          .style('stroke', 'var(--color-text)')
-          .attr('stroke-opacity', (e) => Math.min(e.sim * 0.8, 0.6))
-          .attr('stroke-width', (e) => 0.5 + e.sim * 0.5);
-      }
+    // Use first two dimensions of the embedding for x,y
+    const embX = spectralEmbedding.map((r) => r[0]);
+    const embY = spectralEmbedding.map((r) => r.length > 1 ? r[1] : 0);
 
-      // Choose labels and data for scatter
-      let labels: number[];
-      let pts: { x: number; y: number }[];
+    const xExtent = d3.extent(embX) as [number, number];
+    const yExtent = d3.extent(embY) as [number, number];
+    const padX = (xExtent[1] - xExtent[0]) * 0.1 || 0.1;
+    const padY = (yExtent[1] - yExtent[0]) * 0.1 || 0.1;
 
-      if (step === 3) {
-        pts = spectralEmbedding.map((p) => ({ x: p.v2, y: p.v3 }));
-        labels = spectralLabels;
-      } else if (step === 4) {
-        pts = moonsPoints;
-        labels = spectralLabels;
-      } else {
-        pts = moonsPoints;
-        labels = trueLabels;
-      }
+    const xScale = d3.scaleLinear()
+      .domain([xExtent[0] - padX, xExtent[1] + padX])
+      .range([MARGIN.left, MARGIN.left + innerW]);
+    const yScale = d3.scaleLinear()
+      .domain([yExtent[0] - padY, yExtent[1] + padY])
+      .range([MARGIN.top + innerH, MARGIN.top]);
 
-      // Points
-      g.selectAll('.point')
-        .data(pts)
-        .join('circle')
-        .attr('class', 'point')
-        .attr('cx', (p) => xScale(p.x))
-        .attr('cy', (p) => yScale(p.y))
-        .attr('r', 4)
-        .attr('fill', (_, i) => COLORS[labels[i]])
-        .attr('fill-opacity', 0.85)
-        .style('stroke', 'var(--color-surface)')
-        .attr('stroke-width', 1);
+    // Title
+    svg.append('text')
+      .attr('x', panelWidth / 2)
+      .attr('y', 16)
+      .attr('text-anchor', 'middle')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
+      .attr('font-size', 12)
+      .attr('font-weight', 600)
+      .text(PANEL_TITLES[2]);
 
-      // Axis labels for embedding
-      if (step === 3) {
-        g.append('text')
-          .attr('x', MARGIN.left + innerW / 2)
-          .attr('y', MARGIN.top + innerH + 32)
-          .attr('text-anchor', 'middle')
-          .style('fill', 'var(--color-text)')
-          .style('font-family', 'var(--font-sans)')
-          .attr('font-size', 11)
-          .attr('opacity', 0.6)
-          .text(xLabel);
+    // Axis labels
+    svg.append('text')
+      .attr('x', MARGIN.left + innerW / 2)
+      .attr('y', MARGIN.top + innerH + 10)
+      .attr('text-anchor', 'middle')
+      .style('fill', 'var(--color-text-secondary)')
+      .style('font-family', 'var(--font-sans)')
+      .attr('font-size', 10)
+      .text('v\u2082');
 
-        g.append('text')
-          .attr('x', 14)
-          .attr('y', MARGIN.top + innerH / 2)
-          .attr('text-anchor', 'middle')
-          .attr('transform', `rotate(-90, 14, ${MARGIN.top + innerH / 2})`)
-          .style('fill', 'var(--color-text)')
-          .style('font-family', 'var(--font-sans)')
-          .attr('font-size', 11)
-          .attr('opacity', 0.6)
-          .text(yLabel);
-      }
+    svg.append('text')
+      .attr('x', 6)
+      .attr('y', MARGIN.top + innerH / 2)
+      .attr('text-anchor', 'middle')
+      .attr('transform', `rotate(-90, 6, ${MARGIN.top + innerH / 2})`)
+      .style('fill', 'var(--color-text-secondary)')
+      .style('font-family', 'var(--font-sans)')
+      .attr('font-size', 10)
+      .text('v\u2083');
 
-      // Accuracy annotation
-      if (step === 0) {
-        svg
-          .append('text')
-          .attr('x', panelWidth / 2)
-          .attr('y', MARGIN.top + innerH + 32)
-          .attr('text-anchor', 'middle')
-          .style('fill', 'var(--color-text)')
-          .style('font-family', 'var(--font-sans)')
-          .attr('font-size', 10)
-          .attr('opacity', 0.5)
-          .text(`K-means accuracy on this dataset: ${(kmeansAccuracy * 100).toFixed(0)}%`);
-      }
+    // Points colored by cluster
+    svg.selectAll('.pt')
+      .data(spectralEmbedding)
+      .join('circle')
+      .attr('class', 'pt')
+      .attr('cx', (_, i) => xScale(embX[i]))
+      .attr('cy', (_, i) => yScale(embY[i]))
+      .attr('r', 3.5)
+      .attr('fill', (_, i) => clusterColors[clusterAssignments[i] % 10])
+      .attr('fill-opacity', 0.85)
+      .style('stroke', 'var(--color-surface)')
+      .attr('stroke-width', 0.5);
+  }, [spectralEmbedding, clusterAssignments, clusterColors, panelWidth, panelHeight]);
 
-      if (step === 4) {
-        svg
-          .append('text')
-          .attr('x', panelWidth / 2)
-          .attr('y', MARGIN.top + innerH + 32)
-          .attr('text-anchor', 'middle')
-          .style('fill', 'var(--color-text)')
-          .style('font-family', 'var(--font-sans)')
-          .attr('font-size', 10)
-          .attr('opacity', 0.5)
-          .text(`Spectral clustering accuracy: ${(spectralAccuracy * 100).toFixed(0)}%`);
-      }
-    }
+  // Panel 4: Clustering result (original positions, colored)
+  useEffect(() => {
+    const svg = d3.select(svgRef4.current);
+    if (!svgRef4.current || panelWidth === 0) return;
+    svg.selectAll('*').remove();
 
-    if (step === 2) {
-      renderEigenvalueBarChart();
-    } else {
-      renderScatterPlot();
-    }
-  }, [step, panelWidth]);
+    const innerW = panelWidth - MARGIN.left - MARGIN.right;
+    const innerH = panelHeight - MARGIN.top - MARGIN.bottom;
+
+    const xExtent = d3.extent(points, (p) => p[0]) as [number, number];
+    const yExtent = d3.extent(points, (p) => p[1]) as [number, number];
+    const pad = 0.1;
+    const xScale = d3.scaleLinear()
+      .domain([xExtent[0] - pad, xExtent[1] + pad])
+      .range([MARGIN.left, MARGIN.left + innerW]);
+    const yScale = d3.scaleLinear()
+      .domain([yExtent[0] - pad, yExtent[1] + pad])
+      .range([MARGIN.top + innerH, MARGIN.top]);
+
+    // Title
+    svg.append('text')
+      .attr('x', panelWidth / 2)
+      .attr('y', 16)
+      .attr('text-anchor', 'middle')
+      .style('fill', 'var(--color-text)')
+      .style('font-family', 'var(--font-sans)')
+      .attr('font-size', 12)
+      .attr('font-weight', 600)
+      .text(PANEL_TITLES[3]);
+
+    // Points colored by cluster assignment
+    svg.selectAll('.pt')
+      .data(points)
+      .join('circle')
+      .attr('class', 'pt')
+      .attr('cx', (p) => xScale(p[0]))
+      .attr('cy', (p) => yScale(p[1]))
+      .attr('r', 3.5)
+      .attr('fill', (_, i) => clusterColors[clusterAssignments[i] % 10])
+      .attr('fill-opacity', 0.85)
+      .style('stroke', 'var(--color-surface)')
+      .attr('stroke-width', 0.5);
+  }, [points, clusterAssignments, clusterColors, panelWidth, panelHeight]);
 
   return (
-    <div ref={containerRef} className="w-full space-y-3">
-      {/* Step navigation */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setStep((s) => Math.max(0, s - 1))}
-          disabled={step === 0}
-          className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-30"
-          style={{
-            fontFamily: 'var(--font-sans)',
-            background: 'var(--color-surface)',
-            color: 'var(--color-text)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          Previous
-        </button>
-
-        <div className="flex flex-wrap gap-1.5">
-          {STEP_LABELS.map((label, i) => (
-            <button
-              key={i}
-              onClick={() => setStep(i)}
-              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-              style={{
-                fontFamily: 'var(--font-sans)',
-                background: i === step ? 'var(--color-accent)' : 'var(--color-surface)',
-                color: i === step ? '#fff' : 'var(--color-text)',
-                border: `1px solid ${i === step ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                opacity: i <= step ? 1 : 0.5,
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={() => setStep((s) => Math.min(STEP_LABELS.length - 1, s + 1))}
-          disabled={step === STEP_LABELS.length - 1}
-          className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-30"
-          style={{
-            fontFamily: 'var(--font-sans)',
-            background: 'var(--color-surface)',
-            color: 'var(--color-text)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          Next
-        </button>
-      </div>
-
-      {/* Visualization */}
-      <svg
-        ref={svgRef}
-        width={panelWidth}
-        height={PANEL_HEIGHT}
-        className="rounded-lg border border-[var(--color-border)]"
-      />
-
-      {/* Step description */}
-      <p
-        className="text-sm opacity-70"
+    <div ref={containerRef} className="w-full space-y-4">
+      {/* Controls */}
+      <div
+        className="flex flex-wrap items-center gap-3"
         style={{ fontFamily: 'var(--font-sans)' }}
       >
-        {STEP_DESCRIPTIONS[step]}
-      </p>
+        {/* Dataset selector */}
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          Dataset
+          <select
+            value={datasetName}
+            onChange={(e) => setDatasetName(e.target.value as DatasetName)}
+            className="rounded-md px-2 py-1 text-xs"
+            style={{
+              background: 'var(--color-surface)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            {DATASETS.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </label>
+
+        {/* k clusters */}
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          Clusters k
+          <div className="flex gap-1">
+            {K_OPTIONS.map((k) => (
+              <button
+                key={k}
+                onClick={() => setKClusters(k)}
+                className="rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                style={{
+                  background: k === kClusters ? 'var(--color-accent)' : 'var(--color-surface)',
+                  color: k === kClusters ? '#fff' : 'var(--color-text)',
+                  border: `1px solid ${k === kClusters ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                }}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        </label>
+
+        {/* Graph mode toggle */}
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          Graph
+          <div className="flex gap-1">
+            {(['knn', 'epsilon'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setGraphMode(mode)}
+                className="rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                style={{
+                  background: mode === graphMode ? 'var(--color-accent)' : 'var(--color-surface)',
+                  color: mode === graphMode ? '#fff' : 'var(--color-text)',
+                  border: `1px solid ${mode === graphMode ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                }}
+              >
+                {mode === 'knn' ? 'k-NN' : '\u03B5-ball'}
+              </button>
+            ))}
+          </div>
+        </label>
+
+        {/* Noise slider */}
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          Noise {noise.toFixed(1)}
+          <input
+            type="range"
+            min={0.5}
+            max={3.0}
+            step={0.1}
+            value={noise}
+            onChange={(e) => setNoise(parseFloat(e.target.value))}
+            className="w-20"
+          />
+        </label>
+      </div>
+
+      {/* 2x2 panel grid */}
+      <div
+        className="gap-3"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+        }}
+      >
+        {[svgRef1, svgRef2, svgRef3, svgRef4].map((ref, idx) => (
+          <svg
+            key={idx}
+            ref={ref}
+            width={panelWidth}
+            height={panelHeight}
+            className="rounded-lg border"
+            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)' }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,601 @@
+---
+title: "Graph Laplacians & Spectrum"
+subtitle: "The eigenvalues and eigenvectors of graph Laplacians — from connectivity to clustering to graph neural networks"
+status: "published"
+difficulty: "foundational"
+prerequisites:
+  - "spectral-theorem"
+  - "shannon-entropy"
+tags:
+  - "graph-theory"
+  - "spectral-graph-theory"
+  - "graph-laplacian"
+  - "cheeger-inequality"
+  - "spectral-clustering"
+  - "graph-neural-networks"
+domain: "graph-theory"
+videoId: null
+notebookPath: "notebooks/graph-laplacians/01_graph_laplacians.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/graph-laplacians.mdx"
+datePublished: 2026-03-28
+estimatedReadTime: 40
+abstract: "The graph Laplacian L = D - A encodes a graph's connectivity structure in a real symmetric matrix whose spectrum reveals global properties invisible to local inspection. The smallest eigenvalue is always zero, with multiplicity equal to the number of connected components. The second-smallest eigenvalue — the algebraic connectivity or Fiedler value — quantifies how well-connected the graph is, and its eigenvector provides a principled way to bipartition the graph. Cheeger's inequality makes this precise: the spectral gap is bounded above and below by the Cheeger constant, linking linear algebra to combinatorial optimization. The normalized Laplacian connects these ideas to random walks and entropy: its eigenvalues govern mixing times, and the stationary distribution's entropy reflects the graph's regularity. Spectral clustering exploits this theory by embedding vertices into the eigenspace of the Laplacian and clustering in the embedding — the mathematical foundation of modern graph-based learning methods including graph neural networks, where message passing is Laplacian smoothing in disguise."
+connections:
+  - topic: "spectral-theorem"
+    relationship: "The graph Laplacian is a real symmetric matrix. The Spectral Theorem guarantees it has a complete orthonormal eigenbasis with real eigenvalues — the foundation of every result in spectral graph theory."
+  - topic: "shannon-entropy"
+    relationship: "The entropy of a random walk's stationary distribution measures graph regularity. On a d-regular graph, the stationary distribution is uniform with maximum entropy log(n). The spectral gap governs how quickly the walk's distribution converges to stationarity — how fast entropy increases."
+  - topic: "convex-analysis"
+    relationship: "The Laplacian quadratic form x^T L x = sum_{(i,j)} w_{ij}(x_i - x_j)^2 is a convex function whose minimization (subject to constraints) yields the Fiedler vector. Graph cuts are combinatorial optimization problems relaxed to spectral problems via convex relaxation."
+  - topic: "pca-low-rank"
+    relationship: "Spectral clustering uses the bottom eigenvectors of the Laplacian as a low-dimensional embedding — analogous to PCA using the top eigenvectors of the covariance matrix. Both are instances of eigenmap embeddings that preserve specific notions of structure."
+references:
+  - type: "book"
+    title: "Spectral Graph Theory"
+    authors: "Chung"
+    year: 1997
+    note: "The foundational text — covers the normalized Laplacian, Cheeger's inequality, and connections to random walks"
+  - type: "book"
+    title: "Algebraic Graph Theory"
+    authors: "Godsil & Royle"
+    year: 2001
+    note: "Chapters 8-9 cover the adjacency and Laplacian spectra with algebraic rigor"
+  - type: "paper"
+    title: "A Tutorial on Spectral Clustering"
+    authors: "von Luxburg"
+    year: 2007
+    url: "https://doi.org/10.1007/s11222-007-9033-z"
+    note: "The standard reference for spectral clustering — bridges graph Laplacian theory to machine learning practice"
+  - type: "paper"
+    title: "Semi-Supervised Classification with Graph Convolutional Networks"
+    authors: "Kipf & Welling"
+    year: 2017
+    url: "https://arxiv.org/abs/1609.02907"
+    note: "GCN = renormalized Laplacian smoothing — the paper that made graph Laplacians central to deep learning"
+  - type: "paper"
+    title: "The Laplacian Spectrum of Graphs"
+    authors: "Mohar"
+    year: 1991
+    url: "https://doi.org/10.1007/978-3-642-58219-8_12"
+    note: "Survey of Laplacian eigenvalue bounds and their combinatorial interpretations"
+  - type: "book"
+    title: "Graph Signal Processing: Overview, Challenges, and Applications"
+    authors: "Ortega, Frossard, Kovačević, Moura & Vandergheynst"
+    year: 2018
+    note: "Graph Fourier transform = eigenvector expansion of the Laplacian"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import GraphLaplacianExplorer from '../../components/viz/GraphLaplacianExplorer.tsx';
+import SpectralGapExplorer from '../../components/viz/SpectralGapExplorer.tsx';
+import CheegerExplorer from '../../components/viz/CheegerExplorer.tsx';
+import SpectralClusteringDemo from '../../components/viz/SpectralClusteringDemo.tsx';
+
+## Overview & Motivation
+
+A graph encodes pairwise relationships: who knows whom, which proteins interact, which cities are connected by flights. The adjacency matrix $A$ records these relationships, but it is the **Laplacian** $L = D - A$ that reveals the graph's deeper structure.
+
+Why the Laplacian and not the adjacency matrix? Because the Laplacian is a real symmetric positive semidefinite matrix, and the [Spectral Theorem](/topics/spectral-theorem) guarantees it has a complete orthonormal eigenbasis with non-negative eigenvalues. These eigenvalues encode global properties that are invisible to local inspection:
+
+- **How many pieces?** The multiplicity of the zero eigenvalue equals the number of connected components.
+- **How well-connected?** The second-smallest eigenvalue $\lambda_2$ — the *Fiedler value* or *algebraic connectivity* — quantifies the graph's bottleneck.
+- **Where to cut?** The eigenvector corresponding to $\lambda_2$ — the *Fiedler vector* — identifies the optimal bipartition.
+- **How regular?** The entropy of the random walk's stationary distribution, connected to the spectrum via [Shannon Entropy](/topics/shannon-entropy), measures how uniformly the graph distributes flow.
+
+**Cheeger's inequality** makes the connection between algebra and combinatorics precise: $\frac{h(G)^2}{2} \leq \lambda_2 \leq 2h(G)$, where $h(G)$ is the Cheeger constant measuring the graph's combinatorial bottleneck.
+
+**Spectral clustering** exploits this theory: embed vertices into the eigenspace of the Laplacian, then cluster in the embedding. Points that are non-linearly separable in the original space become linearly separable in the spectral embedding — the same idea as [PCA](/topics/pca-low-rank), but with the Laplacian replacing the covariance matrix.
+
+**What we cover:**
+
+1. **Graphs and matrices** — adjacency, degree, and Laplacian matrices for named graph families.
+2. **The graph Laplacian** — definition, quadratic form, positive semidefiniteness, and the zero eigenvalue.
+3. **Spectral properties** — eigenvalue ordering, connectivity, the Fiedler value and vector.
+4. **The normalized Laplacian** — connection to random walks and transition matrices.
+5. **Cheeger's inequality** — the spectral gap bounds the combinatorial bottleneck.
+6. **Spectral clustering** — from similarity graphs to Laplacian eigenmaps to $k$-means.
+7. **Connections to ML** — GNNs as Laplacian smoothing, graph signal processing.
+8. **Computational notes** — practical implementations in Python.
+
+---
+
+## Graphs, Adjacency Matrices, and the Degree Matrix
+
+We work with **undirected, weighted graphs** throughout. An undirected graph is the natural setting for the Laplacian: the resulting matrix is symmetric, which is exactly what the [Spectral Theorem](/topics/spectral-theorem) requires.
+
+<TheoremBlock type="definition" number={1} title="Graph (Undirected, Weighted)">
+An **undirected weighted graph** $G = (V, E, w)$ consists of:
+- A finite vertex set $V = \{1, 2, \ldots, n\}$,
+- An edge set $E \subseteq \binom{V}{2}$ of unordered pairs,
+- A weight function $w: E \to \mathbb{R}_{>0}$ assigning a positive weight to each edge.
+
+For unweighted graphs, $w(e) = 1$ for all $e \in E$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={2} title="Adjacency Matrix">
+The **adjacency matrix** $A \in \mathbb{R}^{n \times n}$ of $G$ is defined by:
+
+$$A_{ij} = \begin{cases} w(\{i, j\}) & \text{if } \{i, j\} \in E, \\ 0 & \text{otherwise.} \end{cases}$$
+
+Since $G$ is undirected, $A$ is symmetric: $A_{ij} = A_{ji}$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={3} title="Degree Matrix">
+The **degree matrix** $D \in \mathbb{R}^{n \times n}$ is the diagonal matrix with entries:
+
+$$D_{ii} = d_i = \sum_{j=1}^{n} A_{ij}$$
+
+where $d_i$ is the **degree** (or weighted degree) of vertex $i$ — the sum of all edge weights incident to $i$.
+</TheoremBlock>
+
+**Concrete examples.** The topology of a graph shapes its matrix representations. Here are the standard families we will use throughout:
+
+- **Path $P_n$**: $n$ vertices in a line. $A$ is tridiagonal. Each interior vertex has degree 2; endpoints have degree 1.
+- **Cycle $C_n$**: $P_n$ with the endpoints connected. $A$ is tridiagonal plus corner entries. Every vertex has degree 2 (a $2$-regular graph).
+- **Complete graph $K_n$**: every pair connected. $A = \mathbf{1}\mathbf{1}^T - I$. Every vertex has degree $n - 1$.
+- **Star $S_n$**: one hub connected to $n - 1$ leaves. The hub has degree $n - 1$; every leaf has degree 1.
+- **Barbell**: two $K_k$ cliques joined by a single bridge edge. This is the canonical bottleneck graph.
+- **Grid $m \times m$**: vertices on a lattice. Interior vertices have degree 4; edges have degree 3; corners have degree 2.
+
+![Named graphs gallery showing path, cycle, complete, star, barbell, grid, Petersen, and Erdős–Rényi graphs](/images/topics/graph-laplacians/named-graphs-gallery.png)
+
+---
+
+## The Graph Laplacian
+
+<TheoremBlock type="definition" number={4} title="Graph Laplacian (Unnormalized)">
+The **(unnormalized) graph Laplacian** of $G$ is the matrix:
+
+$$L = D - A$$
+
+Equivalently, the entries of $L$ are:
+
+$$L_{ij} = \begin{cases} d_i & \text{if } i = j, \\ -w(\{i, j\}) & \text{if } \{i, j\} \in E, \\ 0 & \text{otherwise.} \end{cases}$$
+
+Every row and every column of $L$ sums to zero: $L \mathbf{1} = \mathbf{0}$.
+</TheoremBlock>
+
+The Laplacian looks like a minor rearrangement of $A$, but the sign flip on the off-diagonal entries is what makes it positive semidefinite. The key insight is the quadratic form.
+
+<TheoremBlock type="theorem" number={1} title="Laplacian Quadratic Form">
+For any vector $\mathbf{x} \in \mathbb{R}^n$:
+
+$$\mathbf{x}^T L \mathbf{x} = \sum_{\{i, j\} \in E} w_{ij} (x_i - x_j)^2$$
+
+The quadratic form measures the **total variation** of the signal $\mathbf{x}$ across the edges of the graph. A signal that is constant on each connected component has zero variation; a signal that differs wildly across edges has large variation. This is the **Dirichlet energy** of $\mathbf{x}$ on $G$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We expand $\mathbf{x}^T L \mathbf{x}$ directly:
+
+$$\mathbf{x}^T L \mathbf{x} = \mathbf{x}^T (D - A) \mathbf{x} = \mathbf{x}^T D \mathbf{x} - \mathbf{x}^T A \mathbf{x}$$
+
+The first term is $\mathbf{x}^T D \mathbf{x} = \sum_{i=1}^n d_i x_i^2$. The second is $\mathbf{x}^T A \mathbf{x} = \sum_{i=1}^n \sum_{j=1}^n A_{ij} x_i x_j = 2\sum_{\{i,j\} \in E} w_{ij} x_i x_j$ (the factor of 2 because each edge is counted twice in the double sum).
+
+Meanwhile, $\sum_{i=1}^n d_i x_i^2 = \sum_{i=1}^n \sum_{j: \{i,j\} \in E} w_{ij} x_i^2 = \sum_{\{i,j\} \in E} w_{ij}(x_i^2 + x_j^2)$ (each edge contributes $w_{ij} x_i^2$ from vertex $i$ and $w_{ij} x_j^2$ from vertex $j$).
+
+Combining:
+
+$$\mathbf{x}^T L \mathbf{x} = \sum_{\{i,j\} \in E} w_{ij}(x_i^2 + x_j^2) - 2\sum_{\{i,j\} \in E} w_{ij} x_i x_j = \sum_{\{i,j\} \in E} w_{ij}(x_i - x_j)^2$$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Positive Semidefiniteness of L">
+The graph Laplacian $L$ is **positive semidefinite**: $\mathbf{x}^T L \mathbf{x} \geq 0$ for all $\mathbf{x} \in \mathbb{R}^n$. Moreover, $L \mathbf{1} = \mathbf{0}$, so $\lambda_1 = 0$ is always an eigenvalue with eigenvector $\mathbf{1} = (1, 1, \ldots, 1)^T$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+From Theorem 1, $\mathbf{x}^T L \mathbf{x} = \sum_{\{i,j\} \in E} w_{ij}(x_i - x_j)^2 \geq 0$ since each term is non-negative (weights are positive, squares are non-negative). This is the definition of positive semidefiniteness.
+
+For the zero eigenvalue: $(L\mathbf{1})_i = \sum_j L_{ij} \cdot 1 = d_i - \sum_{j \neq i} A_{ij} = d_i - d_i = 0$, so $L\mathbf{1} = \mathbf{0}$.
+</TheoremBlock>
+
+![Adjacency, degree, and Laplacian matrices for a 6-vertex example graph, with quadratic form verification](/images/topics/graph-laplacians/laplacian-matrices.png)
+
+<TheoremBlock type="remark" title="Graph Laplacian as Discrete Laplace Operator">
+The graph Laplacian is the discrete analog of the continuous Laplace operator $\nabla^2$. For a function $f$ defined on a manifold, $(\nabla^2 f)(p)$ measures how much $f(p)$ deviates from the average of $f$ over a small neighborhood of $p$. Similarly, $(Lf)_i = d_i f_i - \sum_{j} A_{ij} f_j = \sum_{j: \{i,j\} \in E} w_{ij}(f_i - f_j)$ measures how much $f(i)$ deviates from its neighbors' values. This connection deepens in the Differential Geometry track, where the Laplace–Beltrami operator on Riemannian manifolds generalizes both.
+</TheoremBlock>
+
+```python
+import numpy as np
+
+# Laplacian construction from an adjacency matrix
+A = np.array([[0,1,1,0],[1,0,1,1],[1,1,0,0],[0,1,0,0]], dtype=float)
+D = np.diag(A.sum(axis=1))
+L = D - A
+
+print(f"L = D - A =\n{L}")
+# [[ 2. -1. -1.  0.]
+#  [-1.  3. -1. -1.]
+#  [-1. -1.  2.  0.]
+#  [ 0. -1.  0.  1.]]
+```
+
+<GraphLaplacianExplorer client:visible />
+
+---
+
+## Spectral Properties of the Laplacian
+
+Since $L$ is real symmetric and PSD, the [Spectral Theorem](/topics/spectral-theorem) guarantees that its eigenvalues are real and non-negative. We order them:
+
+$$0 = \lambda_1 \leq \lambda_2 \leq \cdots \leq \lambda_n$$
+
+The first eigenvalue is always $\lambda_1 = 0$ (with eigenvector $\mathbf{1}$). The central question is: what does the rest of the spectrum tell us about the graph?
+
+<TheoremBlock type="theorem" number={3} title="Zero Eigenvalue Multiplicity = Number of Connected Components">
+The multiplicity of $\lambda = 0$ as an eigenvalue of $L$ equals the number of connected components of $G$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We characterize the null space of $L$. A vector $\mathbf{x}$ satisfies $L\mathbf{x} = \mathbf{0}$ if and only if $\mathbf{x}^T L \mathbf{x} = 0$ (since $L$ is PSD, $L\mathbf{x} = \mathbf{0} \Leftrightarrow \mathbf{x}^T L \mathbf{x} = 0$). By the quadratic form (Theorem 1):
+
+$$\mathbf{x}^T L \mathbf{x} = \sum_{\{i,j\} \in E} w_{ij}(x_i - x_j)^2 = 0$$
+
+Since every term is non-negative and $w_{ij} > 0$, each term must vanish: $x_i = x_j$ for every edge $\{i, j\} \in E$. By transitivity along paths, $x_i = x_j$ for every pair of vertices in the same connected component.
+
+Therefore $\mathbf{x} \in \ker(L)$ if and only if $\mathbf{x}$ is constant on each connected component. If $G$ has $k$ connected components $C_1, \ldots, C_k$, then $\ker(L) = \mathrm{span}\{\mathbf{1}_{C_1}, \ldots, \mathbf{1}_{C_k}\}$ where $\mathbf{1}_{C_i}$ is the indicator vector of component $C_i$. These are linearly independent, so $\dim(\ker(L)) = k$.
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={1} title="Disconnected Graphs Have λ₂ = 0">
+$G$ is connected if and only if $\lambda_2 > 0$. Equivalently, $G$ is disconnected if and only if $\lambda_2 = 0$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={7} title="Algebraic Connectivity (Fiedler Value)">
+The **algebraic connectivity** of a connected graph $G$ is the second-smallest eigenvalue $\lambda_2(L)$, also called the **Fiedler value** (after Miroslav Fiedler, who introduced it in 1973). The corresponding eigenvector $\mathbf{v}_2$ is the **Fiedler vector**.
+</TheoremBlock>
+
+The Fiedler value is a spectral measure of "how connected" the graph is. A large $\lambda_2$ means the graph is well-connected with no bottleneck; a small $\lambda_2$ means there is a narrow bridge that nearly disconnects the graph.
+
+<TheoremBlock type="theorem" number={4} title="Fiedler's Theorem (Spectral Bipartitioning)">
+For a connected graph $G$, the Fiedler vector $\mathbf{v}_2$ provides a near-optimal bipartition. Specifically, the partition $S = \{i : v_{2,i} \geq 0\}$, $\bar{S} = \{i : v_{2,i} < 0\}$ approximates the minimum ratio cut.
+
+The Fiedler value has the variational characterization:
+
+$$\lambda_2 = \min_{\mathbf{x} \perp \mathbf{1}, \, \mathbf{x} \neq \mathbf{0}} \frac{\mathbf{x}^T L \mathbf{x}}{\mathbf{x}^T \mathbf{x}} = \min_{\mathbf{x} \perp \mathbf{1}, \, \mathbf{x} \neq \mathbf{0}} \frac{\sum_{\{i,j\} \in E} w_{ij}(x_i - x_j)^2}{\sum_i x_i^2}$$
+
+This is the Courant–Fischer characterization from the [Spectral Theorem](/topics/spectral-theorem) applied to $L$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The variational characterization follows directly from the Courant–Fischer theorem (see [Spectral Theorem](/topics/spectral-theorem), Theorem 2): the $k$-th eigenvalue of a symmetric matrix equals the min-max of its Rayleigh quotient. For $k = 2$, we minimize over vectors orthogonal to the first eigenvector $\mathbf{1}$.
+
+For the bipartitioning claim: the discrete optimization problem "find $S \subset V$ minimizing $\frac{\text{cut}(S, \bar{S})}{\min(|S|, |\bar{S}|)}$" is NP-hard. Relaxing the discrete constraint (indicator vectors $\mathbf{x} \in \{-1, +1\}^n$) to the continuous constraint ($\mathbf{x} \in \mathbb{R}^n$, $\mathbf{x} \perp \mathbf{1}$, $\|\mathbf{x}\| = 1$) yields exactly the Fiedler value problem. The Fiedler vector is the solution to this relaxation, and rounding its entries by sign gives a partition that approximates the discrete optimum. This is a [convex relaxation](/topics/convex-analysis) of the combinatorial problem.
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={2} title="Complete Graph Spectrum">
+The complete graph $K_n$ has Laplacian eigenvalues $\lambda_1 = 0$ (multiplicity 1) and $\lambda_2 = \cdots = \lambda_n = n$ (multiplicity $n - 1$). Its algebraic connectivity is $n$, the maximum possible for any graph on $n$ vertices — $K_n$ is as well-connected as a graph can be.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Spectra of Named Graphs">
+The Laplacian eigenvalues of standard graph families have closed-form expressions:
+
+- **Path $P_n$**: $\lambda_k = 2 - 2\cos\!\left(\frac{(k-1)\pi}{n}\right)$ for $k = 1, \ldots, n$.
+- **Cycle $C_n$**: $\lambda_k = 2 - 2\cos\!\left(\frac{2(k-1)\pi}{n}\right)$ for $k = 1, \ldots, n$.
+- **Star $S_n$**: $\lambda_1 = 0$, $\lambda_2 = \cdots = \lambda_{n-1} = 1$, $\lambda_n = n$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Laplacian of d-regular Graphs">
+If $G$ is $d$-regular (every vertex has degree $d$), then $L = dI - A$ and the Laplacian eigenvalues are $\lambda_i = d - \mu_i$, where $\mu_1 \geq \mu_2 \geq \cdots \geq \mu_n$ are the eigenvalues of $A$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $D = dI$, we have $L = dI - A$. If $A\mathbf{v} = \mu \mathbf{v}$, then $L\mathbf{v} = (dI - A)\mathbf{v} = (d - \mu)\mathbf{v}$. The eigenvalues of $L$ are $d - \mu_i$, sorted in ascending order (since $\mu_1 = d$ is the largest adjacency eigenvalue with eigenvector $\mathbf{1}$, giving $\lambda_1 = 0$).
+</TheoremBlock>
+
+![Laplacian spectra of named graphs and Fiedler vector coloring](/images/topics/graph-laplacians/laplacian-spectra.png)
+
+```python
+# Eigendecomposition of the Laplacian
+eigenvalues, eigenvectors = np.linalg.eigh(L)
+print(f"Eigenvalues: {eigenvalues.round(4)}")
+print(f"Fiedler value λ₂ = {eigenvalues[1]:.4f}")
+print(f"Fiedler vector v₂ = {eigenvectors[:, 1].round(4)}")
+```
+
+<SpectralGapExplorer client:visible />
+
+---
+
+## The Normalized Laplacian
+
+The unnormalized Laplacian $L$ treats all vertices equally, regardless of degree. For graphs with heterogeneous degree distributions, the **normalized Laplacian** accounts for the local connectivity of each vertex.
+
+<TheoremBlock type="definition" number={5} title="Normalized Laplacian">
+The **symmetric normalized Laplacian** is:
+
+$$\mathcal{L} = D^{-1/2} L D^{-1/2} = I - D^{-1/2} A D^{-1/2}$$
+
+where $D^{-1/2}$ is the diagonal matrix with entries $(D^{-1/2})_{ii} = 1/\sqrt{d_i}$ (defined only for vertices with $d_i > 0$).
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={6} title="Random Walk Laplacian">
+The **random walk Laplacian** is:
+
+$$L_{\text{rw}} = D^{-1}L = I - D^{-1}A = I - P$$
+
+where $P = D^{-1}A$ is the **transition matrix** of the random walk on $G$: $P_{ij} = A_{ij}/d_i$ is the probability of stepping from vertex $i$ to vertex $j$.
+</TheoremBlock>
+
+The three Laplacians are closely related. If $\mathcal{L}\mathbf{u} = \lambda \mathbf{u}$, then $L_{\text{rw}}(D^{1/2}\mathbf{u}) = \lambda (D^{1/2}\mathbf{u})$, so $\mathcal{L}$ and $L_{\text{rw}}$ share eigenvalues. The eigenvectors differ by the transformation $D^{1/2}$.
+
+<TheoremBlock type="theorem" number={5} title="Normalized Laplacian Eigenvalue Range">
+All eigenvalues of $\mathcal{L}$ lie in $[0, 2]$: $0 = \lambda_1 \leq \lambda_2 \leq \cdots \leq \lambda_n \leq 2$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The smallest eigenvalue is $\lambda_1 = 0$ with eigenvector $D^{1/2}\mathbf{1}$ (verify: $\mathcal{L} D^{1/2}\mathbf{1} = D^{-1/2}L\mathbf{1} = \mathbf{0}$).
+
+For the upper bound, let $\mathbf{u}$ be any eigenvector with $\|\mathbf{u}\| = 1$. Then:
+
+$$\lambda = \mathbf{u}^T \mathcal{L} \mathbf{u} = \mathbf{u}^T(I - D^{-1/2}AD^{-1/2})\mathbf{u} = 1 - \mathbf{u}^T D^{-1/2}AD^{-1/2}\mathbf{u}$$
+
+Setting $\mathbf{y} = D^{-1/2}\mathbf{u}$, we have $\mathbf{u}^T D^{-1/2}AD^{-1/2}\mathbf{u} = \sum_{i,j} A_{ij} y_i y_j / \sqrt{d_i d_j}$. Using the Cauchy–Schwarz inequality and the constraint that row sums of $D^{-1/2}AD^{-1/2}$ are bounded, one can show $|\mathbf{u}^T D^{-1/2}AD^{-1/2}\mathbf{u}| \leq 1$, giving $\lambda \leq 2$.
+
+More precisely: $\mathbf{u}^T D^{-1/2}AD^{-1/2}\mathbf{u} = \sum_{\{i,j\} \in E} \frac{2w_{ij}}{\sqrt{d_i d_j}} u_i u_j$. By AM-GM, $2|u_i u_j| \leq u_i^2 + u_j^2$, and $\sum_{\{i,j\} \in E} \frac{w_{ij}}{\sqrt{d_i d_j}}(u_i^2 + u_j^2) = \sum_i u_i^2 \sum_j \frac{w_{ij}}{\sqrt{d_i d_j}} \leq \sum_i u_i^2 = 1$ (since $\sum_j \frac{w_{ij}}{\sqrt{d_i d_j}} = \frac{d_i}{\sqrt{d_i} \cdot \sqrt{d_i}} \cdot \text{(average)} \leq 1$). Therefore $|\mathbf{u}^T D^{-1/2}AD^{-1/2}\mathbf{u}| \leq 1$ and $\lambda \in [0, 2]$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={7} title="Bipartiteness and λₙ = 2">
+$\lambda_n(\mathcal{L}) = 2$ if and only if $G$ has a bipartite connected component. Equivalently, the largest normalized Laplacian eigenvalue equals 2 precisely when the graph contains an odd-cycle-free component.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+$(\Leftarrow)$ Suppose $G$ is bipartite with vertex partition $V = V_+ \cup V_-$. Define $\mathbf{u}$ by $u_i = +1/\sqrt{d_i}$ for $i \in V_+$ and $u_i = -1/\sqrt{d_i}$ for $i \in V_-$. Then $\mathcal{L}\mathbf{u} = 2\mathbf{u}$ because every edge connects $V_+$ to $V_-$, so the sign flips perfectly.
+
+$(\Rightarrow)$ If $\lambda_n = 2$, then the corresponding eigenvector $\mathbf{u}$ satisfies $\mathbf{u}^T(I - D^{-1/2}AD^{-1/2})\mathbf{u} = 2$, which forces $\mathbf{u}^T D^{-1/2}AD^{-1/2}\mathbf{u} = -1$. This means every edge contributes maximally negative correlation: for each edge $\{i,j\}$, $u_i$ and $u_j$ have opposite signs. This is precisely the bipartition condition.
+</TheoremBlock>
+
+**Connection to entropy.** The random walk on $G$ has stationary distribution $\pi_i = d_i / (2m)$ where $m = \sum_{\{i,j\} \in E} w_{ij}$ is the total edge weight. The [Shannon entropy](/topics/shannon-entropy) of $\boldsymbol{\pi}$ is $H(\boldsymbol{\pi}) = -\sum_i \pi_i \log_2 \pi_i$. For a $d$-regular graph, $\boldsymbol{\pi}$ is uniform and $H(\boldsymbol{\pi}) = \log_2 n$ — the maximum possible entropy. The spectral gap $1 - \lambda_2(P) = \lambda_2(\mathcal{L})$ governs how quickly the walk's distribution converges to $\boldsymbol{\pi}$, i.e., how fast entropy increases toward equilibrium.
+
+![Normalized vs unnormalized Laplacian eigenvalue comparison across graph families](/images/topics/graph-laplacians/normalized-vs-unnormalized.png)
+
+```python
+# Normalized Laplacian construction
+D_inv_sqrt = np.diag(1.0 / np.sqrt(np.where(d > 0, d, 1)))
+L_norm = D_inv_sqrt @ L @ D_inv_sqrt  # = I - D^{-1/2} A D^{-1/2}
+
+eigenvalues_norm = np.linalg.eigh(L_norm)[0]
+print(f"Normalized eigenvalues: {eigenvalues_norm.round(4)}")
+print(f"All in [0, 2]: {np.all(eigenvalues_norm >= -1e-10) and np.all(eigenvalues_norm <= 2 + 1e-10)}")
+```
+
+---
+
+## Cheeger's Inequality
+
+The Fiedler value $\lambda_2$ is an algebraic quantity. The Cheeger constant $h(G)$ is a combinatorial quantity. Cheeger's inequality links them, providing a bridge between linear algebra and graph theory.
+
+<TheoremBlock type="definition" number={8} title="Cheeger Constant (Isoperimetric Number)">
+The **Cheeger constant** (or **isoperimetric number**) of a graph $G$ is:
+
+$$h(G) = \min_{\emptyset \neq S \subset V} \frac{|E(S, \bar{S})|}{\min(\mathrm{vol}(S), \mathrm{vol}(\bar{S}))}$$
+
+where $|E(S, \bar{S})| = \sum_{i \in S, j \in \bar{S}} w_{ij}$ is the total weight of edges crossing the cut, and $\mathrm{vol}(S) = \sum_{i \in S} d_i$ is the **volume** of $S$ (the sum of degrees in $S$).
+</TheoremBlock>
+
+The Cheeger constant measures the graph's worst bottleneck: the smallest ratio of "edges crossing a cut" to "the smaller side's connectivity." A large $h(G)$ means every cut has many crossing edges relative to the smaller side — the graph is well-connected everywhere. A small $h(G)$ means there is a narrow bridge.
+
+<TheoremBlock type="theorem" number={6} title="Cheeger's Inequality">
+For any graph $G$:
+
+$$\frac{h(G)^2}{2} \leq \lambda_2(\mathcal{L}) \leq 2h(G)$$
+
+The spectral gap $\lambda_2$ of the normalized Laplacian is sandwiched between $h(G)^2/2$ and $2h(G)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Easy direction ($\lambda_2 \leq 2h$).** We exhibit a test vector that achieves a small Rayleigh quotient.
+
+Let $S$ be the subset achieving the Cheeger constant: $h(G) = |E(S, \bar{S})| / \mathrm{vol}(S)$ with $\mathrm{vol}(S) \leq \mathrm{vol}(\bar{S})$. Define the test vector $\mathbf{f} \in \mathbb{R}^n$ by:
+
+$$f_i = \begin{cases} 1/\mathrm{vol}(S) & \text{if } i \in S, \\ -1/\mathrm{vol}(\bar{S}) & \text{if } i \in \bar{S}. \end{cases}$$
+
+Then $\mathbf{f}$ is orthogonal to $D^{1/2}\mathbf{1}$ (the first eigenvector of $\mathcal{L}$), and the Rayleigh quotient of $D^{1/2}\mathbf{f}$ gives:
+
+$$\lambda_2 \leq \frac{\sum_{\{i,j\} \in E} w_{ij}(f_i - f_j)^2}{\sum_i d_i f_i^2}$$
+
+The numerator is $|E(S, \bar{S})| \cdot (1/\mathrm{vol}(S) + 1/\mathrm{vol}(\bar{S}))^2$ and the denominator is $1/\mathrm{vol}(S) + 1/\mathrm{vol}(\bar{S})$. Working through the algebra:
+
+$$\lambda_2 \leq |E(S, \bar{S})| \cdot \frac{\mathrm{vol}(S) + \mathrm{vol}(\bar{S})}{\mathrm{vol}(S) \cdot \mathrm{vol}(\bar{S})} \leq \frac{2 \cdot |E(S, \bar{S})|}{\mathrm{vol}(S)} = 2h(G)$$
+
+**Hard direction ($h^2/2 \leq \lambda_2$) — sketch.** This is the deeper inequality. The idea is: given the Fiedler vector $\mathbf{v}_2$, construct a threshold cut by sorting vertices by $v_{2,i}$ and sweeping a threshold. By a careful Cauchy–Schwarz argument, the best threshold cut achieves $h(S) \leq \sqrt{2\lambda_2}$, which gives $h(G) \leq \sqrt{2\lambda_2}$ and hence $h(G)^2/2 \leq \lambda_2$. The full proof uses the co-area formula on graphs and can be found in Chung (1997), Chapter 2.
+</TheoremBlock>
+
+**Interpretation.** Cheeger's inequality says that the spectral gap is a faithful proxy for the combinatorial bottleneck:
+
+- **Large $\lambda_2$** $\Rightarrow$ **large $h(G)$** $\Rightarrow$ every cut crosses many edges $\Rightarrow$ the graph is an **expander** (the subject of **Expander Graphs** *(coming soon)*).
+- **Small $\lambda_2$** $\Rightarrow$ **small $h(G)$** $\Rightarrow$ there exists a narrow bottleneck $\Rightarrow$ the graph is nearly disconnected.
+
+![Cheeger's inequality: spectral gap vs combinatorial bottleneck for several graph families](/images/topics/graph-laplacians/cheeger-inequality.png)
+
+<CheegerExplorer client:visible />
+
+---
+
+## Spectral Clustering
+
+Spectral clustering is the most celebrated application of graph Laplacian theory in machine learning. The idea: transform data using the eigenvectors of a graph Laplacian, then cluster in the transformed space. Points that are non-linearly separable in the original space become linearly separable in the spectral embedding — a phenomenon that standard $k$-means cannot achieve.
+
+<TheoremBlock type="remark" title="Why 'Spectral' in Spectral Clustering">
+The word "spectral" comes from functional analysis, where the set of eigenvalues of an operator is called its **spectrum**. Spectral clustering uses the eigenvalues and eigenvectors of the graph Laplacian — its spectrum — to find clusters.
+</TheoremBlock>
+
+### The Algorithm
+
+**Unnormalized spectral clustering** (Laplacian eigenmaps + $k$-means):
+
+1. **Build a similarity graph.** Given data points $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathbb{R}^d$, construct a $k$-nearest-neighbor graph or $\varepsilon$-ball graph. Weight edges with the Gaussian kernel:
+
+$$w_{ij} = \exp\!\left(-\frac{\|\mathbf{x}_i - \mathbf{x}_j\|^2}{2\sigma^2}\right)$$
+
+where $\sigma$ is typically set to the median pairwise distance.
+
+2. **Compute the Laplacian.** Form $L = D - A$ (unnormalized) or $\mathcal{L} = I - D^{-1/2}AD^{-1/2}$ (normalized).
+
+3. **Embed.** Compute the $k$ smallest eigenvectors $\mathbf{v}_1, \ldots, \mathbf{v}_k$ of $L$ (or $\mathcal{L}$). Form the embedding matrix $U \in \mathbb{R}^{n \times k}$ whose columns are these eigenvectors. Each row of $U$ is a point in $\mathbb{R}^k$.
+
+4. **Cluster.** Run $k$-means on the rows of $U$.
+
+**Normalized variants** (preferred in practice):
+
+- **Shi–Malik (2000):** Use $L_{\text{rw}}$ eigenvectors. Equivalent to normalizing the rows of $U$ before $k$-means.
+- **Ng–Jordan–Weiss (2001):** Use $\mathcal{L}$ eigenvectors, then normalize each row to unit length before $k$-means.
+
+### Why It Works
+
+Consider a graph with $k$ ideal clusters — $k$ cliques with no edges between them. The Laplacian is block diagonal:
+
+$$L = \begin{pmatrix} L_1 & & \\ & \ddots & \\ & & L_k \end{pmatrix}$$
+
+Each block $L_i$ has a zero eigenvalue with eigenvector $\mathbf{1}_{C_i}$. The bottom $k$ eigenvectors of $L$ are exactly the indicator vectors of the clusters. The rows of $U$ are one-hot vectors, so $k$-means trivially separates them.
+
+When the clusters are not perfectly separated — when there are a few edges between them — the eigenvectors are perturbed versions of the ideal indicators. The perturbation is small when the inter-cluster edges are few (relative to intra-cluster edges), and $k$-means still succeeds.
+
+This is why spectral clustering handles non-convex clusters that $k$-means in the original space cannot: the Laplacian embedding transforms the data from Euclidean proximity (which fails for non-convex shapes) to graph connectivity (which captures the manifold structure).
+
+![Spectral clustering pipeline: data → similarity graph → spectral embedding → clusters](/images/topics/graph-laplacians/spectral-clustering-pipeline.png)
+
+```python
+from sklearn.cluster import SpectralClustering
+from sklearn.datasets import make_moons
+
+# Two moons: non-convex clusters that k-means cannot separate
+X, y = make_moons(200, noise=0.06, random_state=42)
+
+sc = SpectralClustering(
+    n_clusters=2,
+    affinity='nearest_neighbors',
+    n_neighbors=10,
+    random_state=42
+)
+labels = sc.fit_predict(X)
+accuracy = max(np.mean(labels == y), np.mean(1 - labels == y))
+print(f"Spectral clustering accuracy: {accuracy:.1%}")  # ~100%
+```
+
+<SpectralClusteringDemo client:visible />
+
+---
+
+## Connections to Machine Learning
+
+### Graph Signal Processing
+
+A **graph signal** is a function $\mathbf{f} \in \mathbb{R}^n$ that assigns a real value to each vertex. The eigenvectors of the Laplacian form an orthonormal basis — the **graph Fourier basis** — and the **graph Fourier transform** of $\mathbf{f}$ is:
+
+$$\hat{\mathbf{f}} = U^T \mathbf{f}$$
+
+where $U = [\mathbf{v}_1 \mid \cdots \mid \mathbf{v}_n]$ is the matrix of Laplacian eigenvectors. Low-eigenvalue components correspond to **smooth** signals (slowly varying across edges); high-eigenvalue components correspond to **rough** signals (rapidly varying). Filtering in the spectral domain — zeroing out high-frequency components — amounts to smoothing the signal on the graph.
+
+### GCNs as Laplacian Smoothing
+
+The Graph Convolutional Network (GCN) of Kipf & Welling (2017) performs the update:
+
+$$H^{(\ell+1)} = \sigma\!\left(\tilde{D}^{-1/2} \tilde{A} \tilde{D}^{-1/2} H^{(\ell)} W^{(\ell)}\right)$$
+
+where $\tilde{A} = A + I$ is the adjacency matrix with added self-loops and $\tilde{D}$ is its degree matrix. The matrix $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2} = I - \tilde{\mathcal{L}}$ is one minus the normalized Laplacian of the self-loop-augmented graph. This means each GCN layer **smooths** the node features: every node's representation is replaced by a weighted average of itself and its neighbors.
+
+<TheoremBlock type="remark" title="GCN as Laplacian Smoothing">
+The renormalization trick $\tilde{A} = A + I$ avoids the need to explicitly add a skip connection. Without self-loops, $D^{-1/2}AD^{-1/2}$ averages over neighbors only; with self-loops, $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ averages over neighbors *and* the node itself. This is a low-pass filter on the graph: it amplifies low-frequency (smooth) components and attenuates high-frequency (rough) components. Stacking too many GCN layers causes **over-smoothing** — all node features converge to the same value, dominated by the eigenvector for $\lambda_1 = 0$.
+</TheoremBlock>
+
+**Message Passing & GNNs** *(coming soon)* will develop this connection further, showing how message-passing neural networks generalize GCNs and how the Laplacian spectrum determines what a GNN can and cannot learn.
+
+![GCN as Laplacian smoothing: signal propagation over 7 steps on a community graph](/images/topics/graph-laplacians/gcn-laplacian-smoothing.png)
+
+```python
+import torch
+
+# Single GCN layer: H' = σ(D̃^{-1/2} Ã D̃^{-1/2} H W)
+A_tilde = A + torch.eye(n)                  # Add self-loops
+D_tilde = torch.diag(A_tilde.sum(dim=1))
+D_inv_sqrt = torch.diag(1.0 / torch.sqrt(D_tilde.diagonal()))
+S = D_inv_sqrt @ A_tilde @ D_inv_sqrt       # Normalized adjacency
+
+H = torch.randn(n, 16)                      # Node features
+W = torch.randn(16, 8)                       # Learnable weights
+H_next = torch.relu(S @ H @ W)              # One GCN layer
+```
+
+---
+
+## Computational Notes
+
+### NumPy / SciPy
+
+```python
+import numpy as np
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import laplacian
+
+# Dense Laplacian
+A = np.array([[0,1,1,0],[1,0,1,1],[1,1,0,0],[0,1,0,0]], dtype=float)
+D = np.diag(A.sum(axis=1))
+L = D - A
+
+# Eigendecomposition (use eigh for symmetric matrices — faster and more stable)
+eigenvalues, eigenvectors = np.linalg.eigh(L)
+fiedler_value = eigenvalues[1]
+fiedler_vector = eigenvectors[:, 1]
+
+# Sparse Laplacian (for large graphs)
+A_sp = csr_matrix(A)
+L_sp = laplacian(A_sp)
+```
+
+### NetworkX
+
+```python
+import networkx as nx
+
+G = nx.from_numpy_array(A)
+print(f"Spectrum: {np.sort(nx.laplacian_spectrum(G)).round(4)}")
+print(f"Algebraic connectivity: {nx.algebraic_connectivity(G):.4f}")
+print(f"Fiedler vector: {nx.fiedler_vector(G).round(4)}")
+```
+
+### scikit-learn
+
+```python
+from sklearn.cluster import SpectralClustering
+
+sc = SpectralClustering(
+    n_clusters=2,
+    affinity='nearest_neighbors',
+    n_neighbors=10,
+    random_state=42
+)
+labels = sc.fit_predict(X)
+```
+
+**Practical tips:**
+- Always use `np.linalg.eigh` (not `eig`) for symmetric matrices — it is faster, more numerically stable, and guarantees real eigenvalues.
+- Threshold near-zero eigenvalues: treat $|\lambda| < 10^{-10}$ as zero when counting connected components.
+- For large sparse graphs, use `scipy.sparse.linalg.eigsh(L, k=3, which='SM')` to compute only the smallest $k$ eigenvalues.
+- Set the Gaussian kernel bandwidth $\sigma$ to the median pairwise distance — a robust default.
+
+---
+
+## Connections & Further Reading
+
+| Topic | Connection |
+|-------|-----------|
+| **[The Spectral Theorem](/topics/spectral-theorem)** | The graph Laplacian is real symmetric. The Spectral Theorem guarantees a complete orthonormal eigenbasis — the foundation of spectral graph theory. The Courant–Fischer theorem underlies the Fiedler value characterization and Cheeger's inequality. |
+| **[Shannon Entropy & Mutual Information](/topics/shannon-entropy)** | The entropy of the random walk stationary distribution $H(\boldsymbol{\pi})$ measures graph regularity. Regular graphs have uniform $\boldsymbol{\pi}$ and maximum entropy $\log_2 n$. The spectral gap governs the mixing rate. |
+| **[PCA & Low-Rank Approximation](/topics/pca-low-rank)** | Spectral clustering uses the bottom eigenvectors of the Laplacian as an embedding, analogous to PCA using the top eigenvectors of the covariance matrix. Both are eigenmap embeddings: PCA preserves variance, spectral clustering preserves graph connectivity. |
+| **[Convex Analysis](/topics/convex-analysis)** | The quadratic form $\mathbf{x}^T L \mathbf{x}$ is convex. Spectral clustering relaxes the NP-hard normalized cut to a continuous eigenvalue problem — a [convex relaxation](/topics/convex-analysis). |
+| **Random Walks & Mixing** *(coming soon)* | The transition matrix $P = D^{-1}A$ spectrum governs mixing times. The spectral gap $1 - \mu_2 = \lambda_2(\mathcal{L})$ determines the mixing time: $O(\lambda_2^{-1} \log n)$. |
+| **Expander Graphs** *(coming soon)* | Sparse graphs with a large spectral gap. Cheeger's inequality characterizes them: $h(G) \geq \lambda_2/2$. Applications in error-correcting codes and derandomization. |
+| **Message Passing & GNNs** *(coming soon)* | GCN message passing is Laplacian smoothing. Over-smoothing occurs when too many layers act as a low-pass filter, collapsing all node features toward the dominant eigenvector. |
+
+### Key Notation
+
+| Symbol | Meaning |
+|--------|---------|
+| $L = D - A$ | Unnormalized graph Laplacian |
+| $\mathcal{L} = D^{-1/2}LD^{-1/2}$ | Normalized Laplacian |
+| $L_{\text{rw}} = I - D^{-1}A$ | Random walk Laplacian |
+| $P = D^{-1}A$ | Random walk transition matrix |
+| $\lambda_2$ | Fiedler value (algebraic connectivity) |
+| $\mathbf{v}_2$ | Fiedler vector |
+| $h(G)$ | Cheeger constant |
+| $\mathrm{vol}(S) = \sum_{i \in S} d_i$ | Volume of vertex set |
