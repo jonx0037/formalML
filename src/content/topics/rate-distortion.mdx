@@ -1,0 +1,623 @@
+---
+title: "Rate-Distortion Theory"
+subtitle: "The fundamental limits of lossy compression — how many bits per symbol when we tolerate distortion?"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "shannon-entropy"
+  - "convex-analysis"
+tags:
+  - "information-theory"
+  - "rate-distortion"
+  - "lossy-compression"
+  - "information-bottleneck"
+  - "blahut-arimoto"
+  - "variational-autoencoder"
+domain: "information-theory"
+videoId: null
+notebookPath: "notebooks/rate-distortion/03_rate_distortion.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/rate-distortion.mdx"
+datePublished: 2026-03-29
+estimatedReadTime: 45
+abstract: "Rate-distortion theory answers the fundamental question of lossy compression: how many bits per source symbol are necessary and sufficient when we tolerate an average distortion of at most D? The rate-distortion function R(D) — defined as the minimum mutual information I(X; X̂) over all test channels satisfying the distortion constraint — is convex, non-increasing, and equals H(X) at D = 0, recovering Shannon's lossless source coding limit. We derive closed-form solutions for the binary source with Hamming distortion (R(D) = H_b(p) - H_b(D)) and the Gaussian source with squared error (R(D) = (1/2) log(σ²/D)), prove Shannon's rate-distortion theorem establishing R(D) as the exact achievability boundary, and develop the Blahut–Arimoto algorithm for numerical computation via alternating minimization. The information bottleneck method extends rate-distortion to compression with relevance: minimizing I(X; T) while preserving I(T; Y), unifying lossy compression with representation learning. Applications to machine learning include the VAE loss as a rate-distortion Lagrangian, β-VAE as rate-distortion trade-off, and neural image compression as learned R(D)-optimal coding."
+connections:
+  - topic: "shannon-entropy"
+    relationship: "R(D) = min I(X; X̂) — the rate-distortion function minimizes mutual information. At D = 0, R(0) = H(X) recovers the lossless source coding limit established by the source coding theorem."
+  - topic: "kl-divergence"
+    relationship: "The information bottleneck distortion measure is d_IB(x, t) = D_KL(p(y|x) || p(y|t)), and the VAE rate term is D_KL(q(z|x) || p(z)). Both bridge rate-distortion theory to modern ML."
+  - topic: "convex-analysis"
+    relationship: "R(D) is convex in D — the rate-distortion optimization is a convex program. The Blahut–Arimoto algorithm exploits convexity via alternating minimization, and Lagrangian duality gives the parametric form."
+  - topic: "lagrangian-duality"
+    relationship: "The slope parameter s in the parametric form of R(D) is the Lagrange multiplier for the distortion constraint. Strong duality holds because the optimization is convex. The KKT conditions yield the optimal test channel structure."
+references:
+  - type: "book"
+    title: "Elements of Information Theory"
+    authors: "Cover & Thomas"
+    year: 2006
+    note: "Chapters 10–13 — rate-distortion theory, closed-form solutions, Blahut–Arimoto algorithm"
+  - type: "book"
+    title: "Rate Distortion Theory: A Mathematical Basis for Data Compression"
+    authors: "Berger"
+    year: 1971
+    note: "The classical monograph on rate-distortion theory"
+  - type: "paper"
+    title: "Computation of Channel Capacity and Rate-Distortion Functions"
+    authors: "Blahut"
+    year: 1972
+    url: "https://doi.org/10.1109/TIT.1972.1054855"
+    note: "The original Blahut–Arimoto algorithm for computing R(D) via alternating minimization"
+  - type: "paper"
+    title: "The Information Bottleneck Method"
+    authors: "Tishby, Pereira & Bialek"
+    year: 1999
+    url: "https://arxiv.org/abs/physics/0004057"
+    note: "Introduction of the information bottleneck — rate-distortion with relevance"
+  - type: "paper"
+    title: "Deep Variational Information Bottleneck"
+    authors: "Alemi, Fischer, Dillon & Murphy"
+    year: 2017
+    url: "https://arxiv.org/abs/1612.00410"
+    note: "Connects the information bottleneck to deep learning via variational bounds"
+  - type: "paper"
+    title: "β-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework"
+    authors: "Higgins, Matthey, Pal, Burgess, Glorot, Botvinick, Mohamed & Lerchner"
+    year: 2017
+    note: "β-VAE as rate-distortion trade-off — tuning β traces the R(D) curve"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import RateDistortionExplorer from '../../components/viz/RateDistortionExplorer.tsx';
+import BlahutArimotoExplorer from '../../components/viz/BlahutArimotoExplorer.tsx';
+import InformationBottleneckExplorer from '../../components/viz/InformationBottleneckExplorer.tsx';
+import VAERateDistortionExplorer from '../../components/viz/VAERateDistortionExplorer.tsx';
+
+## Overview & Motivation
+
+[Shannon's source coding theorem](/topics/shannon-entropy) establishes that the entropy rate $H$ is the fundamental limit of *lossless* compression. But lossless compression is often wildly impractical: a raw audio CD uses 1,411 kbps; MP3 achieves perceptually transparent quality at 128 kbps — a 10× reduction by accepting controlled distortion. JPEG, H.264, and every streaming codec you've ever used make the same bargain: trade fidelity for bits.
+
+**Rate-distortion theory** answers the question that lossless coding leaves open: *if we allow an average distortion of at most $D$, what is the minimum number of bits per source symbol we must transmit?* The answer is the **rate-distortion function** $R(D)$, which Shannon proved is the solution to a convex optimization problem over conditional distributions:
+
+$$R(D) = \min_{p(\hat{x}|x):\, \mathbb{E}[d(X,\hat{X})] \leq D} I(X; \hat{X})$$
+
+This is one of the deepest results in information theory: it gives a single number that separates the possible from the impossible. Any coding scheme operating below $R(D)$ bits per symbol *must* incur distortion greater than $D$, no matter how clever the encoder.
+
+### What We Cover
+
+1. **Distortion measures** — Hamming distortion, squared error, and the expected distortion framework
+2. **The rate-distortion function** — definition, properties (convex, non-increasing, boundary values), and the operational meaning
+3. **Rate-distortion theorem** — Shannon's achievability and converse: $R(D)$ is the exact boundary between achievable and unachievable (rate, distortion) pairs
+4. **Closed-form solutions** — binary source with Hamming distortion, Gaussian source with squared error, parametric form, Shannon lower bound
+5. **The Blahut–Arimoto algorithm** — alternating minimization for computing $R(D)$ numerically
+6. **The information bottleneck** — compression with relevance, connections to deep learning (VIB, $\beta$-VAE)
+7. **Computational notes** — Python implementations, VAE loss as rate-distortion, neural compression
+
+### Prerequisites
+
+- [Shannon Entropy & Mutual Information](/topics/shannon-entropy) — we use entropy, mutual information, and the source coding theorem throughout
+- [Convex Analysis](/topics/convex-analysis) — convexity of $R(D)$, Lagrangian duality, and the KKT conditions that yield the parametric form
+
+---
+
+## Distortion Measures
+
+Before we can talk about "acceptable" lossy compression, we need a formal notion of how much damage we've done to the source. A **distortion measure** quantifies the cost of reproducing source symbol $x$ as $\hat{x}$.
+
+<TheoremBlock type="definition" number={1} title="Distortion Function">
+A **distortion function** $d: \mathcal{X} \times \hat{\mathcal{X}} \to [0, \infty)$ assigns a non-negative real cost $d(x, \hat{x})$ to each source-reproduction pair $(x, \hat{x})$. The **expected distortion** (per-symbol distortion) for a joint distribution $p(x, \hat{x})$ is
+
+$$D = \mathbb{E}[d(X, \hat{X})] = \sum_{x} \sum_{\hat{x}} p(x, \hat{x})\, d(x, \hat{x})$$
+</TheoremBlock>
+
+Two distortion measures dominate information theory: one for discrete sources, one for continuous.
+
+<TheoremBlock type="definition" number={2} title="Hamming Distortion">
+For discrete alphabets, the **Hamming distortion** is
+
+$$d_H(x, \hat{x}) = \mathbb{1}[x \neq \hat{x}] = \begin{cases} 0 & \text{if } x = \hat{x} \\ 1 & \text{if } x \neq \hat{x} \end{cases}$$
+
+The expected Hamming distortion equals the error probability: $\mathbb{E}[d_H] = \Pr(X \neq \hat{X})$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={3} title="Squared Error Distortion">
+For real-valued alphabets, the **squared error distortion** is
+
+$$d_{SE}(x, \hat{x}) = (x - \hat{x})^2$$
+
+The expected squared error distortion is the mean squared error: $\mathbb{E}[d_{SE}] = \mathbb{E}[(X - \hat{X})^2]$.
+</TheoremBlock>
+
+Hamming distortion treats all errors equally — a single bit flip costs the same regardless of context. Squared error, by contrast, is graded: reproducing 3.0 as 3.1 costs far less than reproducing it as 10.0. The choice of distortion measure shapes the entire rate-distortion curve, because it determines what "tolerable" compression means.
+
+For a discrete source with alphabet $\{0, 1, \ldots, k-1\}$, the Hamming distortion can be organized into a **distortion matrix** $\mathbf{D}$ where $D_{ij} = d(x_i, \hat{x}_j)$. For Hamming distortion, this is simply the identity complement: zeros on the diagonal, ones everywhere else.
+
+![Distortion measures — Hamming matrix, squared error curves, and expected distortion](/images/topics/rate-distortion/distortion-measures.png)
+
+---
+
+## The Rate-Distortion Function
+
+The rate-distortion function answers the central question: what is the minimum number of bits per source symbol we need to transmit, if we can tolerate average distortion $\leq D$?
+
+<TheoremBlock type="definition" number={4} title="Rate-Distortion Function">
+For a source $X \sim p(x)$ with distortion measure $d(x, \hat{x})$, the **rate-distortion function** is
+
+$$R(D) = \min_{p(\hat{x}|x):\, \mathbb{E}[d(X,\hat{X})] \leq D} I(X; \hat{X})$$
+
+where the minimization is over all conditional distributions $p(\hat{x}|x)$ (called **test channels**) such that the expected distortion $\mathbb{E}[d(X, \hat{X})] = \sum_x \sum_{\hat{x}} p(x)\, p(\hat{x}|x)\, d(x, \hat{x}) \leq D$.
+</TheoremBlock>
+
+The test channel $p(\hat{x}|x)$ describes *how* we map source symbols to reproductions — it's the probabilistic encoding rule. The mutual information $I(X; \hat{X})$ measures how many bits of information the reproduction carries about the source. Minimizing $I(X; \hat{X})$ subject to the distortion constraint finds the most compressed representation that still meets the fidelity requirement.
+
+<TheoremBlock type="proposition" number={1} title="Properties of R(D)">
+The rate-distortion function $R(D)$ has the following properties:
+
+**(i)** $R(D) \geq 0$ for all $D \geq 0$.
+
+**(ii)** $R(D)$ is a **non-increasing** function of $D$.
+
+**(iii)** $R(D)$ is a **convex** function of $D$.
+
+**(iv)** $R(0) = H(X)$ for discrete sources with Hamming distortion (the lossless limit).
+
+**(v)** $R(D) = 0$ for $D \geq D_{\max}$, where $D_{\max} = \min_{\hat{x}} \mathbb{E}[d(X, \hat{x})]$ is the distortion achievable without any communication.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**(i)** Mutual information is non-negative: $I(X; \hat{X}) \geq 0$, so the minimum is non-negative.
+
+**(ii)** If $D_1 < D_2$, then $\{p(\hat{x}|x) : \mathbb{E}[d] \leq D_1\} \subseteq \{p(\hat{x}|x) : \mathbb{E}[d] \leq D_2\}$. Minimizing over a larger set can only decrease (or maintain) the optimum, so $R(D_2) \leq R(D_1)$.
+
+**(iii)** Let $(D_1, R(D_1))$ and $(D_2, R(D_2))$ lie on the curve, achieved by test channels $p_1(\hat{x}|x)$ and $p_2(\hat{x}|x)$ respectively. For $\lambda \in [0,1]$, the mixture test channel $p_\lambda = \lambda p_1 + (1-\lambda) p_2$ achieves expected distortion $\leq \lambda D_1 + (1-\lambda) D_2$. By the convexity of mutual information in $p(\hat{x}|x)$ for fixed $p(x)$:
+
+$$R(\lambda D_1 + (1-\lambda) D_2) \leq I_\lambda(X; \hat{X}) \leq \lambda I_1(X; \hat{X}) + (1-\lambda) I_2(X; \hat{X}) = \lambda R(D_1) + (1-\lambda) R(D_2)$$
+
+**(iv)** At $D = 0$ with Hamming distortion, $\Pr(X \neq \hat{X}) = 0$, so $\hat{X} = X$ almost surely. Then $I(X; \hat{X}) = H(X)$.
+
+**(v)** At $D \geq D_{\max}$, we can set $p(\hat{x}|x) = \delta_{\hat{x}^*}$ (reproduce everything as a constant $\hat{x}^*$ that minimizes $\mathbb{E}[d(X, \hat{x}^*)]$), achieving $I(X; \hat{X}) = 0$.
+</TheoremBlock>
+
+Properties (ii) and (iii) together tell us that $R(D)$ is a convex, non-increasing curve from $R(0) = H(X)$ down to $R(D_{\max}) = 0$. The region *above* the curve is **achievable** (we can compress to that rate at that distortion); the region *below* is **unachievable** (no coding scheme can reach it).
+
+<RateDistortionExplorer client:visible />
+
+![Rate-distortion function — binary source, Gaussian source, achievable and unachievable regions](/images/topics/rate-distortion/rate-distortion-function.png)
+
+---
+
+## The Rate-Distortion Theorem
+
+Shannon's rate-distortion theorem gives $R(D)$ its operational meaning: it is the exact boundary between achievable and unachievable compression.
+
+<TheoremBlock type="theorem" number={3} title="Shannon's Rate-Distortion Theorem">
+For an i.i.d. source $X_1, X_2, \ldots \sim p(x)$ with distortion measure $d$:
+
+**Achievability.** For any rate $R > R(D)$, there exists a sequence of $(2^{nR}, n)$ codes with expected distortion $\leq D + \varepsilon$ for all $\varepsilon > 0$ and $n$ sufficiently large.
+
+**Converse.** For any rate $R < R(D)$, every sequence of $(2^{nR}, n)$ codes has expected distortion $> D$ for $n$ sufficiently large.
+
+In other words: $R(D)$ bits per symbol are both necessary and sufficient to represent the source with average distortion at most $D$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Achievability.** Generate $2^{nR}$ codewords $\hat{x}^n$ independently from the reproduction distribution $p^*(\hat{x})$ induced by the optimal test channel. For a source sequence $x^n$, find the codeword $\hat{x}^n$ that is jointly typical with $x^n$ under the optimal test channel.
+
+By the covering lemma, this succeeds with high probability if $R > I(X; \hat{X})$: we need enough codewords to "cover" the typical set of source sequences. The expected distortion converges to $\mathbb{E}[d(X, \hat{X})] \leq D$ by the properties of jointly typical sequences — each typical pair $(x^n, \hat{x}^n)$ has per-symbol distortion close to the expected distortion of the test channel.
+
+**Converse.** By the data processing inequality, for any encoder-decoder pair with index $M \in \{1, \ldots, 2^{nR}\}$:
+
+$$nR \geq H(M) \geq I(X^n; \hat{X}^n) = \sum_{i=1}^n I(X_i; \hat{X}_i | X^{i-1}, \hat{X}^{i-1})$$
+
+For a memoryless source, $X_i$ is independent of $(X^{i-1}, \hat{X}^{i-1})$, so each conditional mutual information satisfies $I(X_i; \hat{X}_i | X^{i-1}, \hat{X}^{i-1}) \geq I(X_i; \hat{X}_i)$ — conditioning on independent variables cannot increase the information $\hat{X}_i$ carries about $X_i$. Therefore $I(X^n; \hat{X}^n) \geq \sum_{i=1}^n I(X_i; \hat{X}_i)$.
+
+By the convexity of $R(D)$ and Jensen's inequality applied to the per-symbol distortions $d_i = d(X_i, \hat{X}_i)$:
+
+$$R \geq \frac{1}{n}\sum_{i=1}^n R(d_i) \geq R\!\left(\frac{1}{n}\sum_{i=1}^n d_i\right) = R(D_n)$$
+
+So $R \geq R(D_n)$, meaning any rate below $R(D)$ cannot achieve distortion $D$.
+</TheoremBlock>
+
+The theorem is the operational backbone of lossy compression. The achievability proof is constructive (random coding with joint typicality), while the converse is information-theoretic (any code, no matter how clever, must respect $R(D)$).
+
+![Rate-distortion theorem — block diagram of lossy compression, achievable vs unachievable regions](/images/topics/rate-distortion/rate-distortion-theorem.png)
+
+---
+
+## Closed-Form Solutions
+
+For two important source-distortion pairs, $R(D)$ has a clean analytical form. These serve as benchmarks and building blocks for understanding the general case.
+
+### Binary Source with Hamming Distortion
+
+<TheoremBlock type="theorem" number={1} title="Rate-Distortion for Binary Source">
+For a Bernoulli($p$) source with Hamming distortion:
+
+$$R(D) = H_b(p) - H_b(D), \qquad 0 \leq D \leq \min(p, 1-p)$$
+
+where $H_b(\cdot)$ is the binary entropy function. For $D > \min(p, 1-p)$, we have $R(D) = 0$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The optimal test channel is a binary symmetric channel BSC($D$): it flips each bit independently with probability $D$. Under this channel:
+
+- The expected distortion is exactly $D$ (the flip probability).
+- The mutual information is $I(X; \hat{X}) = H(X) - H(X|\hat{X}) = H_b(p) - H_b(D)$.
+
+We verify this is optimal by checking the KKT conditions. The Lagrangian is $L = I(X; \hat{X}) + s\, \mathbb{E}[d(X, \hat{X})]$ with slope parameter $s$. The optimal test channel satisfies $p(\hat{x}|x) \propto q(\hat{x}) \exp(s\, d(x, \hat{x}))$, which for Hamming distortion gives the BSC structure. The distortion constraint is active ($\mathbb{E}[d] = D$), confirming the solution.
+
+At $D = 0$: $R(0) = H_b(p) - H_b(0) = H_b(p) = H(X)$, recovering lossless compression.
+
+At $D = \min(p, 1-p)$: $R(D) = H_b(p) - H_b(\min(p,1-p)) = 0$, since $H_b(\min(p,1-p)) = H_b(p)$.
+</TheoremBlock>
+
+For the uniform binary source ($p = 0.5$), this simplifies to $R(D) = 1 - H_b(D)$: we start at 1 bit (lossless) and reach 0 bits at $D = 0.5$ (pure guessing).
+
+### Gaussian Source with Squared Error
+
+<TheoremBlock type="theorem" number={2} title="Rate-Distortion for Gaussian Source">
+For a Gaussian source $X \sim \mathcal{N}(0, \sigma^2)$ with squared error distortion:
+
+$$R(D) = \frac{1}{2}\log_2 \frac{\sigma^2}{D}, \qquad 0 < D \leq \sigma^2$$
+
+For $D > \sigma^2$, we have $R(D) = 0$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The optimal test channel adds independent Gaussian noise: $\hat{X} = X + Z$ where $Z \sim \mathcal{N}(0, D)$ is independent of $X$, followed by MMSE estimation $\hat{X} = \frac{\sigma^2 - D}{\sigma^2} X$. The resulting distortion is exactly $D$.
+
+The mutual information under this channel:
+
+$$I(X; \hat{X}) = h(X) - h(X|\hat{X}) = \frac{1}{2}\log_2(2\pi e \sigma^2) - \frac{1}{2}\log_2(2\pi e D) = \frac{1}{2}\log_2\frac{\sigma^2}{D}$$
+
+This is optimal because the Gaussian source uniquely achieves the Shannon lower bound (Proposition 2 below) with equality.
+
+At $D = \sigma^2$: we can reproduce everything as the mean (zero), achieving zero rate.
+</TheoremBlock>
+
+The Gaussian $R(D)$ has a particularly clean interpretation: halving the distortion costs exactly one extra bit per sample. This logarithmic relationship is the foundation of quantization theory.
+
+### Parametric Form and the Shannon Lower Bound
+
+<TheoremBlock type="theorem" number={4} title="Parametric Form of R(D)">
+The rate-distortion function can be written parametrically via the slope $s < 0$:
+
+$$R(s) = -s\, D(s) + \sum_x p(x) \log_2 \left[\sum_{\hat{x}} \exp\!\big(s\, d(x, \hat{x})\big)\right]^{-1}$$
+
+$$D(s) = \sum_x \sum_{\hat{x}} p(x)\, p_s(\hat{x}|x)\, d(x, \hat{x})$$
+
+where $p_s(\hat{x}|x) \propto q_s(\hat{x}) \exp\!\big(s\, d(x, \hat{x})\big)$ is the optimal test channel at slope $s$, and $q_s(\hat{x})$ is its marginal. The slope $s$ is the Lagrange multiplier from the [Lagrangian dual](/topics/lagrangian-duality) of the rate-distortion optimization.
+</TheoremBlock>
+
+For the binary source, the slope parameter is $s = \log_2\!\big(D/(1-D)\big)$ and the test channel is BSC($D$). For the Gaussian source, $s = -1/(2D \ln 2)$, and the test channel adds $\mathcal{N}(0, D)$ noise.
+
+<TheoremBlock type="proposition" number={2} title="Shannon Lower Bound">
+For any continuous source $X$ with differential entropy $h(X)$ and squared error distortion:
+
+$$R(D) \geq h(X) - \frac{1}{2}\log_2(2\pi e D)$$
+
+with equality if and only if $X$ is Gaussian. This is the **Shannon lower bound** (SLB).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Starting from the definition:
+
+$$R(D) = \min I(X; \hat{X}) = \min \big[h(X) - h(X|\hat{X})\big] = h(X) - \max h(X|\hat{X})$$
+
+Since $\text{Var}(X|\hat{X}) \leq \mathbb{E}[(X - \hat{X})^2] \leq D$, the conditional entropy is bounded by $h(X|\hat{X}) \leq \frac{1}{2}\log_2(2\pi e D)$ — because the Gaussian maximizes differential entropy for a given variance. Therefore:
+
+$$R(D) \geq h(X) - \frac{1}{2}\log_2(2\pi e D)$$
+
+Equality holds when $X|\hat{X}$ is Gaussian with variance $D$, which happens exactly when $X$ itself is Gaussian.
+</TheoremBlock>
+
+The Shannon lower bound tells us that the Gaussian source is the *hardest* to compress (among sources with the same variance), in the sense that it requires the most bits at every distortion level.
+
+![Closed-form solutions — binary test channel, Gaussian R(D), Shannon lower bound](/images/topics/rate-distortion/closed-form-solutions.png)
+
+---
+
+## The Blahut–Arimoto Algorithm
+
+For general discrete sources where a closed-form $R(D)$ is unavailable, the **Blahut–Arimoto (BA) algorithm** computes $R(D)$ via alternating minimization. The algorithm exploits the [convex structure](/topics/convex-analysis) of the rate-distortion optimization.
+
+<TheoremBlock type="theorem" number={5} title="Blahut–Arimoto for Rate-Distortion">
+The rate-distortion function $R(D)$ for a discrete source $p(x)$ with finite alphabet and distortion measure $d(x, \hat{x})$ can be computed by the following alternating minimization:
+
+**Initialize:** $q(\hat{x}) = \text{uniform over } \hat{\mathcal{X}}$.
+
+**Repeat until convergence:**
+
+**Step 1** (Optimize test channel for fixed output marginal):
+
+$$p(\hat{x}|x) = \frac{q(\hat{x}) \exp\!\big(s\, d(x, \hat{x})\big)}{Z(x)} \quad \text{where } Z(x) = \sum_{\hat{x}} q(\hat{x}) \exp\!\big(s\, d(x, \hat{x})\big)$$
+
+**Step 2** (Update output marginal):
+
+$$q(\hat{x}) = \sum_x p(x)\, p(\hat{x}|x)$$
+
+The algorithm converges to the optimal test channel for the given slope $s < 0$. Sweeping $s$ from $-\infty$ to $0$ traces out the entire $R(D)$ curve.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The Lagrangian of the rate-distortion optimization is
+
+$$L = I(X; \hat{X}) + s\, \mathbb{E}[d(X, \hat{X})]$$
+
+This decomposes into two subproblems when we alternate between optimizing the test channel $p(\hat{x}|x)$ and the output marginal $q(\hat{x})$. Each step decreases $L$:
+
+- **Step 1** minimizes $L$ over $p(\hat{x}|x)$ for fixed $q(\hat{x})$. The solution is the Gibbs distribution $p(\hat{x}|x) \propto q(\hat{x}) \exp(s\, d(x, \hat{x}))$, obtained by setting the functional derivative to zero.
+- **Step 2** minimizes $L$ over $q(\hat{x})$ for fixed $p(\hat{x}|x)$. The optimal $q(\hat{x})$ is the marginal $\sum_x p(x) p(\hat{x}|x)$, which minimizes the KL divergence $D_{\mathrm{KL}}(p(\hat{x}|x) \| q(\hat{x}))$.
+
+Since $L$ is bounded below and decreases at each step, the algorithm converges. Since the original problem is convex, the limit is the global optimum.
+</TheoremBlock>
+
+The connection to the **EM algorithm** is direct: Step 1 is analogous to the E-step (computing a posterior given current parameters), and Step 2 is analogous to the M-step (updating parameters given the posterior). Both algorithms exploit the same alternating minimization structure on convex objectives.
+
+<BlahutArimotoExplorer client:visible />
+
+Here is the Python implementation:
+
+```python
+def blahut_arimoto_rd(px, distortion_matrix, slope, max_iter=200, tol=1e-10):
+    """Blahut-Arimoto for one point on the R(D) curve."""
+    n_x, n_xhat = distortion_matrix.shape
+    q_xhat = np.ones(n_xhat) / n_xhat  # uniform initialization
+
+    for iteration in range(max_iter):
+        # Step 1: optimal test channel
+        log_channel = np.log(np.maximum(q_xhat, 1e-300)) + slope * distortion_matrix
+        log_channel -= log_channel.max(axis=1, keepdims=True)
+        p_xhat_given_x = np.exp(log_channel)
+        p_xhat_given_x /= p_xhat_given_x.sum(axis=1, keepdims=True)
+
+        # Step 2: update output marginal
+        new_q = px @ p_xhat_given_x
+        new_q = np.maximum(new_q, 1e-300)
+
+        if np.max(np.abs(new_q - q_xhat)) < tol:
+            break
+        q_xhat = new_q
+
+    # Compute rate and distortion
+    joint = px[:, None] * p_xhat_given_x
+    rate = mutual_information(joint)
+    distortion = np.sum(joint * distortion_matrix)
+    return rate, distortion, q_xhat, p_xhat_given_x
+```
+
+![Blahut–Arimoto algorithm — R(D) curve, convergence, distribution evolution](/images/topics/rate-distortion/blahut-arimoto.png)
+
+---
+
+## The Information Bottleneck
+
+The **information bottleneck** (IB) method, introduced by Tishby, Pereira & Bialek (1999), extends rate-distortion theory from compression of $X$ to compression of $X$ while preserving information about a *relevant variable* $Y$. This is the bridge between rate-distortion theory and representation learning.
+
+<TheoremBlock type="definition" number={5} title="Information Bottleneck">
+Given a joint distribution $p(x, y)$, the information bottleneck seeks a compressed representation $T$ of $X$ that maximizes information about $Y$. The **IB Lagrangian** is
+
+$$\mathcal{L}_{IB} = I(X; T) - \beta\, I(T; Y)$$
+
+where $\beta > 0$ controls the compression-relevance trade-off:
+- $I(X; T)$ = **complexity** — how much we remember about $X$
+- $I(T; Y)$ = **relevance** — how much $T$ tells us about $Y$
+- $\beta$ = Lagrange multiplier: large $\beta$ favors relevance, small $\beta$ favors compression
+</TheoremBlock>
+
+The IB is not just an abstract optimization — it is a special case of rate-distortion theory with an information-theoretic distortion measure.
+
+<TheoremBlock type="proposition" number={3} title="IB as Rate-Distortion with KL Distortion">
+The IB problem is equivalent to a rate-distortion problem with the "log-loss" distortion measure:
+
+$$d_{IB}(x, t) = D_{\mathrm{KL}}\!\big(p(y|x) \| p(y|t)\big)$$
+
+The "cost" of representing $x$ by $t$ is the [KL divergence](/topics/kl-divergence) between their conditional distributions over $Y$. This makes the IB a special case of rate-distortion theory where the distortion is information-theoretic.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We want to minimize $I(X; T)$ subject to $I(T; Y) \geq I_0$. Using the Markov chain $T - X - Y$ (the representation $T$ depends on $Y$ only through $X$), we proceed in three steps.
+
+**Step 1: Decompose the relevance constraint.** Write mutual information as a conditional entropy difference:
+
+$$I(T; Y) = H(Y) - H(Y|T)$$
+
+So $I(T; Y) \geq I_0$ is equivalent to $H(Y|T) \leq H(Y) - I_0$.
+
+**Step 2: Introduce the KL distortion.** By the Markov chain $T - X - Y$, we have $p(y|t) = \sum_x p(x|t)\, p(y|x)$. The gap between conditional entropies decomposes as:
+
+$$H(Y|T) - H(Y|X) = \sum_t p(t) \sum_x p(x|t)\, D_{\mathrm{KL}}\!\big(p(y|x) \| p(y|t)\big) = \mathbb{E}\big[d_{IB}(X, T)\big]$$
+
+where $d_{IB}(x, t) = D_{\mathrm{KL}}\!\big(p(y|x) \| p(y|t)\big)$ is the KL distortion measure. This is non-negative (by Gibbs' inequality) and equals zero only when $T$ preserves the full conditional $p(y|x)$.
+
+**Step 3: Reformulate as rate-distortion.** Since $H(Y|X)$ is a constant of the source, the constraint $H(Y|T) \leq H(Y) - I_0$ becomes $\mathbb{E}[d_{IB}(X, T)] \leq D$ for $D = H(Y) - I_0 - H(Y|X) = I(X;Y) - I_0$. The IB objective $\min I(X; T)$ subject to this expected distortion constraint is exactly the rate-distortion problem with the distortion measure $d_{IB}$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={4} title="IB Curve Properties">
+The IB curve — the set of achievable $(I(X;T), I(T;Y))$ pairs — has the following properties:
+
+**(i)** It is a **concave** function of $I(X;T)$.
+
+**(ii)** $I(T;Y) = 0$ when $I(X;T) = 0$ (no compression implies no relevance).
+
+**(iii)** $I(T;Y) = I(X;Y)$ when $I(X;T) = H(X)$ (perfect representation preserves all relevance).
+
+**(iv)** The slope $dI(T;Y)/dI(X;T)$ at any point equals $1/\beta$.
+</TheoremBlock>
+
+The IB curve tells us exactly how much relevance we must sacrifice for each bit of compression. Low $\beta$ means heavy compression (small $I(X;T)$, low relevance); high $\beta$ means preserving relevance at the cost of a more complex representation.
+
+<InformationBottleneckExplorer client:visible />
+
+```python
+def information_bottleneck(p_xy, beta, n_t=4, max_iter=500, tol=1e-10):
+    """Compute IB solution for given beta via alternating optimization."""
+    n_x, n_y = p_xy.shape
+    p_x = p_xy.sum(axis=1)
+    p_y_given_x = p_xy / p_x[:, None]
+
+    # Initialize p(t|x) randomly
+    p_t_given_x = np.random.dirichlet(np.ones(n_t), size=n_x)
+
+    for _ in range(max_iter):
+        p_t = p_x @ p_t_given_x
+        p_t = np.maximum(p_t, 1e-300)
+
+        # p(y|t) from Bayes: p(y|t) = sum_x p(y|x) p(x|t)
+        p_y_given_t = np.zeros((n_t, n_y))
+        for t in range(n_t):
+            if p_t[t] > 1e-300:
+                p_y_given_t[t] = (p_t_given_x[:, t] * p_x) @ p_y_given_x / p_t[t]
+
+        # Update p(t|x) proportional to p(t) exp(-beta * D_KL(p(y|x) || p(y|t)))
+        new_p = np.zeros_like(p_t_given_x)
+        for i in range(n_x):
+            for t in range(n_t):
+                dkl = np.sum(
+                    p_y_given_x[i] * np.log(
+                        np.maximum(p_y_given_x[i], 1e-300)
+                        / np.maximum(p_y_given_t[t], 1e-300)
+                    ) * (p_y_given_x[i] > 0)
+                )
+                new_p[i, t] = p_t[t] * np.exp(-beta * dkl)
+            new_p[i] /= np.maximum(new_p[i].sum(), 1e-300)
+
+        if np.max(np.abs(new_p - p_t_given_x)) < tol:
+            break
+        p_t_given_x = new_p
+
+    # Compute I(X;T) and I(T;Y)
+    p_xt = p_x[:, None] * p_t_given_x
+    I_XT = mutual_information(p_xt)
+    p_ty = np.diag(p_t) @ p_y_given_t
+    I_TY = mutual_information(p_ty)
+    return I_XT, I_TY
+```
+
+![Information bottleneck — IB curve, rate-distortion interpretation, β trade-off](/images/topics/rate-distortion/information-bottleneck.png)
+
+### Data Processing and Successive Refinement
+
+Two additional results connect rate-distortion theory to practical coding systems.
+
+<TheoremBlock type="proposition" number={5} title="DPI and Rate-Distortion">
+For the Markov chain $X \to \hat{X} \to \tilde{X}$ (post-processing the compressed representation):
+
+$$I(X; \tilde{X}) \leq I(X; \hat{X})$$
+
+by the data processing inequality. Since $R(D)$ is non-increasing, post-processing cannot improve the rate-distortion trade-off: it can only increase distortion or maintain it (if the processing is sufficient statistic-preserving).
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={6} title="Successive Refinement">
+A source $X$ is **successively refinable** if the rate-distortion curve can be achieved by layered coding: a first description at rate $R_1$ achieves distortion $D_1$, and a second description at rate $R_2$ (given the first) achieves distortion $D_2 < D_1$, such that:
+
+$$R_1 = R(D_1), \qquad R_1 + R_2 = R(D_2)$$
+
+**Theorem (Equitz & Cover, 1991):** A source is successively refinable if and only if the optimal test channels at $D_1$ and $D_2$ form a Markov chain $\hat{X}_2 \to \hat{X}_1 \to X$. The Gaussian source with squared error is successively refinable.
+</TheoremBlock>
+
+Successive refinement is the theoretical foundation of progressive coding (JPEG progressive, scalable video coding): a base layer provides coarse quality, and enhancement layers refine it without wasting bits.
+
+![Successive refinement — layered coding, Gaussian refinability](/images/topics/rate-distortion/successive-refinement.png)
+
+---
+
+## Computational Notes
+
+Rate-distortion theory connects directly to modern ML through three bridges: the VAE loss, neural compression, and the information bottleneck in deep learning.
+
+### VAE Loss as Rate-Distortion
+
+<TheoremBlock type="remark" title="VAE Loss as Rate-Distortion">
+The VAE objective (ELBO) can be written as:
+
+$$\mathcal{L}_{\text{VAE}} = \underbrace{\mathbb{E}_{q(z|x)}[-\log p(x|z)]}_{\text{distortion } D} + \underbrace{D_{\mathrm{KL}}\!\big(q(z|x) \| p(z)\big)}_{\text{rate } R}$$
+
+This is precisely the rate-distortion Lagrangian $L = D + \beta R$ with $\beta = 1$ (standard VAE). The reconstruction term is the distortion (negative log-likelihood under the decoder), and the KL term is the rate (complexity of the latent code).
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="β-VAE and Rate-Distortion Trade-off">
+The $\beta$-VAE (Higgins et al., 2017) modifies the ELBO with a tunable $\beta$:
+
+$$\mathcal{L}_{\beta\text{-VAE}} = \mathbb{E}[-\log p(x|z)] + \beta\, D_{\mathrm{KL}}\!\big(q(z|x) \| p(z)\big)$$
+
+This traces the rate-distortion curve:
+- $\beta < 1$: prioritize reconstruction (low distortion, high rate)
+- $\beta > 1$: prioritize compression (low rate, higher distortion, more disentangled representations)
+- $\beta = 1$: standard VAE (the "natural" operating point on the R(D) curve)
+</TheoremBlock>
+
+<VAERateDistortionExplorer client:visible />
+
+### Python Implementations
+
+Here are reference implementations for computing rate-distortion functions:
+
+```python
+def rate_distortion_binary(p, D):
+    """R(D) = H_b(p) - H_b(D) for binary source with Hamming distortion."""
+    D_max = min(p, 1 - p)
+    if D >= D_max:
+        return 0.0
+    return H_b(p) - H_b(D)
+
+def rate_distortion_gaussian(sigma2, D):
+    """R(D) = 0.5 * log2(sigma2 / D) for Gaussian source."""
+    if D >= sigma2:
+        return 0.0
+    return 0.5 * np.log2(sigma2 / D)
+```
+
+```python
+# VAE loss decomposition
+def vae_loss(x, encoder, decoder, beta=1.0):
+    """L = E[-log p(x|z)] + β D_KL(q(z|x) || p(z))"""
+    mu, logvar = encoder(x)
+    z = reparameterize(mu, logvar)
+
+    # Distortion: reconstruction error
+    recon_loss = -decoder.log_prob(x, z).mean()
+
+    # Rate: KL divergence from posterior to prior
+    kl_loss = -0.5 * (1 + logvar - mu**2 - logvar.exp()).sum(dim=-1).mean()
+
+    return recon_loss + beta * kl_loss  # rate-distortion Lagrangian
+```
+
+### Neural Compression
+
+Modern learned image and video codecs operationalize rate-distortion theory directly. The encoder-decoder architecture learns the optimal test channel end-to-end, with the loss function being exactly the rate-distortion Lagrangian:
+
+$$\mathcal{L} = \underbrace{\mathbb{E}[\| x - \hat{x} \|^2]}_{\text{distortion}} + \lambda \underbrace{\mathbb{E}[-\log p(\hat{z})]}_{\text{rate}}$$
+
+where $\hat{z}$ is the quantized latent representation and $p(\hat{z})$ is the learned entropy model. Different $\lambda$ values trace out the operational R(D) curve of the neural codec. Frameworks like CompressAI (Ballé et al.) achieve state-of-the-art image compression by learning both the transform and the entropy model jointly.
+
+![Computational notes — VAE operating points, β-VAE trade-off, framework table](/images/topics/rate-distortion/computational-notes.png)
+
+---
+
+## Connections & Further Reading
+
+### Connection Map
+
+- **[Shannon Entropy & Mutual Information](/topics/shannon-entropy)** — $R(D) = \min I(X; \hat{X})$: the rate-distortion function is defined as a minimization of mutual information. At $D=0$, $R(0) = H(X)$ recovers the lossless source coding limit.
+
+- **[KL Divergence & f-Divergences](/topics/kl-divergence)** — The KL divergence appears in the IB distortion measure $d_{IB}(x,t) = D_{\mathrm{KL}}(p(y \mid x) \| p(y \mid t))$ and in the VAE rate term $D_{\mathrm{KL}}(q(z \mid x) \| p(z))$.
+
+- **[Convex Analysis](/topics/convex-analysis)** — $R(D)$ is convex in $D$: the rate-distortion optimization is a convex program. The Blahut–Arimoto algorithm exploits this structure via alternating minimization.
+
+- **[Lagrangian Duality & KKT](/topics/lagrangian-duality)** — The slope $s$ in the parametric form of $R(D)$ is the Lagrange multiplier for the distortion constraint. Strong duality holds because the optimization is convex.
+
+- **Minimum Description Length** *(coming soon)* — MDL connects source coding (Shannon) to model selection: the best model minimizes description length = code length + model complexity.
+
+### Notation Reference
+
+| Symbol | Meaning |
+|--------|---------|
+| $d(x, \hat{x})$ | Distortion function: cost of reproducing $x$ as $\hat{x}$ |
+| $D = \mathbb{E}[d(X, \hat{X})]$ | Expected (average) distortion |
+| $R(D)$ | Rate-distortion function: minimum bits/symbol at distortion $\leq D$ |
+| $p(\hat{x} \mid x)$ | Test channel: conditional distribution from source to reproduction |
+| $D_{\max}$ | Maximum useful distortion: achievable without any communication |
+| $s$ | Slope parameter (Lagrange multiplier) in the parametric form |
+| $\beta$ | Trade-off parameter in IB / $\beta$-VAE |
+| $I(X; T)$ | Complexity (compression) in the information bottleneck |
+| $I(T; Y)$ | Relevance (preserved information) in the information bottleneck |

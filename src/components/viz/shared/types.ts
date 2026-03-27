@@ -147,3 +147,18 @@ export interface HuffmanNode {
   right?: HuffmanNode;
 }
 
+// ─── Rate-Distortion Types ───
+
+export interface BlahutArimotoState {
+  iteration: number;
+  qXhat: number[];
+  pXhatGivenX: number[][];
+  rate: number;
+  distortion: number;
+}
+
+export interface RateDistortionPoint {
+  rate: number;
+  distortion: number;
+}
+

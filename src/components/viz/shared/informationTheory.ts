@@ -268,3 +268,135 @@ export function gmmPdf(
     return density;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Rate-distortion functions (added for Rate-Distortion Theory topic)
+// ---------------------------------------------------------------------------
+
+/** Rate-distortion function for binary source with Hamming distortion.
+ *  R(D) = H_b(p) - H_b(D) for 0 ≤ D ≤ min(p, 1-p), else 0. */
+export function rateDistortionBinary(p: number, D: number): number {
+  const Dmax = Math.min(p, 1 - p);
+  if (D < 0 || D >= Dmax) return 0;
+  return binaryEntropy(p) - binaryEntropy(D);
+}
+
+/** Rate-distortion function for Gaussian source with squared error.
+ *  R(D) = max(0, 0.5 * log2(sigma2 / D)). */
+export function rateDistortionGaussian(sigma2: number, D: number): number {
+  if (D <= 0) return Infinity;
+  return Math.max(0, 0.5 * Math.log2(sigma2 / D));
+}
+
+/** Hamming distortion matrix for alphabet size k.
+ *  Returns k×k matrix where d[i][j] = (i === j) ? 0 : 1. */
+export function hammingDistortionMatrix(k: number): number[][] {
+  const d: number[][] = [];
+  for (let i = 0; i < k; i++) {
+    d[i] = [];
+    for (let j = 0; j < k; j++) {
+      d[i][j] = i === j ? 0 : 1;
+    }
+  }
+  return d;
+}
+
+/** One step of the Blahut–Arimoto algorithm for rate-distortion.
+ *  Takes current q(x̂), returns updated q(x̂) and test channel p(x̂|x).
+ *  @param px - source distribution, shape [|X|]
+ *  @param distortionMatrix - d(x, x̂), shape [|X|][|X̂|]
+ *  @param qXhat - current output distribution, shape [|X̂|]
+ *  @param slope - Lagrange multiplier s < 0
+ *  @returns { qXhat, pXhatGivenX, rate, distortion } */
+export function blahutArimotoStep(
+  px: number[],
+  distortionMatrix: number[][],
+  qXhat: number[],
+  slope: number
+): { qXhat: number[]; pXhatGivenX: number[][]; rate: number; distortion: number } {
+  const nX = px.length;
+  const nXhat = qXhat.length;
+  const EPS = 1e-15;
+
+  // Step 1: compute test channel p(x̂|x) ∝ q(x̂) exp(s * d(x, x̂))
+  const pXhatGivenX: number[][] = [];
+  for (let i = 0; i < nX; i++) {
+    pXhatGivenX[i] = [];
+    let rowSum = 0;
+    for (let j = 0; j < nXhat; j++) {
+      const val = Math.max(qXhat[j], EPS) * Math.exp(slope * distortionMatrix[i][j]);
+      pXhatGivenX[i][j] = val;
+      rowSum += val;
+    }
+    // Normalize row
+    for (let j = 0; j < nXhat; j++) {
+      pXhatGivenX[i][j] /= rowSum;
+    }
+  }
+
+  // Step 2: update output distribution q(x̂) = sum_x p(x) p(x̂|x)
+  const newQ: number[] = new Array(nXhat).fill(0);
+  for (let j = 0; j < nXhat; j++) {
+    for (let i = 0; i < nX; i++) {
+      newQ[j] += px[i] * pXhatGivenX[i][j];
+    }
+    newQ[j] = Math.max(newQ[j], EPS);
+  }
+
+  // Renormalize q(x̂) so it remains a valid probability distribution after EPS floor
+  let qSum = 0;
+  for (let j = 0; j < nXhat; j++) {
+    qSum += newQ[j];
+  }
+  if (qSum > 0) {
+    for (let j = 0; j < nXhat; j++) {
+      newQ[j] /= qSum;
+    }
+  }
+
+  // Compute joint p(x, x̂) = p(x) p(x̂|x)
+  let rate = 0;
+  let distortion = 0;
+  for (let i = 0; i < nX; i++) {
+    for (let j = 0; j < nXhat; j++) {
+      const pJoint = px[i] * pXhatGivenX[i][j];
+      if (pJoint > EPS) {
+        rate += pJoint * Math.log2(pXhatGivenX[i][j] / Math.max(newQ[j], EPS));
+      }
+      distortion += pJoint * distortionMatrix[i][j];
+    }
+  }
+
+  return { qXhat: newQ, pXhatGivenX, rate: Math.max(0, rate), distortion };
+}
+
+/** Run Blahut–Arimoto to convergence and return the full R(D) point.
+ *  @param px - source distribution
+ *  @param distortionMatrix - distortion matrix
+ *  @param slope - Lagrange multiplier s < 0
+ *  @param maxIter - maximum iterations (default: 200)
+ *  @param tol - convergence tolerance (default: 1e-10)
+ *  @returns { rate, distortion, qXhat, pXhatGivenX } */
+export function blahutArimoto(
+  px: number[],
+  distortionMatrix: number[][],
+  slope: number,
+  maxIter: number = 200,
+  tol: number = 1e-10
+): { rate: number; distortion: number; qXhat: number[]; pXhatGivenX: number[][] } {
+  const nXhat = distortionMatrix[0].length;
+  // Initialize with uniform output distribution
+  let qXhat = new Array(nXhat).fill(1 / nXhat);
+  let prevRate = Infinity;
+  let result = { qXhat, pXhatGivenX: [] as number[][], rate: 0, distortion: 0 };
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    result = blahutArimotoStep(px, distortionMatrix, qXhat, slope);
+    qXhat = result.qXhat;
+
+    if (Math.abs(result.rate - prevRate) < tol) break;
+    prevRate = result.rate;
+  }
+
+  return result;
+}
