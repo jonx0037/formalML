@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   barbellGraph, pathGraph, cycleGraph, gridGraph, twoCliquesBridge,
   randomRegularGraph, erdosRenyiGraph,
-  analyzeSpectrum, cheegerConstant, fiedlerPartition, getEdges, degrees,
+  analyzeSpectrum, cheegerConstant, fiedlerPartition, getEdges,
   type Graph, type CheegerResult,
 } from './shared/graphTheory';
 
@@ -118,11 +118,12 @@ export default function CheegerExplorer() {
   const [preset, setPreset] = useState<Preset>('barbell-5');
   const [cutMode, setCutMode] = useState<CutMode>('min-cut');
 
-  // Pre-generate scatter data once on mount
-  const scatterDataRef = useRef<ScatterPoint[] | null>(null);
-  if (scatterDataRef.current === null) {
-    scatterDataRef.current = generateScatterData();
-  }
+  // Pre-generate scatter data once
+  const scatterData = useMemo(() => generateScatterData(), []);
+
+  // Per-instance clip-path ID to avoid collisions
+  const rawId = useId();
+  const clipId = `cheeger-clip-${rawId.replace(/:/g, '')}`;
 
   // Build graph from preset
   const graph = useMemo(() => buildGraph(preset), [preset]);
@@ -368,8 +369,7 @@ export default function CheegerExplorer() {
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (!scatterSvgRef.current || scatterPanelWidth === 0) return;
-    const scatterData = scatterDataRef.current;
-    if (!scatterData || scatterData.length === 0) return;
+    if (scatterData.length === 0) return;
 
     const svg = d3.select(scatterSvgRef.current);
     svg.selectAll('*').remove();
@@ -461,8 +461,8 @@ export default function CheegerExplorer() {
 
     // Draw bound curves: lower bound y = x²/2, upper bound y = 2x
     const nSteps = 200;
-    const curveClip = g.append('clipPath')
-      .attr('id', 'cheeger-scatter-clip')
+    g.append('clipPath')
+      .attr('id', clipId)
       .append('rect')
       .attr('x', 0)
       .attr('y', 0)
@@ -470,7 +470,7 @@ export default function CheegerExplorer() {
       .attr('height', innerH);
 
     const curveGroup = g.append('g')
-      .attr('clip-path', 'url(#cheeger-scatter-clip)');
+      .attr('clip-path', `url(#${clipId})`);
 
     // Shaded feasible region between the two curves
     const areaPoints: [number, number][] = [];
@@ -598,7 +598,7 @@ export default function CheegerExplorer() {
       .attr('font-weight', 600)
       .text('current');
 
-  }, [h, lambda2, scatterPanelWidth]);
+  }, [h, lambda2, scatterPanelWidth, scatterData, clipId]);
 
   // -----------------------------------------------------------------------
   // Render

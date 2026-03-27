@@ -114,6 +114,7 @@ export default function SpectralGapExplorer() {
   const [param, setParam] = useState<number>(FAMILIES.path.default);
   const [graph, setGraph] = useState<Graph>(() => cloneGraph(FAMILIES.path.build(FAMILIES.path.default)));
   const [history, setHistory] = useState<number[]>([]);
+  const rngRef = useRef(createRng(42));
 
   // Derived
   const spectrum = useMemo(() => analyzeSpectrum(graph), [graph]);
@@ -160,7 +161,7 @@ export default function SpectralGapExplorer() {
     }
     if (nonEdges.length === 0) return;
 
-    const [u, v] = nonEdges[Math.floor(Math.random() * nonEdges.length)];
+    const [u, v] = nonEdges[Math.floor(rngRef.current() * nonEdges.length)];
     const newGraph = cloneGraph(graph);
     newGraph.adjacency[u][v] = 1;
     newGraph.adjacency[v][u] = 1;
@@ -175,7 +176,7 @@ export default function SpectralGapExplorer() {
     const removable = currentEdges.filter(([u, v]) => !isBridge(graph, u, v));
     if (removable.length === 0) return;
 
-    const [u, v] = removable[Math.floor(Math.random() * removable.length)];
+    const [u, v] = removable[Math.floor(rngRef.current() * removable.length)];
     const newGraph = cloneGraph(graph);
     newGraph.adjacency[u][v] = 0;
     newGraph.adjacency[v][u] = 0;

@@ -846,10 +846,11 @@ export function kMeans(
 ): number[] {
   const rng = createRng(seed);
   const n = points.length;
-  const dim = points[0].length;
 
   if (n === 0 || k <= 0) return [];
   if (k >= n) return Array.from({ length: n }, (_, i) => i);
+
+  const dim = points[0].length;
 
   // k-means++ initialization
   const centroids: number[][] = [];
@@ -955,15 +956,12 @@ export function getEdges(graph: Graph): [number, number][] {
   return edges;
 }
 
-/** Check if removing an edge disconnects the graph (bridge detection). */
+/** Check if removing an edge disconnects the graph (bridge detection).
+ *  Pure function — operates on a cloned adjacency matrix to avoid mutating the input. */
 export function isBridge(graph: Graph, u: number, v: number): boolean {
   if (graph.adjacency[u][v] === 0) return false;
-  // Temporarily remove the edge and check connectivity
-  const oldW = graph.adjacency[u][v];
-  graph.adjacency[u][v] = 0;
-  graph.adjacency[v][u] = 0;
-  const connected = isConnected(graph);
-  graph.adjacency[u][v] = oldW;
-  graph.adjacency[v][u] = oldW;
-  return !connected;
+  const clonedAdj = graph.adjacency.map((row) => row.slice());
+  clonedAdj[u][v] = 0;
+  clonedAdj[v][u] = 0;
+  return !isConnected({ n: graph.n, adjacency: clonedAdj, labels: graph.labels });
 }

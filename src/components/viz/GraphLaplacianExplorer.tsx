@@ -83,8 +83,6 @@ export default function GraphLaplacianExplorer() {
 
   // ─── Derived computations ───
 
-  const graph: Graph = useMemo(() => ({ n, adjacency }), [n, adjacency]);
-
   const D = useMemo(() => degreeMatrix(adjacency), [adjacency]);
   const L = useMemo(() => laplacian(adjacency), [adjacency]);
   const eigenResult: EigenResult = useMemo(() => jacobiEigen(L), [L]);
@@ -349,7 +347,7 @@ export default function GraphLaplacianExplorer() {
       .attr('cx', (i) => positions[i]?.x ?? 0)
       .attr('cy', (i) => positions[i]?.y ?? 0)
       .attr('r', 14)
-      .attr('fill', (i) => nodeFill(i))
+      .style('fill', (i) => nodeFill(i))
       .style('stroke', (i) =>
         i === selectedNode ? '#f59e0b' : 'var(--color-text)',
       )
