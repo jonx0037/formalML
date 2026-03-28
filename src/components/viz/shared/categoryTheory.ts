@@ -1,7 +1,8 @@
 // ============================================================================
 // Category Theory utilities for the Category Theory track.
 // Covers category construction, axiom verification, functor verification,
-// preset categories/functors, composition helpers, and universal properties.
+// preset categories/functors, composition helpers, universal properties,
+// natural transformations, naturality verification, and the Yoneda lemma.
 // ============================================================================
 
 import type { CategoryMorphism } from './types';
@@ -566,5 +567,536 @@ export function getCategoryPresets(): {
       name: 'Discrete (3 objects)',
       build: () => discreteCategory(['A', 'B', 'C']),
     },
+  ];
+}
+
+// ============================================================================
+// Natural Transformations — Topic 2 extensions
+// ============================================================================
+
+// === Natural Transformation Types ===
+
+export interface NaturalTransformation {
+  source: Functor;
+  target: Functor;
+  /** Maps source-category object labels to component morphism labels in the target category. */
+  components: Map<string, string>;
+}
+
+export interface FunctorCategory {
+  sourceCategory: Category;
+  targetCategory: Category;
+  functors: Functor[];
+  natTransformations: NaturalTransformation[];
+}
+
+// === Naturality Verification ===
+
+/** Check the naturality condition G(f) ∘ α_A = α_B ∘ F(f) for all morphisms f in the source category. */
+export function checkNaturality(
+  nat: NaturalTransformation,
+  sourceCategory: Category,
+  targetCategory: Category,
+): { valid: boolean; violations: { morphism: string; left: string; right: string }[] } {
+  const violations: { morphism: string; left: string; right: string }[] = [];
+  const F = nat.source;
+  const G = nat.target;
+
+  for (const f of sourceCategory.morphisms) {
+    if (f.isIdentity) continue;
+
+    const A = f.source;
+    const B = f.target;
+
+    const alphaA = nat.components.get(A);
+    const alphaB = nat.components.get(B);
+    const Ff = F.onMorphisms.get(f.label);
+    const Gf = G.onMorphisms.get(f.label);
+
+    if (!alphaA || !alphaB || !Ff || !Gf) {
+      violations.push({
+        morphism: f.label,
+        left: 'undefined',
+        right: 'undefined',
+      });
+      continue;
+    }
+
+    // Top-then-right: G(f) ∘ α_A
+    const leftPath = targetCategory.compose(Gf, alphaA);
+    // Down-then-across: α_B ∘ F(f)
+    const rightPath = targetCategory.compose(alphaB, Ff);
+
+    if (leftPath === null || rightPath === null || leftPath !== rightPath) {
+      violations.push({
+        morphism: f.label,
+        left: leftPath ?? 'undefined',
+        right: rightPath ?? 'undefined',
+      });
+    }
+  }
+
+  return { valid: violations.length === 0, violations };
+}
+
+// === Natural Transformation Composition ===
+
+/** Vertical composition: (β ∘ α)_A = β_A ∘ α_A for α: F => G, β: G => H. */
+export function verticalCompose(
+  alpha: NaturalTransformation,
+  beta: NaturalTransformation,
+  targetCategory: Category,
+): NaturalTransformation {
+  const components = new Map<string, string>();
+
+  for (const obj of alpha.source.source.objects) {
+    const alphaA = alpha.components.get(obj);
+    const betaA = beta.components.get(obj);
+    if (alphaA && betaA) {
+      const composed = targetCategory.compose(betaA, alphaA);
+      if (composed) {
+        components.set(obj, composed);
+      }
+    }
+  }
+
+  return {
+    source: alpha.source,
+    target: beta.target,
+    components,
+  };
+}
+
+/** Horizontal composition: (β * α)_A = β_{G(A)} ∘ F'(α_A) for α: F => G, β: F' => G'. */
+export function horizontalCompose(
+  alpha: NaturalTransformation,
+  beta: NaturalTransformation,
+  _middleCategory: Category,
+  targetCategory: Category,
+): NaturalTransformation {
+  const components = new Map<string, string>();
+  const G = alpha.target;
+  const Fprime = beta.source;
+
+  for (const obj of alpha.source.source.objects) {
+    const GA = G.onObjects.get(obj);
+    const alphaA = alpha.components.get(obj);
+    if (!GA || !alphaA) continue;
+
+    const betaGA = beta.components.get(GA);
+    const FprimeAlphaA = Fprime.onMorphisms.get(alphaA);
+    if (!betaGA || !FprimeAlphaA) continue;
+
+    const composed = targetCategory.compose(betaGA, FprimeAlphaA);
+    if (composed) {
+      components.set(obj, composed);
+    }
+  }
+
+  return {
+    source: alpha.source,
+    target: beta.target,
+    components,
+  };
+}
+
+/** Identity natural transformation: id_F with components id_{F(A)} at each object A. */
+export function identityNatTrans(functor: Functor, targetCategory: Category): NaturalTransformation {
+  const components = new Map<string, string>();
+
+  for (const obj of functor.source.objects) {
+    const FA = functor.onObjects.get(obj);
+    if (FA) {
+      components.set(obj, targetCategory.identity(FA));
+    }
+  }
+
+  return { source: functor, target: functor, components };
+}
+
+// === Natural Isomorphism ===
+
+/** Check if every component of a natural transformation is an isomorphism. */
+export function isNaturalIsomorphism(
+  nat: NaturalTransformation,
+  targetCategory: Category,
+): boolean {
+  for (const obj of nat.source.source.objects) {
+    const component = nat.components.get(obj);
+    if (!component) return false;
+
+    const m = targetCategory.morphisms.find((mor) => mor.label === component);
+    if (!m) return false;
+
+    // Look for an inverse: a morphism m' with m'.source = m.target, m'.target = m.source,
+    // such that compose(m', m) = id_source and compose(m, m') = id_target
+    const inverse = targetCategory.morphisms.find(
+      (candidate) =>
+        candidate.source === m.target &&
+        candidate.target === m.source &&
+        targetCategory.compose(candidate.label, m.label) === targetCategory.identity(m.source) &&
+        targetCategory.compose(m.label, candidate.label) === targetCategory.identity(m.target),
+    );
+
+    if (!inverse) return false;
+  }
+
+  return true;
+}
+
+// === Yoneda Lemma ===
+
+/**
+ * Yoneda forward: given x ∈ F(A), construct the natural transformation α^x
+ * where α^x_B(f) = F(f)(x) for each f ∈ Hom(A, B).
+ *
+ * elementAction maps morphism labels to element-to-element functions:
+ * for morphism f, elementAction.get(f) is a Map from F(source(f)) to F(target(f)).
+ */
+export function yonedaForward(
+  x: string,
+  A: string,
+  sourceCategory: Category,
+  elementAction: Map<string, Map<string, string>>,
+): Map<string, Map<string, string>> {
+  // Returns: for each object B, a map from Hom(A, B) elements to F(B) elements
+  const result = new Map<string, Map<string, string>>();
+
+  for (const obj of sourceCategory.objects) {
+    const componentMap = new Map<string, string>();
+    // For each morphism f: A -> obj
+    for (const f of sourceCategory.morphisms) {
+      if (f.source === A && f.target === obj) {
+        if (f.isIdentity) {
+          // α^x_A(id_A) = x
+          componentMap.set(f.label, x);
+        } else {
+          // α^x_B(f) = F(f)(x)
+          const action = elementAction.get(f.label);
+          if (action) {
+            const result_elem = action.get(x);
+            if (result_elem) {
+              componentMap.set(f.label, result_elem);
+            }
+          }
+        }
+      }
+    }
+    result.set(obj, componentMap);
+  }
+
+  return result;
+}
+
+/** Yoneda reverse: extract the Yoneda element x = α_A(id_A). */
+export function yonedaReverse(
+  componentAtA: Map<string, string>,
+  A: string,
+  identityLabel: string,
+): string | null {
+  return componentAtA.get(identityLabel) ?? null;
+}
+
+// === Preset Natural Transformations ===
+
+/** Build a small Vec-like category for natural transformation examples. */
+function smallVecCategory(): Category {
+  const objects = ['V', 'W'];
+  const morphisms: Morphism[] = [
+    { label: 'id_V', source: 'V', target: 'V', isIdentity: true },
+    { label: 'id_W', source: 'W', target: 'W', isIdentity: true },
+    { label: 'T', source: 'V', target: 'W', isIdentity: false },
+  ];
+
+  const compMap = new Map<string, string>([
+    ['id_V,id_V', 'id_V'],
+    ['id_W,id_W', 'id_W'],
+    ['T,id_V', 'T'],
+    ['id_W,T', 'T'],
+  ]);
+
+  return {
+    objects,
+    morphisms,
+    compose: (g, f) => compMap.get(`${g},${f}`) ?? null,
+    identity: (obj) => `id_${obj}`,
+  };
+}
+
+/** Build the target category for double dual / trace examples (Vec with more morphisms). */
+function vecTargetCategory(): Category {
+  const objects = ['V', 'W', 'V**', 'W**'];
+  const morphisms: Morphism[] = [
+    { label: 'id_V', source: 'V', target: 'V', isIdentity: true },
+    { label: 'id_W', source: 'W', target: 'W', isIdentity: true },
+    { label: 'id_V**', source: 'V**', target: 'V**', isIdentity: true },
+    { label: 'id_W**', source: 'W**', target: 'W**', isIdentity: true },
+    { label: 'T', source: 'V', target: 'W', isIdentity: false },
+    { label: 'η_V', source: 'V', target: 'V**', isIdentity: false },
+    { label: 'η_W', source: 'W', target: 'W**', isIdentity: false },
+    { label: 'T**', source: 'V**', target: 'W**', isIdentity: false },
+    // Single canonical label for the commuting composite T**∘η_V = η_W∘T
+    { label: 'T**∘η_V', source: 'V', target: 'W**', isIdentity: false },
+  ];
+
+  const compMap = new Map<string, string>([
+    ['id_V,id_V', 'id_V'],
+    ['id_W,id_W', 'id_W'],
+    ['id_V**,id_V**', 'id_V**'],
+    ['id_W**,id_W**', 'id_W**'],
+    ['T,id_V', 'T'],
+    ['id_W,T', 'T'],
+    ['η_V,id_V', 'η_V'],
+    ['id_V**,η_V', 'η_V'],
+    ['η_W,id_W', 'η_W'],
+    ['id_W**,η_W', 'η_W'],
+    ['T**,id_V**', 'T**'],
+    ['id_W**,T**', 'T**'],
+    // Naturality: both paths yield the same composite label
+    ['T**,η_V', 'T**∘η_V'],
+    ['η_W,T', 'T**∘η_V'],
+    ['T**∘η_V,id_V', 'T**∘η_V'],
+    ['id_W**,T**∘η_V', 'T**∘η_V'],
+  ]);
+
+  return {
+    objects,
+    morphisms,
+    compose: (g, f) => compMap.get(`${g},${f}`) ?? null,
+    identity: (obj) => `id_${obj}`,
+  };
+}
+
+/** Double dual embedding: η: Id => (-)** in Vec.
+ *  Components: η_V: V → V**, η_W: W → W**.
+ *  Naturality: T** ∘ η_V = η_W ∘ T.
+ */
+export function doubleDualEmbedding(): {
+  nat: NaturalTransformation;
+  sourceCategory: Category;
+  targetCategory: Category;
+  availableMorphisms: string[];
+  description: string;
+} {
+  const srcCat = smallVecCategory();
+  const tgtCat = vecTargetCategory();
+
+  const idFunctor: Functor = {
+    source: srcCat,
+    target: tgtCat,
+    onObjects: new Map([['V', 'V'], ['W', 'W']]),
+    onMorphisms: new Map([['id_V', 'id_V'], ['id_W', 'id_W'], ['T', 'T']]),
+    contravariant: false,
+  };
+
+  const doubleDualFunctor: Functor = {
+    source: srcCat,
+    target: tgtCat,
+    onObjects: new Map([['V', 'V**'], ['W', 'W**']]),
+    onMorphisms: new Map([['id_V', 'id_V**'], ['id_W', 'id_W**'], ['T', 'T**']]),
+    contravariant: false,
+  };
+
+  const nat: NaturalTransformation = {
+    source: idFunctor,
+    target: doubleDualFunctor,
+    components: new Map([['V', 'η_V'], ['W', 'η_W']]),
+  };
+
+  return {
+    nat,
+    sourceCategory: srcCat,
+    targetCategory: tgtCat,
+    availableMorphisms: ['T'],
+    description: 'Double dual: Id ⇒ (-)** in Vec',
+  };
+}
+
+/** Determinant: det: GL_n ⇒ (-)× between Ring and Grp.
+ *  Small example with rings R, S and a ring homomorphism φ: R → S.
+ */
+export function determinantNatTrans(): {
+  nat: NaturalTransformation;
+  sourceCategory: Category;
+  targetCategory: Category;
+  availableMorphisms: string[];
+  description: string;
+} {
+  // Source category: Ring with objects R, S and morphism φ
+  const srcCat: Category = {
+    objects: ['R', 'S'],
+    morphisms: [
+      { label: 'id_R', source: 'R', target: 'R', isIdentity: true },
+      { label: 'id_S', source: 'S', target: 'S', isIdentity: true },
+      { label: 'φ', source: 'R', target: 'S', isIdentity: false },
+    ],
+    compose: (g, f) => {
+      const map = new Map<string, string>([
+        ['id_R,id_R', 'id_R'], ['id_S,id_S', 'id_S'],
+        ['φ,id_R', 'φ'], ['id_S,φ', 'φ'],
+      ]);
+      return map.get(`${g},${f}`) ?? null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  // Target category: Grp with GL_n(R), GL_n(S), R×, S× and the relevant morphisms
+  const tgtCat: Category = {
+    objects: ['GL_n(R)', 'GL_n(S)', 'R×', 'S×'],
+    morphisms: [
+      { label: 'id_GL_n(R)', source: 'GL_n(R)', target: 'GL_n(R)', isIdentity: true },
+      { label: 'id_GL_n(S)', source: 'GL_n(S)', target: 'GL_n(S)', isIdentity: true },
+      { label: 'id_R×', source: 'R×', target: 'R×', isIdentity: true },
+      { label: 'id_S×', source: 'S×', target: 'S×', isIdentity: true },
+      { label: 'GL_n(φ)', source: 'GL_n(R)', target: 'GL_n(S)', isIdentity: false },
+      { label: 'φ×', source: 'R×', target: 'S×', isIdentity: false },
+      { label: 'det_R', source: 'GL_n(R)', target: 'R×', isIdentity: false },
+      { label: 'det_S', source: 'GL_n(S)', target: 'S×', isIdentity: false },
+      // Single canonical label for the commuting composite φ×∘det_R = det_S∘GL_n(φ)
+      { label: 'φ×∘det_R', source: 'GL_n(R)', target: 'S×', isIdentity: false },
+    ],
+    compose: (g, f) => {
+      const map = new Map<string, string>([
+        ['id_GL_n(R),id_GL_n(R)', 'id_GL_n(R)'],
+        ['id_GL_n(S),id_GL_n(S)', 'id_GL_n(S)'],
+        ['id_R×,id_R×', 'id_R×'],
+        ['id_S×,id_S×', 'id_S×'],
+        ['GL_n(φ),id_GL_n(R)', 'GL_n(φ)'],
+        ['id_GL_n(S),GL_n(φ)', 'GL_n(φ)'],
+        ['φ×,id_R×', 'φ×'],
+        ['id_S×,φ×', 'φ×'],
+        ['det_R,id_GL_n(R)', 'det_R'],
+        ['id_R×,det_R', 'det_R'],
+        ['det_S,id_GL_n(S)', 'det_S'],
+        ['id_S×,det_S', 'det_S'],
+        // Naturality: both paths yield the same composite label
+        ['φ×,det_R', 'φ×∘det_R'],
+        ['det_S,GL_n(φ)', 'φ×∘det_R'],
+        ['id_S×,φ×∘det_R', 'φ×∘det_R'],
+        ['φ×∘det_R,id_GL_n(R)', 'φ×∘det_R'],
+      ]);
+      return map.get(`${g},${f}`) ?? null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  const glnFunctor: Functor = {
+    source: srcCat,
+    target: tgtCat,
+    onObjects: new Map([['R', 'GL_n(R)'], ['S', 'GL_n(S)']]),
+    onMorphisms: new Map([['id_R', 'id_GL_n(R)'], ['id_S', 'id_GL_n(S)'], ['φ', 'GL_n(φ)']]),
+    contravariant: false,
+  };
+
+  const unitsFunctor: Functor = {
+    source: srcCat,
+    target: tgtCat,
+    onObjects: new Map([['R', 'R×'], ['S', 'S×']]),
+    onMorphisms: new Map([['id_R', 'id_R×'], ['id_S', 'id_S×'], ['φ', 'φ×']]),
+    contravariant: false,
+  };
+
+  const nat: NaturalTransformation = {
+    source: glnFunctor,
+    target: unitsFunctor,
+    components: new Map([['R', 'det_R'], ['S', 'det_S']]),
+  };
+
+  return {
+    nat,
+    sourceCategory: srcCat,
+    targetCategory: tgtCat,
+    availableMorphisms: ['φ'],
+    description: 'Determinant: GL_n ⇒ (-)× between Ring and Grp',
+  };
+}
+
+/** Trace: tr: End(-) ⇒ k in Vec.
+ *  Components: tr_V: End(V) → k. Naturality: tr(TMT⁻¹) = tr(M).
+ */
+export function traceNatTrans(): {
+  nat: NaturalTransformation;
+  sourceCategory: Category;
+  targetCategory: Category;
+  availableMorphisms: string[];
+  description: string;
+} {
+  const srcCat = smallVecCategory();
+
+  const tgtCat: Category = {
+    objects: ['End(V)', 'End(W)', 'k'],
+    morphisms: [
+      { label: 'id_End(V)', source: 'End(V)', target: 'End(V)', isIdentity: true },
+      { label: 'id_End(W)', source: 'End(W)', target: 'End(W)', isIdentity: true },
+      { label: 'id_k', source: 'k', target: 'k', isIdentity: true },
+      { label: 'conj_T', source: 'End(V)', target: 'End(W)', isIdentity: false },
+      { label: 'tr_V', source: 'End(V)', target: 'k', isIdentity: false },
+      { label: 'tr_W', source: 'End(W)', target: 'k', isIdentity: false },
+    ],
+    compose: (g, f) => {
+      const map = new Map<string, string>([
+        ['id_End(V),id_End(V)', 'id_End(V)'],
+        ['id_End(W),id_End(W)', 'id_End(W)'],
+        ['id_k,id_k', 'id_k'],
+        ['conj_T,id_End(V)', 'conj_T'],
+        ['id_End(W),conj_T', 'conj_T'],
+        ['tr_V,id_End(V)', 'tr_V'],
+        ['id_k,tr_V', 'tr_V'],
+        ['tr_W,id_End(W)', 'tr_W'],
+        ['id_k,tr_W', 'tr_W'],
+        // Naturality: tr_W ∘ conj_T = id_k ∘ tr_V = tr_V (by identity law)
+        ['tr_W,conj_T', 'tr_V'],
+      ]);
+      return map.get(`${g},${f}`) ?? null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  const endFunctor: Functor = {
+    source: srcCat,
+    target: tgtCat,
+    onObjects: new Map([['V', 'End(V)'], ['W', 'End(W)']]),
+    onMorphisms: new Map([['id_V', 'id_End(V)'], ['id_W', 'id_End(W)'], ['T', 'conj_T']]),
+    contravariant: false,
+  };
+
+  const constFunctor: Functor = {
+    source: srcCat,
+    target: tgtCat,
+    onObjects: new Map([['V', 'k'], ['W', 'k']]),
+    onMorphisms: new Map([['id_V', 'id_k'], ['id_W', 'id_k'], ['T', 'id_k']]),
+    contravariant: false,
+  };
+
+  const nat: NaturalTransformation = {
+    source: endFunctor,
+    target: constFunctor,
+    components: new Map([['V', 'tr_V'], ['W', 'tr_W']]),
+  };
+
+  return {
+    nat,
+    sourceCategory: srcCat,
+    targetCategory: tgtCat,
+    availableMorphisms: ['T'],
+    description: 'Trace: End(-) ⇒ k in Vec',
+  };
+}
+
+/** Get all preset natural transformations for the NaturalitySquareExplorer. */
+export function getNatTransPresets(): {
+  name: string;
+  build: () => {
+    nat: NaturalTransformation;
+    sourceCategory: Category;
+    targetCategory: Category;
+    availableMorphisms: string[];
+    description: string;
+  };
+}[] {
+  return [
+    { name: 'Double Dual: Id ⇒ (-)** in Vec', build: doubleDualEmbedding },
+    { name: 'Determinant: GL_n ⇒ (-)×', build: determinantNatTrans },
+    { name: 'Trace: End(-) ⇒ k', build: traceNatTrans },
   ];
 }
