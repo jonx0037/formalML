@@ -1,0 +1,964 @@
+---
+title: "Expander Graphs"
+subtitle: "Sparse graphs with paradoxically strong connectivity — from the Expander Mixing Lemma to Ramanujan optimality and O(log n) mixing"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "graph-laplacians"
+  - "random-walks"
+tags:
+  - "graph-theory"
+  - "expander-graphs"
+  - "spectral-gap"
+  - "ramanujan-graphs"
+  - "expander-mixing-lemma"
+  - "derandomization"
+domain: "graph-theory"
+videoId: null
+notebookPath: "notebooks/expander-graphs/03_expander_graphs.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/expander-graphs.mdx"
+datePublished: 2026-03-28
+estimatedReadTime: 45
+abstract: "Expander graphs are sparse graphs with paradoxically strong connectivity: every vertex subset has a large boundary relative to its size. Three equivalent perspectives — vertex expansion, edge expansion (the Cheeger constant), and spectral gap — capture this idea, linked by Cheeger's inequality. The Expander Mixing Lemma makes expansion quantitative: in an (n, d, λ)-expander, the number of edges between any two vertex subsets S and T deviates from the expected value d|S||T|/n by at most λ√(|S||T|), where λ is the second-largest eigenvalue in absolute value. The Alon–Boppana bound establishes 2√(d-1) as the theoretical floor for λ in d-regular graphs, and Ramanujan graphs — achieving this bound — represent optimal expanders. Explicit constructions from Cayley graphs and algebraic number theory (Lubotzky–Phillips–Sarnak) demonstrate that optimal expanders can be built deterministically. Random walks on expanders mix in O(log n) steps, enabling the expander walk sampling theorem: t steps on an expander yield nearly independent samples using only O(log n + t log d) random bits. These properties power applications from error-correcting codes and derandomization to network design and graph neural network architectures."
+connections:
+  - topic: "graph-laplacians"
+    relationship: "Cheeger's inequality links the Laplacian spectral gap to edge expansion — the same quantity that defines expanders. The Fiedler vector provides a spectral approximation to the minimum cut, and expanders are precisely the graphs where this cut is large for every subset."
+  - topic: "random-walks"
+    relationship: "The mixing time of a random walk on an expander is O(log n), because the spectral gap γ = 1 − λ/d is bounded away from zero. Expander walk sampling extends this: consecutive walk vertices are nearly independent samples, enabling derandomization."
+  - topic: "spectral-theorem"
+    relationship: "The Expander Mixing Lemma proof decomposes indicator vectors in the eigenbasis of the adjacency matrix. The Spectral Theorem guarantees orthonormality of this basis — the Cauchy-Schwarz step in the EML relies on this structure."
+  - topic: "concentration-inequalities"
+    relationship: "The expander walk sampling theorem is a Chernoff bound for dependent samples on a Markov chain. The spectral gap replaces independence: a walk on an expander produces samples whose correlations decay exponentially."
+  - topic: "shannon-entropy"
+    relationship: "The entropy rate of a random walk on a d-regular expander approaches log d — maximum entropy. Expansion ensures the walk explores the graph uniformly, maximizing the information content of the trajectory."
+references:
+  - type: "paper"
+    title: "Expander Graphs and their Applications"
+    authors: "Hoory, Linial & Wigderson"
+    year: 2006
+    url: "https://doi.org/10.1090/S0273-0979-06-01126-8"
+    note: "The definitive survey — covers all three expansion notions, the EML, Ramanujan graphs, and applications to CS"
+  - type: "paper"
+    title: "Ramanujan Graphs"
+    authors: "Lubotzky, Phillips & Sarnak"
+    year: 1988
+    url: "https://doi.org/10.1007/BF02126799"
+    note: "The original explicit construction of (p+1)-regular Ramanujan graphs via quaternion algebras"
+  - type: "paper"
+    title: "A Proof of Alon's Second Eigenvalue Conjecture and Related Problems"
+    authors: "Friedman"
+    year: 2008
+    url: "https://doi.org/10.1090/memo/0910"
+    note: "Random d-regular graphs are nearly Ramanujan — λ₂ ≤ 2√(d-1) + ε with high probability"
+  - type: "paper"
+    title: "Interlacing Families II: Mixed Characteristic Polynomials and the Kadison–Singer Problem"
+    authors: "Marcus, Spielman & Srivastava"
+    year: 2015
+    url: "https://doi.org/10.4007/annals.2015.182.1.1"
+    note: "Existence of bipartite Ramanujan graphs of every degree — resolved a major open problem"
+  - type: "book"
+    title: "Spectral Graph Theory"
+    authors: "Chung"
+    year: 1997
+    note: "Standard reference for the normalized Laplacian perspective on expansion and mixing"
+  - type: "paper"
+    title: "Expander Codes"
+    authors: "Sipser & Spielman"
+    year: 1996
+    url: "https://doi.org/10.1109/18.556667"
+    note: "Linear-time decodable codes from bipartite expanders — expansion ensures error correction"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ExpanderExplorer from '../../components/viz/ExpanderExplorer.tsx';
+import MixingLemmaExplorer from '../../components/viz/MixingLemmaExplorer.tsx';
+import RamanujanBoundExplorer from '../../components/viz/RamanujanBoundExplorer.tsx';
+
+## Overview & Motivation
+
+The complete graph $K_n$ is well-connected in every sense: every pair of vertices shares an edge, every subset has a massive boundary, and a random walk mixes in a single step. But $K_n$ has $\binom{n}{2}$ edges — a quadratic cost that becomes prohibitive for large $n$. Can we achieve the *same qualitative connectivity* with far fewer edges?
+
+Expander graphs say yes. An **expander** is a graph that is simultaneously *sparse* (each vertex has bounded degree $d$, independent of $n$, so the total edge count is $O(n)$) and *well-connected* (every vertex subset $S$ with $|S| \leq n/2$ has a boundary at least proportional to $|S|$). This combination sounds paradoxical: how can a graph with only $O(n)$ edges avoid having bottlenecks? And yet expander families exist, can be constructed explicitly, and turn out to be optimal in a precise spectral sense.
+
+Three equivalent perspectives capture the "no bottleneck" property:
+
+1. **Vertex expansion:** Every set $S$ has many *neighbors outside $S$* — the boundary $N(S) \setminus S$ is large relative to $|S|$.
+
+2. **Edge expansion (the Cheeger constant):** Every set $S$ has many *edges crossing to the complement* $\bar{S}$ — the edge boundary $|E(S, \bar{S})|$ is large relative to $|S|$.
+
+3. **Spectral expansion:** The second-largest eigenvalue $\lambda$ of the adjacency matrix (in absolute value) is bounded away from the degree $d$ — the *spectral gap* $d - \lambda$ is large.
+
+**Cheeger's inequality** links perspectives 2 and 3, showing they are quantitatively equivalent. The **Expander Mixing Lemma** makes expansion concrete: it controls the number of edges between *any* two vertex subsets in terms of $\lambda$, making the $(n, d, \lambda)$-expander formalism a workhorse for combinatorics and computer science. The **Alon-Boppana bound** establishes $\lambda \geq 2\sqrt{d-1} - o(1)$ as a universal floor, and **Ramanujan graphs** — which achieve $\lambda \leq 2\sqrt{d-1}$ — are the provably optimal expanders.
+
+These results connect directly to the spectral theory we developed in the prerequisite topics. In [Graph Laplacians & Spectrum](/topics/graph-laplacians), Cheeger's inequality linked the Fiedler value $\lambda_2(L)$ to the minimum edge cut. In [Random Walks & Mixing](/topics/random-walks), the spectral gap $\gamma = 1 - \lambda_2(P)$ controlled the mixing time. Expanders are the graphs where both quantities are bounded away from zero *uniformly in $n$* — the mixing time is $O(\log n)$ regardless of the graph's size, and the minimum cut grows linearly with the subset size.
+
+**Why should ML practitioners care?** Expanders appear throughout theoretical computer science and increasingly in machine learning:
+
+- **Derandomization:** The expander walk sampling theorem shows that a random walk on an expander produces nearly independent samples, reducing the randomness needed by algorithms from $O(t \log n)$ to $O(\log n + t \log d)$ bits.
+- **Error-correcting codes:** Bipartite expanders yield linear-time decodable codes (Sipser-Spielman expander codes).
+- **Network design:** Communication networks, sensor networks, and distributed systems benefit from expander-like connectivity.
+- **Graph neural networks:** Expansion controls information flow in message-passing architectures — $O(\log n)$ layers suffice to propagate information across the entire graph, but also cause over-smoothing.
+
+**Roadmap.** We define the three expansion notions and compute them on named graphs (§1-2), prove their equivalence via Cheeger's inequality (§3), derive the Expander Mixing Lemma with a full spectral proof (§4), establish the Alon-Boppana lower bound and define Ramanujan graphs (§5), construct explicit expanders from Cayley graphs and number theory (§6), prove the $O(\log n)$ mixing time bound (§7), and survey applications to CS and ML (§8-9).
+
+---
+
+## 1. Three Notions of Expansion
+
+The central idea of expansion is that *every* small-to-medium vertex subset has a large boundary. Different notions formalize "boundary" differently. We will define all three, compute them on familiar graphs, and then prove they are equivalent for families of regular graphs.
+
+### 1.1 Vertex Expansion
+
+The most direct notion counts how many *new vertices* a set $S$ can reach in one step.
+
+<TheoremBlock type="definition" number={1} title="Vertex Expansion">
+For a graph $G = (V, E)$ and a vertex subset $S \subseteq V$, the **vertex boundary** of $S$ is $\partial_V(S) = N(S) \setminus S$, where $N(S) = \{v \in V : \exists u \in S, \{u,v\} \in E\}$ is the neighborhood of $S$. The **vertex expansion ratio** of $G$ is:
+
+$$h_V(G) = \min_{\substack{S \subseteq V \\ 0 < |S| \leq n/2}} \frac{|\partial_V(S)|}{|S|}$$
+</TheoremBlock>
+
+A graph has good vertex expansion if $h_V(G) \geq c$ for some constant $c > 0$ independent of $n$. This means every set $S$ of size at most $n/2$ has at least $c|S|$ neighbors outside $S$ — the graph has no isolated clusters.
+
+### 1.2 Edge Expansion (the Cheeger Constant)
+
+Instead of counting boundary *vertices*, we can count boundary *edges*.
+
+<TheoremBlock type="definition" number={2} title="Edge Expansion (Cheeger Constant)">
+For a $d$-regular graph $G = (V, E)$ and a vertex subset $S \subseteq V$, the **edge boundary** is $E(S, \bar{S}) = \{\{u,v\} \in E : u \in S, v \notin S\}$. The **edge expansion ratio** (or **Cheeger constant**) is:
+
+$$h(G) = \min_{\substack{S \subseteq V \\ 0 < |S| \leq n/2}} \frac{|E(S, \bar{S})|}{|S|}$$
+</TheoremBlock>
+
+The Cheeger constant measures the minimum "surface-to-volume ratio" of any subset — a direct analogy with isoperimetric inequalities in geometry. A set with small edge boundary relative to its volume is a *bottleneck*: information (or random walkers) trapped inside $S$ must pass through a narrow gate to reach $\bar{S}$. Expanders are graphs with *no* such bottlenecks.
+
+### 1.3 Spectral Expansion
+
+The third perspective replaces the combinatorial min over subsets with a single algebraic quantity: the second-largest eigenvalue.
+
+<TheoremBlock type="definition" number={3} title="Spectral Expansion and (n, d, λ)-Expanders">
+Let $G$ be a $d$-regular graph on $n$ vertices with adjacency matrix $A$. Since $G$ is $d$-regular, the largest eigenvalue is $\lambda_1 = d$ with eigenvector $\mathbf{1}$. The **spectral expansion parameter** is:
+
+$$\lambda(G) = \max_{i \geq 2} |\lambda_i(A)| = \max\bigl(|\lambda_2(A)|, |\lambda_n(A)|\bigr)$$
+
+We call $G$ an *$(n, d, \lambda)$-expander* if it is $d$-regular, has $n$ vertices, and $\lambda(G) \leq \lambda$.
+</TheoremBlock>
+
+The quantity $\lambda(G)$ is the largest eigenvalue in absolute value *after* the trivial eigenvalue $d$. The smaller $\lambda$ is, the better the expansion: the gap between $d$ and $\lambda$ — the **spectral gap** $d - \lambda$ — measures how far the graph's spectrum deviates from the rank-1 pattern of the complete graph.
+
+Why does the spectral gap control expansion? Recall from [Graph Laplacians & Spectrum](/topics/graph-laplacians) that the Laplacian eigenvalues $\mu_i$ of a $d$-regular graph satisfy $\mu_i = d - \lambda_i(A)$. So $\lambda_2(L) = d - \lambda_2(A)$, and a large spectral gap in $A$ means a large Fiedler value $\lambda_2(L)$ — the graph is hard to cut. The connection to [Random Walks & Mixing](/topics/random-walks) is equally direct: the transition matrix $P = A/d$ has eigenvalues $\lambda_i(P) = \lambda_i(A)/d$, so the spectral gap of the walk is $\gamma = 1 - \lambda(G)/d$.
+
+### 1.4 Examples: Expansion on Named Graphs
+
+Let us compute all three expansion parameters for familiar graphs.
+
+**Complete graph $K_n$** ($d = n-1$). Every vertex is adjacent to every other, so for any $S$ with $|S| = k \leq n/2$:
+- $\partial_V(S) = V \setminus S$, giving $h_V(K_n) = (n-k)/k \geq 1$.
+- $|E(S, \bar{S})| = k(n-k)$, giving $h(K_n) = n - k \geq n/2$.
+- The adjacency eigenvalues are $n-1$ (once) and $-1$ (with multiplicity $n-1$), so $\lambda(K_n) = 1$.
+
+$K_n$ is an excellent expander spectrally ($\lambda = 1 \ll d = n-1$), but it is not sparse — the degree grows with $n$.
+
+**Cycle $C_n$** ($d = 2$). The cycle is a 2-regular graph. Taking $S$ to be a contiguous arc of $\lfloor n/2 \rfloor$ vertices:
+- $|\partial_V(S)| = 2$ (the two endpoints of the arc), so $h_V(C_n) = 2/\lfloor n/2 \rfloor \to 0$.
+- $|E(S, \bar{S})| = 2$, so $h(C_n) = 2/\lfloor n/2 \rfloor \to 0$.
+- The adjacency eigenvalues are $2\cos(2\pi k/n)$ for $k = 0, \ldots, n-1$, so $\lambda_2 = 2\cos(2\pi/n) = 2 - O(1/n^2)$ and $\lambda(C_n) = 2 - O(1/n^2)$.
+
+The cycle is *not* an expander in any sense: all three parameters degrade as $n \to \infty$.
+
+**Petersen graph** ($n = 10$, $d = 3$). This remarkable 3-regular graph has:
+- $h_V = 1$ (every subset of size $\leq 5$ has at least as many external neighbors).
+- $h(G) = 2$ (verified by exhaustive search over subsets).
+- Adjacency eigenvalues: $3$ (once), $1$ (with multiplicity 5), $-2$ (with multiplicity 4). So $\lambda = 2$.
+
+The Petersen graph is a good expander for its size. We will see shortly that $\lambda = 2$ actually meets the Ramanujan bound $2\sqrt{d-1} = 2\sqrt{2} \approx 2.83$ — it is a Ramanujan graph.
+
+**Hypercube $Q_k$** ($n = 2^k$, $d = k$). The $k$-dimensional hypercube has vertices $\{0,1\}^k$ with edges between strings differing in one bit. The adjacency eigenvalues are $k - 2j$ for $j = 0, \ldots, k$, with multiplicity $\binom{k}{j}$. So $\lambda_2 = k - 2$ and $\lambda(Q_k) = k - 2$.
+
+The spectral gap is $d - \lambda = 2$, which is constant — the hypercube *is* an expander family. Its edge expansion is $h(Q_k) \geq 1$ (the edge-isoperimetric inequality for the cube), and the mixing time of a random walk is $\Theta(k \log k)$.
+
+**Barbell graph** ($n = 2m$, irregular). Two complete graphs $K_m$ joined by a single edge. The edge connecting them is a severe bottleneck: $h(G) = 1/m \to 0$. The barbell is the canonical non-expander — a single edge cut isolates half the graph.
+
+| Graph | $n$ | $d$ | $h_V(G)$ | $h(G)$ | $\lambda(G)$ | Expander? |
+|-------|-----|-----|-----------|---------|---------------|-----------|
+| $K_n$ | $n$ | $n-1$ | $\geq 1$ | $\geq n/2$ | $1$ | Yes (not sparse) |
+| $C_n$ | $n$ | $2$ | $\to 0$ | $\to 0$ | $2 - O(1/n^2)$ | No |
+| Petersen | $10$ | $3$ | $1$ | $2$ | $2$ | Yes |
+| $Q_k$ | $2^k$ | $k$ | $\geq 1$ | $\geq 1$ | $k-2$ | Yes (degree grows) |
+| Barbell | $2m$ | varies | $\to 0$ | $\to 0$ | $\to d$ | No |
+
+<ExpanderExplorer client:visible />
+
+![Expansion comparison across named graphs — vertex expansion, edge expansion, and spectral gap shown side by side](/images/topics/expander-graphs/expansion-comparison.png)
+
+---
+
+## 2. The Relationship Between Expansion Notions
+
+Before proving the deep equivalence via Cheeger's inequality, we establish a direct relationship between vertex and edge expansion.
+
+<TheoremBlock type="proposition" number={1} title="Vertex vs. Edge Expansion">
+For any $d$-regular graph $G$:
+
+$$\frac{h(G)}{d} \leq h_V(G) \leq h(G)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Upper bound** ($h_V(G) \leq h(G)$). Let $S$ be any subset with $|S| \leq n/2$. Every vertex in $\partial_V(S)$ is connected to at least one vertex in $S$ by an edge, and each such edge contributes to $E(S, \bar{S})$. Therefore $|\partial_V(S)| \leq |E(S, \bar{S})|$. Dividing both sides by $|S|$ and taking the minimum over $S$ gives $h_V(G) \leq h(G)$.
+
+**Lower bound** ($h(G)/d \leq h_V(G)$). Each vertex in $\partial_V(S)$ has degree $d$, so it contributes at most $d$ edges to $E(S, \bar{S})$. (Some edges from a boundary vertex may go to other vertices in $\bar{S}$, but at most $d$ go anywhere.) Therefore $|E(S, \bar{S})| \leq d \cdot |\partial_V(S)|$. Dividing by $d \cdot |S|$ and taking the minimum gives $h(G)/d \leq h_V(G)$.
+</TheoremBlock>
+
+This tells us that vertex and edge expansion differ by at most a factor of $d$. For constant-degree graphs (the setting we care about for expander families), the two notions are equivalent up to a constant.
+
+---
+
+## 3. Cheeger's Inequality: Linking Spectrum to Combinatorics
+
+The crown jewel of spectral graph theory is **Cheeger's inequality**, which asserts that the spectral gap and the Cheeger constant determine each other up to polynomial factors. We proved a version of this in [Graph Laplacians & Spectrum](/topics/graph-laplacians); here we state and prove the version tailored to the adjacency matrix of regular graphs.
+
+<TheoremBlock type="theorem" number={1} title="Cheeger's Inequality for Regular Graphs">
+For a $d$-regular graph $G$ with second-largest eigenvalue $\lambda_2 = \lambda_2(A)$:
+
+$$\frac{d - \lambda_2}{2} \leq h(G) \leq \sqrt{2d(d - \lambda_2)}$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We prove both directions.
+
+**Lower bound ("easy direction"):** $h(G) \geq (d - \lambda_2)/2$.
+
+Let $S$ achieve the minimum in $h(G)$, so $|E(S, \bar{S})|/|S| = h(G)$. Define the vector $\mathbf{f} \in \mathbb{R}^n$ by:
+
+$$f_i = \begin{cases} 1 - |S|/n & \text{if } i \in S \\ -|S|/n & \text{if } i \notin S \end{cases}$$
+
+This vector is orthogonal to the all-ones vector $\mathbf{1}$ (the eigenvector for $\lambda_1 = d$):
+
+$$\sum_i f_i = |S|(1 - |S|/n) + (n - |S|)(-|S|/n) = |S| - |S|^2/n - |S| + |S|^2/n = 0$$
+
+By the Rayleigh quotient characterization of $\lambda_2$:
+
+$$\lambda_2 = \max_{\mathbf{x} \perp \mathbf{1}} \frac{\mathbf{x}^T A \mathbf{x}}{\mathbf{x}^T \mathbf{x}} \geq \frac{\mathbf{f}^T A \mathbf{f}}{\mathbf{f}^T \mathbf{f}}$$
+
+We compute each piece. For the denominator:
+
+$$\mathbf{f}^T \mathbf{f} = |S|\Bigl(1 - \frac{|S|}{n}\Bigr)^2 + (n - |S|)\Bigl(\frac{|S|}{n}\Bigr)^2 = \frac{|S|(n - |S|)}{n}$$
+
+For the numerator, we use $\mathbf{f}^T A \mathbf{f} = \sum_{\{i,j\} \in E} 2f_i f_j$ (summing over edges):
+
+$$\mathbf{f}^T A \mathbf{f} = d \cdot \mathbf{f}^T \mathbf{f} - \sum_{\{i,j\} \in E}(f_i - f_j)^2$$
+
+The difference $f_i - f_j$ is nonzero only when $\{i,j\}$ crosses the cut $E(S, \bar{S})$.
+
+A more direct path uses the Laplacian quadratic form. Using the identity $\mathbf{f}^T A \mathbf{f} = d\|\mathbf{f}\|^2 - \mathbf{f}^T L \mathbf{f}$ where $L = dI - A$, and recalling that $\mathbf{f}^T L \mathbf{f} = \sum_{\{i,j\} \in E}(f_i - f_j)^2$:
+
+$$\mathbf{f}^T L \mathbf{f} = |E(S, \bar{S})| \cdot 1^2 = |E(S, \bar{S})|$$
+
+since each cut edge contributes $(1 - |S|/n - (-|S|/n))^2 = 1$. Hence:
+
+$$\lambda_2 \geq \frac{d \cdot \frac{|S|(n-|S|)}{n} - |E(S,\bar{S})|}{\frac{|S|(n-|S|)}{n}}$$
+
+Rearranging:
+
+$$|E(S, \bar{S})| \geq (d - \lambda_2) \cdot \frac{|S|(n-|S|)}{n} \geq (d - \lambda_2) \cdot \frac{|S|}{2}$$
+
+where the last step uses $|S| \leq n/2$, so $(n - |S|)/n \geq 1/2$. Dividing by $|S|$:
+
+$$h(G) = \frac{|E(S, \bar{S})|}{|S|} \geq \frac{d - \lambda_2}{2}$$
+
+**Upper bound ("hard direction"):** $h(G) \leq \sqrt{2d(d - \lambda_2)}$.
+
+Let $\mathbf{v}$ be the eigenvector of $A$ corresponding to $\lambda_2$, with $\mathbf{v} \perp \mathbf{1}$ and $\|\mathbf{v}\| = 1$. We use $\mathbf{v}$ to construct a "sweep cut." Sort the vertices so that $v_1 \leq v_2 \leq \cdots \leq v_n$ and consider the threshold sets $S_t = \{i : v_i \leq t\}$ for varying $t$. We claim that at least one of these has $h(G) \leq \sqrt{2d(d - \lambda_2)}$.
+
+Define $\phi(S) = |E(S, \bar{S})|/|S|$ for $|S| \leq n/2$. For the sweep cut at threshold $t$:
+
+$$|E(S_t, \bar{S}_t)| = \sum_{\substack{\{i,j\} \in E \\ v_i \leq t < v_j}} 1$$
+
+Using a Cauchy-Schwarz argument on the Rayleigh quotient:
+
+$$d - \lambda_2 = \frac{\mathbf{v}^T L \mathbf{v}}{\mathbf{v}^T \mathbf{v}} = \sum_{\{i,j\} \in E} (v_i - v_j)^2$$
+
+The key insight is that by averaging over thresholds (a technique called the "sweep cut" analysis), we can show there exists a threshold $t^*$ such that:
+
+$$\frac{|E(S_{t^*}, \bar{S}_{t^*})|}{|S_{t^*}|} \leq \sqrt{2d \sum_{\{i,j\} \in E}(v_i - v_j)^2} = \sqrt{2d(d - \lambda_2)}$$
+
+The detailed argument proceeds as follows. For each edge $\{i,j\}$ with $v_i < v_j$, the edge crosses the cut $S_t$ for all $t \in [v_i, v_j)$. By the Cauchy-Schwarz inequality:
+
+$$\int_{-\infty}^{\infty} |E(S_t, \bar{S}_t)| \, dt = \sum_{\{i,j\} \in E} |v_i - v_j|$$
+
+and the integral of $|S_t|$ (counting vertices below $t$) relates to $\|\mathbf{v}\|^2$. Bounding the ratio of integrals and using the fact that $\mathbf{v}$ is an eigenvector yields the claimed bound.
+
+$$h(G) \leq \phi(S_{t^*}) \leq \sqrt{2d(d - \lambda_2)}$$
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Cheeger's Inequality is Tight">
+Both sides of Cheeger's inequality are achievable. The lower bound is tight for the complete bipartite graph $K_{n/2, n/2}$, where $\lambda_2 = 0$, $d - \lambda_2 = d$, and $h = d/2 = (d - \lambda_2)/2$. The upper bound is tight for the cycle $C_n$, where $d - \lambda_2 = 2 - 2\cos(2\pi/n) \sim 2\pi^2/n^2$ and $h(C_n) = 4/n \sim \sqrt{2 \cdot 2 \cdot 2\pi^2/n^2} = 2\pi\sqrt{2}/n$ up to constants.
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={1} title="Equivalence of Expansion Notions">
+For a family of $d$-regular graphs $\{G_n\}$ with $d$ fixed and $n \to \infty$, the following are equivalent:
+
+1. $h_V(G_n) \geq c_1$ for some constant $c_1 > 0$ (vertex expansion).
+2. $h(G_n) \geq c_2$ for some constant $c_2 > 0$ (edge expansion).
+3. $\lambda(G_n) \leq d - c_3$ for some constant $c_3 > 0$ (spectral expansion).
+
+Specifically, any one of these conditions implies the other two, with the constants related by Cheeger's inequality and Proposition 1.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+$(3) \Rightarrow (2)$: If $\lambda(G_n) \leq d - c_3$, then $\lambda_2(A) \leq d - c_3$, so by the lower bound of Cheeger's inequality, $h(G_n) \geq (d - \lambda_2)/2 \geq c_3/2$.
+
+$(2) \Rightarrow (1)$: By Proposition 1, $h_V(G_n) \geq h(G_n)/d \geq c_2/d$.
+
+$(1) \Rightarrow (2)$: By Proposition 1, $h(G_n) \geq h_V(G_n) \cdot 1 \geq c_1$. (Actually, $h(G_n) \geq h_V(G_n)$ since each boundary vertex contributes at least one edge. Wait — we proved the bound $h_V \leq h$, so $h \geq h_V \geq c_1$.)
+
+$(2) \Rightarrow (3)$: If $h(G_n) \geq c_2$, then by the upper bound of Cheeger's inequality, $h(G_n) \leq \sqrt{2d(d - \lambda_2)}$, so $c_2 \leq \sqrt{2d(d-\lambda_2)}$, giving $d - \lambda_2 \geq c_2^2/(2d)$, hence $\lambda_2 \leq d - c_2^2/(2d)$.
+
+For the full spectral parameter $\lambda(G) = \max(|\lambda_2|, |\lambda_n|)$, we need to also control $|\lambda_n|$. If the graph is non-bipartite (which it must be for edge expansion to be bounded away from 0 in a strong sense), then $\lambda_n > -d$, and a similar argument using the set minimizing the Cheeger constant gives $\lambda_n \geq -(d - c)$ for some constant $c$ depending on $c_2$.
+</TheoremBlock>
+
+This equivalence is why we can speak of "expander families" without specifying which notion of expansion — for constant-degree regular graphs, all three notions agree up to polynomial transformations of the expansion parameter.
+
+![Cheeger scatter plot — spectral gap vs. edge expansion for random 5-regular graphs, with Cheeger's inequality bounds shown](/images/topics/expander-graphs/cheeger-expander-scatter.png)
+
+---
+
+## 4. The Expander Mixing Lemma
+
+The Expander Mixing Lemma (EML) is the most quantitatively useful consequence of spectral expansion. While the Cheeger constant controls cuts for the *worst-case* set $S$, the EML controls the number of edges between *any two* sets $S$ and $T$, making it a powerful tool for combinatorial arguments.
+
+In a random $d$-regular graph (or equivalently, in a $d$-regular graph chosen uniformly from all edge configurations), the expected number of edges between two disjoint sets $S$ and $T$ is $d|S||T|/n$ — each of the $d|S|$ edge-endpoints in $S$ hits $T$ with probability roughly $|T|/n$. The EML says that in an $(n, d, \lambda)$-expander, the actual count deviates from this expected value by at most $\lambda\sqrt{|S||T|}$.
+
+<TheoremBlock type="theorem" number={2} title="Expander Mixing Lemma">
+Let $G$ be an $(n, d, \lambda)$-expander. For any two vertex subsets $S, T \subseteq V$:
+
+$$\left|E(S, T) - \frac{d|S||T|}{n}\right| \leq \lambda \sqrt{|S||T|}$$
+
+where $E(S, T) = |\{(u, v) : u \in S, v \in T, \{u,v\} \in E\}|$ counts ordered pairs (so self-loops count once and edges within $S \cap T$ count twice).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof decomposes the indicator vectors of $S$ and $T$ in the eigenbasis of $A$ and applies Cauchy-Schwarz. The [Spectral Theorem](/topics/spectral-theorem) guarantees that $A$ has an orthonormal eigenbasis $\{\mathbf{v}_1, \ldots, \mathbf{v}_n\}$ with real eigenvalues $\lambda_1 \geq \lambda_2 \geq \cdots \geq \lambda_n$.
+
+**Step 1: Set up the eigenbasis decomposition.**
+
+Since $G$ is $d$-regular, $\lambda_1 = d$ and $\mathbf{v}_1 = \mathbf{1}/\sqrt{n}$. Let $\mathbf{1}_S$ and $\mathbf{1}_T$ denote the indicator (characteristic) vectors of $S$ and $T$. Expand them in the eigenbasis:
+
+$$\mathbf{1}_S = \sum_{i=1}^n \alpha_i \mathbf{v}_i, \qquad \mathbf{1}_T = \sum_{i=1}^n \beta_i \mathbf{v}_i$$
+
+where $\alpha_i = \langle \mathbf{1}_S, \mathbf{v}_i \rangle$ and $\beta_i = \langle \mathbf{1}_T, \mathbf{v}_i \rangle$.
+
+**Step 2: Compute the first coefficients.**
+
+The coefficient for $\mathbf{v}_1 = \mathbf{1}/\sqrt{n}$ is:
+
+$$\alpha_1 = \langle \mathbf{1}_S, \mathbf{1}/\sqrt{n} \rangle = \frac{|S|}{\sqrt{n}}, \qquad \beta_1 = \frac{|T|}{\sqrt{n}}$$
+
+**Step 3: Express $E(S, T)$ in terms of eigenvalues.**
+
+The key observation: $E(S, T) = \mathbf{1}_S^T A \, \mathbf{1}_T$. Since $A\mathbf{v}_i = \lambda_i \mathbf{v}_i$ and the eigenvectors are orthonormal:
+
+$$E(S,T) = \mathbf{1}_S^T A \, \mathbf{1}_T = \sum_{i=1}^n \lambda_i \alpha_i \beta_i$$
+
+**Step 4: Separate the first term.**
+
+$$E(S,T) = \lambda_1 \alpha_1 \beta_1 + \sum_{i=2}^n \lambda_i \alpha_i \beta_i = d \cdot \frac{|S|}{\sqrt{n}} \cdot \frac{|T|}{\sqrt{n}} + \sum_{i=2}^n \lambda_i \alpha_i \beta_i = \frac{d|S||T|}{n} + \sum_{i=2}^n \lambda_i \alpha_i \beta_i$$
+
+So the deviation from the expected value is:
+
+$$E(S,T) - \frac{d|S||T|}{n} = \sum_{i=2}^n \lambda_i \alpha_i \beta_i$$
+
+**Step 5: Apply the triangle inequality and Cauchy-Schwarz.**
+
+$$\left|\sum_{i=2}^n \lambda_i \alpha_i \beta_i\right| \leq \sum_{i=2}^n |\lambda_i| \cdot |\alpha_i| \cdot |\beta_i| \leq \lambda \sum_{i=2}^n |\alpha_i| \cdot |\beta_i|$$
+
+where $\lambda = \max_{i \geq 2} |\lambda_i| = \lambda(G)$. Now apply Cauchy-Schwarz:
+
+$$\sum_{i=2}^n |\alpha_i| \cdot |\beta_i| \leq \sqrt{\sum_{i=2}^n \alpha_i^2} \cdot \sqrt{\sum_{i=2}^n \beta_i^2}$$
+
+**Step 6: Bound the norms using Parseval's identity.**
+
+By Parseval's identity (since $\{\mathbf{v}_i\}$ is orthonormal):
+
+$$\sum_{i=1}^n \alpha_i^2 = \|\mathbf{1}_S\|^2 = |S|$$
+
+Therefore:
+
+$$\sum_{i=2}^n \alpha_i^2 = |S| - \alpha_1^2 = |S| - \frac{|S|^2}{n} = |S|\left(1 - \frac{|S|}{n}\right) \leq |S|$$
+
+and similarly $\sum_{i=2}^n \beta_i^2 \leq |T|$.
+
+**Step 7: Combine.**
+
+$$\left|E(S,T) - \frac{d|S||T|}{n}\right| \leq \lambda \sqrt{|S| \cdot |T|}$$
+
+This completes the proof.
+</TheoremBlock>
+
+The EML is a *multiplicative* guarantee when $S$ and $T$ are not too small. If $|S| = |T| = \alpha n$ for some constant $\alpha$, the expected edge count is $d\alpha^2 n$ and the error bound is $\lambda \alpha n$. The relative error is $\lambda/(d\alpha)$, which is $O(\lambda/d)$ — small when $\lambda \ll d$.
+
+<TheoremBlock type="remark" title="Tightness of the Expander Mixing Lemma">
+The EML bound is tight. For any $(n, d, \lambda)$-expander, there exist sets $S$ and $T$ with $|E(S,T) - d|S||T|/n| = \Omega(\lambda\sqrt{|S||T|})$. This is achieved by choosing $S$ and $T$ to be aligned with the eigenvector corresponding to $\lambda$ (or $\lambda_n$ in absolute value). In particular, bipartite Ramanujan graphs achieve equality with $S$ and $T$ as the two sides of the bipartition.
+</TheoremBlock>
+
+### 4.1 Consequences of the EML
+
+The EML has immediate combinatorial consequences:
+
+**Edge density.** Setting $T = S$: the number of edges *within* $S$ satisfies $|E(S,S) - d|S|^2/n| \leq \lambda|S|$. The term $E(S,S)$ counts twice each edge inside $S$, so the actual edge count is $e(S) = E(S,S)/2$, and:
+
+$$\left|e(S) - \frac{d|S|^2}{2n}\right| \leq \frac{\lambda |S|}{2}$$
+
+This says internal edge density is close to $d|S|/(2n)$ per vertex — nearly what you would expect from a random graph.
+
+**Independence number.** An independent set $S$ has $e(S) = 0$, so $d|S|^2/(2n) \leq \lambda|S|/2$, giving:
+
+$$|S| \leq \frac{\lambda n}{d}$$
+
+For an $(n, d, \lambda)$-expander with $\lambda/d$ small, the independence number is at most a $\lambda/d$ fraction of $n$. This is a non-trivial bound: it says expansion forces edges to spread evenly, making large independent sets impossible.
+
+**Chromatic number.** Combining the independence number bound with a greedy coloring argument gives $\chi(G) \geq d/\lambda$ — expanders need many colors.
+
+<MixingLemmaExplorer client:visible />
+
+![Expander Mixing Lemma histograms — observed edge counts vs. the d|S||T|/n prediction for random subset pairs, with λ√(|S||T|) error band](/images/topics/expander-graphs/expander-mixing-lemma.png)
+
+---
+
+## 5. Ramanujan Graphs and the Alon-Boppana Bound
+
+We now ask: how small can $\lambda(G)$ be for a $d$-regular graph? A smaller $\lambda$ means better expansion, tighter EML bounds, and faster mixing. Is there a limit?
+
+### 5.1 The Alon-Boppana Lower Bound
+
+The answer is yes: there is a universal floor that no infinite family of $d$-regular graphs can beat.
+
+<TheoremBlock type="theorem" number={3} title="Alon-Boppana Bound">
+For any family of $d$-regular graphs $\{G_n\}$ with $|V(G_n)| \to \infty$:
+
+$$\liminf_{n \to \infty} \lambda(G_n) \geq 2\sqrt{d-1}$$
+
+More precisely, for any $d$-regular graph $G$ on $n$ vertices:
+
+$$\lambda_2(A) \geq 2\sqrt{d-1} - O\left(\frac{1}{\lfloor \log_{d-1} n \rfloor}\right)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We give a proof sketch that captures the essential idea. The bound arises from the spectral theory of the infinite $d$-regular tree $T_d$, which is the "universal cover" of all $d$-regular graphs.
+
+**The infinite tree as the limit.** The $d$-regular tree $T_d$ has spectrum $[-2\sqrt{d-1}, 2\sqrt{d-1}]$ (as a continuous spectrum, since $T_d$ is infinite). The key fact is that any finite $d$-regular graph $G$ on $n$ vertices "looks locally like $T_d$" for vertices whose $r$-neighborhood is a tree, where $r$ can be as large as $\lfloor \log_{d-1}(n) \rfloor$.
+
+**Test vector construction.** For a vertex $v \in G$, define a vector $\mathbf{f}$ supported on the ball $B_r(v)$ of radius $r$ around $v$:
+
+$$f_u = \begin{cases} (d-1)^{-\mathrm{dist}(v,u)/2} & \text{if } \mathrm{dist}(v,u) \leq r \\ 0 & \text{otherwise} \end{cases}$$
+
+This vector mimics the eigenfunction of $T_d$ at the spectral edge $2\sqrt{d-1}$. If the $r$-ball around $v$ is a tree (which happens for $r < \mathrm{girth}(G)/2$), then:
+
+$$\frac{\mathbf{f}^T A \mathbf{f}}{\mathbf{f}^T \mathbf{f}} = 2\sqrt{d-1} - O(1/r)$$
+
+**From Rayleigh quotient to eigenvalue.** We need $\mathbf{f} \perp \mathbf{v}_1 = \mathbf{1}/\sqrt{n}$. Modifying $\mathbf{f}$ to be orthogonal to $\mathbf{1}$ changes the Rayleigh quotient by at most $O(|\mathrm{supp}(\mathbf{f})|/n) = O((d-1)^r/n)$. Since we can take $r \approx \log_{d-1}(n)$ while keeping the support smaller than $n$, the correction vanishes, and:
+
+$$\lambda_2 \geq \frac{\mathbf{f}_\perp^T A \mathbf{f}_\perp}{\mathbf{f}_\perp^T \mathbf{f}_\perp} \geq 2\sqrt{d-1} - O(1/r)$$
+
+Taking $n \to \infty$ gives $\liminf \lambda_2 \geq 2\sqrt{d-1}$.
+
+For the full spectral parameter $\lambda(G) = \max(|\lambda_2|, |\lambda_n|)$, the same argument applies to $|\lambda_n|$ by considering the vector $(-1)^{\mathrm{dist}(v,u)} f_u$, which tests the bottom of the spectrum.
+</TheoremBlock>
+
+The Alon-Boppana bound tells us that $2\sqrt{d-1}$ is an impassable barrier: no family of $d$-regular graphs can have $\lambda < 2\sqrt{d-1}$ for all but finitely many members. This leads to the definition of optimal expanders.
+
+### 5.2 Ramanujan Graphs
+
+<TheoremBlock type="definition" number={4} title="Ramanujan Graph">
+A $d$-regular graph $G$ is a **Ramanujan graph** if every eigenvalue $\lambda_i$ of the adjacency matrix satisfying $|\lambda_i| < d$ also satisfies:
+
+$$|\lambda_i| \leq 2\sqrt{d-1}$$
+
+Equivalently, $\lambda(G) \leq 2\sqrt{d-1}$.
+</TheoremBlock>
+
+Ramanujan graphs are the *best possible* expanders for their degree: they meet the Alon-Boppana bound with equality. The name honors the Indian mathematician Srinivasa Ramanujan, whose conjectures about modular forms (proved by Deligne) are the key ingredient in the original constructions.
+
+### 5.3 Examples of Ramanujan Graphs
+
+**Petersen graph** ($d = 3$, $n = 10$). The eigenvalues are $\{3, 1, 1, 1, 1, 1, -2, -2, -2, -2\}$. We need $\lambda(G) = \max(|1|, |-2|) = 2$. The Ramanujan bound is $2\sqrt{3 - 1} = 2\sqrt{2} \approx 2.83$. Since $2 \leq 2.83$, the Petersen graph is Ramanujan.
+
+**Complete graph $K_n$** ($d = n - 1$). The non-trivial eigenvalues are all $-1$, so $\lambda(K_n) = 1$. The Ramanujan bound is $2\sqrt{n-2}$. For $n \geq 3$, we have $1 \leq 2\sqrt{n-2}$, so every $K_n$ is Ramanujan. (This is expected — the complete graph is the best possible expander, but it is not sparse.)
+
+**Cycle $C_n$** ($d = 2$). The Ramanujan bound is $2\sqrt{1} = 2$. The second-largest eigenvalue is $\lambda_2 = 2\cos(2\pi/n) < 2$ for $n \geq 3$, so every cycle is technically Ramanujan. This may seem surprising, but recall that the cycle is *not* a good expander — the Cheeger constant $h(C_n) \to 0$. Ramanujan-ness at $d = 2$ is vacuous because $2\sqrt{d-1} = 2 = d$, so the condition imposes no constraint beyond regularity.
+
+**Complete bipartite graph $K_{n/2, n/2}$** ($d = n/2$). The eigenvalues are $n/2$, $0$ (with multiplicity $n-2$), and $-n/2$. Here $\lambda_n = -d$, which means $|\lambda_n| = d$. Under our definition, $\lambda(G) = \max_{i \geq 2}|\lambda_i| = d$, so $\lambda(G) = d$. However, the Ramanujan condition for bipartite graphs uses the *nontrivial* spectral parameter
+
+$$\lambda_{\mathrm{nt}}(G) := \max\{|\lambda_i(A)| : |\lambda_i| < d\}$$
+
+which excludes both the trivial eigenvalues $+d$ and $-d$. With this convention, $\lambda_{\mathrm{nt}}(K_{n/2, n/2}) = 0$, and $K_{n/2, n/2}$ is trivially Ramanujan (but again, not sparse). We use $\lambda_{\mathrm{nt}}(G)$ in the table below and in the Ramanujan check of the interactive visualizations.
+
+| Graph | $d$ | $\lambda_{\mathrm{nt}}(G)$ | $2\sqrt{d-1}$ | Ramanujan? |
+|-------|-----|---------------|----------------|------------|
+| Petersen | 3 | 2 | 2.83 | Yes |
+| $K_5$ | 4 | 1 | 3.46 | Yes |
+| $K_6$ | 5 | 1 | 4.00 | Yes |
+| $C_n$ | 2 | $2\cos(2\pi/n)$ | 2 | Yes (vacuous) |
+| Hypercube $Q_4$ | 4 | 2 | 3.46 | Yes |
+| Random 3-regular | 3 | $\approx 2\sqrt{2}$ | 2.83 | Nearly |
+
+<TheoremBlock type="theorem" number={4} title="Existence of Ramanujan Graphs (Lubotzky-Phillips-Sarnak)">
+For every prime $p$ and every prime $q \neq p$ with $q \equiv 1 \pmod{4}$, there exists an explicit family of $(p+1)$-regular Ramanujan graphs on $n = q(q^2-1)/2$ vertices (and other sizes in the family). These graphs are Cayley graphs of $\mathrm{PGL}(2, \mathbb{F}_q)$ or $\mathrm{PSL}(2, \mathbb{F}_q)$ with generators defined via quaternion arithmetic.
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Friedman's Theorem and Random Regular Graphs">
+While the LPS construction gives Ramanujan graphs for specific degrees, a beautiful result of Friedman (2008) shows that *random* $d$-regular graphs are "nearly Ramanujan": for every $\varepsilon > 0$,
+
+$$\Pr[\lambda(G_n) \leq 2\sqrt{d-1} + \varepsilon] \to 1 \text{ as } n \to \infty$$
+
+So almost every large random $d$-regular graph has $\lambda$ close to the Alon-Boppana bound. The gap between $\lambda$ and $2\sqrt{d-1}$ vanishes in the limit — random graphs are essentially optimal expanders. This was conjectured by Alon in 1986 and took over 20 years to prove.
+
+More recently, Marcus, Spielman, and Srivastava (2015) proved that bipartite Ramanujan graphs of every degree exist, resolving a major open problem. Their proof used the method of interlacing families and connected the existence of Ramanujan graphs to the Kadison-Singer problem.
+</TheoremBlock>
+
+<RamanujanBoundExplorer client:visible />
+
+![Ramanujan bound visualization — eigenvalue distributions for random d-regular graphs with the 2√(d-1) threshold marked](/images/topics/expander-graphs/ramanujan-bound.png)
+
+---
+
+## 6. Explicit Constructions
+
+One of the remarkable features of expander graphs is that they can be constructed *explicitly* — we do not need randomness to build them. This section describes two families of constructions: algebraic constructions from Cayley graphs and the number-theoretic LPS construction.
+
+### 6.1 Cayley Graphs
+
+<TheoremBlock type="definition" number={5} title="Cayley Graph">
+Let $\Gamma$ be a finite group and $S \subseteq \Gamma$ a symmetric generating set ($S = S^{-1}$, $e \notin S$). The **Cayley graph** $\mathrm{Cay}(\Gamma, S)$ is the graph with vertex set $\Gamma$ and edges $\{g, gs\}$ for all $g \in \Gamma$ and $s \in S$. The graph is $|S|$-regular.
+</TheoremBlock>
+
+Cayley graphs are a natural source of highly structured regular graphs. Their spectral properties are determined by the representation theory of the group $\Gamma$ — and for abelian groups, the eigenvalues have an explicit formula.
+
+<TheoremBlock type="proposition" number={2} title="Spectrum of Abelian Cayley Graphs">
+Let $\Gamma = \mathbb{Z}_n$ and $S \subseteq \mathbb{Z}_n$ be a symmetric generating set with $|S| = d$. The eigenvalues of $\mathrm{Cay}(\mathbb{Z}_n, S)$ are:
+
+$$\lambda_k = \sum_{s \in S} \cos\left(\frac{2\pi k s}{n}\right), \qquad k = 0, 1, \ldots, n-1$$
+
+with corresponding eigenvectors $(\mathbf{v}_k)_j = e^{2\pi i jk/n} / \sqrt{n}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The adjacency matrix of $\mathrm{Cay}(\mathbb{Z}_n, S)$ is a circulant matrix: $A_{ij} = 1$ if $j - i \pmod{n} \in S$. Circulant matrices are diagonalized by the discrete Fourier transform. The DFT basis vectors are $(\mathbf{v}_k)_j = e^{2\pi ijk/n}/\sqrt{n}$, and the eigenvalue corresponding to $\mathbf{v}_k$ is:
+
+$$\lambda_k = \sum_{s \in S} e^{2\pi iks/n}$$
+
+Since $S$ is symmetric ($s \in S \Rightarrow -s \in S$), the imaginary parts cancel and:
+
+$$\lambda_k = \sum_{s \in S} \cos\left(\frac{2\pi ks}{n}\right)$$
+
+The largest eigenvalue is $\lambda_0 = |S| = d$ (all cosines equal 1).
+</TheoremBlock>
+
+### 6.2 The Margulis-Gabber-Galil Construction
+
+The first explicit expander family was constructed by Margulis (1973), with the spectral gap proved by Gabber and Galil (1981). It produces 8-regular graphs on $n^2$ vertices.
+
+**Construction.** Let $n$ be any positive integer. Define the graph $G_n$ on the vertex set $\mathbb{Z}_n \times \mathbb{Z}_n$ (so $|V| = n^2$) with edges from $(x, y)$ to each of:
+
+$$(x \pm 1, y), \quad (x, y \pm 1), \quad (x + y, y), \quad (x - y, y), \quad (x, y + x), \quad (x, y - x)$$
+
+where all arithmetic is modulo $n$. Some of these eight neighbors may coincide, but in general the graph is 8-regular.
+
+**Why is this an expander?** The generating set $S$ includes both "translation" moves (adding $\pm 1$ to a coordinate) and "shear" moves (adding one coordinate to the other). The translations provide local connectivity, while the shears — which act as hyperbolic rotations on $\mathbb{Z}_n^2$ — spread out any concentrated set of vertices rapidly. The spectral gap satisfies $\lambda(G_n) \leq 5\sqrt{2} \approx 7.07$, so the spectral gap $8 - \lambda \geq 8 - 5\sqrt{2} \approx 0.93$ is bounded away from zero.
+
+### 6.3 The LPS Construction
+
+The Lubotzky-Phillips-Sarnak (LPS) construction produces $(p+1)$-regular Ramanujan graphs for primes $p$. The construction uses deep number theory — specifically, Jacobi's four-square theorem and Ramanujan's conjecture on modular forms (proved by Deligne).
+
+**Sketch of the construction.** Fix two distinct odd primes $p$ and $q$ with $p, q \equiv 1 \pmod{4}$. The LPS graph $X^{p,q}$ is the Cayley graph of $\mathrm{PGL}(2, \mathbb{F}_q)$ — the projective general linear group of $2 \times 2$ invertible matrices over the finite field $\mathbb{F}_q$ — with generating set determined by the $(p+1)$ representations of $p$ as a sum of four squares:
+
+$$p = a_0^2 + a_1^2 + a_2^2 + a_3^2$$
+
+where $a_0 > 0$ is odd and $a_1, a_2, a_3$ are even. Each representation yields a matrix in $\mathrm{PGL}(2, \mathbb{F}_q)$, and these matrices form a symmetric generating set of size $p+1$.
+
+The Ramanujan property $\lambda(X^{p,q}) \leq 2\sqrt{p}$ follows from deep results: the non-trivial eigenvalues of the Cayley graph are expressed in terms of Hecke eigenvalues of automorphic forms on $\mathrm{GL}(2)$, and Ramanujan's conjecture (now Deligne's theorem) bounds these eigenvalues.
+
+![Explicit constructions — the Margulis-Gabber-Galil graph on ℤ₇ × ℤ₇ and an LPS Ramanujan graph, showing vertex and edge structure](/images/topics/expander-graphs/explicit-constructions.png)
+
+### 6.4 Constructing Cayley Graphs in Practice
+
+Here is a Python implementation of Cayley graph construction for cyclic groups:
+
+```python
+import numpy as np
+from itertools import product
+
+def cayley_graph_cyclic(n, generators):
+    """
+    Build the adjacency matrix of Cay(Z_n, S)
+    where S = generators ∪ {-g mod n : g in generators}.
+    """
+    # Symmetrize the generating set
+    S = set()
+    for g in generators:
+        S.add(g % n)
+        S.add((-g) % n)
+    S.discard(0)  # Remove identity
+
+    A = np.zeros((n, n), dtype=int)
+    for v in range(n):
+        for s in S:
+            w = (v + s) % n
+            A[v, w] = 1
+    return A, sorted(S)
+
+def margulis_gabber_galil(n):
+    """
+    Build the Margulis–Gabber–Galil 8-regular expander on Z_n × Z_n.
+    Returns adjacency matrix of size n^2 × n^2.
+    """
+    N = n * n
+    A = np.zeros((N, N), dtype=int)
+
+    def idx(x, y):
+        return (x % n) * n + (y % n)
+
+    for x in range(n):
+        for y in range(n):
+            i = idx(x, y)
+            neighbors = [
+                idx(x + 1, y), idx(x - 1, y),
+                idx(x, y + 1), idx(x, y - 1),
+                idx(x + y, y), idx(x - y, y),
+                idx(x, y + x), idx(x, y - x),
+            ]
+            for j in neighbors:
+                A[i, j] = 1
+    return A
+```
+
+---
+
+## 7. Random Walks on Expanders
+
+In [Random Walks & Mixing](/topics/random-walks), we proved that the mixing time of a random walk is controlled by the spectral gap: $t_{\mathrm{mix}} = O(1/\gamma \cdot \log n)$ where $\gamma = 1 - \lambda_2(P)$. For expanders, $\gamma$ is bounded away from zero, so the mixing time is $O(\log n)$ — logarithmic in the number of vertices.
+
+### 7.1 Mixing Time on Expanders
+
+<TheoremBlock type="theorem" number={5} title="Mixing Time on Expanders">
+Let $G$ be a connected, non-bipartite $(n, d, \lambda)$-expander. The random walk on $G$ has mixing time:
+
+$$t_{\mathrm{mix}}(\varepsilon) \leq \frac{1}{1 - \lambda/d} \cdot \left(\ln n + \ln\frac{1}{\varepsilon}\right) = \frac{d}{d - \lambda}\left(\ln n + \ln\frac{1}{\varepsilon}\right)$$
+
+In particular, if $\lambda \leq d - c$ for a constant $c > 0$, then $t_{\mathrm{mix}}(\varepsilon) = O(\log n + \log(1/\varepsilon))$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $G$ is $d$-regular, the transition matrix is $P = A/d$ and the stationary distribution is uniform: $\pi = (1/n, \ldots, 1/n)$. The eigenvalues of $P$ are $\mu_i = \lambda_i(A)/d$, so $|\mu_i| \leq \lambda/d$ for $i \geq 2$. Define $\rho = \lambda/d < 1$ (using non-bipartiteness and $\lambda < d$).
+
+**Step 1: Spectral decomposition of $P^t$.**
+
+By the spectral decomposition from [Random Walks & Mixing](/topics/random-walks):
+
+$$P^t(x, y) = \frac{1}{n} + \sum_{i=2}^n \mu_i^t \, v_i(x) \, v_i(y)$$
+
+where $v_i$ are the orthonormal eigenvectors of $P$, and we used $v_1 = \mathbf{1}/\sqrt{n}$ and $\mu_1 = 1$.
+
+**Step 2: Total variation bound.**
+
+The total variation distance from stationarity is:
+
+$$\|P^t(x, \cdot) - \pi\|_{\mathrm{TV}} = \frac{1}{2}\sum_{y \in V} |P^t(x,y) - 1/n|$$
+
+Using the spectral decomposition:
+
+$$P^t(x,y) - 1/n = \sum_{i=2}^n \mu_i^t \, v_i(x) \, v_i(y)$$
+
+By Cauchy-Schwarz:
+
+$$|P^t(x,y) - 1/n| \leq \sqrt{\sum_{i=2}^n \mu_i^{2t} v_i(x)^2} \cdot \sqrt{\sum_{i=2}^n v_i(y)^2}$$
+
+Summing over $y$ and using $\sum_y v_i(y)^2 = 1$ (orthonormality):
+
+$$\|P^t(x, \cdot) - \pi\|_{\mathrm{TV}}^2 \leq \frac{n}{4} \sum_{i=2}^n \mu_i^{2t} v_i(x)^2 \leq \frac{n}{4} \rho^{2t} \sum_{i=2}^n v_i(x)^2 \leq \frac{n}{4} \rho^{2t}$$
+
+where we used $|\mu_i| \leq \rho$. The sum $\sum_{i=2}^n v_i(x)^2$ is bounded by 1, since the eigenvectors $\{v_i\}$ form an orthonormal basis: the completeness identity $\sum_{i=1}^n v_i(x)v_i(y) = \delta_{xy}$ gives $\sum_{i=1}^n v_i(x)^2 = 1$ at $y = x$.
+
+Working instead with the $\ell^2$ norm (which gives a cleaner bound):
+
+$$\sum_y \left|P^t(x,y) - 1/n\right|^2 = \sum_y \left(\sum_{i=2}^n \mu_i^t v_i(x) v_i(y)\right)^2 = \sum_{i=2}^n \mu_i^{2t} v_i(x)^2 \leq \rho^{2t}$$
+
+where the second equality uses orthonormality of the $v_i$ (summing over $y$) and the inequality uses $|\mu_i| \leq \rho$.
+
+By Cauchy-Schwarz between the sum over $y$ and the constant function:
+
+$$\left(\sum_y |P^t(x,y) - 1/n|\right)^2 \leq n \sum_y |P^t(x,y) - 1/n|^2 \leq n \rho^{2t}$$
+
+So:
+
+$$\|P^t(x, \cdot) - \pi\|_{\mathrm{TV}} = \frac{1}{2}\sum_y |P^t(x,y) - 1/n| \leq \frac{\sqrt{n}}{2} \rho^t$$
+
+**Step 3: Solve for $t$.**
+
+We want $\|P^t(x, \cdot) - \pi\|_{\mathrm{TV}} \leq \varepsilon$. It suffices to have:
+
+$$\frac{\sqrt{n}}{2} \rho^t \leq \varepsilon$$
+
+Taking logarithms:
+
+$$t \cdot \ln(1/\rho) \geq \ln(\sqrt{n}/2) + \ln(1/\varepsilon)$$
+
+Using the inequality $\ln(1/x) \geq 1 - x$ for $x \in (0, 1]$, we have $\ln(1/\rho) \geq 1 - \rho = 1 - \lambda/d = (d - \lambda)/d$.
+
+So $t \geq \frac{d}{d - \lambda}(\frac{1}{2}\ln n - \ln 2 + \ln(1/\varepsilon))$ suffices. For the standard formulation with $\varepsilon = 1/4$:
+
+$$t_{\mathrm{mix}} \leq \frac{d}{d - \lambda}\left(\frac{1}{2}\ln n + \ln 2\right) \leq \frac{d}{d - \lambda}(\ln n + \ln(1/\varepsilon))$$
+
+(absorbing constants). When $d - \lambda \geq c$ for a constant $c$, this is $O(\log n)$.
+</TheoremBlock>
+
+### 7.2 Comparison of Mixing Times
+
+The following table compares mixing times across graph families, highlighting how expansion controls convergence speed:
+
+| Graph Family | $n$ | $d$ | $\lambda(G)$ | Spectral Gap $d - \lambda$ | $t_{\mathrm{mix}}$ |
+|-------------|-----|-----|---------------|---------------------------|---------------------|
+| Path $P_n$ | $n$ | 2 | $2\cos(\pi/n)$ | $O(1/n^2)$ | $\Theta(n^2)$ |
+| Cycle $C_n$ | $n$ | 2 | $2\cos(2\pi/n)$ | $O(1/n^2)$ | $\Theta(n^2)$ |
+| Hypercube $Q_k$ | $2^k$ | $k$ | $k-2$ | $2$ | $\Theta(k \log k)$ |
+| $(n, d, \lambda)$-Expander | $n$ | $d$ | $\lambda$ | $d - \lambda = \Theta(1)$ | $\Theta(\log n)$ |
+| Complete $K_n$ | $n$ | $n-1$ | 1 | $n-2$ | $\Theta(1)$ |
+
+The path and cycle have vanishing spectral gap, so mixing takes polynomial time. The hypercube has a constant spectral gap (2) and mixes in $O(n \log n)$ where $n = \log_2 |V|$. Expanders achieve the optimal $O(\log |V|)$ mixing for sparse graphs.
+
+<TheoremBlock type="corollary" number={2} title="Rapid Mixing Implies Expansion">
+If a family of $d$-regular graphs $\{G_n\}$ has mixing time $t_{\mathrm{mix}}(G_n) = O(\log n)$, then $\{G_n\}$ is an expander family (i.e., $\lambda(G_n) \leq d - c$ for some constant $c > 0$).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The mixing time satisfies $t_{\mathrm{mix}} \geq \frac{1}{2(1 - \rho)} \ln(n/2)$ where $\rho = \lambda/d$ (this is the matching lower bound from [Random Walks & Mixing](/topics/random-walks)). If $t_{\mathrm{mix}} = O(\log n)$, then:
+
+$$C \log n \geq \frac{d}{2(d - \lambda)} \ln(n/2)$$
+
+for some constant $C$. This gives $d - \lambda \geq \frac{\ln(n/2)}{2C \log n} \to \frac{1}{2C \ln 2}$, so the spectral gap is bounded below by a positive constant.
+</TheoremBlock>
+
+![Mixing comparison — total variation distance vs. time for random walks on a cycle, hypercube, Petersen graph, and a random 3-regular graph](/images/topics/expander-graphs/mixing-expanders.png)
+
+---
+
+## 8. Applications to Computer Science and Machine Learning
+
+### 8.1 Expander Walk Sampling and Derandomization
+
+The most celebrated application of expanders in theoretical computer science is **derandomization**: reducing the amount of randomness needed by a probabilistic algorithm. The key result is the expander walk sampling theorem.
+
+<TheoremBlock type="theorem" number={6} title="Expander Walk Sampling Theorem">
+Let $G$ be an $(n, d, \lambda)$-expander and let $f : V \to [0, 1]$ be a function with mean $\mu = \frac{1}{n}\sum_{v \in V} f(v)$. Let $v_0, v_1, \ldots, v_{t-1}$ be the vertices visited by a random walk of length $t$ starting from a uniformly random vertex $v_0$. Then for any $\varepsilon > 0$:
+
+$$\Pr\left[\left|\frac{1}{t}\sum_{i=0}^{t-1} f(v_i) - \mu\right| > \varepsilon\right] \leq 2 \exp\left(-\frac{(1 - \lambda/d) \varepsilon^2 t}{2}\right)$$
+</TheoremBlock>
+
+This is a Chernoff-type concentration bound for *dependent* samples. In a standard Chernoff bound for $t$ independent samples, the exponent is $-\varepsilon^2 t / 2$. The expander walk version has an extra factor of $1 - \lambda/d$ (the spectral gap of the walk) — a mild penalty for dependence.
+
+**Why is this useful for derandomization?** To sample $t$ independent vertices from $G$, you need $t \log n$ random bits. But a random walk of length $t$ on $G$ requires only $\log n$ bits (for the starting vertex) plus $t \log d$ bits (for the $t$ neighbor choices), totaling $\log n + t \log d$. When $d$ is a constant and $t = O(\log n)$, this is $O(\log n)$ — exponentially fewer random bits than independent sampling. The expander walk sampling theorem guarantees that the walk's samples are "almost as good" as independent samples.
+
+This principle underlies the **Ajtai-Komlós-Szemerédi (AKS) sorting network**, the **Impagliazzo-Zuckerman extractor**, and many other constructions in derandomization and pseudorandomness.
+
+### 8.2 Error-Correcting Codes
+
+Sipser and Spielman (1996) showed that bipartite expander graphs yield error-correcting codes with remarkable properties:
+
+**Construction.** Start with a bipartite $(c, d)$-regular expander $G = (L \cup R, E)$ where $|L| = n$, $|R| = m$. Each right vertex $r \in R$ imposes a parity check: the bits indexed by $N(r) \subseteq L$ must sum to 0 modulo 2. The resulting code has:
+- Block length $n$
+- Rate $1 - m/n$ (approaches $1 - c/d$ for good expanders)
+- Minimum distance proportional to $n$ (linear distance, from the expansion property)
+- **Linear-time decoding**: the expansion guarantees a simple "flip" algorithm converges in $O(n)$ steps
+
+The expansion property is the key: if a codeword has $\delta n$ errors for small enough $\delta$, the $\delta n$ erroneous bits have at least $(1 - \varepsilon)c \cdot \delta n$ unsatisfied check nodes (by vertex expansion), which is more than the $\varepsilon c \cdot \delta n$ checks that could be satisfied by accident. The decoder identifies and corrects errors by examining local check violations.
+
+### 8.3 Network Robustness
+
+Expander graphs are optimally robust networks: removing a constant fraction of vertices or edges still leaves a connected graph (in fact, a graph that is itself an expander). Formally:
+
+- **Vertex robustness:** Removing any $\alpha n$ vertices from an $(n, d, \lambda)$-expander leaves a connected graph, provided $\alpha$ is smaller than a threshold depending on $d$ and $\lambda$.
+- **Edge robustness:** Similarly, removing edges. The Cheeger constant lower bound guarantees that every cut has at least $h(G) \cdot |S| \geq (d - \lambda)/2 \cdot |S|$ edges, so creating a disconnection requires removing $\Omega(n)$ edges.
+
+These properties make expanders ideal for communication networks, peer-to-peer systems, and distributed hash tables, where robustness to node failures is essential.
+
+### 8.4 Graph Neural Networks and Over-Smoothing
+
+<TheoremBlock type="remark" title="Expansion, GNNs, and Over-Smoothing">
+In graph neural networks (GNNs), each message-passing layer aggregates information from a vertex's neighbors — effectively performing one step of a (learned) random walk. After $k$ layers, vertex $v$'s representation depends on its $k$-hop neighborhood.
+
+On an expander, $O(\log n)$ layers suffice to propagate information from any vertex to any other — the "receptive field" covers the entire graph. This is the theoretical justification for using relatively few layers in GNN architectures.
+
+However, rapid mixing is a double-edged sword. After $O(\log n)$ layers, every vertex's representation converges toward the graph's global average — the **over-smoothing** phenomenon. On expanders, over-smoothing happens faster than on non-expanders, precisely because the spectral gap is large. This creates a tension: expander-like connectivity is needed for global information flow, but it accelerates the loss of local signal.
+
+Recent work addresses this by adding skip connections, using attention mechanisms, or designing architectures that interpolate between local and global aggregation. The spectral gap provides a quantitative framework for understanding these trade-offs.
+
+For more on message passing and its spectral interpretation, see **Message Passing & GNNs** *(coming soon)*.
+</TheoremBlock>
+
+![Applications of expander graphs — derandomization via walk sampling, expander codes with bipartite structure, and GNN message passing](/images/topics/expander-graphs/expander-applications.png)
+
+---
+
+## 9. Computational Notes
+
+### 9.1 Computing Expansion Metrics
+
+Here is a complete implementation for computing spectral expansion metrics and checking the Ramanujan property:
+
+```python
+import numpy as np
+from scipy import linalg
+
+def expansion_metrics(A):
+    """
+    Compute spectral expansion metrics for a d-regular graph
+    with adjacency matrix A.
+
+    Returns a dictionary with degree, lambda (spectral expansion parameter),
+    spectral gap, Ramanujan bound, and whether the graph is Ramanujan.
+    """
+    eigenvalues = np.sort(linalg.eigvalsh(A))[::-1]
+    d = eigenvalues[0]
+
+    # lambda = max |lambda_i| for i >= 2
+    # For non-bipartite graphs, also exclude lambda_n = -d
+    nontrivial = eigenvalues[1:]
+    if np.isclose(nontrivial[-1], -d, atol=1e-8):
+        # Bipartite: exclude -d as trivial
+        nontrivial = nontrivial[:-1]
+
+    lambda_val = np.max(np.abs(nontrivial))
+    ram_bound = 2 * np.sqrt(d - 1)
+
+    return {
+        'degree': d,
+        'lambda': lambda_val,
+        'spectral_gap': d - eigenvalues[1],
+        'ramanujan_bound': ram_bound,
+        'is_ramanujan': lambda_val <= ram_bound + 1e-10,
+        'eigenvalues': eigenvalues
+    }
+```
+
+### 9.2 Verifying the Expander Mixing Lemma
+
+```python
+def verify_eml(A, S_indices, T_indices):
+    """
+    Verify the Expander Mixing Lemma for subsets S and T.
+
+    Returns the actual edge count E(S,T), the expected count d|S||T|/n,
+    the EML bound lambda * sqrt(|S||T|), and whether the bound holds.
+    """
+    n = A.shape[0]
+    metrics = expansion_metrics(A)
+    d = metrics['degree']
+    lam = metrics['lambda']
+
+    # Count edges from S to T (ordered pairs)
+    E_ST = sum(A[i, j] for i in S_indices for j in T_indices)
+
+    expected = d * len(S_indices) * len(T_indices) / n
+    bound = lam * np.sqrt(len(S_indices) * len(T_indices))
+    deviation = abs(E_ST - expected)
+
+    return {
+        'E_ST': E_ST,
+        'expected': expected,
+        'deviation': deviation,
+        'eml_bound': bound,
+        'bound_holds': deviation <= bound + 1e-10
+    }
+
+# Example: Petersen graph
+def petersen_adjacency():
+    """Return the 10x10 adjacency matrix of the Petersen graph."""
+    edges = [
+        (0,1),(0,4),(0,5), (1,2),(1,6), (2,3),(2,7),
+        (3,4),(3,8), (4,9), (5,7),(5,8), (6,8),(6,9), (7,9)
+    ]
+    A = np.zeros((10, 10), dtype=int)
+    for i, j in edges:
+        A[i, j] = A[j, i] = 1
+    return A
+
+A = petersen_adjacency()
+metrics = expansion_metrics(A)
+print(f"Petersen: d={metrics['degree']:.0f}, "
+      f"λ={metrics['lambda']:.4f}, "
+      f"Ramanujan bound={metrics['ramanujan_bound']:.4f}, "
+      f"Ramanujan={metrics['is_ramanujan']}")
+# Output: Petersen: d=3, λ=2.0000, Ramanujan bound=2.8284, Ramanujan=True
+
+# Verify EML for S = {0,1,2}, T = {5,6,7,8,9}
+result = verify_eml(A, [0,1,2], [5,6,7,8,9])
+print(f"E(S,T)={result['E_ST']}, expected={result['expected']:.2f}, "
+      f"deviation={result['deviation']:.2f}, bound={result['eml_bound']:.2f}, "
+      f"holds={result['bound_holds']}")
+```
+
+### 9.3 Building and Analyzing Margulis-Gabber-Galil Expanders
+
+```python
+def analyze_mgg_family(n_values):
+    """
+    Analyze the Margulis–Gabber–Galil expander family
+    for several values of n, verifying the spectral gap
+    stays bounded away from zero.
+    """
+    results = []
+    for n in n_values:
+        A = margulis_gabber_galil(n)
+        metrics = expansion_metrics(A)
+        results.append({
+            'n': n,
+            'vertices': n * n,
+            'degree': metrics['degree'],
+            'lambda': metrics['lambda'],
+            'spectral_gap': metrics['spectral_gap'],
+            'is_ramanujan': metrics['is_ramanujan']
+        })
+        print(f"MGG(n={n}): {n*n} vertices, d={metrics['degree']:.0f}, "
+              f"λ={metrics['lambda']:.2f}, gap={metrics['spectral_gap']:.2f}")
+    return results
+
+# Example output (approximate):
+# MGG(n=5): 25 vertices, d=8, λ=6.47, gap=1.53
+# MGG(n=7): 49 vertices, d=8, λ=6.83, gap=1.17
+# MGG(n=11): 121 vertices, d=8, λ=7.02, gap=0.98
+```
+
+For the full interactive analysis with additional graph families and larger experiments, see the [companion notebook](https://github.com/jonx0037/formalML/blob/main/notebooks/expander-graphs/03_expander_graphs.ipynb).
+
+---
+
+## 10. Connections and Further Reading
+
+### 10.1 Connections to Other Topics
+
+| Topic | Connection |
+|-------|-----------|
+| [Graph Laplacians & Spectrum](/topics/graph-laplacians) | Cheeger's inequality links the Laplacian spectral gap to edge expansion. The Fiedler vector provides a spectral approximation to the minimum cut, and expanders are precisely the graphs where this cut is large for every subset. |
+| [Random Walks & Mixing](/topics/random-walks) | The mixing time of a random walk on an expander is $O(\log n)$, because the spectral gap $\gamma = 1 - \lambda/d$ is bounded away from zero. The expander walk sampling theorem extends this to a Chernoff bound for dependent samples. |
+| [Spectral Theorem](/topics/spectral-theorem) | The EML proof decomposes indicator vectors in the eigenbasis of $A$. The Spectral Theorem guarantees orthonormality of this basis — the Cauchy-Schwarz step relies on this structure. |
+| [Concentration Inequalities](/topics/concentration-inequalities) | The expander walk sampling theorem is a Chernoff bound where the spectral gap replaces independence. Correlations between consecutive walk samples decay exponentially in the gap. |
+| [Shannon Entropy](/topics/shannon-entropy) | The entropy rate of a random walk on a $d$-regular expander approaches $\log d$ — maximum entropy. Expansion ensures the walk explores the graph uniformly. |
+| **Message Passing & GNNs** *(coming soon)* | Message passing is iterated Laplacian smoothing. On expanders, $O(\log n)$ layers suffice for global information flow but cause over-smoothing. The spectral gap quantifies this trade-off. |
+
+### 10.2 Notation Summary
+
+| Symbol | Meaning |
+|--------|---------|
+| $G = (V, E)$ | Graph with vertex set $V$ and edge set $E$ |
+| $n = \vert V\vert$ | Number of vertices |
+| $d$ | Degree (for regular graphs) |
+| $A$ | Adjacency matrix |
+| $\lambda_i(A)$ | $i$-th eigenvalue of $A$ (ordered $\lambda_1 \geq \cdots \geq \lambda_n$) |
+| $\lambda(G)$ | Spectral expansion parameter: $\max_{i \geq 2} \vert\lambda_i(A)\vert$ |
+| $h(G)$ | Cheeger constant (edge expansion) |
+| $h_V(G)$ | Vertex expansion ratio |
+| $P = D^{-1}A$ | Random walk transition matrix |
+| $\gamma = 1 - \lambda/d$ | Spectral gap of the random walk |
+| $t_{\mathrm{mix}}$ | Mixing time in total variation |
+| $E(S, T)$ | Number of (ordered) edges from $S$ to $T$ |
+| $\partial_V(S)$ | Vertex boundary: $N(S) \setminus S$ |
+| $2\sqrt{d-1}$ | Alon-Boppana / Ramanujan bound |
