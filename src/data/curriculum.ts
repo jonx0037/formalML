@@ -47,7 +47,6 @@ export const tracks = [
     description:
       'Spectral graph theory and random walks \u2014 the mathematical foundation of graph neural networks.',
     planned: [
-      'Expander Graphs',
       'Message Passing & GNNs',
     ],
   },

@@ -1357,3 +1357,341 @@ export function bfsDistance(graph: Graph, source: number, target: number): numbe
   }
   return Infinity;
 }
+
+// ============================================================================
+// Expander Graph utilities
+// ============================================================================
+
+// === Expander Types ===
+
+export interface ExpanderMetrics {
+  vertexExpansion: number;
+  edgeExpansion: number;
+  spectralParameter: number;
+  spectralGapAdj: number;
+  degree: number;
+  isRegular: boolean;
+  isRamanujan: boolean;
+  ramanujanBound: number;
+}
+
+export interface EMLResult {
+  actualEdges: number;
+  expectedEdges: number;
+  emlBound: number;
+  deviation: number;
+  withinBound: boolean;
+}
+
+// === Adjacency Spectrum ===
+
+/** Eigenvalues of the adjacency matrix, sorted descending. */
+export function adjacencySpectrum(graph: Graph): number[] {
+  const { n, adjacency } = graph;
+  // jacobiEigen expects a copy (it modifies in place)
+  const A = adjacency.map(row => [...row]);
+  const { eigenvalues } = jacobiEigen(A);
+  // Sort descending
+  return [...eigenvalues].sort((a, b) => b - a);
+}
+
+// === Spectral Parameter ===
+
+/** λ(G) = max(|λ₂|, |λₙ|) of adjacency matrix for a d-regular graph. */
+export function spectralParameter(graph: Graph): number {
+  const spectrum = adjacencySpectrum(graph);
+  if (spectrum.length < 2) return 0;
+  // λ₁ is the largest (index 0), λ₂ is next, λₙ is last
+  const lambda2 = Math.abs(spectrum[1]);
+  const lambdaN = Math.abs(spectrum[spectrum.length - 1]);
+  return Math.max(lambda2, lambdaN);
+}
+
+// === Alon–Boppana Bound ===
+
+/** Alon–Boppana bound: 2√(d-1). Returns NaN for d < 1. */
+export function alonBoppanaBound(d: number): number {
+  if (d < 1) return NaN;
+  return 2 * Math.sqrt(d - 1);
+}
+
+// === Vertex Expansion ===
+
+/**
+ * Vertex expansion h_V(G) = min_{|S| ≤ n/2} |N(S)\S| / |S|.
+ * Brute-force for n ≤ 14. Returns { expansion: Infinity, optimalSet: [] } for larger.
+ */
+export function vertexExpansion(graph: Graph): { expansion: number; optimalSet: number[] } {
+  const { n, adjacency: A } = graph;
+
+  if (n === 0) return { expansion: 0, optimalSet: [] };
+  if (n > 14) return { expansion: Infinity, optimalSet: [] };
+
+  let bestH = Infinity;
+  let bestS: number[] = [];
+  const totalSubsets = 1 << n;
+
+  for (let mask = 1; mask < totalSubsets; mask++) {
+    const S: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) S.push(i);
+    }
+    if (S.length > n / 2) continue;
+    if (S.length === 0) continue;
+
+    // Compute N(S) \ S: vertices not in S that are adjacent to some vertex in S
+    const SSet = new Set(S);
+    let neighborCount = 0;
+    for (let v = 0; v < n; v++) {
+      if (SSet.has(v)) continue;
+      for (const u of S) {
+        if (A[u][v] > 0) {
+          neighborCount++;
+          break;
+        }
+      }
+    }
+
+    const h = neighborCount / S.length;
+    if (h < bestH) {
+      bestH = h;
+      bestS = S;
+    }
+  }
+
+  return { expansion: bestH === Infinity ? 0 : bestH, optimalSet: bestS };
+}
+
+// === Edge Expansion (Full) ===
+
+/**
+ * Edge expansion h(G) = min_{|S| ≤ n/2} |E(S, S^c)| / |S|.
+ * Uses simple |S| denominator (not volume), matching the handoff brief.
+ * Brute-force for n ≤ 14, spectral approximation for larger.
+ * Returns the optimal set and cut edges.
+ */
+export function edgeExpansionFull(graph: Graph): {
+  expansion: number;
+  optimalSet: number[];
+  cutEdges: [number, number][];
+} {
+  const { n, adjacency: A } = graph;
+
+  if (n === 0) return { expansion: 0, optimalSet: [], cutEdges: [] };
+
+  if (n > 14) {
+    // Use Cheeger constant as fallback (volume-based), adapt for edge expansion
+    const cheeger = cheegerConstant(graph);
+    const S = cheeger.optimalPartition[0];
+    const Sbar = cheeger.optimalPartition[1];
+    const cutEdgesList: [number, number][] = [];
+    const SSet = new Set(S);
+    let cutSize = 0;
+    for (const i of S) {
+      for (const j of Sbar) {
+        if (A[i][j] > 0) {
+          cutEdgesList.push([i, j]);
+          cutSize++;
+        }
+      }
+    }
+    const denom = Math.min(S.length, Sbar.length);
+    return {
+      expansion: denom > 0 ? cutSize / denom : 0,
+      optimalSet: S,
+      cutEdges: cutEdgesList,
+    };
+  }
+
+  // Brute-force enumeration
+  let bestH = Infinity;
+  let bestS: number[] = [];
+  const totalSubsets = 1 << n;
+
+  for (let mask = 1; mask < totalSubsets; mask++) {
+    const S: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) S.push(i);
+    }
+    if (S.length > n / 2) continue;
+    if (S.length === 0) continue;
+
+    // Count edges crossing the cut
+    let cutSize = 0;
+    for (const i of S) {
+      for (let j = 0; j < n; j++) {
+        if (!(mask & (1 << j)) && A[i][j] > 0) {
+          cutSize++;
+        }
+      }
+    }
+
+    const h = cutSize / S.length;
+    if (h < bestH) {
+      bestH = h;
+      bestS = S;
+    }
+  }
+
+  const SSet = new Set(bestS);
+  const cutEdges: [number, number][] = [];
+  for (const i of bestS) {
+    for (let j = 0; j < n; j++) {
+      if (!SSet.has(j) && A[i][j] > 0) {
+        cutEdges.push([i, j]);
+      }
+    }
+  }
+
+  return {
+    expansion: bestH === Infinity ? 0 : bestH,
+    optimalSet: bestS,
+    cutEdges,
+  };
+}
+
+// === Expansion Analysis ===
+
+/** Check if a graph is d-regular. Returns { isRegular, degree }. */
+function checkRegular(graph: Graph): { isRegular: boolean; degree: number } {
+  const deg = degrees(graph.adjacency);
+  if (deg.length === 0) return { isRegular: true, degree: 0 };
+  const d = deg[0];
+  for (let i = 1; i < deg.length; i++) {
+    if (deg[i] !== d) return { isRegular: false, degree: d };
+  }
+  return { isRegular: true, degree: d };
+}
+
+/** Full expansion analysis for a graph. */
+export function analyzeExpansion(graph: Graph): ExpanderMetrics {
+  const { isRegular, degree } = checkRegular(graph);
+  const lambda = spectralParameter(graph);
+  const vExp = vertexExpansion(graph);
+  const eExp = edgeExpansionFull(graph);
+  const bound = isRegular ? alonBoppanaBound(degree) : NaN;
+
+  return {
+    vertexExpansion: vExp.expansion,
+    edgeExpansion: eExp.expansion,
+    spectralParameter: lambda,
+    spectralGapAdj: isRegular ? degree - (adjacencySpectrum(graph)[1] ?? 0) : 0,
+    degree,
+    isRegular,
+    isRamanujan: isRegular && lambda <= bound + 1e-9,
+    ramanujanBound: bound,
+  };
+}
+
+// === Expander Mixing Lemma ===
+
+/**
+ * Compute EML quantities for subsets S, T in a graph.
+ * Returns actual edges, expected (d|S||T|/n), bound (λ√(|S||T|)), deviation.
+ */
+export function expanderMixingLemma(graph: Graph, S: number[], T: number[]): EMLResult {
+  const { n, adjacency: A } = graph;
+  const { isRegular, degree } = checkRegular(graph);
+
+  // Count edges between S and T
+  let actualEdges = 0;
+  const TSet = new Set(T);
+  for (const u of S) {
+    for (const v of T) {
+      if (A[u][v] > 0) actualEdges++;
+    }
+  }
+
+  const d = isRegular ? degree : degrees(A).reduce((s, d) => s + d, 0) / n;
+  const expectedEdges = (d * S.length * T.length) / n;
+  const lambda = spectralParameter(graph);
+  const emlBound = lambda * Math.sqrt(S.length * T.length);
+  const deviation = Math.abs(actualEdges - expectedEdges);
+
+  return {
+    actualEdges,
+    expectedEdges,
+    emlBound,
+    deviation,
+    withinBound: deviation <= emlBound + 1e-9,
+  };
+}
+
+/**
+ * Compute EML deviations for all pairs of subsets of size k.
+ * Returns array of { deviation, bound } for each pair.
+ * For performance, limits to reasonable sizes.
+ */
+export function emlAllSubsetPairs(
+  graph: Graph,
+  k: number
+): { deviation: number; bound: number }[] {
+  const { n } = graph;
+  if (k <= 0 || k > n) return [];
+
+  // Generate all subsets of size k
+  const subsets: number[][] = [];
+  const generate = (start: number, current: number[]) => {
+    if (current.length === k) {
+      subsets.push([...current]);
+      return;
+    }
+    for (let i = start; i < n; i++) {
+      current.push(i);
+      generate(i + 1, current);
+      current.pop();
+    }
+  };
+  generate(0, []);
+
+  // Cap: if too many pairs, sample
+  const maxPairs = 20000;
+  const results: { deviation: number; bound: number }[] = [];
+
+  if (subsets.length * subsets.length <= maxPairs) {
+    for (const S of subsets) {
+      for (const T of subsets) {
+        const eml = expanderMixingLemma(graph, S, T);
+        results.push({ deviation: eml.deviation, bound: eml.emlBound });
+      }
+    }
+  } else {
+    // Sample random pairs
+    const rng = createRng(42);
+    for (let i = 0; i < maxPairs; i++) {
+      const si = Math.floor(rng() * subsets.length);
+      const ti = Math.floor(rng() * subsets.length);
+      const eml = expanderMixingLemma(graph, subsets[si], subsets[ti]);
+      results.push({ deviation: eml.deviation, bound: eml.emlBound });
+    }
+  }
+
+  return results;
+}
+
+// === Cayley Circulant Graph ===
+
+/**
+ * Cayley circulant graph Cay(Z_n, generators).
+ * Generators should be symmetric: if g is in generators, then n-g should also be.
+ * This function auto-symmetrizes.
+ */
+export function cayleyCirculantGraph(n: number, generators: number[]): Graph {
+  const adj = Array.from({ length: n }, () => new Array(n).fill(0));
+  const genSet = new Set<number>();
+  for (const g of generators) {
+    const gMod = ((g % n) + n) % n;
+    if (gMod !== 0) {
+      genSet.add(gMod);
+      genSet.add((n - gMod) % n);
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    for (const g of genSet) {
+      const j = (i + g) % n;
+      adj[i][j] = 1;
+      adj[j][i] = 1;
+    }
+  }
+  return { n, adjacency: adj };
+}

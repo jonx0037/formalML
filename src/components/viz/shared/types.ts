@@ -183,3 +183,14 @@ export interface WalkState {
   trajectory: number[];
 }
 
+// ─── Expander Graph Types ───
+
+export interface ExpanderSubsetPair {
+  S: number[];
+  T: number[];
+  actualEdges: number;
+  expectedEdges: number;
+  deviation: number;
+  bound: number;
+}
+
