@@ -1925,13 +1925,13 @@ export function propagateFeatures(
     Hprev = Hnew;
   }
 
-  // Spectral gap: eigenvalues of Â, gap = 1 - |μ₂|
-  const eigenResult = jacobiEigen(Ahat);
-  const sortedAbsEigs = eigenResult.eigenvalues
-    .map(Math.abs)
-    .sort((a, b) => b - a);
-  const mu2Abs = sortedAbsEigs.length > 1 ? sortedAbsEigs[1] : 0;
-  const spectralGap = 1 - mu2Abs;
+  // Spectral gap via the symmetric normalized Laplacian (valid for all architectures).
+  // Ahat may be non-symmetric (e.g. GraphSAGE transition matrix), so we avoid
+  // feeding it to Jacobi directly. The normalized Laplacian L_sym = I - D^{-1/2}AD^{-1/2}
+  // is always symmetric and its second-smallest eigenvalue λ₂ is the spectral gap.
+  const Lnorm = normalizedLaplacian(A);
+  const eigenResult = jacobiEigen(Lnorm);
+  const spectralGap = eigenResult.eigenvalues.length > 1 ? eigenResult.eigenvalues[1] : 0;
 
   // Over-smoothing depth: first ℓ where E < 0.01 * E₀
   const E0 = energyTrace[0];

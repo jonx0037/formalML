@@ -2,10 +2,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  cycleGraph, completeGraph, petersenGraph,
+  cycleGraph, petersenGraph,
   wlColorRefinement, wlDistinguishes,
-  createRng,
-  type Graph, type WLResult,
+  type Graph,
 } from './shared/graphTheory';
 
 // ---------------------------------------------------------------------------
@@ -220,7 +219,7 @@ export default function WLExpressivenessExplorer() {
   ) => {
     const svg = d3.select(svgRef.current);
     if (!svg.node()) return;
-    const w = isSmall ? (containerWidth || 300) : ((containerWidth || 600) * 0.24);
+    const w = isSmall ? ((containerWidth || 300) - 8) / 2 : ((containerWidth || 600) * 0.24);
     const h = GRAPH_PANEL_HEIGHT;
     svg.attr('width', w).attr('height', h);
     svg.selectAll('*').remove();

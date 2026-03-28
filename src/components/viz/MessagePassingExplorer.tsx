@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   pathGraph, cycleGraph, barbellGraph, petersenGraph, gridGraph,
-  karateClubGraph, laplacian, propagateFeatures, createRng,
-  type Graph, type MPNNConfig, type PropagationResult,
+  karateClubGraph, propagateFeatures, createRng,
+  type Graph, type MPNNConfig,
 } from './shared/graphTheory';
 
 // ---------------------------------------------------------------------------
@@ -19,7 +19,6 @@ const MARGIN = { top: 16, right: 16, bottom: 28, left: 40 };
 
 const TEAL = '#14b8a6';
 const AMBER = '#f59e0b';
-const PURPLE = '#a855f7';
 const GRAY_EDGE = '#64748b';
 
 // ---------------------------------------------------------------------------
