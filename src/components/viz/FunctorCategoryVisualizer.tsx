@@ -1,4 +1,4 @@
-import { useState, useId } from 'react';
+import { useState, useId, useMemo } from 'react';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   type Category,
@@ -67,20 +67,16 @@ function buildTargetForTwo(): Category {
       if (m.target === o) comp.set(`id_${o},${m.label}`, m.label);
     }
   }
-  // Naturality squares
-  comp.set("h',α_A", "h'∘α_A");
-  comp.set("α_B,h", "α_B∘h");
-  comp.set("h'',β_A", "h''∘β_A");
-  comp.set("β_B,h'", "β_B∘h'");
-  comp.set("h'',(β∘α)_A", "h''∘(β∘α)_A");
-  comp.set("(β∘α)_B,h", "(β∘α)_B∘h");
-  // Make naturality hold: both paths equal
-  comp.set("h'∘α_A", "h'∘α_A"); // self
-  comp.set("α_B∘h", "h'∘α_A");   // key: naturality of α
-  comp.set("h''∘β_A", "h''∘β_A");
-  comp.set("β_B∘h'", "h''∘β_A");
-  comp.set("h''∘(β∘α)_A", "h''∘(β∘α)_A");
-  comp.set("(β∘α)_B∘h", "h''∘(β∘α)_A");
+  // Naturality squares — both paths must produce the same composite label
+  // α: F ⇒ G — compose(G(f), α_A) = compose(α_B, F(f))
+  comp.set("h',α_A", "nat_α_f");
+  comp.set("α_B,h", "nat_α_f");
+  // β: G ⇒ H — compose(H(f), β_A) = compose(β_B, G(f))
+  comp.set("h'',β_A", "nat_β_f");
+  comp.set("β_B,h'", "nat_β_f");
+  // β∘α: F ⇒ H — compose(H(f), (β∘α)_A) = compose((β∘α)_B, F(f))
+  comp.set("h'',(β∘α)_A", "nat_βα_f");
+  comp.set("(β∘α)_B,h", "nat_βα_f");
   // Vertical composition
   comp.set('β_A,α_A', '(β∘α)_A');
   comp.set('β_B,α_B', '(β∘α)_B');
@@ -284,15 +280,21 @@ export default function FunctorCategoryVisualizer() {
   const [selectedNt, setSelectedNt] = useState<string | null>(null);
   const [hoveredNt, setHoveredNt] = useState<string | null>(null);
 
-  // Build preset
-  const preset = sourceType === 'two'
-    ? buildTwoObjPreset(numFunctors)
-    : buildTrianglePreset(numFunctors);
+  // Build preset (memoized — builder functions are pure)
+  const preset = useMemo(() =>
+    sourceType === 'two'
+      ? buildTwoObjPreset(numFunctors)
+      : buildTrianglePreset(numFunctors),
+    [sourceType, numFunctors],
+  );
 
-  // Composition
-  const composedNt = numFunctors >= 3 && showComposition && preset.natTrans.length >= 2
-    ? verticalCompose(preset.natTrans[0].nt, preset.natTrans[1].nt, preset.targetCategory)
-    : null;
+  // Composition (memoized)
+  const composedNt = useMemo(() =>
+    numFunctors >= 3 && showComposition && preset.natTrans.length >= 2
+      ? verticalCompose(preset.natTrans[0].nt, preset.natTrans[1].nt, preset.targetCategory)
+      : null,
+    [numFunctors, showComposition, preset],
+  );
 
   // All nat trans for display
   const allNatTrans: { label: string; nt: NaturalTransformation; isComposition: boolean }[] = [

@@ -158,7 +158,7 @@ function CategoryDiagram({ width }: { width: number }) {
     return `M${from[0]},${from[1]} Q${mx},${my} ${to[0]},${to[1]}`;
   }
 
-  const labelId = useId();
+  const labelId = useId().replace(/:/g, '');
 
   return (
     <svg width={width} height={h} style={{ display: 'block' }}>
@@ -266,7 +266,7 @@ function ArrowOverlay({
   const [positions, setPositions] = useState<
     { x1: number; y1: number; x2: number; y2: number; label: string; delay: number }[]
   >([]);
-  const svgId = useId();
+  const svgId = useId().replace(/:/g, '');
 
   useEffect(() => {
     const el = containerRef.current;

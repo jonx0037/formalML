@@ -154,13 +154,21 @@ export default function NaturalitySquareExplorer() {
     setCustomResult({ checked: true, commutes: a === b });
   }, [customLabels]);
 
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    return () => { timersRef.current.forEach(clearTimeout); };
+  }, []);
+
   const onAnimate = useCallback(() => {
     if (animating) return;
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
     setAnimating(true); setPhase('pathA1');
-    setTimeout(() => setPhase('pathA2'), STEP_MS);
-    setTimeout(() => setPhase('pathB1'), STEP_MS * 2);
-    setTimeout(() => setPhase('pathB2'), STEP_MS * 3);
-    setTimeout(() => { setPhase('done'); setAnimating(false); }, STEP_MS * 4);
+    timersRef.current.push(setTimeout(() => setPhase('pathA2'), STEP_MS));
+    timersRef.current.push(setTimeout(() => setPhase('pathB1'), STEP_MS * 2));
+    timersRef.current.push(setTimeout(() => setPhase('pathB2'), STEP_MS * 3));
+    timersRef.current.push(setTimeout(() => { setPhase('done'); setAnimating(false); }, STEP_MS * 4));
   }, [animating]);
 
   // ─── D3 rendering ───

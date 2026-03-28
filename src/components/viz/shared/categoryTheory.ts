@@ -835,8 +835,8 @@ function vecTargetCategory(): Category {
     { label: 'η_V', source: 'V', target: 'V**', isIdentity: false },
     { label: 'η_W', source: 'W', target: 'W**', isIdentity: false },
     { label: 'T**', source: 'V**', target: 'W**', isIdentity: false },
+    // Single canonical label for the commuting composite T**∘η_V = η_W∘T
     { label: 'T**∘η_V', source: 'V', target: 'W**', isIdentity: false },
-    { label: 'η_W∘T', source: 'V', target: 'W**', isIdentity: false },
   ];
 
   const compMap = new Map<string, string>([
@@ -852,13 +852,11 @@ function vecTargetCategory(): Category {
     ['id_W**,η_W', 'η_W'],
     ['T**,id_V**', 'T**'],
     ['id_W**,T**', 'T**'],
+    // Naturality: both paths yield the same composite label
     ['T**,η_V', 'T**∘η_V'],
-    ['η_W,T', 'η_W∘T'],
-    // The naturality condition: T** ∘ η_V = η_W ∘ T
+    ['η_W,T', 'T**∘η_V'],
     ['T**∘η_V,id_V', 'T**∘η_V'],
     ['id_W**,T**∘η_V', 'T**∘η_V'],
-    ['η_W∘T,id_V', 'η_W∘T'],
-    ['id_W**,η_W∘T', 'η_W∘T'],
   ]);
 
   return {
@@ -954,8 +952,8 @@ export function determinantNatTrans(): {
       { label: 'φ×', source: 'R×', target: 'S×', isIdentity: false },
       { label: 'det_R', source: 'GL_n(R)', target: 'R×', isIdentity: false },
       { label: 'det_S', source: 'GL_n(S)', target: 'S×', isIdentity: false },
+      // Single canonical label for the commuting composite φ×∘det_R = det_S∘GL_n(φ)
       { label: 'φ×∘det_R', source: 'GL_n(R)', target: 'S×', isIdentity: false },
-      { label: 'det_S∘GL_n(φ)', source: 'GL_n(R)', target: 'S×', isIdentity: false },
     ],
     compose: (g, f) => {
       const map = new Map<string, string>([
@@ -971,13 +969,11 @@ export function determinantNatTrans(): {
         ['id_R×,det_R', 'det_R'],
         ['det_S,id_GL_n(S)', 'det_S'],
         ['id_S×,det_S', 'det_S'],
+        // Naturality: both paths yield the same composite label
         ['φ×,det_R', 'φ×∘det_R'],
-        ['det_S,GL_n(φ)', 'det_S∘GL_n(φ)'],
-        // Naturality: φ× ∘ det_R = det_S ∘ GL_n(φ)
+        ['det_S,GL_n(φ)', 'φ×∘det_R'],
         ['id_S×,φ×∘det_R', 'φ×∘det_R'],
         ['φ×∘det_R,id_GL_n(R)', 'φ×∘det_R'],
-        ['id_S×,det_S∘GL_n(φ)', 'det_S∘GL_n(φ)'],
-        ['det_S∘GL_n(φ),id_GL_n(R)', 'det_S∘GL_n(φ)'],
       ]);
       return map.get(`${g},${f}`) ?? null;
     },
@@ -1036,8 +1032,6 @@ export function traceNatTrans(): {
       { label: 'conj_T', source: 'End(V)', target: 'End(W)', isIdentity: false },
       { label: 'tr_V', source: 'End(V)', target: 'k', isIdentity: false },
       { label: 'tr_W', source: 'End(W)', target: 'k', isIdentity: false },
-      { label: 'tr_W∘conj_T', source: 'End(V)', target: 'k', isIdentity: false },
-      { label: 'id_k∘tr_V', source: 'End(V)', target: 'k', isIdentity: false },
     ],
     compose: (g, f) => {
       const map = new Map<string, string>([
@@ -1050,13 +1044,8 @@ export function traceNatTrans(): {
         ['id_k,tr_V', 'tr_V'],
         ['tr_W,id_End(W)', 'tr_W'],
         ['id_k,tr_W', 'tr_W'],
-        ['tr_W,conj_T', 'tr_W∘conj_T'],
-        ['id_k,tr_V', 'id_k∘tr_V'],
-        // Naturality: tr_W ∘ conj_T = id_k ∘ tr_V (= tr_V)
-        ['id_k,tr_W∘conj_T', 'tr_W∘conj_T'],
-        ['tr_W∘conj_T,id_End(V)', 'tr_W∘conj_T'],
-        ['id_k,id_k∘tr_V', 'id_k∘tr_V'],
-        ['id_k∘tr_V,id_End(V)', 'id_k∘tr_V'],
+        // Naturality: tr_W ∘ conj_T = id_k ∘ tr_V = tr_V (by identity law)
+        ['tr_W,conj_T', 'tr_V'],
       ]);
       return map.get(`${g},${f}`) ?? null;
     },

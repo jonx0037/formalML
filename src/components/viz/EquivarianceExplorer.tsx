@@ -97,7 +97,8 @@ function drawGraph(g: G, adj: number[][], feat: number[][], cx: number, cy: numb
 }
 
 function drawArrow(g: G, x1: number, y1: number, x2: number, y2: number, color: string, label: string, mid: string, hl: boolean) {
-  const defs = g.select('defs').empty() ? g.append('defs') : g.select('defs');
+  let defs = g.select<SVGDefsElement>('defs');
+  if (defs.empty()) defs = g.append('defs');
   defs.append('marker').attr('id', mid).attr('viewBox', '0 0 10 10').attr('refX', 8).attr('refY', 5)
     .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto-start-reverse')
     .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 z').attr('fill', color);
@@ -112,7 +113,7 @@ function drawArrow(g: G, x1: number, y1: number, x2: number, y2: number, color: 
 // ─── Component ───
 
 export default function EquivarianceExplorer() {
-  const uid = useId();
+  const uid = useId().replace(/:/g, '');
   const { ref: containerRef, width } = useResizeObserver<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const [arch, setArch] = useState<Arch>('cnn');
@@ -120,7 +121,12 @@ export default function EquivarianceExplorer() {
   const [permIdx, setPermIdx] = useState(2);
   const [step, setStep] = useState(-1);
   const [match, setMatch] = useState<boolean | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMobile = width > 0 && width < SM_BREAKPOINT;
+
+  useEffect(() => {
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, []);
 
   const cnn = useMemo(() => {
     const inp = CNN_INPUT, sh = shiftGrid(inp, shift);
@@ -135,10 +141,11 @@ export default function EquivarianceExplorer() {
   }, [permIdx]);
 
   const handleVerify = useCallback(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
     setMatch(null); setStep(0);
     let s = 0;
-    const iv = setInterval(() => {
-      if (++s > 3) { clearInterval(iv); setMatch(arch === 'cnn' ? cnn.ok : gnn.ok); setStep(-1); return; }
+    intervalRef.current = setInterval(() => {
+      if (++s > 3) { clearInterval(intervalRef.current!); intervalRef.current = null; setMatch(arch === 'cnn' ? cnn.ok : gnn.ok); setStep(-1); return; }
       setStep(s);
     }, 600);
   }, [arch, cnn.ok, gnn.ok]);
