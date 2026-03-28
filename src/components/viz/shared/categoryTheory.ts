@@ -4,14 +4,12 @@
 // preset categories/functors, composition helpers, and universal properties.
 // ============================================================================
 
+import type { CategoryMorphism } from './types';
+
 // === Types ===
 
-export interface Morphism {
-  label: string;
-  source: string;
-  target: string;
-  isIdentity: boolean;
-}
+/** Re-export CategoryMorphism as Morphism for convenience within this module. */
+export type Morphism = CategoryMorphism;
 
 export interface Category {
   objects: string[];
@@ -26,11 +24,6 @@ export interface Functor {
   onObjects: Map<string, string>;
   onMorphisms: Map<string, string>;
   contravariant: boolean;
-}
-
-export interface UniversalCone {
-  apex: string;
-  legs: { target: string; morphism: string }[];
 }
 
 // === Category Construction ===
@@ -338,11 +331,11 @@ export function checkAssociativity(cat: Category): {
   violations: [string, string, string][];
 } {
   const violations: [string, string, string][] = [];
-  const nonId = cat.morphisms;
+  const allMorphisms = cat.morphisms;
 
-  for (const h of nonId) {
-    for (const g of nonId) {
-      for (const f of nonId) {
+  for (const h of allMorphisms) {
+    for (const g of allMorphisms) {
+      for (const f of allMorphisms) {
         // Check if h ∘ (g ∘ f) and (h ∘ g) ∘ f are both defined
         const gf = cat.compose(g.label, f.label);
         const hg = cat.compose(h.label, g.label);
@@ -351,7 +344,8 @@ export function checkAssociativity(cat: Category): {
           const h_gf = cat.compose(h.label, gf);
           const hg_f = cat.compose(hg, f.label);
 
-          if (h_gf !== null && hg_f !== null && h_gf !== hg_f) {
+          // Flag any failure: either side undefined, or both defined but unequal
+          if (h_gf === null || hg_f === null || h_gf !== hg_f) {
             violations.push([h.label, g.label, f.label]);
           }
         }
@@ -443,7 +437,10 @@ export function checkFunctorComposition(func: Functor): {
       const Ff = func.onMorphisms.get(f.label);
       const Fgf = func.onMorphisms.get(gf);
 
-      if (!Fg || !Ff || !Fgf) continue;
+      if (!Fg || !Ff || !Fgf) {
+        violations.push([g.label, f.label]);
+        continue;
+      }
 
       const composed = func.contravariant
         ? func.target.compose(Ff, Fg)

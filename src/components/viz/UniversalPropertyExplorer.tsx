@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { productMediatingSet, coproductMediatingSet } from './shared/categoryTheory';
@@ -191,6 +191,7 @@ function arrowPath(
 export default function UniversalPropertyExplorer() {
   const { ref: containerRef, width: containerWidth } =
     useResizeObserver<HTMLDivElement>();
+  const instanceId = useId().replace(/:/g, '');
 
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -231,13 +232,13 @@ export default function UniversalPropertyExplorer() {
     // Arrowhead markers
     const defs = svg.append('defs');
     const markerColors = [
-      { id: 'arrow-black', color: 'var(--color-text)' },
-      { id: 'arrow-blue', color: '#3b82f6' },
-      { id: 'arrow-red', color: '#ef4444' },
+      { suffix: 'black', color: 'var(--color-text)' },
+      { suffix: 'blue', color: '#3b82f6' },
+      { suffix: 'red', color: '#ef4444' },
     ];
-    for (const { id, color } of markerColors) {
+    for (const { suffix, color } of markerColors) {
       defs.append('marker')
-        .attr('id', id)
+        .attr('id', `arrow-${suffix}-${instanceId}`)
         .attr('viewBox', '0 0 10 10')
         .attr('refX', 10)
         .attr('refY', 5)
@@ -266,11 +267,12 @@ export default function UniversalPropertyExplorer() {
         sn.x, sn.y, tn.x, tn.y, sn.r, tn.r, arrow.curve,
       );
 
-      const markerId = arrow.stroke === '#ef4444'
-        ? 'arrow-red'
+      const markerSuffix = arrow.stroke === '#ef4444'
+        ? 'red'
         : arrow.stroke === '#3b82f6'
-          ? 'arrow-blue'
-          : 'arrow-black';
+          ? 'blue'
+          : 'black';
+      const markerId = `arrow-${markerSuffix}-${instanceId}`;
 
       const pathEl = arrowGroup.append('path')
         .attr('d', path)

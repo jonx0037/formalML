@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
@@ -75,6 +75,7 @@ const NODE_COLORS = [
 export default function CategoryExplorer() {
   const { ref: containerRef, width: containerWidth } =
     useResizeObserver<HTMLDivElement>();
+  const instanceId = useId().replace(/:/g, '');
 
   const graphSvgRef = useRef<SVGSVGElement>(null);
 
@@ -199,7 +200,7 @@ export default function CategoryExplorer() {
     const defs = svg.append('defs');
     defs
       .append('marker')
-      .attr('id', 'cat-arrow')
+      .attr('id', `cat-arrow-${instanceId}`)
       .attr('viewBox', '0 -5 10 10')
       .attr('refX', NODE_RADIUS + 10)
       .attr('refY', 0)
@@ -213,7 +214,7 @@ export default function CategoryExplorer() {
     // Loop arrowhead (smaller refX)
     defs
       .append('marker')
-      .attr('id', 'cat-loop-arrow')
+      .attr('id', `cat-loop-${instanceId}`)
       .attr('viewBox', '0 -5 10 10')
       .attr('refX', 6)
       .attr('refY', 0)
@@ -238,7 +239,7 @@ export default function CategoryExplorer() {
         .append('path')
         .attr('d', arcPath(sp.x, sp.y, tp.x, tp.y, curvature))
         .attr('fill', 'none')
-        .attr('marker-end', 'url(#cat-arrow)')
+        .attr('marker-end', `url(#cat-arrow-${instanceId})`)
         .style('stroke', 'var(--color-text-secondary)')
         .style('stroke-width', '2')
         .style('stroke-opacity', '0.7');
@@ -277,7 +278,7 @@ export default function CategoryExplorer() {
           .append('path')
           .attr('d', loopPath(pos.x, pos.y))
           .attr('fill', 'none')
-          .attr('marker-end', 'url(#cat-loop-arrow)')
+          .attr('marker-end', `url(#cat-loop-${instanceId})`)
           .style('stroke', 'var(--color-text-secondary)')
           .style('stroke-width', '1.5')
           .style('stroke-opacity', '0.5')

@@ -198,7 +198,8 @@ export interface ExpanderSubsetPair {
 
 export interface CategoryObject {
   label: string;
-  position?: [number, number];
+  x?: number;
+  y?: number;
 }
 
 export interface CategoryMorphism {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 
@@ -13,12 +13,6 @@ type CategoryType = 'set' | 'vec' | 'poset';
 
 // ─── Category data ───
 
-const SET_OBJECTS = [
-  ['1', '2', '3'],
-  ['a', 'b'],
-  ['x', 'y', 'z'],
-  ['\u2660', '\u2665'],
-];
 const SET_F: Record<string, string> = { '1': 'a', '2': 'b', '3': 'a' };
 const SET_G: Record<string, string> = { a: 'x', b: 'z' };
 const SET_H: Record<string, string> = { x: '\u2660', y: '\u2665', z: '\u2660' };
@@ -47,9 +41,16 @@ const FUTURE_COLOR = '#94a3b8';
 
 // ─── Component ───
 
+const CHAIN_LABELS: Record<CategoryType, string[]> = {
+  set: ['A = {1,2,3}', 'B = {a,b}', 'C = {x,y,z}', 'D = {\u2660,\u2665}'],
+  vec: ['A = \u211D\u00B2', 'B = \u211D\u00B2', 'C = \u211D\u00B2', 'D = \u211D\u00B2'],
+  poset: ['1', '2', '4', '8'],
+};
+
 export default function CompositionExplorer() {
   const { ref: containerRef, width: containerWidth } =
     useResizeObserver<HTMLDivElement>();
+  const instanceId = useId().replace(/:/g, '');
 
   const chainSvgRef = useRef<SVGSVGElement>(null);
   const leftSvgRef = useRef<SVGSVGElement>(null);
@@ -105,18 +106,14 @@ export default function CompositionExplorer() {
     const svg = d3.select(chainSvgRef.current);
     svg.selectAll('*').remove();
 
-    const labels = categoryType === 'set'
-      ? ['A = {1,2,3}', 'B = {a,b}', 'C = {x,y,z}', 'D = {\u2660,\u2665}']
-      : categoryType === 'vec'
-        ? ['A = \u211D\u00B2', 'B = \u211D\u00B2', 'C = \u211D\u00B2', 'D = \u211D\u00B2']
-        : ['1', '2', '4', '8'];
+    const labels = CHAIN_LABELS[categoryType];
     const morphLabels = ['f', 'g', 'h'];
     const spacing = chainWidth / 5;
     const cy = CHAIN_HEIGHT / 2;
 
     // Arrow marker
     svg.append('defs').append('marker')
-      .attr('id', 'chain-arrow')
+      .attr('id', `chain-arrow-${instanceId}`)
       .attr('viewBox', '0 0 10 6').attr('refX', 10).attr('refY', 3)
       .attr('markerWidth', 8).attr('markerHeight', 6)
       .attr('orient', 'auto')
@@ -140,7 +137,7 @@ export default function CompositionExplorer() {
       const x2 = spacing * (i + 2) - 22;
       svg.append('line').attr('x1', x1).attr('y1', cy).attr('x2', x2).attr('y2', cy)
         .style('stroke', 'var(--color-text-secondary)').style('stroke-width', '2')
-        .attr('marker-end', 'url(#chain-arrow)');
+        .attr('marker-end', `url(#chain-arrow-${instanceId})`);
       svg.append('text').attr('x', (x1 + x2) / 2).attr('y', cy - 10)
         .attr('text-anchor', 'middle').attr('font-size', 13).attr('font-style', 'italic')
         .attr('font-weight', 600).style('fill', 'var(--color-text)').text(morphLabels[i]);

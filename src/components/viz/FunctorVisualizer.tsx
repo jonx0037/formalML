@@ -1,11 +1,12 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   presetVec, presetSet, triangleCategory,
   checkFunctorIdentity, checkFunctorComposition,
-  type Category, type Functor,
+  type Category, type Functor, type Morphism,
 } from './shared/categoryTheory';
+import type { CategoryObject } from './shared/types';
 
 // ─── Layout ───
 
@@ -19,8 +20,8 @@ const MAP_CLR = '#9ca3af';
 
 // ─── Types ───
 
-interface Obj { label: string; x: number; y: number }
-interface Mor { label: string; source: string; target: string; isIdentity: boolean }
+type Obj = CategoryObject & { x: number; y: number };
+type Mor = Morphism;
 interface Preset {
   name: string; srcLabel: string; tgtLabel: string;
   srcObjs: Obj[]; srcMors: Mor[]; tgtObjs: Obj[]; tgtMors: Mor[];
@@ -139,6 +140,7 @@ const PRESETS: Preset[] = [
 export default function FunctorVisualizer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
+  const instanceId = useId().replace(/:/g, '');
 
   const [functorIndex, setFunctorIndex] = useState(0);
   const [hoveredSource, setHoveredSource] = useState<string | null>(null);
@@ -178,8 +180,8 @@ export default function FunctorVisualizer() {
 
     // Arrow markers
     const defs = svg.append('defs');
-    for (const [id, c] of [['a-s', SRC_CLR], ['a-t', TGT_CLR], ['a-c', '#ef4444'], ['a-m', MAP_CLR]] as const) {
-      defs.append('marker').attr('id', id).attr('viewBox', '0 0 10 7')
+    for (const [suffix, c] of [['s', SRC_CLR], ['t', TGT_CLR], ['c', '#ef4444'], ['m', MAP_CLR]] as const) {
+      defs.append('marker').attr('id', `a-${suffix}-${instanceId}`).attr('viewBox', '0 0 10 7')
         .attr('refX', 9).attr('refY', 3.5).attr('markerWidth', 8).attr('markerHeight', 6)
         .attr('orient', 'auto').append('path').attr('d', 'M0,0 L10,3.5 L0,7 Z').attr('fill', c);
     }
@@ -218,10 +220,10 @@ export default function FunctorVisualizer() {
         .style('opacity', hi ? '1' : '0.8').text(m.label);
     };
 
-    for (const m of preset.srcMors) drawArrow(m, preset.srcObjs, srcX, srcY, SRC_CLR, 'a-s', false);
+    for (const m of preset.srcMors) drawArrow(m, preset.srcObjs, srcX, srcY, SRC_CLR, `a-s-${instanceId}`, false);
     for (const m of preset.tgtMors) {
       const cv = preset.contra && !m.isIdentity;
-      drawArrow(m, preset.tgtObjs, tgtX, tgtY, cv ? '#ef4444' : TGT_CLR, cv ? 'a-c' : 'a-t', cv);
+      drawArrow(m, preset.tgtObjs, tgtX, tgtY, cv ? '#ef4444' : TGT_CLR, cv ? `a-c-${instanceId}` : `a-t-${instanceId}`, cv);
     }
 
     // Functor mapping arrows (dashed gray between boxes)
@@ -233,7 +235,7 @@ export default function FunctorVisualizer() {
       const hi = activeSource === sl || activeTarget === tl;
       const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2 - (isNarrow ? 0 : 15);
       svg.append('path').attr('d', `M${p1.x},${p1.y} Q${mx},${my} ${p2.x},${p2.y}`)
-        .attr('marker-end', 'url(#a-m)').style('fill', 'none').style('stroke', MAP_CLR)
+        .attr('marker-end', `url(#a-m-${instanceId})`).style('fill', 'none').style('stroke', MAP_CLR)
         .style('stroke-width', hi ? '2.5' : '1.2').style('stroke-dasharray', '5 4')
         .style('opacity', hi ? '0.9' : '0.4');
     }
