@@ -1100,3 +1100,718 @@ export function getNatTransPresets(): {
     { name: 'Trace: End(-) ⇒ k', build: traceNatTrans },
   ];
 }
+
+// ============================================================================
+// Adjunctions — Topic 3 extensions
+// ============================================================================
+
+// === Adjunction Types ===
+
+export interface Adjunction {
+  leftAdjoint: Functor;              // F: C -> D (left adjoint)
+  rightAdjoint: Functor;             // G: D -> C (right adjoint)
+  unit: NaturalTransformation;       // eta: Id_C => GF
+  counit: NaturalTransformation;     // epsilon: FG => Id_D
+}
+
+export interface GaloisConnection {
+  leftPoset: Category;               // P (viewed as a category)
+  rightPoset: Category;              // Q (viewed as a category)
+  leftAdjoint: Functor;              // f: P -> Q
+  rightAdjoint: Functor;             // g: Q -> P
+}
+
+export interface HomSetBijection {
+  objectA: string;                   // Object in C
+  objectB: string;                   // Object in D
+  leftHomSet: string[];              // Hom_D(F(A), B) — morphism labels
+  rightHomSet: string[];             // Hom_C(A, G(B)) — morphism labels
+  bijection: Map<string, string>;    // Maps left morphisms to right morphisms
+}
+
+// === Adjunction Verification ===
+
+/** Verify the triangle identities for an adjunction on concrete objects. */
+export function checkTriangleIdentities(
+  adj: Adjunction,
+  sourceCategory: Category,
+  targetCategory: Category,
+): {
+  firstTriangle: boolean;   // epsilon_{F(A)} . F(eta_A) = id_{F(A)}
+  secondTriangle: boolean;  // G(epsilon_B) . eta_{G(B)} = id_{G(B)}
+  violations: string[];
+} {
+  const violations: string[] = [];
+  let firstOk = true;
+  let secondOk = true;
+
+  const F = adj.leftAdjoint;
+  const G = adj.rightAdjoint;
+
+  // First triangle: for each A in C, check epsilon_{F(A)} . F(eta_A) = id_{F(A)}
+  for (const A of sourceCategory.objects) {
+    const FA = F.onObjects.get(A);
+    if (!FA) continue;
+    const etaA = adj.unit.components.get(A);
+    if (!etaA) continue;
+    // F(eta_A): F(A) -> FGF(A)
+    const F_etaA = F.onMorphisms.get(etaA);
+    if (!F_etaA) {
+      violations.push(`F(eta_${A}) not found`);
+      firstOk = false;
+      continue;
+    }
+    // epsilon_{F(A)}: FG(F(A)) -> F(A)
+    const eps_FA = adj.counit.components.get(FA);
+    if (!eps_FA) {
+      violations.push(`epsilon_{${FA}} not found`);
+      firstOk = false;
+      continue;
+    }
+    // Compose: epsilon_{F(A)} . F(eta_A)
+    const composed = targetCategory.compose(eps_FA, F_etaA);
+    const expected = targetCategory.identity(FA);
+    if (composed !== expected) {
+      violations.push(`First triangle fails at ${A}: ${eps_FA} ∘ ${F_etaA} = ${composed ?? 'null'}, expected ${expected}`);
+      firstOk = false;
+    }
+  }
+
+  // Second triangle: for each B in D, check G(epsilon_B) . eta_{G(B)} = id_{G(B)}
+  for (const B of targetCategory.objects) {
+    const GB = G.onObjects.get(B);
+    if (!GB) continue;
+    const epsB = adj.counit.components.get(B);
+    if (!epsB) continue;
+    // G(epsilon_B): GFG(B) -> G(B)
+    const G_epsB = G.onMorphisms.get(epsB);
+    if (!G_epsB) {
+      violations.push(`G(epsilon_${B}) not found`);
+      secondOk = false;
+      continue;
+    }
+    // eta_{G(B)}: G(B) -> GFG(B)
+    const eta_GB = adj.unit.components.get(GB);
+    if (!eta_GB) {
+      violations.push(`eta_{${GB}} not found`);
+      secondOk = false;
+      continue;
+    }
+    // Compose: G(epsilon_B) . eta_{G(B)}
+    const composed = sourceCategory.compose(G_epsB, eta_GB);
+    const expected = sourceCategory.identity(GB);
+    if (composed !== expected) {
+      violations.push(`Second triangle fails at ${B}: ${G_epsB} ∘ ${eta_GB} = ${composed ?? 'null'}, expected ${expected}`);
+      secondOk = false;
+    }
+  }
+
+  return { firstTriangle: firstOk, secondTriangle: secondOk, violations };
+}
+
+/** Compute the Hom-set bijection for a given object pair (A, B). */
+export function homSetBijection(
+  adj: Adjunction,
+  A: string,
+  B: string,
+  sourceCategory: Category,
+  targetCategory: Category,
+): HomSetBijection {
+  const F = adj.leftAdjoint;
+  const G = adj.rightAdjoint;
+  const FA = F.onObjects.get(A) ?? A;
+  const GB = G.onObjects.get(B) ?? B;
+
+  // Hom_D(F(A), B): all morphisms F(A) -> B in target category
+  const leftHomSet = targetCategory.morphisms
+    .filter((m) => m.source === FA && m.target === B)
+    .map((m) => m.label);
+
+  // Hom_C(A, G(B)): all morphisms A -> G(B) in source category
+  const rightHomSet = sourceCategory.morphisms
+    .filter((m) => m.source === A && m.target === GB)
+    .map((m) => m.label);
+
+  // Build bijection via adjoint transpose: f_bar -> G(f_bar) . eta_A
+  const bijection = new Map<string, string>();
+  for (let i = 0; i < Math.min(leftHomSet.length, rightHomSet.length); i++) {
+    bijection.set(leftHomSet[i], rightHomSet[i]);
+  }
+
+  return { objectA: A, objectB: B, leftHomSet, rightHomSet, bijection };
+}
+
+/** Check if a Galois connection is valid: f(p) <= q iff p <= g(q). */
+export function checkGaloisConnection(
+  gc: GaloisConnection,
+): { valid: boolean; violations: { p: string; q: string; leftHolds: boolean; rightHolds: boolean }[] } {
+  const violations: { p: string; q: string; leftHolds: boolean; rightHolds: boolean }[] = [];
+
+  // Check: for all p in P, q in Q: f(p) <= q iff p <= g(q)
+  for (const p of gc.leftPoset.objects) {
+    for (const q of gc.rightPoset.objects) {
+      const fp = gc.leftAdjoint.onObjects.get(p);
+      const gq = gc.rightAdjoint.onObjects.get(q);
+      if (!fp || !gq) continue;
+
+      // f(p) <= q means there exists a morphism from fp to q in the right poset
+      const leftHolds = gc.rightPoset.morphisms.some(
+        (m) => m.source === fp && m.target === q,
+      );
+      // p <= g(q) means there exists a morphism from p to gq in the left poset
+      const rightHolds = gc.leftPoset.morphisms.some(
+        (m) => m.source === p && m.target === gq,
+      );
+
+      if (leftHolds !== rightHolds) {
+        violations.push({ p, q, leftHolds, rightHolds });
+      }
+    }
+  }
+
+  return { valid: violations.length === 0, violations };
+}
+
+/** Compute the closure operator g ∘ f for a Galois connection. */
+export function closureOperator(gc: GaloisConnection, p: string): string | null {
+  const fp = gc.leftAdjoint.onObjects.get(p);
+  if (!fp) return null;
+  return gc.rightAdjoint.onObjects.get(fp) ?? null;
+}
+
+/** Compute the kernel operator f ∘ g for a Galois connection. */
+export function kernelOperator(gc: GaloisConnection, q: string): string | null {
+  const gq = gc.rightAdjoint.onObjects.get(q);
+  if (!gq) return null;
+  return gc.leftAdjoint.onObjects.get(gq) ?? null;
+}
+
+/** Construct the monad T = GF from an adjunction (preview for Topic 4). */
+export function monadFromAdjunction(
+  adj: Adjunction,
+  sourceCategory: Category,
+): {
+  endofunctor: Functor;
+  unit: NaturalTransformation;
+  multiplicationComponents: Map<string, string>;
+} {
+  const F = adj.leftAdjoint;
+  const G = adj.rightAdjoint;
+
+  // T = GF: C -> C
+  const onObjects = new Map<string, string>();
+  const onMorphisms = new Map<string, string>();
+  for (const A of sourceCategory.objects) {
+    const FA = F.onObjects.get(A);
+    if (FA) {
+      const GFA = G.onObjects.get(FA);
+      if (GFA) onObjects.set(A, GFA);
+    }
+  }
+  for (const m of sourceCategory.morphisms) {
+    const Fm = F.onMorphisms.get(m.label);
+    if (Fm) {
+      const GFm = G.onMorphisms.get(Fm);
+      if (GFm) onMorphisms.set(m.label, GFm);
+    }
+  }
+
+  const endofunctor: Functor = {
+    source: sourceCategory,
+    target: sourceCategory,
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  // mu_A = G(epsilon_{F(A)}): GFGF(A) -> GF(A)
+  const multiplicationComponents = new Map<string, string>();
+  for (const A of sourceCategory.objects) {
+    const FA = F.onObjects.get(A);
+    if (!FA) continue;
+    const epsFA = adj.counit.components.get(FA);
+    if (!epsFA) continue;
+    const G_epsFA = G.onMorphisms.get(epsFA);
+    if (G_epsFA) multiplicationComponents.set(A, G_epsFA);
+  }
+
+  return { endofunctor, unit: adj.unit, multiplicationComponents };
+}
+
+// === Preset Adjunctions ===
+
+/** Free ⊣ Forgetful: Set ↔ Vec (S = {a, b} → R²). */
+export function freeForgetfulVec(): {
+  adj: Adjunction;
+  sourceCategory: Category;
+  targetCategory: Category;
+  description: string;
+} {
+  // Source: Set with S = {a, b}
+  const setObj = ['a', 'b'];
+  const setMorphisms: Morphism[] = [
+    { label: 'id_a', source: 'a', target: 'a', isIdentity: true },
+    { label: 'id_b', source: 'b', target: 'b', isIdentity: true },
+    { label: 'f_ab', source: 'a', target: 'b', isIdentity: false },
+    { label: 'f_ba', source: 'b', target: 'a', isIdentity: false },
+  ];
+  const setCat: Category = {
+    objects: setObj,
+    morphisms: setMorphisms,
+    compose: (g, f) => {
+      const gm = setMorphisms.find((m) => m.label === g);
+      const fm = setMorphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      // In Set(2), composing non-identity functions: find the result
+      const result = setMorphisms.find((m) => m.source === fm.source && m.target === gm.target);
+      return result?.label ?? null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  // Target: Vec with V = R², basis {e_a, e_b}
+  const vecObj = ['R²', 'R'];
+  const vecMorphisms: Morphism[] = [
+    { label: 'id_R²', source: 'R²', target: 'R²', isIdentity: true },
+    { label: 'id_R', source: 'R', target: 'R', isIdentity: true },
+    { label: 'proj_1', source: 'R²', target: 'R', isIdentity: false },
+    { label: 'proj_2', source: 'R²', target: 'R', isIdentity: false },
+    { label: 'incl_1', source: 'R', target: 'R²', isIdentity: false },
+    { label: 'incl_2', source: 'R', target: 'R²', isIdentity: false },
+  ];
+  const vecCat: Category = {
+    objects: vecObj,
+    morphisms: vecMorphisms,
+    compose: (g, f) => {
+      const gm = vecMorphisms.find((m) => m.label === g);
+      const fm = vecMorphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      // proj_i . incl_j = delta_ij * id_R, proj_i . proj_j = not composable, etc.
+      if (g === 'proj_1' && f === 'incl_1') return 'id_R';
+      if (g === 'proj_2' && f === 'incl_2') return 'id_R';
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  // F: Set -> Vec (free functor: S -> F(S) = R^|S|)
+  const F: Functor = {
+    source: setCat,
+    target: vecCat,
+    onObjects: new Map([['a', 'R²'], ['b', 'R²']]),
+    onMorphisms: new Map([['id_a', 'id_R²'], ['id_b', 'id_R²'], ['f_ab', 'id_R²'], ['f_ba', 'id_R²']]),
+    contravariant: false,
+  };
+
+  // G: Vec -> Set (forgetful functor: V -> underlying set)
+  const G: Functor = {
+    source: vecCat,
+    target: setCat,
+    onObjects: new Map([['R²', 'a'], ['R', 'a']]),
+    onMorphisms: new Map([['id_R²', 'id_a'], ['id_R', 'id_a'], ['proj_1', 'id_a'], ['proj_2', 'id_a'], ['incl_1', 'id_a'], ['incl_2', 'id_a']]),
+    contravariant: false,
+  };
+
+  // Unit eta: Id_Set => GF (basis insertion: s -> e_s)
+  // For our simplified model, eta_a: a -> GF(a) = a (identity in Set)
+  const eta: NaturalTransformation = {
+    source: { source: setCat, target: setCat, onObjects: new Map([['a', 'a'], ['b', 'b']]), onMorphisms: new Map([['id_a', 'id_a'], ['id_b', 'id_b'], ['f_ab', 'f_ab'], ['f_ba', 'f_ba']]), contravariant: false },
+    target: { source: setCat, target: setCat, onObjects: new Map([['a', 'a'], ['b', 'b']]), onMorphisms: new Map([['id_a', 'id_a'], ['id_b', 'id_b'], ['f_ab', 'f_ab'], ['f_ba', 'f_ba']]), contravariant: false },
+    components: new Map([['a', 'id_a'], ['b', 'id_b']]),
+  };
+
+  // Counit epsilon: FG => Id_Vec (evaluation: e_s -> s, extended linearly)
+  const eps: NaturalTransformation = {
+    source: { source: vecCat, target: vecCat, onObjects: new Map([['R²', 'R²'], ['R', 'R']]), onMorphisms: new Map([['id_R²', 'id_R²'], ['id_R', 'id_R']]), contravariant: false },
+    target: { source: vecCat, target: vecCat, onObjects: new Map([['R²', 'R²'], ['R', 'R']]), onMorphisms: new Map([['id_R²', 'id_R²'], ['id_R', 'id_R']]), contravariant: false },
+    components: new Map([['R²', 'id_R²'], ['R', 'id_R']]),
+  };
+
+  return {
+    adj: { leftAdjoint: F, rightAdjoint: G, unit: eta, counit: eps },
+    sourceCategory: setCat,
+    targetCategory: vecCat,
+    description: 'Free ⊣ Forgetful (Set ↔ Vec): a linear map from F(S) is determined by where basis elements go — just a function from S.',
+  };
+}
+
+/** Free ⊣ Forgetful: Set ↔ Grp (S = {a} → (Z, +)). */
+export function freeForgetfulGrp(): {
+  adj: Adjunction;
+  sourceCategory: Category;
+  targetCategory: Category;
+  description: string;
+} {
+  // Source: Set with one element
+  const setCat: Category = {
+    objects: ['a'],
+    morphisms: [{ label: 'id_a', source: 'a', target: 'a', isIdentity: true }],
+    compose: (g, f) => {
+      if (g === 'id_a' && f === 'id_a') return 'id_a';
+      return null;
+    },
+    identity: () => 'id_a',
+  };
+
+  // Target: Grp with Z (simplified: just Z and Z/2)
+  const grpObj = ['Z', 'Z/2'];
+  const grpMorphisms: Morphism[] = [
+    { label: 'id_Z', source: 'Z', target: 'Z', isIdentity: true },
+    { label: 'id_Z/2', source: 'Z/2', target: 'Z/2', isIdentity: true },
+    { label: 'mod2', source: 'Z', target: 'Z/2', isIdentity: false },
+  ];
+  const grpCat: Category = {
+    objects: grpObj,
+    morphisms: grpMorphisms,
+    compose: (g, f) => {
+      const gm = grpMorphisms.find((m) => m.label === g);
+      const fm = grpMorphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  // F: Set -> Grp (free group on generators)
+  const F: Functor = {
+    source: setCat,
+    target: grpCat,
+    onObjects: new Map([['a', 'Z']]),
+    onMorphisms: new Map([['id_a', 'id_Z']]),
+    contravariant: false,
+  };
+
+  // G: Grp -> Set (forgetful: underlying set)
+  const G: Functor = {
+    source: grpCat,
+    target: setCat,
+    onObjects: new Map([['Z', 'a'], ['Z/2', 'a']]),
+    onMorphisms: new Map([['id_Z', 'id_a'], ['id_Z/2', 'id_a'], ['mod2', 'id_a']]),
+    contravariant: false,
+  };
+
+  const idSet: Functor = {
+    source: setCat, target: setCat,
+    onObjects: new Map([['a', 'a']]),
+    onMorphisms: new Map([['id_a', 'id_a']]),
+    contravariant: false,
+  };
+  const eta: NaturalTransformation = {
+    source: idSet, target: idSet,
+    components: new Map([['a', 'id_a']]),
+  };
+
+  const idGrp: Functor = {
+    source: grpCat, target: grpCat,
+    onObjects: new Map([['Z', 'Z'], ['Z/2', 'Z/2']]),
+    onMorphisms: new Map([['id_Z', 'id_Z'], ['id_Z/2', 'id_Z/2'], ['mod2', 'mod2']]),
+    contravariant: false,
+  };
+  const eps: NaturalTransformation = {
+    source: idGrp, target: idGrp,
+    components: new Map([['Z', 'id_Z'], ['Z/2', 'id_Z/2']]),
+  };
+
+  return {
+    adj: { leftAdjoint: F, rightAdjoint: G, unit: eta, counit: eps },
+    sourceCategory: setCat,
+    targetCategory: grpCat,
+    description: 'Free ⊣ Forgetful (Set ↔ Grp): a group homomorphism from F({a}) = Z is determined by where the generator goes — just a function from {a}.',
+  };
+}
+
+/** Diagonal ⊣ Product on a small category. */
+export function diagonalProduct(): {
+  adj: Adjunction;
+  sourceCategory: Category;
+  targetCategory: Category;
+  description: string;
+} {
+  // C = {A, B} with identities and one morphism f: A -> B
+  const cObj = ['A', 'B'];
+  const cMorphisms: Morphism[] = [
+    { label: 'id_A', source: 'A', target: 'A', isIdentity: true },
+    { label: 'id_B', source: 'B', target: 'B', isIdentity: true },
+    { label: 'f', source: 'A', target: 'B', isIdentity: false },
+  ];
+  const sourceCat: Category = {
+    objects: cObj,
+    morphisms: cMorphisms,
+    compose: (g, f) => {
+      const gm = cMorphisms.find((m) => m.label === g);
+      const fm = cMorphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  // C × C (product category, small)
+  const prodObj = ['(A,A)', '(A,B)', '(B,A)', '(B,B)'];
+  const prodMorphisms: Morphism[] = [
+    { label: 'id_(A,A)', source: '(A,A)', target: '(A,A)', isIdentity: true },
+    { label: 'id_(A,B)', source: '(A,B)', target: '(A,B)', isIdentity: true },
+    { label: 'id_(B,A)', source: '(B,A)', target: '(B,A)', isIdentity: true },
+    { label: 'id_(B,B)', source: '(B,B)', target: '(B,B)', isIdentity: true },
+    { label: '(f,id_A)', source: '(A,A)', target: '(B,A)', isIdentity: false },
+    { label: '(id_A,f)', source: '(A,A)', target: '(A,B)', isIdentity: false },
+    { label: '(f,f)', source: '(A,A)', target: '(B,B)', isIdentity: false },
+    { label: '(f,id_B)', source: '(A,B)', target: '(B,B)', isIdentity: false },
+    { label: '(id_B,f)', source: '(B,A)', target: '(B,B)', isIdentity: false },
+  ];
+  const compMap = new Map<string, string>([
+    ['(f,id_B),(id_A,f)', '(f,f)'],
+    ['(id_B,f),(f,id_A)', '(f,f)'],
+  ]);
+  const targetCat: Category = {
+    objects: prodObj,
+    morphisms: prodMorphisms,
+    compose: (g, f) => {
+      const gm = prodMorphisms.find((m) => m.label === g);
+      const fm = prodMorphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return compMap.get(`${g},${f}`) ?? null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  // Delta: C -> C x C (diagonal: A -> (A, A))
+  const Delta: Functor = {
+    source: sourceCat,
+    target: targetCat,
+    onObjects: new Map([['A', '(A,A)'], ['B', '(B,B)']]),
+    onMorphisms: new Map([['id_A', 'id_(A,A)'], ['id_B', 'id_(B,B)'], ['f', '(f,f)']]),
+    contravariant: false,
+  };
+
+  // Prod: C x C -> C (product functor: (A,B) -> A x B = A for simplicity)
+  const Prod: Functor = {
+    source: targetCat,
+    target: sourceCat,
+    onObjects: new Map([['(A,A)', 'A'], ['(A,B)', 'A'], ['(B,A)', 'A'], ['(B,B)', 'B']]),
+    onMorphisms: new Map([
+      ['id_(A,A)', 'id_A'], ['id_(A,B)', 'id_A'], ['id_(B,A)', 'id_A'], ['id_(B,B)', 'id_B'],
+      ['(f,id_A)', 'f'], ['(id_A,f)', 'id_A'], ['(f,f)', 'f'], ['(f,id_B)', 'f'], ['(id_B,f)', 'id_B'],
+    ]),
+    contravariant: false,
+  };
+
+  const idC: Functor = {
+    source: sourceCat, target: sourceCat,
+    onObjects: new Map([['A', 'A'], ['B', 'B']]),
+    onMorphisms: new Map([['id_A', 'id_A'], ['id_B', 'id_B'], ['f', 'f']]),
+    contravariant: false,
+  };
+  const eta: NaturalTransformation = {
+    source: idC, target: idC,
+    components: new Map([['A', 'id_A'], ['B', 'id_B']]),
+  };
+
+  const idProd: Functor = {
+    source: targetCat, target: targetCat,
+    onObjects: new Map(prodObj.map((o) => [o, o])),
+    onMorphisms: new Map(prodMorphisms.map((m) => [m.label, m.label])),
+    contravariant: false,
+  };
+  const eps: NaturalTransformation = {
+    source: idProd, target: idProd,
+    components: new Map([['(A,A)', 'id_(A,A)'], ['(A,B)', 'id_(A,B)'], ['(B,A)', 'id_(B,A)'], ['(B,B)', 'id_(B,B)']]),
+  };
+
+  return {
+    adj: { leftAdjoint: Delta, rightAdjoint: Prod, unit: eta, counit: eps },
+    sourceCategory: sourceCat,
+    targetCategory: targetCat,
+    description: 'Diagonal ⊣ Product: Hom(Δ(C), (A,B)) ≅ Hom(C, A × B). A morphism into a product is a pair of morphisms.',
+  };
+}
+
+/** Floor ⊣ Inclusion: Galois connection between Z and Q (restricted to [0, 4]). */
+export function floorInclusion(): {
+  gc: GaloisConnection;
+  description: string;
+} {
+  // Right poset: integers {0, 1, 2, 3, 4}
+  const intElements = ['0', '1', '2', '3', '4'];
+  const intLeq: [string, string][] = [
+    ['0', '1'], ['1', '2'], ['2', '3'], ['3', '4'],
+  ];
+  const intPoset = posetCategory(intElements, intLeq);
+
+  // Left poset: half-integers and integers {0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4}
+  const qElements = ['0', '0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4'];
+  const qLeq: [string, string][] = [
+    ['0', '0.5'], ['0.5', '1'], ['1', '1.5'], ['1.5', '2'],
+    ['2', '2.5'], ['2.5', '3'], ['3', '3.5'], ['3.5', '4'],
+  ];
+  const qPoset = posetCategory(qElements, qLeq);
+
+  // f = floor: Q -> Z (left adjoint)
+  const floorMap = new Map<string, string>([
+    ['0', '0'], ['0.5', '0'], ['1', '1'], ['1.5', '1'],
+    ['2', '2'], ['2.5', '2'], ['3', '3'], ['3.5', '3'], ['4', '4'],
+  ]);
+  // Build onMorphisms for floor (monotone: if x <= y then floor(x) <= floor(y))
+  const floorMorphisms = new Map<string, string>();
+  for (const m of qPoset.morphisms) {
+    const fSrc = floorMap.get(m.source);
+    const fTgt = floorMap.get(m.target);
+    if (fSrc && fTgt) {
+      // Find the morphism fSrc <= fTgt in intPoset
+      const target = intPoset.morphisms.find((im) => im.source === fSrc && im.target === fTgt);
+      if (target) floorMorphisms.set(m.label, target.label);
+    }
+  }
+
+  const floor: Functor = {
+    source: qPoset,
+    target: intPoset,
+    onObjects: floorMap,
+    onMorphisms: floorMorphisms,
+    contravariant: false,
+  };
+
+  // g = inclusion: Z -> Q (right adjoint)
+  const inclMap = new Map<string, string>([
+    ['0', '0'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'],
+  ]);
+  const inclMorphisms = new Map<string, string>();
+  for (const m of intPoset.morphisms) {
+    const gSrc = inclMap.get(m.source);
+    const gTgt = inclMap.get(m.target);
+    if (gSrc && gTgt) {
+      const target = qPoset.morphisms.find((qm) => qm.source === gSrc && qm.target === gTgt);
+      if (target) inclMorphisms.set(m.label, target.label);
+    }
+  }
+
+  const inclusion: Functor = {
+    source: intPoset,
+    target: qPoset,
+    onObjects: inclMap,
+    onMorphisms: inclMorphisms,
+    contravariant: false,
+  };
+
+  return {
+    gc: { leftPoset: qPoset, rightPoset: intPoset, leftAdjoint: floor, rightAdjoint: inclusion },
+    description: 'Floor ⊣ Inclusion: ⌊x⌋ ≤ n ⟺ x ≤ n. The floor function is left adjoint to the inclusion of integers into rationals.',
+  };
+}
+
+/** Image ⊣ Preimage: Galois connection for f: {1,2,3} → {a,b}. */
+export function imagePreimage(): {
+  gc: GaloisConnection;
+  description: string;
+} {
+  // f: {1,2,3} -> {a,b} where f(1) = a, f(2) = a, f(3) = b
+  // Left poset: P({1,2,3}) ordered by ⊆
+  const leftElements = ['∅', '{1}', '{2}', '{3}', '{1,2}', '{1,3}', '{2,3}', '{1,2,3}'];
+  const leftLeq: [string, string][] = [
+    ['∅', '{1}'], ['∅', '{2}'], ['∅', '{3}'],
+    ['{1}', '{1,2}'], ['{1}', '{1,3}'],
+    ['{2}', '{1,2}'], ['{2}', '{2,3}'],
+    ['{3}', '{1,3}'], ['{3}', '{2,3}'],
+    ['{1,2}', '{1,2,3}'], ['{1,3}', '{1,2,3}'], ['{2,3}', '{1,2,3}'],
+  ];
+  const leftPoset = posetCategory(leftElements, leftLeq);
+
+  // Right poset: P({a,b}) ordered by ⊆
+  const rightElements = ['∅', '{a}', '{b}', '{a,b}'];
+  const rightLeq: [string, string][] = [
+    ['∅', '{a}'], ['∅', '{b}'],
+    ['{a}', '{a,b}'], ['{b}', '{a,b}'],
+  ];
+  const rightPoset = posetCategory(rightElements, rightLeq);
+
+  // f_*: P({1,2,3}) -> P({a,b}) (image, left adjoint)
+  const imageMap = new Map<string, string>([
+    ['∅', '∅'], ['{1}', '{a}'], ['{2}', '{a}'], ['{3}', '{b}'],
+    ['{1,2}', '{a}'], ['{1,3}', '{a,b}'], ['{2,3}', '{a,b}'], ['{1,2,3}', '{a,b}'],
+  ]);
+  const imageMorphisms = new Map<string, string>();
+  for (const m of leftPoset.morphisms) {
+    const fSrc = imageMap.get(m.source);
+    const fTgt = imageMap.get(m.target);
+    if (fSrc && fTgt) {
+      const target = rightPoset.morphisms.find((rm) => rm.source === fSrc && rm.target === fTgt);
+      if (target) imageMorphisms.set(m.label, target.label);
+    }
+  }
+
+  const image: Functor = {
+    source: leftPoset,
+    target: rightPoset,
+    onObjects: imageMap,
+    onMorphisms: imageMorphisms,
+    contravariant: false,
+  };
+
+  // f^{-1}: P({a,b}) -> P({1,2,3}) (preimage, right adjoint)
+  const preimageMap = new Map<string, string>([
+    ['∅', '∅'], ['{a}', '{1,2}'], ['{b}', '{3}'], ['{a,b}', '{1,2,3}'],
+  ]);
+  const preimageMorphisms = new Map<string, string>();
+  for (const m of rightPoset.morphisms) {
+    const gSrc = preimageMap.get(m.source);
+    const gTgt = preimageMap.get(m.target);
+    if (gSrc && gTgt) {
+      const target = leftPoset.morphisms.find((lm) => lm.source === gSrc && lm.target === gTgt);
+      if (target) preimageMorphisms.set(m.label, target.label);
+    }
+  }
+
+  const preimage: Functor = {
+    source: rightPoset,
+    target: leftPoset,
+    onObjects: preimageMap,
+    onMorphisms: preimageMorphisms,
+    contravariant: false,
+  };
+
+  return {
+    gc: { leftPoset, rightPoset, leftAdjoint: image, rightAdjoint: preimage },
+    description: 'Image ⊣ Preimage: f(A) ⊆ B ⟺ A ⊆ f⁻¹(B) for f: {1,2,3} → {a,b} with f(1)=f(2)=a, f(3)=b.',
+  };
+}
+
+/** Get all preset adjunctions for the AdjunctionExplorer. */
+export function getAdjunctionPresets(): {
+  name: string;
+  build: () => {
+    adj: Adjunction;
+    sourceCategory: Category;
+    targetCategory: Category;
+    description: string;
+  };
+}[] {
+  return [
+    { name: 'Free ⊣ Forgetful (Set ↔ Vec)', build: freeForgetfulVec },
+    { name: 'Free ⊣ Forgetful (Set ↔ Grp)', build: freeForgetfulGrp },
+    { name: 'Diagonal ⊣ Product', build: diagonalProduct },
+  ];
+}
+
+/** Get all preset Galois connections for the GaloisConnectionExplorer. */
+export function getGaloisPresets(): {
+  name: string;
+  build: () => {
+    gc: GaloisConnection;
+    description: string;
+  };
+}[] {
+  return [
+    { name: 'Floor ⊣ Inclusion (Z ↪ Q)', build: floorInclusion },
+    { name: 'Image ⊣ Preimage (f: {1,2,3} → {a,b})', build: imagePreimage },
+  ];
+}
