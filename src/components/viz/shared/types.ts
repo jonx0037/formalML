@@ -214,3 +214,22 @@ export interface FunctorMapping {
   morphismMap: Record<string, string>;
 }
 
+export interface NaturalTransformationComponent {
+  object: string;        // Source category object label
+  morphism: string;      // The component morphism label in the target category
+  source: string;        // F(object) in target category
+  target: string;        // G(object) in target category
+}
+
+export interface NaturalitySquareData {
+  topLeft: string;       // F(A)
+  topRight: string;      // G(A)
+  bottomLeft: string;    // F(B)
+  bottomRight: string;   // G(B)
+  top: string;           // alpha_A
+  bottom: string;        // alpha_B
+  left: string;          // F(f)
+  right: string;         // G(f)
+  commutes: boolean;     // Whether the square commutes
+}
+
