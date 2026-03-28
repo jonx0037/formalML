@@ -194,3 +194,22 @@ export interface ExpanderSubsetPair {
   bound: number;
 }
 
+// ─── Category Theory Types ───
+
+export interface CategoryObject {
+  label: string;
+  position?: [number, number];
+}
+
+export interface CategoryMorphism {
+  label: string;
+  source: string;
+  target: string;
+  isIdentity: boolean;
+}
+
+export interface FunctorMapping {
+  objectMap: Record<string, string>;
+  morphismMap: Record<string, string>;
+}
+
