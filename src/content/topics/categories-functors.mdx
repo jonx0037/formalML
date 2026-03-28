@@ -1,0 +1,604 @@
+---
+title: "Categories & Functors"
+subtitle: "Objects, morphisms, and functors — the abstract language that unifies disparate ML structures through composition"
+status: "published"
+difficulty: "foundational"
+prerequisites:
+  - "spectral-theorem"
+  - "measure-theoretic-probability"
+tags:
+  - "category-theory"
+  - "functors"
+  - "universal-properties"
+  - "morphisms"
+  - "composition"
+  - "hom-functor"
+domain: "category-theory"
+videoId: null
+notebookPath: "notebooks/categories-functors/01_categories_functors.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/categories-functors.mdx"
+datePublished: 2026-03-28
+estimatedReadTime: 45
+abstract: "A category organizes mathematical objects and the structure-preserving maps between them into a framework where composition is the fundamental operation. We develop the theory from the axioms — associativity of composition and the existence of identity morphisms — through the taxonomy of morphism types (isomorphisms, monomorphisms, epimorphisms) to functors, the structure-preserving maps between categories themselves. The gallery of examples spans the categories that ML practitioners work in daily: Set (data transformations), Vec (linear layers), Meas (probabilistic models), and Top (topological data analysis). Universal properties — the categorical way of characterizing constructions by what they do rather than what they are — give us products, coproducts, and initial and terminal objects, unifying Cartesian products of sets, direct sums of vector spaces, and meets and joins of posets under a single definition. The Hom functor reframes linear algebra: Hom(R^m, R^n) is the space of n-by-m matrices, and the covariant Hom functor captures post-composition. Endofunctors — functors from a category to itself — are the gateway to monads, the categorical structure underlying probabilistic programming and computational effects. Throughout, we emphasize that category theory is not an alternative to concrete mathematics but a language for seeing the compositional patterns that connect seemingly disparate ML structures."
+connections:
+  - topic: "spectral-theorem"
+    relationship: "The category Vec of finite-dimensional vector spaces over R is the primary running example. The Spectral Theorem guarantees that symmetric endomorphisms in Vec have complete eigenbases. Hom(R^m, R^n) = Mat(n x m) illustrates how the Hom functor concretely produces matrix spaces."
+  - topic: "measure-theoretic-probability"
+    relationship: "The category Meas of measurable spaces and measurable functions is the categorical setting for probability theory. Random variables are morphisms in Meas, probability measures are functorial, and conditional expectations are morphisms with specific universal properties."
+  - topic: "smooth-manifolds"
+    relationship: "The category Man of smooth manifolds and smooth maps underlies differential geometry. The tangent bundle construction T: Man -> VectBund is a functor. Riemannian geometry studies Man equipped with additional structure (metrics) that must be preserved by morphisms."
+  - topic: "convex-analysis"
+    relationship: "Convex sets and affine maps form a category. Products correspond to Cartesian products of convex sets. The subdifferential is functorial: it sends convex functions to set-valued maps in a composition-preserving way."
+  - topic: "graph-laplacians"
+    relationship: "Graphs and graph homomorphisms form a category Graph. The adjacency matrix construction is a functor from Graph to Vec. Graph neural networks compose morphisms in a learned category, and message passing is a natural transformation (coming in the next topic)."
+references:
+  - type: "book"
+    title: "Categories for the Working Mathematician"
+    authors: "Mac Lane"
+    year: 1998
+    note: "The standard graduate reference — Chapters I-IV cover categories, functors, natural transformations, and universal properties"
+  - type: "book"
+    title: "Category Theory"
+    authors: "Awodey"
+    year: 2010
+    note: "A more accessible introduction with excellent examples from algebra, topology, and logic"
+  - type: "book"
+    title: "Category Theory in Context"
+    authors: "Riehl"
+    year: 2016
+    note: "Modern treatment emphasizing the Yoneda lemma and adjunctions — freely available online"
+  - type: "book"
+    title: "An Invitation to Applied Category Theory: Seven Sketches in Compositionality"
+    authors: "Fong & Spivak"
+    year: 2019
+    note: "The applied perspective — connects categories to databases, circuits, and ML pipelines"
+  - type: "paper"
+    title: "Category Theory in Machine Learning"
+    authors: "Shiebler, Gavranović & Wilson"
+    year: 2021
+    url: "https://arxiv.org/abs/2106.07032"
+    note: "Survey of categorical methods in ML: functorial learning, categorical probability, gradient-based learning as lenses"
+  - type: "book"
+    title: "Category Theory for the Sciences"
+    authors: "Spivak"
+    year: 2014
+    note: "Categories as a modeling language for scientific structures"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import CategoryExplorer from '../../components/viz/CategoryExplorer.tsx';
+import FunctorVisualizer from '../../components/viz/FunctorVisualizer.tsx';
+import UniversalPropertyExplorer from '../../components/viz/UniversalPropertyExplorer.tsx';
+import CompositionExplorer from '../../components/viz/CompositionExplorer.tsx';
+
+## Overview & Motivation
+
+Machine learning is built on composition. A neural network is a sequence of layers applied one after the other. A data pipeline chains transformations end-to-end. A probabilistic model threads random variables through a sequence of conditional distributions. In every case, the structure that matters is not what the individual pieces *are* but how they *compose*.
+
+Category theory makes composition the central idea. A **category** is a collection of objects and morphisms (structure-preserving maps) between them, equipped with a composition operation that satisfies two axioms: associativity and the existence of identities. That's it — and from these two axioms, an enormous amount of structure follows.
+
+Why should an ML practitioner care? Because the categories that matter to us are the ones we already work in:
+
+- **Vec** — the category of vector spaces and linear maps. Every neural network layer is a morphism in **Vec** (or a nonlinear enrichment of it). The [Spectral Theorem](/topics/spectral-theorem) guarantees that symmetric endomorphisms in **Vec** have complete eigenbases.
+- **Meas** — the category of measurable spaces and measurable functions. Every random variable is a morphism in **Meas**. The entire apparatus of [measure-theoretic probability](/topics/measure-theoretic-probability) is the study of this category's structure.
+- **Set** — the category of sets and functions. Data transformations, feature maps, and loss functions are all morphisms in **Set**.
+- **Top** — the category of topological spaces and continuous maps. Topological data analysis works in **Top** and its subcategories.
+
+The power of category theory is not that it replaces these concrete settings — it is that it reveals the *compositional patterns* they share. A functor is a structure-preserving map between categories: it takes objects to objects and morphisms to morphisms, preserving composition and identities. The forgetful functor from **Vec** to **Set** "forgets" the linear structure and remembers only the underlying set. The adjacency matrix construction is a functor from the category of [graphs](/topics/graph-laplacians) to **Vec**. Recognizing these as instances of the same concept — functor — is what lets us transfer techniques across domains.
+
+**What we cover:**
+
+1. **Categories** — objects, morphisms, composition, identity, and the two axioms.
+2. **A gallery of categories** — the concrete categories that ML practitioners work in daily.
+3. **Morphism types** — isomorphisms, monomorphisms, epimorphisms, endomorphisms, automorphisms.
+4. **Functors** — covariant and contravariant structure-preserving maps between categories.
+5. **Opposite categories, Cat, and endofunctors** — the category of categories, duality, and self-maps.
+6. **Products, coproducts, and universal properties** — characterizing constructions by what they do.
+7. **The Hom functor** — the functor that reframes linear algebra.
+8. **Computational notes** — categories and functors in Python, neural networks as categorical composition.
+
+---
+
+## Categories: Objects, Morphisms, and Composition
+
+The central idea is composition. Before we give the formal definition, consider what composition means concretely: if $f: A \to B$ is a function from set $A$ to set $B$, and $g: B \to C$ is a function from $B$ to $C$, then the composite $g \circ f: A \to C$ is the function that first applies $f$, then applies $g$. This composite is *associative* — $(h \circ g) \circ f = h \circ (g \circ f)$ — and every set has an identity function $\mathrm{id}_A: A \to A$ that acts as a no-op for composition. A category axiomatizes exactly these two properties.
+
+<TheoremBlock type="definition" number={1} title="Category">
+A **category** $\mathcal{C}$ consists of:
+
+1. A collection $\mathrm{Ob}(\mathcal{C})$ of **objects**.
+2. For each pair of objects $A, B$, a set $\mathrm{Hom}(A, B)$ of **morphisms** (also called **arrows**) from $A$ to $B$. We write $f: A \to B$ to mean $f \in \mathrm{Hom}(A, B)$.
+3. For each triple of objects $A, B, C$, a **composition operation**
+
+$$\circ: \mathrm{Hom}(B, C) \times \mathrm{Hom}(A, B) \to \mathrm{Hom}(A, C)$$
+
+that sends $(g, f)$ to $g \circ f$.
+
+4. For each object $A$, an **identity morphism** $\mathrm{id}_A \in \mathrm{Hom}(A, A)$.
+
+These data satisfy two axioms:
+
+- **Associativity.** For all $f: A \to B$, $g: B \to C$, $h: C \to D$:
+
+$$h \circ (g \circ f) = (h \circ g) \circ f$$
+
+- **Identity.** For every morphism $f: A \to B$:
+
+$$f \circ \mathrm{id}_A = f = \mathrm{id}_B \circ f$$
+</TheoremBlock>
+
+The definition requires remarkably little: objects, arrows between them, a way to compose arrows, identity arrows, and two axioms. Notice what it does *not* require — it says nothing about what objects or morphisms "are" internally. A morphism is not required to be a function, and an object is not required to be a set. This generality is the source of the theory's power.
+
+<TheoremBlock type="proposition" number={1} title="Uniqueness of Identity">
+In any category $\mathcal{C}$, the identity morphism on each object is unique.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Suppose $e$ and $e'$ are both identity morphisms on object $A$. Then:
+
+$$e = e \circ e' = e'$$
+
+The first equality holds because $e'$ is an identity (so $e \circ e' = e$), and the second holds because $e$ is an identity (so $e \circ e' = e'$). $\blacksquare$
+</TheoremBlock>
+
+The following explorer lets you build small categories from scratch and verify the axioms interactively. Try the presets to see how different structures — a simple chain of arrows, a partially ordered set, even a monoid — all satisfy the same two axioms.
+
+<CategoryExplorer client:visible />
+
+![Category definition diagram showing three objects with morphisms, composition, and identity](/images/topics/categories-functors/categories-definition.png)
+
+---
+
+## A Gallery of Categories
+
+The power of the definition comes from the range of examples it encompasses. Here are the categories that ML practitioners encounter regularly. In every case, the pattern is the same: **objects are mathematical structures, and morphisms are the maps that preserve that structure**.
+
+| Category | Objects | Morphisms | Composition | Identity |
+|----------|---------|-----------|-------------|----------|
+| **Set** | Sets | Functions | Function composition | Identity function |
+| **Vec**$_\mathbb{R}$ | Real vector spaces | Linear maps | Matrix multiplication | Identity matrix |
+| **Grp** | Groups | Group homomorphisms | Composition of homomorphisms | Identity homomorphism |
+| **Top** | Topological spaces | Continuous maps | Composition | Identity map |
+| **Meas** | Measurable spaces | Measurable functions | Composition | Identity function |
+
+**Set** is the most familiar category. Its objects are sets, its morphisms are functions between sets, and composition is ordinary function composition. For an ML practitioner, **Set** is the category of data transformations: feature maps, loss functions, and evaluation metrics are all morphisms in **Set**.
+
+**Vec**$_\mathbb{R}$ is the workhorse of machine learning. Its objects are finite-dimensional real vector spaces, and its morphisms are linear maps. Every fully connected neural network layer (before the activation function) is a morphism in **Vec** — a matrix multiplication $\mathbf{x} \mapsto W\mathbf{x}$. The [Spectral Theorem](/topics/spectral-theorem) tells us that symmetric endomorphisms in **Vec** have complete eigenbases — a fact that drives spectral methods throughout ML.
+
+**Meas** is the category of [measure-theoretic probability](/topics/measure-theoretic-probability). Its objects are measurable spaces $(X, \mathcal{F})$, and its morphisms are measurable functions. A random variable $X: (\Omega, \mathcal{F}) \to (\mathbb{R}, \mathcal{B}(\mathbb{R}))$ is a morphism in **Meas**. Composition of random variables corresponds to chaining probabilistic transformations.
+
+Beyond these standard examples, there are categories built from algebraic structures:
+
+- **Posets as categories.** Any partially ordered set $(P, \leq)$ defines a category: the objects are the elements of $P$, and there is exactly one morphism from $a$ to $b$ if and only if $a \leq b$. Composition is transitivity: if $a \leq b$ and $b \leq c$, then $a \leq c$. The identity morphism on $a$ is the reflexivity $a \leq a$.
+
+- **Monoids as one-object categories.** A monoid $(M, \cdot, e)$ — a set with an associative binary operation and an identity element — is a category with a single object $*$. The morphisms are the elements of $M$, composition is the monoid operation $\cdot$, and the identity morphism is $e$. The integers $(\mathbb{Z}, +, 0)$ form a one-object category with morphisms $\ldots, -2, -1, 0, 1, 2, \ldots$
+
+- **Discrete categories.** A set $S$ with no structure beyond its elements forms a *discrete category*: the objects are the elements of $S$, and the only morphisms are the identities. Every object is an island.
+
+![Gallery of categories showing Set, Vec, Grp, Top, Meas, Poset, and Monoid structures](/images/topics/categories-functors/category-gallery.png)
+
+---
+
+## Morphism Types
+
+Within a category, morphisms have special properties that generalize familiar notions from set theory — injectivity, surjectivity, and bijectivity — to the abstract setting.
+
+<TheoremBlock type="definition" number={3} title="Isomorphism">
+A morphism $f: A \to B$ in a category $\mathcal{C}$ is an **isomorphism** if there exists a morphism $g: B \to A$ such that:
+
+$$g \circ f = \mathrm{id}_A \qquad \text{and} \qquad f \circ g = \mathrm{id}_B$$
+
+The morphism $g$ is called the **inverse** of $f$, written $f^{-1}$. If an isomorphism exists between $A$ and $B$, we write $A \cong B$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Uniqueness of Inverses">
+If $f: A \to B$ is an isomorphism, its inverse is unique.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Suppose $g$ and $g'$ are both inverses of $f$. Then:
+
+$$g = g \circ \mathrm{id}_B = g \circ (f \circ g') = (g \circ f) \circ g' = \mathrm{id}_A \circ g' = g'$$
+
+where we used associativity and the inverse properties. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={3} title="Composition of Isomorphisms">
+If $f: A \to B$ and $g: B \to C$ are isomorphisms, then $g \circ f: A \to C$ is an isomorphism with inverse $f^{-1} \circ g^{-1}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify both conditions:
+
+$$(f^{-1} \circ g^{-1}) \circ (g \circ f) = f^{-1} \circ (g^{-1} \circ g) \circ f = f^{-1} \circ \mathrm{id}_B \circ f = f^{-1} \circ f = \mathrm{id}_A$$
+
+$$(g \circ f) \circ (f^{-1} \circ g^{-1}) = g \circ (f \circ f^{-1}) \circ g^{-1} = g \circ \mathrm{id}_B \circ g^{-1} = g \circ g^{-1} = \mathrm{id}_C$$
+
+So $g \circ f$ is an isomorphism with inverse $f^{-1} \circ g^{-1}$. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={4} title="Monomorphism">
+A morphism $f: A \to B$ is a **monomorphism** (or is **monic**) if it is left-cancellable: for all morphisms $g_1, g_2: Z \to A$,
+
+$$f \circ g_1 = f \circ g_2 \implies g_1 = g_2$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={5} title="Epimorphism">
+A morphism $f: A \to B$ is an **epimorphism** (or is **epic**) if it is right-cancellable: for all morphisms $g_1, g_2: B \to Z$,
+
+$$g_1 \circ f = g_2 \circ f \implies g_1 = g_2$$
+</TheoremBlock>
+
+In **Set**, monomorphisms are exactly injective functions and epimorphisms are exactly surjective functions. But this correspondence does not hold in every category.
+
+<TheoremBlock type="proposition" number={4} title="Every Isomorphism is Mono and Epi">
+If $f: A \to B$ is an isomorphism, then $f$ is both a monomorphism and an epimorphism.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Mono:** Suppose $f \circ g_1 = f \circ g_2$. Applying $f^{-1}$ on the left: $f^{-1} \circ f \circ g_1 = f^{-1} \circ f \circ g_2$, so $g_1 = g_2$.
+
+**Epi:** Suppose $g_1 \circ f = g_2 \circ f$. Applying $f^{-1}$ on the right: $g_1 \circ f \circ f^{-1} = g_2 \circ f \circ f^{-1}$, so $g_1 = g_2$. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Mono + Epi ≠ Iso in General">
+The converse of Proposition 4 fails in general. The inclusion $\mathbb{Z} \hookrightarrow \mathbb{Q}$ is both monic and epic in the category **Ring** of rings and ring homomorphisms, but it is not an isomorphism — there is no ring homomorphism $\mathbb{Q} \to \mathbb{Z}$ that inverts the inclusion. The categorical notions of "injective" and "surjective" are genuinely more general than their set-theoretic counterparts.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={5} title="Composition of Monomorphisms">
+If $f: A \to B$ and $g: B \to C$ are monomorphisms, then $g \circ f: A \to C$ is a monomorphism.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Suppose $(g \circ f) \circ h_1 = (g \circ f) \circ h_2$ for some $h_1, h_2: Z \to A$. By associativity, $g \circ (f \circ h_1) = g \circ (f \circ h_2)$. Since $g$ is monic, $f \circ h_1 = f \circ h_2$. Since $f$ is monic, $h_1 = h_2$. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={6} title="Endomorphism and Automorphism">
+A morphism $f: A \to A$ (with the same source and target) is an **endomorphism**. The set of all endomorphisms of $A$ is denoted $\mathrm{End}(A) = \mathrm{Hom}(A, A)$.
+
+An endomorphism that is also an isomorphism is an **automorphism**. The set of automorphisms $\mathrm{Aut}(A)$ forms a group under composition.
+</TheoremBlock>
+
+In **Vec**, an endomorphism of $\mathbb{R}^n$ is an $n \times n$ matrix. An automorphism is an invertible matrix — an element of the general linear group $\mathrm{GL}(n, \mathbb{R})$.
+
+![Morphism types diagram showing isomorphism, monomorphism, epimorphism, endomorphism, and automorphism](/images/topics/categories-functors/morphism-types.png)
+
+---
+
+## Functors: Structure-Preserving Maps Between Categories
+
+If categories are mathematical universes with their own objects and composition laws, then functors are the *translations* between universes. A functor maps objects to objects and morphisms to morphisms, preserving the composition structure.
+
+<TheoremBlock type="definition" number={7} title="Functor (Covariant)">
+A **(covariant) functor** $F: \mathcal{C} \to \mathcal{D}$ between categories $\mathcal{C}$ and $\mathcal{D}$ consists of:
+
+1. A mapping on objects: for each object $A \in \mathrm{Ob}(\mathcal{C})$, an object $F(A) \in \mathrm{Ob}(\mathcal{D})$.
+2. A mapping on morphisms: for each morphism $f: A \to B$ in $\mathcal{C}$, a morphism $F(f): F(A) \to F(B)$ in $\mathcal{D}$.
+
+These mappings satisfy two axioms:
+
+- **Preservation of composition.** For all composable morphisms $f: A \to B$ and $g: B \to C$:
+
+$$F(g \circ f) = F(g) \circ F(f)$$
+
+- **Preservation of identities.** For every object $A$:
+
+$$F(\mathrm{id}_A) = \mathrm{id}_{F(A)}$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={8} title="Contravariant Functor">
+A **contravariant functor** $F: \mathcal{C} \to \mathcal{D}$ reverses the direction of morphisms: for each $f: A \to B$ in $\mathcal{C}$, the image is $F(f): F(B) \to F(A)$ in $\mathcal{D}$. The composition axiom becomes:
+
+$$F(g \circ f) = F(f) \circ F(g)$$
+
+Equivalently, a contravariant functor $\mathcal{C} \to \mathcal{D}$ is a covariant functor $\mathcal{C}^{\mathrm{op}} \to \mathcal{D}$.
+</TheoremBlock>
+
+**Key examples:**
+
+- **Forgetful functor** $U: \mathbf{Vec} \to \mathbf{Set}$. Sends each vector space $V$ to its underlying set $U(V)$ (forgetting the linear structure) and each linear map $T$ to the underlying function $U(T)$. This "forgets" the algebraic structure — a vector space is just a set with extra properties, and a linear map is just a function that happens to be linear.
+
+- **Free functor** $F: \mathbf{Set} \to \mathbf{Vec}$. Sends each set $S$ to the free vector space $F(S) = \mathbb{R}^S$ (with basis elements indexed by $S$) and each function $f: S \to T$ to the linear extension $F(f): \mathbb{R}^S \to \mathbb{R}^T$. This "freely adds" linear structure.
+
+- **Power set functor** $P: \mathbf{Set} \to \mathbf{Set}$. Sends each set $X$ to its power set $P(X) = 2^X$ and each function $f: X \to Y$ to the direct image map $P(f): P(X) \to P(Y)$ defined by $P(f)(S) = f(S) = \{f(x) \mid x \in S\}$.
+
+<TheoremBlock type="theorem" number={1} title="Functors Preserve Isomorphisms">
+If $F: \mathcal{C} \to \mathcal{D}$ is a functor and $f: A \to B$ is an isomorphism in $\mathcal{C}$, then $F(f): F(A) \to F(B)$ is an isomorphism in $\mathcal{D}$ with inverse $F(f^{-1})$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Since $f \circ f^{-1} = \mathrm{id}_B$ and $f^{-1} \circ f = \mathrm{id}_A$, applying $F$:
+
+$$F(f) \circ F(f^{-1}) = F(f \circ f^{-1}) = F(\mathrm{id}_B) = \mathrm{id}_{F(B)}$$
+
+$$F(f^{-1}) \circ F(f) = F(f^{-1} \circ f) = F(\mathrm{id}_A) = \mathrm{id}_{F(A)}$$
+
+So $F(f)$ is an isomorphism with inverse $F(f^{-1})$. $\blacksquare$
+</TheoremBlock>
+
+The following visualizer shows how functors map objects and morphisms between categories. Select a functor from the dropdown to see the mapping in action — notice how the connecting arrows show which objects and morphisms correspond, and how the axiom verifier confirms that composition and identities are preserved.
+
+<FunctorVisualizer client:visible />
+
+![Functor diagram showing covariant and contravariant mappings between categories](/images/topics/categories-functors/functors-definition.png)
+
+---
+
+## Opposite Categories, Cat, and Endofunctors
+
+<TheoremBlock type="definition" number={9} title="Opposite Category">
+Given a category $\mathcal{C}$, the **opposite category** $\mathcal{C}^{\mathrm{op}}$ has:
+
+- The same objects as $\mathcal{C}$.
+- Reversed morphisms: for each $f: A \to B$ in $\mathcal{C}$, there is a morphism $f^{\mathrm{op}}: B \to A$ in $\mathcal{C}^{\mathrm{op}}$.
+- Reversed composition: if $g \circ f$ is defined in $\mathcal{C}$, then $f^{\mathrm{op}} \circ g^{\mathrm{op}} = (g \circ f)^{\mathrm{op}}$ in $\mathcal{C}^{\mathrm{op}}$.
+</TheoremBlock>
+
+The opposite category is a powerful tool for duality. Every theorem about categories has a **dual theorem** obtained by replacing $\mathcal{C}$ with $\mathcal{C}^{\mathrm{op}}$. Under this substitution, source and target swap, monomorphisms become epimorphisms, products become coproducts, and initial objects become terminal objects. We get two theorems for the price of one.
+
+A contravariant functor $F: \mathcal{C} \to \mathcal{D}$ is the same thing as a covariant functor $F: \mathcal{C}^{\mathrm{op}} \to \mathcal{D}$. This reformulation often simplifies proofs — instead of tracking arrow reversals, we simply work with the opposite category.
+
+**The category Cat.** Small categories themselves form a category, written **Cat**:
+
+- **Objects:** Small categories (those whose objects and morphisms form sets).
+- **Morphisms:** Functors between categories.
+- **Composition:** Functor composition — $(G \circ F)(A) = G(F(A))$ on objects, $(G \circ F)(f) = G(F(f))$ on morphisms.
+- **Identity:** The identity functor $\mathrm{Id}_\mathcal{C}: \mathcal{C} \to \mathcal{C}$ sending every object and morphism to itself.
+
+**Endofunctors.** A functor $F: \mathcal{C} \to \mathcal{C}$ from a category to itself is an **endofunctor**. Endofunctors can be iterated: $F^2 = F \circ F$, $F^3 = F \circ F \circ F$, and so on. The power set functor $P: \mathbf{Set} \to \mathbf{Set}$ is an endofunctor.
+
+A functor $F: \mathcal{C} \to \mathcal{D}$ is:
+
+- **Faithful** if $F$ is injective on each Hom set: $F(f) = F(g) \implies f = g$ for all $f, g: A \to B$.
+- **Full** if $F$ is surjective on each Hom set: every morphism $F(A) \to F(B)$ in $\mathcal{D}$ is of the form $F(f)$ for some $f: A \to B$ in $\mathcal{C}$.
+- **Fully faithful** if $F$ is bijective on each Hom set. A fully faithful functor is an "embedding" — it identifies $\mathcal{C}$ with a subcategory of $\mathcal{D}$.
+
+The forgetful functor $U: \mathbf{Vec} \to \mathbf{Set}$ is faithful (distinct linear maps are distinct as functions) but not full (not every function between vector spaces is linear).
+
+<TheoremBlock type="remark" title="Endofunctors and Monads (Preview)">
+An endofunctor $T: \mathcal{C} \to \mathcal{C}$ equipped with two natural transformations — a *unit* $\eta: \mathrm{Id} \Rightarrow T$ and a *multiplication* $\mu: T^2 \Rightarrow T$ — satisfying associativity and unit laws is a **monad**. Monads are the categorical structure underlying probabilistic programming (the Giry monad on **Meas**), Haskell's IO, and computational effects more generally. We develop this in **Monads & Comonads** *(coming soon)*.
+</TheoremBlock>
+
+![Opposite categories, Cat, and endofunctors diagram](/images/topics/categories-functors/cat-opposite-endofunctor.png)
+
+---
+
+## Products, Coproducts, and Universal Properties
+
+Category theory characterizes mathematical constructions not by *what they are made of* but by *what they do*. The tool for this is the **universal property**: a construction is defined by being the best solution to a particular mapping problem. This is a profound shift in perspective — from internal structure to external relationships.
+
+<TheoremBlock type="definition" number={10} title="Product (Universal Property)">
+Let $A$ and $B$ be objects in a category $\mathcal{C}$. A **product** of $A$ and $B$ is an object $A \times B$ together with morphisms $\pi_1: A \times B \to A$ and $\pi_2: A \times B \to B$ (called **projections**) such that for every object $Z$ and morphisms $f: Z \to A$ and $g: Z \to B$, there exists a **unique** morphism $h: Z \to A \times B$ satisfying:
+
+$$\pi_1 \circ h = f \qquad \text{and} \qquad \pi_2 \circ h = g$$
+
+We write $h = \langle f, g \rangle$.
+</TheoremBlock>
+
+The word "unique" in the definition is doing all the work. Many objects might come equipped with morphisms to $A$ and $B$, but the product is the one through which *all* such morphisms factor uniquely.
+
+<TheoremBlock type="definition" number={11} title="Coproduct (Universal Property)">
+The **coproduct** $A \sqcup B$ is the dual construction. It comes with **inclusions** $\iota_1: A \to A \sqcup B$ and $\iota_2: B \to A \sqcup B$ such that for every object $Z$ and morphisms $f: A \to Z$ and $g: B \to Z$, there exists a **unique** morphism $h: A \sqcup B \to Z$ satisfying:
+
+$$h \circ \iota_1 = f \qquad \text{and} \qquad h \circ \iota_2 = g$$
+
+We write $h = [f, g]$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={6} title="Product Uniqueness">
+If $(P, \pi_1, \pi_2)$ and $(P', \pi_1', \pi_2')$ are both products of $A$ and $B$, then $P \cong P'$ via a unique isomorphism compatible with the projections.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By the universal property of $P$, there is a unique $h: P' \to P$ with $\pi_1 \circ h = \pi_1'$ and $\pi_2 \circ h = \pi_2'$. By the universal property of $P'$, there is a unique $h': P \to P'$ with $\pi_1' \circ h' = \pi_1$ and $\pi_2' \circ h' = \pi_2$. Then $h' \circ h: P' \to P'$ satisfies $\pi_1' \circ (h' \circ h) = \pi_1'$ and $\pi_2' \circ (h' \circ h) = \pi_2'$. But $\mathrm{id}_{P'}$ also satisfies these equations, so by uniqueness $h' \circ h = \mathrm{id}_{P'}$. Similarly $h \circ h' = \mathrm{id}_P$. $\blacksquare$
+</TheoremBlock>
+
+The concrete meaning of products and coproducts depends on the category:
+
+| Category | Product $A \times B$ | Coproduct $A \sqcup B$ |
+|----------|---------------------|------------------------|
+| **Set** | Cartesian product | Disjoint union |
+| **Vec** | Direct sum $A \oplus B$ | Direct sum $A \oplus B$ |
+| **Grp** | Direct product | Free product |
+| **Top** | Product topology | Disjoint union topology |
+| **Poset** | Meet (greatest lower bound) | Join (least upper bound) |
+
+In **Vec**, the product and coproduct coincide — both are the direct sum. This is a special property of abelian categories.
+
+<TheoremBlock type="definition" number={12} title="Initial and Terminal Objects">
+An object $\mathbf{0}$ is **initial** if for every object $Z$, there exists a unique morphism $\mathbf{0} \to Z$.
+
+An object $\mathbf{1}$ is **terminal** if for every object $Z$, there exists a unique morphism $Z \to \mathbf{1}$.
+</TheoremBlock>
+
+In **Set**, the initial object is the empty set $\emptyset$ (there is exactly one function $\emptyset \to X$ for any set $X$ — the empty function), and the terminal object is any singleton set $\{*\}$ (for any set $X$, the unique function $X \to \{*\}$ sends everything to $*$). In **Vec**, the zero vector space $\{0\}$ is both initial and terminal — a **zero object**.
+
+<UniversalPropertyExplorer client:visible />
+
+![Products, coproducts, and universal properties diagram](/images/topics/categories-functors/products-coproducts-universal.png)
+
+---
+
+## The Hom Functor
+
+The Hom functor is one of the most important constructions in category theory. It takes two objects and produces their "space of maps" — and this construction is itself functorial.
+
+<TheoremBlock type="definition" number={13} title="Hom Functor">
+Let $\mathcal{C}$ be a locally small category (one where each $\mathrm{Hom}(A, B)$ is a set). Fix an object $A \in \mathcal{C}$.
+
+The **covariant Hom functor** $\mathrm{Hom}(A, -): \mathcal{C} \to \mathbf{Set}$ is defined by:
+- On objects: $B \mapsto \mathrm{Hom}(A, B)$.
+- On morphisms: given $g: B \to C$, the map $\mathrm{Hom}(A, g): \mathrm{Hom}(A, B) \to \mathrm{Hom}(A, C)$ is post-composition: $f \mapsto g \circ f$.
+
+The **contravariant Hom functor** $\mathrm{Hom}(-, A): \mathcal{C}^{\mathrm{op}} \to \mathbf{Set}$ is defined by:
+- On objects: $B \mapsto \mathrm{Hom}(B, A)$.
+- On morphisms: given $f: B \to C$, the map $\mathrm{Hom}(f, A): \mathrm{Hom}(C, A) \to \mathrm{Hom}(B, A)$ is pre-composition: $g \mapsto g \circ f$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="Hom is a Bifunctor">
+The combined construction $\mathrm{Hom}(-, -): \mathcal{C}^{\mathrm{op}} \times \mathcal{C} \to \mathbf{Set}$ is a functor — contravariant in the first argument and covariant in the second. Given morphisms $f: A' \to A$ and $g: B \to B'$, the induced map:
+
+$$\mathrm{Hom}(f, g): \mathrm{Hom}(A, B) \to \mathrm{Hom}(A', B')$$
+
+sends $h \mapsto g \circ h \circ f$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We verify functoriality. For identities: $\mathrm{Hom}(\mathrm{id}_A, \mathrm{id}_B)(h) = \mathrm{id}_B \circ h \circ \mathrm{id}_A = h$, so $\mathrm{Hom}(\mathrm{id}_A, \mathrm{id}_B) = \mathrm{id}_{\mathrm{Hom}(A,B)}$.
+
+For composition: given $f': A'' \to A'$, $f: A' \to A$, $g: B \to B'$, $g': B' \to B''$:
+
+$$\mathrm{Hom}(f \circ f', g' \circ g)(h) = (g' \circ g) \circ h \circ (f \circ f') = g' \circ (g \circ h \circ f) \circ f' = \mathrm{Hom}(f', g')(\mathrm{Hom}(f, g)(h))$$
+
+so $\mathrm{Hom}(f \circ f', g' \circ g) = \mathrm{Hom}(f', g') \circ \mathrm{Hom}(f, g)$. $\blacksquare$
+</TheoremBlock>
+
+**The Hom functor concretizes linear algebra.** In **Vec**, $\mathrm{Hom}(\mathbb{R}^m, \mathbb{R}^n)$ is the space of all linear maps from $\mathbb{R}^m$ to $\mathbb{R}^n$ — which is isomorphic to $\mathrm{Mat}(n \times m)$, the space of $n$-by-$m$ matrices. The covariant Hom functor $\mathrm{Hom}(\mathbb{R}^m, -)$ sends a vector space $V$ to the matrix space $\mathrm{Mat}(\dim V \times m)$ and sends a linear map $T: V \to W$ to post-composition by $T$ — which is matrix multiplication on the left.
+
+A functor $F: \mathcal{C} \to \mathbf{Set}$ is **representable** if it is naturally isomorphic to $\mathrm{Hom}(A, -)$ for some object $A$. The representing object $A$ is unique up to isomorphism. Representable functors are ubiquitous: the functor sending a group to its underlying set is representable (represented by $\mathbb{Z}$), and the functor sending a vector space to its dual is represented by the ground field.
+
+The **Yoneda Lemma** — the deepest result in basic category theory — says that natural transformations from $\mathrm{Hom}(A, -)$ to any functor $F$ are in bijection with elements of $F(A)$. We develop the Yoneda Lemma fully in **Natural Transformations** *(coming soon)*.
+
+![Hom functor diagram showing covariant and contravariant cases, and matrix interpretation](/images/topics/categories-functors/hom-functor.png)
+
+---
+
+## Computational Notes
+
+Categories and functors are not only abstract mathematics — they have direct computational implementations. Here we show how to represent finite categories in Python and verify functorial properties programmatically.
+
+**A Python category class.** A finite category can be represented as a dictionary of Hom sets with a composition function:
+
+```python
+class Category:
+    """A finite category with explicit objects, morphisms, and composition."""
+    def __init__(self, objects, hom, compose, identity):
+        self.objects = objects        # list of object labels
+        self.hom = hom                # dict: (A, B) -> list of morphism labels
+        self.compose = compose        # function: (g, f) -> g ∘ f or None
+        self.identity = identity      # function: A -> id_A
+
+# Example: the triangle category {A, B, C}
+triangle = Category(
+    objects=['A', 'B', 'C'],
+    hom={
+        ('A','A'): ['id_A'], ('B','B'): ['id_B'], ('C','C'): ['id_C'],
+        ('A','B'): ['f'],    ('B','C'): ['g'],    ('A','C'): ['gf'],
+    },
+    compose=lambda g, f: {'g,f': 'gf', 'id_B,f': 'f', 'g,id_B': 'g',
+                          'id_A,id_A': 'id_A', 'gf,id_A': 'gf',
+                          'id_C,gf': 'gf', 'id_C,g': 'g', 'f,id_A': 'f',
+                          'id_B,id_B': 'id_B', 'id_C,id_C': 'id_C'}.get(f'{g},{f}'),
+    identity=lambda A: f'id_{A}',
+)
+```
+
+**A functor class with axiom verification:**
+
+```python
+class Functor:
+    """A functor F: C -> D with axiom checking."""
+    def __init__(self, source, target, on_objects, on_morphisms):
+        self.source = source
+        self.target = target
+        self.on_obj = on_objects       # dict: src_obj -> tgt_obj
+        self.on_mor = on_morphisms     # dict: src_mor -> tgt_mor
+
+    def verify_identities(self):
+        """Check F(id_A) = id_{F(A)} for all objects."""
+        for A in self.source.objects:
+            src_id = self.source.identity(A)
+            tgt_id = self.target.identity(self.on_obj[A])
+            assert self.on_mor[src_id] == tgt_id, f"Failed on {A}"
+        return True
+
+    def verify_composition(self):
+        """Check F(g ∘ f) = F(g) ∘ F(f) for all composable pairs."""
+        for g_label in sum(self.source.hom.values(), []):
+            for f_label in sum(self.source.hom.values(), []):
+                gf = self.source.compose(g_label, f_label)
+                if gf is not None:
+                    Fgf = self.on_mor[gf]
+                    Fg_Ff = self.target.compose(self.on_mor[g_label], self.on_mor[f_label])
+                    assert Fgf == Fg_Ff, f"Failed on ({g_label}, {f_label})"
+        return True
+```
+
+**Neural networks as categorical composition.** A feedforward neural network is a sequence of morphisms in (an enrichment of) **Vec**:
+
+```python
+import torch.nn as nn
+
+# A 3-layer network: R^784 → R^256 → R^128 ��� R^10
+# Each layer is a morphism in Vec (before activation)
+network = nn.Sequential(
+    nn.Linear(784, 256),   # f: R^784 → R^256
+    nn.ReLU(),
+    nn.Linear(256, 128),   # g: R^256 → R^128
+    nn.ReLU(),
+    nn.Linear(128, 10),    # h: R^128 → R^10
+)
+# The composite h ∘ g ∘ f: R^784 → R^10 is associative
+# by construction — (h ∘ g) ∘ f = h ∘ (g ∘ f)
+```
+
+<TheoremBlock type="remark" title="Neural Networks as Categorical Composition">
+Strictly speaking, a ReLU network is not a morphism in **Vec** because the activation function is nonlinear. The precise categorical setting is the category of smooth manifolds (for differentiable activations) or the category of Lipschitz functions. But the compositional structure — the fact that the whole network is built by composing layers — is the categorical pattern. The linear parts are honest morphisms in **Vec**, and backpropagation respects the composition via the chain rule: $\frac{\partial(g \circ f)}{\partial x} = \frac{\partial g}{\partial f(x)} \cdot \frac{\partial f}{\partial x}$.
+</TheoremBlock>
+
+The following explorer demonstrates associativity concretely. Select a category — **Set**, **Vec**, or **Poset** — and step through the composition of three morphisms. Both parenthesizations produce the same result, making associativity visceral rather than axiomatic.
+
+<CompositionExplorer client:visible />
+
+![ML connections diagram showing neural network layers as morphisms and functorial data pipelines](/images/topics/categories-functors/categories-ml-connections.png)
+
+---
+
+## Connections & Further Reading
+
+### Where this fits
+
+Categories and functors are the foundation of the Category Theory track. Everything that follows builds on the definitions and examples introduced here:
+
+- **Natural Transformations** *(coming soon)* — Natural transformations are morphisms *between* functors — the next level of abstraction. The Yoneda lemma, which characterizes objects by their morphisms, is the deepest result in basic category theory.
+
+- **Adjunctions** *(coming soon)* — The free-forgetful pair $F \dashv U$ between **Set** and **Vec** is an adjunction — the categorical formalization of "optimal" constructions that pervades algebra, topology, and ML.
+
+- **Monads & Comonads** *(coming soon)* — An endofunctor $T: \mathcal{C} \to \mathcal{C}$ equipped with natural transformations $\eta: \mathrm{Id} \Rightarrow T$ (unit) and $\mu: T^2 \Rightarrow T$ (multiplication) satisfying associativity and unit laws is a monad — the categorical structure underlying probabilistic programming, Haskell's IO, and computational effects.
+
+### Cross-track connections
+
+The language of categories and functors connects to every prior track on formalML:
+
+- The [Spectral Theorem](/topics/spectral-theorem) guarantees that symmetric endomorphisms in **Vec** have complete eigenbases — the eigendecomposition of the graph Laplacian, the covariance matrix in PCA, and the kernel matrix in SVMs all rely on this fact about the category **Vec**.
+
+- [Measure-Theoretic Probability](/topics/measure-theoretic-probability) works in the category **Meas** of measurable spaces. Random variables are morphisms, and the pushforward of probability measures is a functor.
+
+- The category of [graphs and graph homomorphisms](/topics/graph-laplacians) is a concrete example where the adjacency matrix construction is a functor from **Graph** to **Vec**.
+
+- [Smooth Manifolds](/topics/smooth-manifolds) form a category **Man** where the tangent bundle construction $T: \mathbf{Man} \to \mathbf{VectBund}$ is a functor.
+
+- [Convex Analysis](/topics/convex-analysis): convex sets and affine maps form a category where products are Cartesian products and the subdifferential is functorial.
+
+### Notation summary
+
+| Symbol | Meaning |
+|--------|---------|
+| $\mathcal{C}, \mathcal{D}$ | Categories |
+| $\mathrm{Ob}(\mathcal{C})$ | Objects of $\mathcal{C}$ |
+| $\mathrm{Hom}(A, B)$ | Morphisms from $A$ to $B$ |
+| $f: A \to B$ | A morphism from $A$ to $B$ |
+| $g \circ f$ | Composition (apply $f$ first, then $g$) |
+| $\mathrm{id}_A$ | Identity morphism on $A$ |
+| $F: \mathcal{C} \to \mathcal{D}$ | Functor from $\mathcal{C}$ to $\mathcal{D}$ |
+| $\mathcal{C}^{\mathrm{op}}$ | Opposite category |
+| $A \times B$ | Product |
+| $A \sqcup B$ | Coproduct |
+| $\pi_1, \pi_2$ | Projections |
+| $\iota_1, \iota_2$ | Inclusions |
+| $\exists!\, h$ | Unique existence |
+| $\mathrm{End}(A)$ | Endomorphisms of $A$ |
+| $\mathrm{Aut}(A)$ | Automorphisms of $A$ |
+| $A \cong B$ | $A$ is isomorphic to $B$ |
+| $\mathbf{Set}, \mathbf{Vec}, \mathbf{Grp}, \mathbf{Top}, \mathbf{Meas}$ | Named categories |
+| $\mathbf{Cat}$ | Category of small categories |
