@@ -1,0 +1,564 @@
+---
+title: "Message Passing & GNNs"
+subtitle: "From spectral graph convolutions to neighborhood aggregation — the mathematical foundations of graph neural networks"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "graph-laplacians"
+  - "random-walks"
+  - "expander-graphs"
+tags:
+  - "graph-theory"
+  - "graph-neural-networks"
+  - "message-passing"
+  - "weisfeiler-leman"
+  - "over-smoothing"
+  - "graph-attention"
+  - "graph-rewiring"
+domain: "graph-theory"
+videoId: null
+notebookPath: null
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/message-passing.mdx"
+datePublished: 2026-03-28
+estimatedReadTime: 50
+abstract: "Message passing neural networks learn graph representations by iteratively aggregating information along edges: at each layer, every node collects features from its neighbors, transforms the result, and produces an updated embedding. This framework unifies the Graph Theory track. The GCN update rule is a first-order polynomial of the normalized Laplacian — Laplacian smoothing with learnable weights. Repeated message passing drives node features toward the stationary distribution of the random walk on the graph, with the spectral gap controlling the convergence rate — the over-smoothing phenomenon. The Weisfeiler-Leman isomorphism test provides the expressiveness ceiling: no message passing GNN can distinguish graphs that 1-WL cannot, and GIN (sum aggregation + MLP) achieves this ceiling. Graph Attention Networks generalize GCN by learning data-dependent edge weights, effectively performing soft graph rewiring. Expander-based rewiring methods (FoSR, SDRF) explicitly increase the spectral gap by adding shortcut edges, trading the O(log n) mixing time of expanders for faster information propagation — but inheriting the O(log n) over-smoothing depth as a fundamental tradeoff."
+connections:
+  - topic: "graph-laplacians"
+    relationship: "The GCN update rule is a first-order polynomial of the normalized Laplacian: spectral graph convolutions filter signals via the Laplacian eigendecomposition. The Fiedler vector drives spectral rewiring (FoSR), and Cheeger's inequality bounds the information bottleneck that limits message passing depth."
+  - topic: "random-walks"
+    relationship: "Over-smoothing is random walk convergence: repeated application of the normalized adjacency drives features to the stationary distribution π. The spectral gap γ = 1 − λ₂(P) controls the over-smoothing rate, and the mixing time bounds from random walk theory directly predict GNN depth limits."
+  - topic: "expander-graphs"
+    relationship: "Expanders give O(log n) receptive fields but also O(log n) over-smoothing depth — the fundamental tradeoff. Expander-based rewiring (FoSR, SDRF) increases λ₂ to improve information flow. The Expander Mixing Lemma implies quasi-random message passing on expanders."
+  - topic: "spectral-theorem"
+    relationship: "The spectral decomposition of the normalized adjacency underlies both the GCN smoothing analysis and the over-smoothing convergence proof. The eigenvectors form the graph Fourier basis, and eigenvalue bounds govern the convergence rate of iterated message passing."
+  - topic: "gradient-descent"
+    relationship: "GNNs are trained via backpropagation through L layers of message passing. The gradient flows through Â^L, where vanishing/exploding gradient behavior is governed by the spectral radius — the same convergence analysis from gradient descent theory."
+  - topic: "pca-low-rank"
+    relationship: "Node embeddings from GNNs approximate a low-rank factorization of the graph. DeepWalk is implicit matrix factorization (Qiu et al. 2018). Spectral clustering uses the bottom Laplacian eigenvectors as a low-rank embedding — the non-parametric precursor to learned graph embeddings."
+  - topic: "concentration-inequalities"
+    relationship: "PAC-style generalization bounds for GNNs use Rademacher complexity and VC dimension. The number of message-passing layers affects the model's effective capacity, and concentration inequalities bound the gap between training and test performance."
+references:
+  - type: "paper"
+    title: "Semi-Supervised Classification with Graph Convolutional Networks"
+    authors: "Kipf & Welling"
+    year: 2017
+    url: "https://arxiv.org/abs/1609.02907"
+    note: "The GCN paper — spectral derivation, renormalization trick, and the architecture that launched graph deep learning"
+  - type: "paper"
+    title: "Neural Message Passing for Quantum Chemistry"
+    authors: "Gilmer, Schoenholz, Riley, Vinyals & Dahl"
+    year: 2017
+    url: "https://arxiv.org/abs/1704.01212"
+    note: "The MPNN framework that unifies GNN architectures into aggregate-update-readout"
+  - type: "paper"
+    title: "How Powerful are Graph Neural Networks?"
+    authors: "Xu, Hu, Leskovec & Jegelka"
+    year: 2019
+    url: "https://arxiv.org/abs/1810.00826"
+    note: "GIN paper — proves MPNN ≤ 1-WL expressiveness and shows GIN matches 1-WL"
+  - type: "paper"
+    title: "Graph Attention Networks"
+    authors: "Veličković, Cucurull, Casanova, Romero, Liò & Bengio"
+    year: 2018
+    url: "https://arxiv.org/abs/1710.10903"
+    note: "GAT — learned attention-based aggregation replacing uniform neighborhood weights"
+  - type: "paper"
+    title: "Deeper Insights into Graph Convolutional Networks for Semi-Supervised Learning"
+    authors: "Li, Han & Wu"
+    year: 2018
+    url: "https://arxiv.org/abs/1801.07606"
+    note: "Over-smoothing analysis — proves GCN is Laplacian smoothing and characterizes depth limits"
+  - type: "paper"
+    title: "Understanding Over-Squashing and Bottlenecks on Graphs via Curvature"
+    authors: "Topping, Di Giovanni, Chamberlain, Dong & Bronstein"
+    year: 2022
+    url: "https://arxiv.org/abs/2111.14522"
+    note: "SDRF rewiring — discrete Ricci curvature identifies bottlenecks and guides edge addition"
+  - type: "paper"
+    title: "Expander Graph Propagation"
+    authors: "Deac, Lackenby & Veličković"
+    year: 2022
+    url: "https://arxiv.org/abs/2210.02997"
+    note: "FoSR — first-order spectral rewiring using the Fiedler vector to maximize λ₂"
+  - type: "paper"
+    title: "Convolutional Neural Networks on Graphs with Fast Localized Spectral Filtering"
+    authors: "Defferrard, Bresson & Vandergheynst"
+    year: 2016
+    url: "https://arxiv.org/abs/1606.09375"
+    note: "ChebNet — Chebyshev polynomial spectral filters, the precursor to GCN"
+  - type: "paper"
+    title: "Weisfeiler and Leman Go Neural: Higher-Order Graph Neural Networks"
+    authors: "Morris, Ritzert, Fey, Hamilton, Lenssen, Rattan & Grohe"
+    year: 2019
+    url: "https://arxiv.org/abs/1810.02244"
+    note: "k-WL GNNs — higher-order expressiveness beyond standard message passing"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import MessagePassingExplorer from '../../components/viz/MessagePassingExplorer.tsx';
+import WLExpressivenessExplorer from '../../components/viz/WLExpressivenessExplorer.tsx';
+import OverSmoothingAnalyzer from '../../components/viz/OverSmoothingAnalyzer.tsx';
+
+## Overview & Motivation
+
+A graph neural network learns representations by passing messages along edges. At each layer, every node aggregates information from its neighbors, transforms the result, and produces an updated feature vector. After $L$ layers, each node's representation encodes the structure of its $L$-hop neighborhood.
+
+This idea unifies the entire Graph Theory track:
+
+- **Graph Laplacians:** The GCN update rule $H^{(\ell+1)} = \sigma(\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2} H^{(\ell)} W^{(\ell)})$ is one step of Laplacian smoothing on the renormalized graph. The filter is a first-order polynomial of the [normalized Laplacian](/topics/graph-laplacians).
+- **Random Walks:** Repeated message passing drives node features toward the [stationary distribution](/topics/random-walks) $\boldsymbol{\pi}$. The spectral gap $\gamma$ controls how many layers before features become indistinguishable — the over-smoothing phenomenon.
+- **Expander Graphs:** On [expanders](/topics/expander-graphs), information reaches all nodes in $O(\log n)$ layers — optimal receptive field growth. But over-smoothing also occurs in $O(\log n)$ layers. Expander-based rewiring adds long-range edges to bottlenecked graphs, importing the expansion benefits without the over-smoothing cost.
+
+**What this topic covers:**
+
+- **The message passing framework** — aggregate, update, readout as the universal GNN template.
+- **Spectral graph convolutions** — from the graph Fourier transform to ChebNet to GCN as Laplacian smoothing.
+- **Spatial graph convolutions** — GCN, GraphSAGE, GIN, and the neighborhood aggregation perspective.
+- **The Weisfeiler-Leman test** — 1-WL isomorphism test, equivalence to message passing GNNs, and the expressiveness hierarchy.
+- **Attention-based message passing** — Graph Attention Networks (GAT) and learned edge weights.
+- **Over-smoothing** — the random walk convergence connection, Dirichlet energy decay, and depth limitations.
+- **Expander-based graph rewiring** — SDRF, FoSR, and spectral gap optimization as architectural design.
+
+---
+
+## The Message Passing Framework
+
+The message passing neural network (MPNN) framework unifies virtually all graph neural network architectures into three phases: **aggregate**, **update**, and **readout**. We develop each in turn.
+
+### The MPNN Template
+
+<TheoremBlock type="definition" title="Definition 1 — Message Passing Neural Network (MPNN)">
+A message passing neural network operates on a graph $G = (V, E)$ with node features $\mathbf{h}_v^{(0)} \in \mathbb{R}^{d_0}$. At each layer $\ell = 0, \ldots, L-1$, two operations transform the features:
+
+$$\mathbf{m}_v^{(\ell)} = \bigoplus_{u \in \mathcal{N}(v)} \phi^{(\ell)}\left(\mathbf{h}_v^{(\ell)}, \mathbf{h}_u^{(\ell)}, \mathbf{e}_{vu}\right) \quad \text{(Aggregate)}$$
+
+$$\mathbf{h}_v^{(\ell+1)} = \psi^{(\ell)}\left(\mathbf{h}_v^{(\ell)}, \mathbf{m}_v^{(\ell)}\right) \quad \text{(Update)}$$
+
+where $\bigoplus$ is a permutation-invariant aggregation (sum, mean, max), $\phi^{(\ell)}$ is the message function, $\psi^{(\ell)}$ is the update function, and $\mathbf{e}_{vu}$ encodes optional edge features.
+
+For graph-level tasks, a readout function pools all node representations:
+
+$$\mathbf{h}_G = \text{READOUT}\left(\{\mathbf{h}_v^{(L)} : v \in V\}\right)$$
+</TheoremBlock>
+
+### Matrix Form
+
+For simple message passing (linear messages, mean aggregation), the layer update collapses to a matrix equation. Let $H^{(\ell)} \in \mathbb{R}^{n \times d_\ell}$ collect node features as rows:
+
+$$H^{(\ell+1)} = \sigma\left(\hat{A} H^{(\ell)} W^{(\ell)}\right)$$
+
+where $\hat{A}$ is a normalized adjacency operator and $W^{(\ell)} \in \mathbb{R}^{d_\ell \times d_{\ell+1}}$ is the learnable weight matrix. Different choices of $\hat{A}$ yield different architectures:
+
+| Architecture | $\hat{A}$ | Name |
+|---|---|---|
+| GCN (Kipf & Welling) | $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ | Renormalized symmetric |
+| GraphSAGE (mean) | $D^{-1}A$ | Transition matrix |
+| Simple GCN | $D^{-1/2}AD^{-1/2}$ | Normalized adjacency (no self-loops) |
+
+### Receptive Field Growth
+
+After $L$ layers of message passing, each node's representation depends on all nodes within $L$ hops. The **receptive field** of node $v$ at depth $L$ is the $L$-hop neighborhood $\mathcal{N}_L(v) = \{u : d(u,v) \leq L\}$.
+
+<TheoremBlock type="proposition" title="Proposition 1 — Receptive Field and Diameter">
+For a connected graph $G$ with diameter $\text{diam}(G)$, $L \geq \text{diam}(G)$ layers suffice for every node to receive information from every other node.
+
+On [expander graphs](/topics/expander-graphs), $\text{diam}(G) = O(\log n)$, so logarithmic depth is sufficient. On path graphs, $\text{diam}(G) = n - 1$, requiring linear depth.
+</TheoremBlock>
+
+![Receptive field growth on a barbell graph — the bottleneck between the two cliques slows information propagation](/images/topics/message-passing/receptive-field-growth.png)
+
+<MessagePassingExplorer client:visible />
+
+---
+
+## Spectral Graph Convolutions
+
+The spectral perspective interprets message passing through the lens of the [graph Laplacian](/topics/graph-laplacians) eigendecomposition.
+
+### The Graph Fourier Transform
+
+<TheoremBlock type="definition" title="Definition 2 — Graph Fourier Transform">
+Given the normalized Laplacian $\mathcal{L} = U \Lambda U^T$ with orthonormal eigenvectors $\{\mathbf{u}_k\}_{k=0}^{n-1}$ and eigenvalues $\{\lambda_k\}$, the **graph Fourier transform** of a signal $\mathbf{x} \in \mathbb{R}^n$ is:
+
+$$\hat{\mathbf{x}} = U^T \mathbf{x}, \quad \hat{x}_k = \langle \mathbf{x}, \mathbf{u}_k \rangle$$
+
+The inverse transform recovers the signal: $\mathbf{x} = U \hat{\mathbf{x}}$.
+</TheoremBlock>
+
+The eigenvectors $\mathbf{u}_k$ play the role of Fourier modes: $\mathbf{u}_0$ (the constant vector) is the "DC component," and higher eigenvectors oscillate more across the graph. The eigenvalue $\lambda_k$ measures the frequency — low $\lambda_k$ means smooth variation along edges, high $\lambda_k$ means rapid oscillation.
+
+### Spectral Convolution
+
+<TheoremBlock type="definition" title="Definition 3 — Spectral Graph Convolution">
+A spectral graph convolution applies a filter $g_\theta$ in the Fourier domain:
+
+$$g_\theta \star \mathbf{x} = U g_\theta(\Lambda) U^T \mathbf{x}$$
+
+where $g_\theta(\Lambda) = \text{diag}(g_\theta(\lambda_0), \ldots, g_\theta(\lambda_{n-1}))$ is the spectral transfer function.
+</TheoremBlock>
+
+The problem: learning $n$ free parameters $g_\theta(\lambda_k)$ is expensive and non-transferable (different graphs have different eigenvectors).
+
+### ChebNet and Polynomial Filters
+
+<TheoremBlock type="theorem" title="Theorem 1 — Chebyshev Approximation (Defferrard, Bresson & Vandergheynst 2016)">
+Approximating $g_\theta$ with a $K$-th order Chebyshev polynomial:
+
+$$g_\theta(\lambda) \approx \sum_{k=0}^{K} \theta_k T_k(\tilde{\lambda})$$
+
+where $\tilde{\lambda} = 2\lambda/\lambda_{\max} - 1$ and $T_k$ is the $k$-th Chebyshev polynomial, yields a $K$-localized filter that depends only on $K$-hop neighborhoods. The convolution becomes:
+
+$$g_\theta \star \mathbf{x} \approx \sum_{k=0}^{K} \theta_k T_k(\tilde{\mathcal{L}}) \mathbf{x}$$
+
+This avoids the $O(n^2)$ eigenvector computation entirely — $T_k(\tilde{\mathcal{L}}) \mathbf{x}$ is computed via the Chebyshev recurrence $T_k(x) = 2x T_{k-1}(x) - T_{k-2}(x)$ applied to the matrix.
+</TheoremBlock>
+
+![Spectral filter design — low-pass, band-pass, and high-pass filters and their effect on graph signals](/images/topics/message-passing/spectral-filters.png)
+
+### GCN as a First-Order Spectral Filter
+
+<TheoremBlock type="theorem" title="Theorem 2 — GCN is First-Order Spectral (Kipf & Welling 2017)">
+Setting $K = 1$ and $\lambda_{\max} = 2$ in the ChebNet filter yields:
+
+$$g_\theta \star \mathbf{x} \approx \theta_0 \mathbf{x} + \theta_1 (\mathcal{L} - I) \mathbf{x} = \theta_0 \mathbf{x} - \theta_1 D^{-1/2} A D^{-1/2} \mathbf{x}$$
+
+Constraining $\theta = \theta_0 = -\theta_1$ to reduce parameters:
+
+$$g_\theta \star \mathbf{x} = \theta (I + D^{-1/2} A D^{-1/2}) \mathbf{x}$$
+
+The **renormalization trick** replaces $I + D^{-1/2}AD^{-1/2}$ with $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ where $\tilde{A} = A + I_n$ and $\tilde{D} = \text{diag}(\tilde{A}\mathbf{1})$, yielding the GCN layer:
+
+$$H^{(\ell+1)} = \sigma\left(\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2} H^{(\ell)} W^{(\ell)}\right)$$
+
+*Proof.* The eigenvalues of $I + D^{-1/2}AD^{-1/2}$ lie in $[0, 2]$, which causes numerical instabilities under repeated application. Adding self-loops via $\tilde{A} = A + I$ shifts the spectrum: if $\mu$ is an eigenvalue of $D^{-1/2}AD^{-1/2}$, the corresponding eigenvalue of $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ is approximately $(1 + \mu)/(1 + 1) = (1 + \mu)/2 \in [0, 1]$. This keeps eigenvalues bounded and prevents gradient explosion under deep stacking. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Remark — GCN is Laplacian Smoothing">
+Applying $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ to node features is equivalent to replacing each node's features with a weighted average of its own features and its neighbors'. This is a low-pass filter on the graph — it suppresses high-frequency components (large $\lambda_k$) and preserves low-frequency structure (small $\lambda_k$). This connection to the [Laplacian spectrum](/topics/graph-laplacians) is why GCN smooths features and why deep GCNs over-smooth.
+</TheoremBlock>
+
+![GCN smoothing — repeated application of the renormalized adjacency drives node features toward uniformity](/images/topics/message-passing/gcn-smoothing.png)
+
+---
+
+## Spatial Graph Convolutions
+
+The spatial perspective bypasses eigendecomposition entirely. Instead of filtering in the spectral domain, we directly define how each node aggregates neighbor features.
+
+### GCN (Kipf & Welling 2017)
+
+The GCN layer with mean aggregation:
+
+$$\mathbf{h}_v^{(\ell+1)} = \sigma\left(W^{(\ell)} \cdot \text{MEAN}\left(\{\mathbf{h}_u^{(\ell)} : u \in \mathcal{N}(v) \cup \{v\}\}\right)\right)$$
+
+This is equivalent to the spectral derivation via the renormalized adjacency.
+
+### GraphSAGE (Hamilton, Ying & Leskovec 2017)
+
+GraphSAGE separates the self-loop from neighbor aggregation:
+
+$$\mathbf{h}_v^{(\ell+1)} = \sigma\left(W^{(\ell)} \cdot \text{CONCAT}\left(\mathbf{h}_v^{(\ell)}, \text{AGG}(\{\mathbf{h}_u^{(\ell)} : u \in \mathcal{N}(v)\})\right)\right)$$
+
+where AGG can be mean, LSTM, or max-pool. The concatenation preserves the node's own identity separately from its aggregated neighborhood.
+
+### GIN (Xu, Hu, Leskovec & Jegelka 2019)
+
+<TheoremBlock type="definition" title="Definition 4 — Graph Isomorphism Network (GIN)">
+The GIN update uses sum aggregation with a learnable self-loop weight $\varepsilon$:
+
+$$\mathbf{h}_v^{(\ell+1)} = \text{MLP}^{(\ell)}\left((1 + \varepsilon^{(\ell)}) \cdot \mathbf{h}_v^{(\ell)} + \sum_{u \in \mathcal{N}(v)} \mathbf{h}_u^{(\ell)}\right)$$
+
+GIN is the most expressive architecture within the MPNN framework — it is exactly as powerful as the 1-WL isomorphism test.
+</TheoremBlock>
+
+---
+
+## The Weisfeiler-Leman Test & GNN Expressiveness
+
+### The 1-WL Color Refinement Algorithm
+
+<TheoremBlock type="definition" title="Definition 5 — 1-WL Color Refinement">
+The 1-dimensional Weisfeiler-Leman test is an iterative color refinement algorithm for testing graph isomorphism:
+
+1. **Initialize:** assign each node a color $c_v^{(0)}$ (typically based on degree or a constant).
+2. **Refine:** update colors by hashing the multiset of neighbor colors:
+   $$c_v^{(\ell+1)} = \text{HASH}\left(c_v^{(\ell)}, \{\!\{c_u^{(\ell)} : u \in \mathcal{N}(v)\}\!\}\right)$$
+3. **Halt:** when the color partition stabilizes (no further refinement).
+4. **Decide:** if the multiset of final colors differs between two graphs, they are *not* isomorphic. If they agree, the test is *inconclusive*.
+</TheoremBlock>
+
+### GNN = 1-WL (in Expressive Power)
+
+<TheoremBlock type="theorem" title="Theorem 3 — MPNN ≤ 1-WL Expressiveness (Xu, Hu, Leskovec & Jegelka 2019)">
+A message passing GNN is at most as expressive as the 1-WL test: if 1-WL cannot distinguish two graphs $G_1$ and $G_2$, then no MPNN can produce different representations for them.
+
+*Proof sketch.* The MPNN update $\mathbf{h}_v^{(\ell+1)} = \psi(\mathbf{h}_v^{(\ell)}, \bigoplus_{u \in \mathcal{N}(v)} \phi(\mathbf{h}_u^{(\ell)}))$ maps the multiset of neighbor features through a permutation-invariant aggregation $\bigoplus$. If two nodes $v$ in $G_1$ and $v'$ in $G_2$ have the same 1-WL color at step $\ell$, they have the same multiset of neighbor colors, so any aggregation produces the same result. By induction, MPNNs cannot distinguish what 1-WL cannot. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" title="Theorem 4 — GIN Matches 1-WL">
+With injective aggregation (sum) and a sufficiently expressive update function (MLP), GIN achieves 1-WL expressiveness: it can distinguish any pair of graphs that 1-WL distinguishes.
+
+*Proof sketch.* Sum aggregation over a multiset is injective if composed with a universal function approximator (the MLP). The hash function in 1-WL is injective on multisets, and the MLP can approximate it arbitrarily well. Therefore, GIN simulates 1-WL exactly. $\square$
+</TheoremBlock>
+
+### Limitations of 1-WL
+
+<TheoremBlock type="remark" title="Remark — Regular Graphs and 1-WL Failure">
+The 1-WL test cannot distinguish all non-isomorphic regular graphs. For example, the Rook's graph $K_3 \square K_3$ and the Paley graph of order 9 are both 4-regular on 9 vertices but not isomorphic — yet 1-WL assigns them identical color histograms. No standard MPNN can distinguish them either.
+
+Higher-order WL tests ($k$-WL for $k \geq 2$) can distinguish more graphs by operating on $k$-tuples of vertices rather than individual vertices. $k$-WL GNNs are correspondingly more expressive but have $O(n^k)$ complexity.
+</TheoremBlock>
+
+![1-WL color refinement — C₆ vs two triangles, showing how the algorithm distinguishes the two graphs](/images/topics/message-passing/wl-color-refinement.png)
+
+<WLExpressivenessExplorer client:visible />
+
+---
+
+## Attention-Based Message Passing
+
+### Graph Attention Networks (GAT)
+
+<TheoremBlock type="definition" title="Definition 6 — Graph Attention Layer (GAT — Veličković et al. 2018)">
+The GAT layer computes attention coefficients between connected nodes:
+
+$$e_{vu} = \text{LeakyReLU}\left(\mathbf{a}^T [W\mathbf{h}_v \| W\mathbf{h}_u]\right)$$
+
+$$\alpha_{vu} = \frac{\exp(e_{vu})}{\sum_{k \in \mathcal{N}(v)} \exp(e_{vk})} \quad \text{(softmax over neighbors)}$$
+
+$$\mathbf{h}_v^{(\ell+1)} = \sigma\left(\sum_{u \in \mathcal{N}(v)} \alpha_{vu} W \mathbf{h}_u^{(\ell)}\right)$$
+
+where $\mathbf{a} \in \mathbb{R}^{2d'}$ is a learnable attention vector, $W \in \mathbb{R}^{d' \times d}$ is a shared weight matrix, and $\|$ denotes concatenation.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" title="Theorem 5 — GAT Generalizes GCN">
+When attention weights are set to $\alpha_{vu} = 1/\sqrt{\tilde{d}_v \tilde{d}_u}$ (inverse-degree normalization), the GAT layer reduces to the GCN layer. GCN is therefore GAT with uniform, structure-dependent attention.
+
+*Proof.* In GCN, the $(v, u)$ entry of $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ is $1/\sqrt{\tilde{d}_v \tilde{d}_u}$ for adjacent $u, v$ (including self-loops). Setting $\alpha_{vu}$ to this constant (independent of features) recovers the GCN update exactly. GAT generalizes this by making $\alpha_{vu}$ depend on node features, allowing the model to learn which neighbors are more relevant. $\square$
+</TheoremBlock>
+
+### Multi-Head Attention
+
+GAT uses multi-head attention to stabilize training:
+
+$$\mathbf{h}_v^{(\ell+1)} = \Big\|_{k=1}^{K} \sigma\left(\sum_{u \in \mathcal{N}(v)} \alpha_{vu}^k W^k \mathbf{h}_u^{(\ell)}\right)$$
+
+where $\|$ denotes concatenation over $K$ attention heads. Each head learns different edge importance patterns.
+
+### The Attention Matrix Perspective
+
+The attention weights define a learned, data-dependent graph: the **attention graph** $\tilde{G}$ where edge $(v, u)$ has weight $\alpha_{vu}$. This is a soft version of [graph rewiring](/topics/expander-graphs) — attention can effectively increase or decrease edge weights, reshaping the message-passing topology without changing the underlying graph.
+
+![GAT attention weights on the Karate Club graph — edge thickness proportional to learned attention](/images/topics/message-passing/gat-attention.png)
+
+---
+
+## Over-Smoothing & the Random Walk Connection
+
+### The Over-Smoothing Problem
+
+<TheoremBlock type="definition" title="Definition 7 — Over-Smoothing (Dirichlet Energy)">
+A GNN suffers from over-smoothing when repeated message passing drives all node representations toward the same value, destroying the discriminative power needed for node-level tasks.
+
+The **Dirichlet energy** of node features $H \in \mathbb{R}^{n \times d}$ on a graph with Laplacian $L$:
+
+$$E(H) = \text{tr}(H^T L H) = \sum_{(i,j) \in E} \|\mathbf{h}_i - \mathbf{h}_j\|^2$$
+
+Over-smoothing occurs when $E(H^{(\ell)}) \to 0$ as $\ell \to \infty$.
+</TheoremBlock>
+
+### Over-Smoothing is Random Walk Convergence
+
+<TheoremBlock type="theorem" title="Theorem 6 — Over-Smoothing Rate (Li, Han & Wu 2018)">
+For a GCN without nonlinearity ($\sigma = \text{id}$) and identity weights ($W = I$), the feature matrix after $\ell$ layers is:
+
+$$H^{(\ell)} = \hat{A}^\ell H^{(0)}$$
+
+where $\hat{A} = \tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$. Since $\hat{A}$ is a stochastic-like matrix with spectral radius 1, repeated application converges to the rank-1 projection:
+
+$$\lim_{\ell \to \infty} \hat{A}^\ell = \mathbf{v}_1 \mathbf{v}_1^T$$
+
+where $\mathbf{v}_1$ is the eigenvector corresponding to eigenvalue 1.
+
+*Proof.* By the [spectral decomposition](/topics/spectral-theorem), $\hat{A} = \sum_{k} \mu_k \mathbf{v}_k \mathbf{v}_k^T$ where $1 = \mu_1 > |\mu_2| \geq \cdots$. Then $\hat{A}^\ell = \sum_k \mu_k^\ell \mathbf{v}_k \mathbf{v}_k^T \to \mathbf{v}_1 \mathbf{v}_1^T$ since $|\mu_k|^\ell \to 0$ for $k \geq 2$. The rate of convergence is $|\mu_2|^\ell$, and the spectral gap of [the random walk](/topics/random-walks) is $\gamma = 1 - |\mu_2|$.
+
+The Dirichlet energy decays as $E(H^{(\ell)}) \leq |\mu_2|^{2\ell} \cdot E(H^{(0)})$. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" title="Corollary 1 — Over-Smoothing on Expanders">
+On an [$(n, d, \lambda)$-expander](/topics/expander-graphs), the Dirichlet energy decays exponentially with rate $\lambda^2/d^2$. Over-smoothing occurs in $O(\log n)$ layers — the same $O(\log n)$ depth that provides the optimal receptive field. Expansion is a double-edged sword: it enables rapid information propagation but equally rapid feature homogenization.
+</TheoremBlock>
+
+### Measuring Over-Smoothing: MAD and Dirichlet Energy
+
+<TheoremBlock type="definition" title="Definition 8 — Mean Average Distance (MAD — Chen et al. 2020)">
+The Mean Average Distance of node features measures representational diversity:
+
+$$\text{MAD}(H) = \frac{1}{n(n-1)} \sum_{i \neq j} \frac{\|\mathbf{h}_i - \mathbf{h}_j\|}{\|\mathbf{h}_i\| \cdot \|\mathbf{h}_j\|}$$
+
+$\text{MAD} \to 0$ indicates complete over-smoothing. A healthy GNN maintains $\text{MAD} > 0$ across layers.
+</TheoremBlock>
+
+### Mitigation Strategies
+
+Several strategies combat over-smoothing:
+
+1. **Residual connections:** $H^{(\ell+1)} = H^{(\ell)} + \text{MP}(H^{(\ell)})$ preserves the original signal.
+2. **Jumping knowledge:** $H_{\text{final}} = \text{CONCAT}(H^{(0)}, H^{(1)}, \ldots, H^{(L)})$ accesses all depths.
+3. **DropEdge:** Randomly remove edges during training to slow diffusion.
+4. **PairNorm / NodeNorm:** Normalize features to maintain diversity.
+5. **Graph rewiring:** Add long-range edges to reduce diameter without adding layers (see next section).
+
+![Over-smoothing analysis — Dirichlet energy decay, MAD reduction, and spectral gap correlation across graph families](/images/topics/message-passing/over-smoothing-analysis.png)
+
+<OverSmoothingAnalyzer client:visible />
+
+---
+
+## Expander-Based Graph Rewiring
+
+### The Bottleneck Problem
+
+Many real-world graphs have bottlenecks — vertices or small edge cuts that separate communities. From the [Cheeger inequality](/topics/graph-laplacians), a small spectral gap $\lambda_2$ implies a tight bottleneck $h(G)$. Message passing across the bottleneck requires $\Omega(1/\lambda_2)$ layers — far more than the receptive field within each community.
+
+### Graph Rewiring via Spectral Gap Optimization
+
+<TheoremBlock type="definition" title="Definition 9 — Spectral Gap Rewiring">
+Graph rewiring adds "shortcut" edges to increase the spectral gap $\lambda_2$ without changing the original node features. The rewired graph $G'$ has:
+
+- All original edges of $G$
+- Additional edges chosen to maximize $\lambda_2(G')$
+</TheoremBlock>
+
+<TheoremBlock type="proposition" title="Proposition 2 — SDRF (Topping et al. 2022)">
+The Stochastic Discrete Ricci Flow (SDRF) rewiring algorithm iteratively adds edges between vertices with negative Ricci curvature (bottleneck regions) and removes edges with high curvature (redundant connections). After $O(n)$ rewiring steps, SDRF provably increases the spectral gap.
+</TheoremBlock>
+
+### Expander Graph Augmentation
+
+<TheoremBlock type="theorem" title="Theorem 7 — FoSR Spectral Gap Improvement (Deac et al. 2022)">
+First-Order Spectral Rewiring (FoSR) adds edges that approximately maximize the increase in $\lambda_2$ using the Fiedler vector. At each step, it adds the edge $(u, v)$ maximizing $(\mathbf{f}_u - \mathbf{f}_v)^2$ where $\mathbf{f}$ is the [Fiedler vector](/topics/graph-laplacians). After $k$ rewiring steps, the spectral gap satisfies:
+
+$$\lambda_2(G') \geq \lambda_2(G) + \Omega(k / n)$$
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Remark — Connection to Expanders">
+The goal of spectral rewiring is to make the graph "more expander-like" — increasing $\lambda_2$ moves the graph toward the [Ramanujan bound](/topics/expander-graphs) $2\sqrt{d-1}$. A fully rewired graph with $\lambda_2 = \Theta(d)$ gives:
+
+- $O(\log n)$ receptive field (from expansion)
+- $O(\log n)$ over-smoothing depth (the tradeoff)
+- But the added edges carry no original features — they only accelerate diffusion
+</TheoremBlock>
+
+![Graph rewiring — FoSR on a barbell graph: original graph, rewired graph, and spectral gap evolution](/images/topics/message-passing/graph-rewiring.png)
+
+![Rewiring vs over-smoothing — Dirichlet energy decay comparison: original vs rewired barbell](/images/topics/message-passing/rewiring-vs-oversmoothing.png)
+
+### Beyond Standard Message Passing
+
+Several architectures break the message passing paradigm to overcome its limitations:
+
+| Architecture | Key Innovation | Expressiveness |
+|---|---|---|
+| Graph Transformers | Full self-attention (no edge constraint) | Beyond 1-WL |
+| k-GNN | Higher-order WL (k-tuples) | $k$-WL |
+| Subgraph GNNs | Run MPNN on subgraph ensembles | 3-WL |
+| Equivariant GNNs | Geometric symmetries (E(3), SE(3)) | Task-dependent |
+
+---
+
+## Computational Notes
+
+### PyTorch Geometric
+
+The standard library for GNN implementation in Python is **PyTorch Geometric** (PyG). A GCN layer in PyG:
+
+```python
+import torch
+from torch_geometric.nn import GCNConv
+
+class GCN(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super().__init__()
+        self.conv1 = GCNConv(in_channels, hidden_channels)
+        self.conv2 = GCNConv(hidden_channels, out_channels)
+
+    def forward(self, x, edge_index):
+        x = self.conv1(x, edge_index).relu()
+        x = self.conv2(x, edge_index)
+        return x
+```
+
+### DGL (Deep Graph Library)
+
+An alternative implementation framework:
+
+```python
+import dgl
+import torch
+from dgl.nn import GraphConv
+
+class GCN(torch.nn.Module):
+    def __init__(self, in_feats, h_feats, num_classes):
+        super().__init__()
+        self.conv1 = GraphConv(in_feats, h_feats)
+        self.conv2 = GraphConv(h_feats, num_classes)
+
+    def forward(self, g, in_feat):
+        h = self.conv1(g, in_feat).relu()
+        h = self.conv2(g, h)
+        return h
+```
+
+### Spectral vs Spatial Complexity
+
+| Approach | Per-Layer Cost | Localized? | Transferable? |
+|---|---|---|---|
+| Full spectral ($g_\theta(\Lambda)$) | $O(n^2)$ | No | No |
+| ChebNet (order $K$) | $O(K \cdot \|E\|)$ | $K$-hop | Yes |
+| GCN (1st order) | $O(\|E\|)$ | 1-hop | Yes |
+| GAT | $O(\|E\| \cdot d)$ | 1-hop | Yes |
+| Graph Transformer | $O(n^2 \cdot d)$ | Global | Yes |
+
+### Monitoring Over-Smoothing
+
+Track Dirichlet energy and MAD during training to detect over-smoothing:
+
+```python
+def dirichlet_energy_torch(x, edge_index):
+    row, col = edge_index
+    diff = x[row] - x[col]
+    return (diff ** 2).sum()
+```
+
+If energy drops below a threshold after the first few layers, consider reducing depth, adding residual connections, or applying graph rewiring.
+
+---
+
+## Connections & Further Reading
+
+### Cross-Track and Within-Track Connections
+
+| Topic | Track | Connection |
+|-------|-------|------------|
+| [Graph Laplacians & Spectrum](/topics/graph-laplacians) | Graph Theory | The GCN update rule is a first-order polynomial of the normalized Laplacian. Spectral graph convolutions filter signals via the Laplacian eigendecomposition. The Fiedler vector drives spectral rewiring. |
+| [Random Walks & Mixing](/topics/random-walks) | Graph Theory | Over-smoothing is random walk convergence: repeated application of $\hat{A}$ drives features to the stationary distribution. The spectral gap $\gamma$ controls the over-smoothing rate. Mixing time bounds directly predict GNN depth limits. |
+| [Expander Graphs](/topics/expander-graphs) | Graph Theory | Expanders give $O(\log n)$ receptive fields but also $O(\log n)$ over-smoothing depth. Expander-based graph rewiring (FoSR, SDRF) increases $\lambda_2$ to improve information flow. The Expander Mixing Lemma implies quasi-random message passing on expanders. |
+| [The Spectral Theorem](/topics/spectral-theorem) | Linear Algebra | The spectral decomposition of $\hat{A}$ underlies both GCN smoothing analysis and the 1-WL expressiveness proof. Eigenvalue bounds govern convergence rates. |
+| [Gradient Descent & Convergence](/topics/gradient-descent) | Optimization | GNNs are trained via backpropagation through message-passing layers. The gradient flow through $\hat{A}^L$ suffers from vanishing/exploding gradients governed by the spectral radius. |
+| [PCA & Low-Rank Approximation](/topics/pca-low-rank) | Linear Algebra | Node embeddings from GNNs approximate a low-rank factorization of the graph. DeepWalk = implicit matrix factorization. Spectral clustering uses the bottom Laplacian eigenvectors as a low-rank embedding. |
+| [Concentration Inequalities](/topics/concentration-inequalities) | Probability & Statistics | PAC-style generalization bounds for GNNs use Rademacher complexity. The number of message-passing layers affects the model's effective capacity and generalization. |
+
+### Notation Summary
+
+| Symbol | Meaning |
+|--------|---------|
+| $\mathbf{h}_v^{(\ell)}$ | Node $v$'s feature vector at layer $\ell$ |
+| $H^{(\ell)}$ | Feature matrix at layer $\ell$ ($n \times d_\ell$) |
+| $W^{(\ell)}$ | Learnable weight matrix at layer $\ell$ |
+| $\hat{A}$ | Normalized adjacency operator (GCN: $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$) |
+| $\bigoplus$ | Permutation-invariant aggregation (sum, mean, max) |
+| $\alpha_{vu}$ | GAT attention weight from $v$ to $u$ |
+| $E(H)$ | Dirichlet energy: $\text{tr}(H^T L H)$ |
+| $c_v^{(\ell)}$ | 1-WL color of node $v$ at iteration $\ell$ |
+| $\text{MAD}(H)$ | Mean Average Distance of node features |

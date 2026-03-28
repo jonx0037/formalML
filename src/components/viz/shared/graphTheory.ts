@@ -1725,3 +1725,431 @@ export function cayleyCirculantGraph(n: number, generators: number[]): Graph {
   }
   return { n, adjacency: adj };
 }
+
+// ============================================================================
+// Message Passing & GNN utilities
+// ============================================================================
+
+// === Message Passing Types ===
+
+export interface MPNNConfig {
+  architecture: 'gcn' | 'graphsage' | 'gin';
+  layers: number;
+  epsilon?: number; // GIN self-loop weight (default 0)
+}
+
+export interface PropagationResult {
+  features: number[][][]; // features[ell] = H^(ell), shape n × d
+  dirichletEnergy: number[]; // E(H^(ell)) at each layer
+  mad: number[]; // MAD(H^(ell)) at each layer
+  spectralGap: number; // γ = 1 - |μ₂| of Â
+  overSmoothingDepth: number; // First ℓ where E < 0.01 * E₀
+}
+
+export interface WLResult {
+  colorHistory: number[][]; // colors at each refinement step
+  numColorsHistory: number[]; // number of distinct colors at each step
+  convergedAt: number; // step at which colors stabilized
+}
+
+export interface RewireResult {
+  graph: Graph; // rewired graph
+  gapHistory: number[]; // λ₂ after each rewiring step
+  addedEdges: [number, number][]; // edges added by rewiring
+}
+
+// === Karate Club Graph ===
+
+/** Zachary's Karate Club (34 nodes, 78 edges). */
+export function karateClubGraph(): Graph {
+  const n = 34;
+  const edges: [number, number][] = [
+    [0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,10],[0,11],[0,12],[0,13],
+    [0,17],[0,19],[0,21],[0,31],
+    [1,2],[1,3],[1,7],[1,13],[1,17],[1,19],[1,21],[1,30],
+    [2,3],[2,7],[2,8],[2,9],[2,13],[2,27],[2,28],[2,32],
+    [3,7],[3,12],[3,13],
+    [4,6],[4,10],
+    [5,6],[5,10],[5,16],
+    [6,16],
+    [8,30],[8,32],[8,33],
+    [9,33],
+    [13,33],
+    [14,32],[14,33],
+    [15,32],[15,33],
+    [18,32],[18,33],
+    [19,33],
+    [20,32],[20,33],
+    [22,32],[22,33],
+    [23,25],[23,27],[23,29],[23,32],[23,33],
+    [24,25],[24,27],[24,31],
+    [25,31],
+    [26,29],[26,33],
+    [27,33],
+    [28,31],[28,33],
+    [29,32],[29,33],
+    [30,32],[30,33],
+    [31,32],[31,33],
+    [32,33],
+  ];
+  const adj = emptyAdjacency(n);
+  for (const [u, v] of edges) {
+    adj[u][v] = 1;
+    adj[v][u] = 1;
+  }
+  return { n, adjacency: adj };
+}
+
+// === Normalized Adjacency Operators ===
+
+/**
+ * GCN renormalized adjacency: D̃^{-1/2} Ã D̃^{-1/2}
+ * where Ã = A + I, D̃ = diag(Ã · 1).
+ */
+export function renormalizedAdjacency(graph: Graph): number[][] {
+  const { n, adjacency: A } = graph;
+  const Atilde: number[][] = A.map((row, i) =>
+    row.map((val, j) => (i === j ? val + 1 : val))
+  );
+  const dInvSqrt = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0;
+    for (let j = 0; j < n; j++) sum += Atilde[i][j];
+    dInvSqrt[i] = sum > 0 ? 1 / Math.sqrt(sum) : 0;
+  }
+  const result: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      result[i][j] = dInvSqrt[i] * Atilde[i][j] * dInvSqrt[j];
+    }
+  }
+  return result;
+}
+
+/**
+ * Compute the normalized adjacency for a given architecture.
+ * 'gcn' → D̃^{-1/2} Ã D̃^{-1/2}
+ * 'graphsage' → D^{-1} A (transition matrix, mean aggregation)
+ * 'gin' → (1 + ε)I + A
+ */
+export function normalizedAdjacencyForArch(
+  graph: Graph,
+  config: MPNNConfig
+): number[][] {
+  const { adjacency: A } = graph;
+  switch (config.architecture) {
+    case 'gcn':
+      return renormalizedAdjacency(graph);
+    case 'graphsage':
+      return transitionMatrix(A);
+    case 'gin': {
+      const eps = config.epsilon ?? 0;
+      return A.map((row, i) =>
+        row.map((val, j) => (i === j ? val + 1 + eps : val))
+      );
+    }
+  }
+}
+
+// === Dirichlet Energy & MAD ===
+
+/** Dirichlet energy: trace(H^T L H). */
+export function dirichletEnergy(H: number[][], L: number[][]): number {
+  const n = H.length;
+  const d = H[0].length;
+  let energy = 0;
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < d; k++) {
+      let lh = 0;
+      for (let j = 0; j < n; j++) lh += L[i][j] * H[j][k];
+      energy += H[i][k] * lh;
+    }
+  }
+  return energy;
+}
+
+/** Mean Average Distance of node features. */
+export function meanAverageDistance(H: number[][]): number {
+  const n = H.length;
+  if (n <= 1) return 0;
+  const d = H[0].length;
+  let totalDist = 0;
+  let pairs = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      let dist = 0;
+      for (let k = 0; k < d; k++) {
+        const diff = H[i][k] - H[j][k];
+        dist += diff * diff;
+      }
+      totalDist += Math.sqrt(dist);
+      pairs++;
+    }
+  }
+  return totalDist / pairs;
+}
+
+// === Feature Propagation ===
+
+/**
+ * Propagate features through L layers of message passing (no weights/nonlinearity).
+ * H^(ℓ) = Â * H^(ℓ-1), computing Dirichlet energy and MAD at each layer.
+ */
+export function propagateFeatures(
+  graph: Graph,
+  H0: number[][],
+  config: MPNNConfig
+): PropagationResult {
+  const { n, adjacency: A } = graph;
+  const d = H0[0].length;
+  const Ahat = normalizedAdjacencyForArch(graph, config);
+  const L = laplacian(A);
+
+  const features: number[][][] = [H0];
+  const energyTrace: number[] = [dirichletEnergy(H0, L)];
+  const madTrace: number[] = [meanAverageDistance(H0)];
+
+  let Hprev = H0;
+  for (let ell = 1; ell <= config.layers; ell++) {
+    const Hnew: number[][] = Array.from({ length: n }, () => new Array(d).fill(0));
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < d; k++) {
+        let sum = 0;
+        for (let j = 0; j < n; j++) sum += Ahat[i][j] * Hprev[j][k];
+        Hnew[i][k] = sum;
+      }
+    }
+    features.push(Hnew);
+    energyTrace.push(dirichletEnergy(Hnew, L));
+    madTrace.push(meanAverageDistance(Hnew));
+    Hprev = Hnew;
+  }
+
+  // Spectral gap via the symmetric normalized Laplacian (valid for all architectures).
+  // Ahat may be non-symmetric (e.g. GraphSAGE transition matrix), so we avoid
+  // feeding it to Jacobi directly. The normalized Laplacian L_sym = I - D^{-1/2}AD^{-1/2}
+  // is always symmetric and its second-smallest eigenvalue λ₂ is the spectral gap.
+  const Lnorm = normalizedLaplacian(A);
+  const eigenResult = jacobiEigen(Lnorm);
+  const spectralGap = eigenResult.eigenvalues.length > 1 ? eigenResult.eigenvalues[1] : 0;
+
+  // Over-smoothing depth: first ℓ where E < 0.01 * E₀
+  const E0 = energyTrace[0];
+  let overSmoothingDepth = config.layers;
+  for (let ell = 1; ell <= config.layers; ell++) {
+    if (energyTrace[ell] < 0.01 * E0) {
+      overSmoothingDepth = ell;
+      break;
+    }
+  }
+
+  return {
+    features,
+    dirichletEnergy: energyTrace,
+    mad: madTrace,
+    spectralGap,
+    overSmoothingDepth,
+  };
+}
+
+// === Weisfeiler-Leman ===
+
+/** Run 1-WL color refinement on a graph. */
+export function wlColorRefinement(
+  graph: Graph,
+  maxIters: number = 20
+): WLResult {
+  const { n, adjacency: A } = graph;
+
+  let colors = new Array(n).fill(0);
+  const colorHistory: number[][] = [[...colors]];
+  const numColorsHistory: number[] = [1];
+
+  for (let iter = 0; iter < maxIters; iter++) {
+    const colorMap = new Map<string, number>();
+    let nextColor = 0;
+    const newColors = new Array(n);
+
+    for (let v = 0; v < n; v++) {
+      const neighborColors: number[] = [];
+      for (let u = 0; u < n; u++) {
+        if (A[v][u] > 0) neighborColors.push(colors[u]);
+      }
+      neighborColors.sort((a, b) => a - b);
+
+      const key = `${colors[v]}|${neighborColors.join(',')}`;
+      if (!colorMap.has(key)) {
+        colorMap.set(key, nextColor++);
+      }
+      newColors[v] = colorMap.get(key)!;
+    }
+
+    colorHistory.push([...newColors]);
+    numColorsHistory.push(new Set(newColors).size);
+
+    // Check convergence: same partition as previous step
+    let converged = true;
+    outer: for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if ((colors[i] === colors[j]) !== (newColors[i] === newColors[j])) {
+          converged = false;
+          break outer;
+        }
+      }
+    }
+
+    colors = newColors;
+
+    if (converged) {
+      return { colorHistory, numColorsHistory, convergedAt: iter + 1 };
+    }
+  }
+
+  return { colorHistory, numColorsHistory, convergedAt: maxIters };
+}
+
+/** Check if 1-WL distinguishes two graphs by comparing color histograms. */
+export function wlDistinguishes(
+  g1: Graph,
+  g2: Graph
+): { distinguishes: boolean; step: number } {
+  const n1 = g1.n;
+  const n2 = g2.n;
+  const nTotal = n1 + n2;
+  const combinedAdj = emptyAdjacency(nTotal);
+  for (let i = 0; i < n1; i++)
+    for (let j = 0; j < n1; j++)
+      combinedAdj[i][j] = g1.adjacency[i][j];
+  for (let i = 0; i < n2; i++)
+    for (let j = 0; j < n2; j++)
+      combinedAdj[n1 + i][n1 + j] = g2.adjacency[i][j];
+
+  const combined: Graph = { n: nTotal, adjacency: combinedAdj };
+  const wlCombined = wlColorRefinement(combined);
+
+  for (let step = 0; step < wlCombined.colorHistory.length; step++) {
+    const colors = wlCombined.colorHistory[step];
+    const hist1 = new Map<number, number>();
+    const hist2 = new Map<number, number>();
+
+    for (let i = 0; i < n1; i++)
+      hist1.set(colors[i], (hist1.get(colors[i]) ?? 0) + 1);
+    for (let i = 0; i < n2; i++)
+      hist2.set(colors[n1 + i], (hist2.get(colors[n1 + i]) ?? 0) + 1);
+
+    if (hist1.size !== hist2.size) return { distinguishes: true, step };
+    for (const [color, count] of hist1) {
+      if (hist2.get(color) !== count) return { distinguishes: true, step };
+    }
+  }
+
+  return { distinguishes: false, step: wlCombined.convergedAt };
+}
+
+// === Graph Rewiring ===
+
+/**
+ * First-Order Spectral Rewiring (FoSR).
+ * At each step, add the non-edge (u,v) maximizing (f_u - f_v)^2
+ * where f is the Fiedler vector of the Laplacian.
+ */
+export function fosrRewire(graph: Graph, numEdges: number): RewireResult {
+  const n = graph.n;
+  const adj: number[][] = graph.adjacency.map((row) => [...row]);
+  const gapHistory: number[] = [];
+  const addedEdges: [number, number][] = [];
+
+  for (let step = 0; step < numEdges; step++) {
+    const L = laplacian(adj);
+    const eigen = jacobiEigen(L);
+    const fiedler = eigen.eigenvectors[1];
+    gapHistory.push(eigen.eigenvalues[1]);
+
+    let bestScore = -1;
+    let bestU = -1;
+    let bestV = -1;
+    for (let u = 0; u < n; u++) {
+      for (let v = u + 1; v < n; v++) {
+        if (adj[u][v] === 0) {
+          const score = (fiedler[u] - fiedler[v]) ** 2;
+          if (score > bestScore) {
+            bestScore = score;
+            bestU = u;
+            bestV = v;
+          }
+        }
+      }
+    }
+
+    if (bestU < 0) break;
+    adj[bestU][bestV] = 1;
+    adj[bestV][bestU] = 1;
+    addedEdges.push([bestU, bestV]);
+  }
+
+  const finalL = laplacian(adj);
+  const finalEigen = jacobiEigen(finalL);
+  gapHistory.push(finalEigen.eigenvalues[1]);
+
+  return {
+    graph: { n, adjacency: adj },
+    gapHistory,
+    addedEdges,
+  };
+}
+
+// === GAT Attention (visualization only) ===
+
+/**
+ * Compute GAT-style attention weights for visualization.
+ * Uses random W and attention vector a with LeakyReLU + softmax.
+ */
+export function computeGATAttention(
+  graph: Graph,
+  H: number[][],
+  seed: number = 42
+): number[][] {
+  const { n, adjacency: A } = graph;
+  const d = H[0].length;
+  const dOut = d;
+  const rng = createRng(seed);
+
+  const W: number[][] = Array.from({ length: d }, () =>
+    Array.from({ length: dOut }, () => (rng() - 0.5) * 2)
+  );
+  const a: number[] = Array.from({ length: 2 * dOut }, () => (rng() - 0.5) * 2);
+
+  const WH: number[][] = Array.from({ length: n }, (_, i) => {
+    const wh = new Array(dOut).fill(0);
+    for (let k = 0; k < dOut; k++) {
+      for (let j = 0; j < d; j++) wh[k] += H[i][j] * W[j][k];
+    }
+    return wh;
+  });
+
+  const attn: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let v = 0; v < n; v++) {
+    const neighbors: number[] = [];
+    for (let u = 0; u < n; u++) {
+      if (A[v][u] > 0 || u === v) neighbors.push(u);
+    }
+
+    const scores: number[] = [];
+    for (const u of neighbors) {
+      let score = 0;
+      for (let k = 0; k < dOut; k++) score += a[k] * WH[v][k];
+      for (let k = 0; k < dOut; k++) score += a[dOut + k] * WH[u][k];
+      score = score >= 0 ? score : 0.2 * score;
+      scores.push(score);
+    }
+
+    const maxScore = Math.max(...scores);
+    const expScores = scores.map((s) => Math.exp(s - maxScore));
+    const sumExp = expScores.reduce((acc, b) => acc + b, 0);
+    for (let idx = 0; idx < neighbors.length; idx++) {
+      attn[v][neighbors[idx]] = expScores[idx] / sumExp;
+    }
+  }
+
+  return attn;
+}
