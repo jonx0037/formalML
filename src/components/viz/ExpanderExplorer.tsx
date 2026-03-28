@@ -474,15 +474,18 @@ export default function ExpanderExplorer() {
   const config = PRESETS[preset];
   const hasSizeSlider = config.sizeRange !== null;
 
-  // Compute max for metric bars scaling
-  const maxMetricVal = Math.max(
+  // Compute max for metric bars scaling (ignore non-finite placeholder values)
+  const metricCandidates = [
     vExp.expansion,
     edgeCut.expansion,
     metrics.spectralParameter,
     metrics.isRegular ? metrics.ramanujanBound : 0,
     metrics.degree,
-    1
-  );
+    1,
+  ];
+  const finiteMetricCandidates = metricCandidates.filter((val) => Number.isFinite(val));
+  const maxMetricVal =
+    finiteMetricCandidates.length > 0 ? Math.max(...finiteMetricCandidates) : 1;
 
   return (
     <div

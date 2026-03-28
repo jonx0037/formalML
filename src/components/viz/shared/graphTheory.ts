@@ -1399,12 +1399,33 @@ export function adjacencySpectrum(graph: Graph): number[] {
 
 /** λ(G) = max(|λ₂|, |λₙ|) of adjacency matrix for a d-regular graph. */
 export function spectralParameter(graph: Graph): number {
-  const spectrum = adjacencySpectrum(graph);
+  return spectralParameterFromSpectrum(adjacencySpectrum(graph));
+}
+
+/** Compute λ(G) from a pre-computed spectrum (avoids redundant eigendecomposition). */
+function spectralParameterFromSpectrum(spectrum: number[]): number {
   if (spectrum.length < 2) return 0;
   // λ₁ is the largest (index 0), λ₂ is next, λₙ is last
   const lambda2 = Math.abs(spectrum[1]);
   const lambdaN = Math.abs(spectrum[spectrum.length - 1]);
   return Math.max(lambda2, lambdaN);
+}
+
+/**
+ * Compute λ(G) excluding trivial eigenvalues for bipartite graphs.
+ * For bipartite d-regular graphs, both +d and -d are trivial.
+ * Returns the max |λ_i| over nontrivial eigenvalues.
+ */
+function nontrivialSpectralParameter(spectrum: number[], degree: number): number {
+  if (spectrum.length < 2) return 0;
+  let maxAbs = 0;
+  for (let i = 1; i < spectrum.length; i++) {
+    const absVal = Math.abs(spectrum[i]);
+    // Skip trivial eigenvalue -d (bipartite case)
+    if (Math.abs(absVal - degree) < 1e-9) continue;
+    maxAbs = Math.max(maxAbs, absVal);
+  }
+  return maxAbs;
 }
 
 // === Alon–Boppana Bound ===
@@ -1566,19 +1587,27 @@ function checkRegular(graph: Graph): { isRegular: boolean; degree: number } {
 /** Full expansion analysis for a graph. */
 export function analyzeExpansion(graph: Graph): ExpanderMetrics {
   const { isRegular, degree } = checkRegular(graph);
-  const lambda = spectralParameter(graph);
+  // Compute the spectrum once and derive all spectral quantities from it
+  const spectrum = adjacencySpectrum(graph);
+  const lambda = spectralParameterFromSpectrum(spectrum);
   const vExp = vertexExpansion(graph);
   const eExp = edgeExpansionFull(graph);
   const bound = isRegular ? alonBoppanaBound(degree) : NaN;
+
+  // For Ramanujan check, use nontrivial spectral parameter to correctly
+  // handle bipartite graphs (where -d is a trivial eigenvalue)
+  const lambdaNt = isRegular
+    ? nontrivialSpectralParameter(spectrum, degree)
+    : lambda;
 
   return {
     vertexExpansion: vExp.expansion,
     edgeExpansion: eExp.expansion,
     spectralParameter: lambda,
-    spectralGapAdj: isRegular ? degree - (adjacencySpectrum(graph)[1] ?? 0) : 0,
+    spectralGapAdj: isRegular ? degree - (spectrum[1] ?? 0) : 0,
     degree,
     isRegular,
-    isRamanujan: isRegular && lambda <= bound + 1e-9,
+    isRamanujan: isRegular && lambdaNt <= bound + 1e-9,
     ramanujanBound: bound,
   };
 }
@@ -1591,11 +1620,12 @@ export function analyzeExpansion(graph: Graph): ExpanderMetrics {
  */
 export function expanderMixingLemma(graph: Graph, S: number[], T: number[]): EMLResult {
   const { n, adjacency: A } = graph;
+  if (n === 0) return { actualEdges: 0, expectedEdges: 0, emlBound: 0, deviation: 0, withinBound: true };
+
   const { isRegular, degree } = checkRegular(graph);
 
-  // Count edges between S and T
+  // Count edges between S and T using a set for O(|S|·|T|) lookup
   let actualEdges = 0;
-  const TSet = new Set(T);
   for (const u of S) {
     for (const v of T) {
       if (A[u][v] > 0) actualEdges++;

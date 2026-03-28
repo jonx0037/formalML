@@ -132,13 +132,44 @@ export default function RamanujanBoundExplorer() {
     return () => cancelAnimationFrame(rafId);
   }, [degree, ensembleSize]);
 
-  // Generate data for the histogram n if not already in pre-computed set
-  const histogramData = useMemo(() => {
-    if (!precomputed) return [];
+  // Generate data for the histogram n if not already in pre-computed set.
+  // Heavy work is done in an effect (not during render) to avoid freezing
+  // the UI when dragging the n slider to a value not in the precomputed set.
+  const [histogramData, setHistogramData] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!precomputed) {
+      setHistogramData([]);
+      return;
+    }
+
     const existing = precomputed.byN.get(nSize);
-    if (existing) return existing;
-    // Generate fresh for this n
-    return generateEnsemble(degree, nSize, ensembleSize);
+    if (existing) {
+      setHistogramData(existing);
+      return;
+    }
+
+    setComputing(true);
+
+    const rafId = requestAnimationFrame(() => {
+      const dataForN = generateEnsemble(degree, nSize, ensembleSize);
+
+      // Cache the newly generated data for this n
+      const newByN = new Map(precomputed.byN);
+      newByN.set(nSize, dataForN);
+      const updatedPrecomputed: PrecomputedData = {
+        d: precomputed.d,
+        ensembleSize: precomputed.ensembleSize,
+        byN: newByN,
+      };
+
+      precomputedRef.current = updatedPrecomputed;
+      setPrecomputed(updatedPrecomputed);
+      setHistogramData(dataForN);
+      setComputing(false);
+    });
+
+    return () => cancelAnimationFrame(rafId);
   }, [precomputed, nSize, degree, ensembleSize]);
 
   const threshold = alonBoppanaBound(degree);
