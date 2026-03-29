@@ -2,11 +2,9 @@ import { useState, useMemo, useEffect, useRef, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  type GaloisConnection,
   getGaloisPresets,
   checkGaloisConnection,
   closureOperator,
-  kernelOperator,
 } from './shared/categoryTheory';
 
 // ─── Constants ───
@@ -34,43 +32,46 @@ const COLORS = {
 
 // ─── Helpers ───
 
-/** Compute layer (rank) for each element based on the poset order. */
+/** Compute layer (rank) for each element as the length of the longest path from a minimum. */
 function computeLayers(elements: string[], morphisms: { source: string; target: string }[]): Map<string, number> {
   const layers = new Map<string, number>();
-  const incoming = new Map<string, Set<string>>();
-  elements.forEach((e) => incoming.set(e, new Set()));
 
-  // Build non-reflexive covering relations
+  // Build adjacency list (non-reflexive edges)
+  const outEdges = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+  elements.forEach((e) => { outEdges.set(e, []); inDegree.set(e, 0); });
+
   morphisms.forEach((m) => {
     if (m.source !== m.target) {
-      incoming.get(m.target)?.add(m.source);
+      outEdges.get(m.source)?.push(m.target);
+      inDegree.set(m.target, (inDegree.get(m.target) ?? 0) + 1);
     }
   });
 
-  // Topological layering
-  const queue = elements.filter((e) => (incoming.get(e)?.size ?? 0) === 0);
+  // BFS longest-path (Kahn's algorithm variant): assign each node the
+  // length of the longest path reaching it, so all paths are respected.
+  const queue = elements.filter((e) => (inDegree.get(e) ?? 0) === 0);
   queue.forEach((e) => layers.set(e, 0));
 
-  let maxLayer = 0;
-  const visited = new Set<string>(queue);
   while (queue.length > 0) {
     const curr = queue.shift()!;
     const currLayer = layers.get(curr) ?? 0;
-    morphisms.forEach((m) => {
-      if (m.source === curr && m.source !== m.target && !visited.has(m.target)) {
-        const newLayer = currLayer + 1;
-        const existing = layers.get(m.target);
-        if (existing === undefined || newLayer > existing) {
-          layers.set(m.target, newLayer);
-          if (newLayer > maxLayer) maxLayer = newLayer;
-        }
-        visited.add(m.target);
-        queue.push(m.target);
+    for (const next of outEdges.get(curr) ?? []) {
+      const newLayer = currLayer + 1;
+      const existing = layers.get(next);
+      if (existing === undefined || newLayer > existing) {
+        layers.set(next, newLayer);
       }
-    });
+      // Decrement in-degree; enqueue when all predecessors processed
+      const remaining = (inDegree.get(next) ?? 1) - 1;
+      inDegree.set(next, remaining);
+      if (remaining === 0) {
+        queue.push(next);
+      }
+    }
   }
 
-  // Ensure all elements have a layer
+  // Ensure all elements have a layer (fallback for cycles or disconnected)
   elements.forEach((e) => {
     if (!layers.has(e)) layers.set(e, 0);
   });

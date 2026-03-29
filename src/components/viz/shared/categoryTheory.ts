@@ -1151,9 +1151,17 @@ export function checkTriangleIdentities(
   // First triangle: for each A in C, check epsilon_{F(A)} . F(eta_A) = id_{F(A)}
   for (const A of sourceCategory.objects) {
     const FA = F.onObjects.get(A);
-    if (!FA) continue;
+    if (!FA) {
+      violations.push(`F(${A}) not found — incomplete functor data`);
+      firstOk = false;
+      continue;
+    }
     const etaA = adj.unit.components.get(A);
-    if (!etaA) continue;
+    if (!etaA) {
+      violations.push(`eta_${A} not found — incomplete unit data`);
+      firstOk = false;
+      continue;
+    }
     // F(eta_A): F(A) -> FGF(A)
     const F_etaA = F.onMorphisms.get(etaA);
     if (!F_etaA) {
@@ -1180,9 +1188,17 @@ export function checkTriangleIdentities(
   // Second triangle: for each B in D, check G(epsilon_B) . eta_{G(B)} = id_{G(B)}
   for (const B of targetCategory.objects) {
     const GB = G.onObjects.get(B);
-    if (!GB) continue;
+    if (!GB) {
+      violations.push(`G(${B}) not found — incomplete functor data`);
+      secondOk = false;
+      continue;
+    }
     const epsB = adj.counit.components.get(B);
-    if (!epsB) continue;
+    if (!epsB) {
+      violations.push(`epsilon_${B} not found — incomplete counit data`);
+      secondOk = false;
+      continue;
+    }
     // G(epsilon_B): GFG(B) -> G(B)
     const G_epsB = G.onMorphisms.get(epsB);
     if (!G_epsB) {
@@ -1232,10 +1248,28 @@ export function homSetBijection(
     .filter((m) => m.source === A && m.target === GB)
     .map((m) => m.label);
 
-  // Build bijection via adjoint transpose: f_bar -> G(f_bar) . eta_A
+  // Build bijection via adjoint transpose:
+  // Given f_bar: F(A) -> B in D, the transpose is G(f_bar) ∘ η_A: A -> G(B) in C
   const bijection = new Map<string, string>();
-  for (let i = 0; i < Math.min(leftHomSet.length, rightHomSet.length); i++) {
-    bijection.set(leftHomSet[i], rightHomSet[i]);
+  const etaA = adj.unit.components.get(A);
+
+  for (const fBar of leftHomSet) {
+    // Apply G to the morphism f_bar to get G(f_bar): G(F(A)) -> G(B)
+    const G_fBar = G.onMorphisms.get(fBar);
+    if (!G_fBar || !etaA) {
+      // Fallback: if G doesn't track this morphism, try to find a matching
+      // morphism in the right hom set by composing
+      const composed = etaA ? sourceCategory.compose(G_fBar ?? '', etaA) : null;
+      if (composed && rightHomSet.includes(composed)) {
+        bijection.set(fBar, composed);
+      }
+      continue;
+    }
+    // Compose: G(f_bar) ∘ η_A
+    const transpose = sourceCategory.compose(G_fBar, etaA);
+    if (transpose && rightHomSet.includes(transpose)) {
+      bijection.set(fBar, transpose);
+    }
   }
 
   return { objectA: A, objectB: B, leftHomSet, rightHomSet, bijection };
@@ -1417,18 +1451,43 @@ export function freeForgetfulVec(): {
   };
 
   // Unit eta: Id_Set => GF (basis insertion: s -> e_s)
-  // For our simplified model, eta_a: a -> GF(a) = a (identity in Set)
+  // GF maps: a -> G(F(a)) = G(R²) = a, b -> G(F(b)) = G(R²) = a
+  // For our simplified model where G collapses everything, eta is id on source objects.
+  const idSet: Functor = {
+    source: setCat, target: setCat,
+    onObjects: new Map([['a', 'a'], ['b', 'b']]),
+    onMorphisms: new Map([['id_a', 'id_a'], ['id_b', 'id_b'], ['f_ab', 'f_ab'], ['f_ba', 'f_ba']]),
+    contravariant: false,
+  };
+  const GF: Functor = {
+    source: setCat, target: setCat,
+    onObjects: new Map([['a', 'a'], ['b', 'a']]),  // GF(a) = G(R²) = a, GF(b) = G(R²) = a
+    onMorphisms: new Map([['id_a', 'id_a'], ['id_b', 'id_a'], ['f_ab', 'id_a'], ['f_ba', 'id_a']]),
+    contravariant: false,
+  };
   const eta: NaturalTransformation = {
-    source: { source: setCat, target: setCat, onObjects: new Map([['a', 'a'], ['b', 'b']]), onMorphisms: new Map([['id_a', 'id_a'], ['id_b', 'id_b'], ['f_ab', 'f_ab'], ['f_ba', 'f_ba']]), contravariant: false },
-    target: { source: setCat, target: setCat, onObjects: new Map([['a', 'a'], ['b', 'b']]), onMorphisms: new Map([['id_a', 'id_a'], ['id_b', 'id_b'], ['f_ab', 'f_ab'], ['f_ba', 'f_ba']]), contravariant: false },
-    components: new Map([['a', 'id_a'], ['b', 'id_b']]),
+    source: idSet,
+    target: GF,
+    components: new Map([['a', 'id_a'], ['b', 'f_ba']]),  // eta_b: b -> GF(b) = a
   };
 
   // Counit epsilon: FG => Id_Vec (evaluation: e_s -> s, extended linearly)
+  const FG: Functor = {
+    source: vecCat, target: vecCat,
+    onObjects: new Map([['R²', 'R²'], ['R', 'R²']]),  // FG(R²) = F(a) = R², FG(R) = F(a) = R²
+    onMorphisms: new Map([['id_R²', 'id_R²'], ['id_R', 'id_R²']]),
+    contravariant: false,
+  };
+  const idVec: Functor = {
+    source: vecCat, target: vecCat,
+    onObjects: new Map([['R²', 'R²'], ['R', 'R']]),
+    onMorphisms: new Map([['id_R²', 'id_R²'], ['id_R', 'id_R'], ['proj_1', 'proj_1'], ['proj_2', 'proj_2'], ['incl_1', 'incl_1'], ['incl_2', 'incl_2']]),
+    contravariant: false,
+  };
   const eps: NaturalTransformation = {
-    source: { source: vecCat, target: vecCat, onObjects: new Map([['R²', 'R²'], ['R', 'R']]), onMorphisms: new Map([['id_R²', 'id_R²'], ['id_R', 'id_R']]), contravariant: false },
-    target: { source: vecCat, target: vecCat, onObjects: new Map([['R²', 'R²'], ['R', 'R']]), onMorphisms: new Map([['id_R²', 'id_R²'], ['id_R', 'id_R']]), contravariant: false },
-    components: new Map([['R²', 'id_R²'], ['R', 'id_R']]),
+    source: FG,
+    target: idVec,
+    components: new Map([['R²', 'id_R²'], ['R', 'proj_1']]),  // eps_{R}: FG(R) = R² -> R
   };
 
   return {
@@ -1617,16 +1676,38 @@ export function diagonalProduct(): {
     components: new Map([['A', 'id_A'], ['B', 'id_B']]),
   };
 
+  // ΔProd: C×C -> C×C sends (X,Y) -> Δ(Prod(X,Y)) = (Prod(X,Y), Prod(X,Y))
+  // Prod maps: (A,A)->A, (A,B)->A, (B,A)->A, (B,B)->B
+  // So ΔProd: (A,A)->(A,A), (A,B)->(A,A), (B,A)->(A,A), (B,B)->(B,B)
+  const deltaProd: Functor = {
+    source: targetCat, target: targetCat,
+    onObjects: new Map([['(A,A)', '(A,A)'], ['(A,B)', '(A,A)'], ['(B,A)', '(A,A)'], ['(B,B)', '(B,B)']]),
+    onMorphisms: new Map([
+      ['id_(A,A)', 'id_(A,A)'], ['id_(A,B)', 'id_(A,A)'], ['id_(B,A)', 'id_(A,A)'], ['id_(B,B)', 'id_(B,B)'],
+      ['(f,id_A)', '(f,f)'], ['(id_A,f)', 'id_(A,A)'], ['(f,f)', '(f,f)'], ['(f,id_B)', '(f,f)'], ['(id_B,f)', '(f,f)'],
+    ]),
+    contravariant: false,
+  };
   const idProd: Functor = {
     source: targetCat, target: targetCat,
     onObjects: new Map(prodObj.map((o) => [o, o])),
     onMorphisms: new Map(prodMorphisms.map((m) => [m.label, m.label])),
     contravariant: false,
   };
+  // eps_{(X,Y)}: Δ(Prod(X,Y)) -> (X,Y)
+  // e.g. eps_{(A,B)}: (A,A) -> (A,B), which is (id_A, f)
   const eps: NaturalTransformation = {
-    source: idProd, target: idProd,
-    components: new Map([['(A,A)', 'id_(A,A)'], ['(A,B)', 'id_(A,B)'], ['(B,A)', 'id_(B,A)'], ['(B,B)', 'id_(B,B)']]),
+    source: deltaProd,
+    target: idProd,
+    components: new Map([
+      ['(A,A)', 'id_(A,A)'],      // (A,A) -> (A,A): identity
+      ['(A,B)', '(id_A,f)'],      // (A,A) -> (A,B): (id_A, f)
+      ['(B,A)', '(f,id_A)'],      // (A,A) -> (B,A): (f, id_A)
+      ['(B,B)', '(f,f)'],         // (A,A) -> (B,B): (f, f)  ... but Δ(Prod(B,B))=(B,B), so this is id_(B,B)
+    ]),
   };
+  // Correct: Δ(Prod(B,B)) = (B,B), so eps_{(B,B)} = id_(B,B)
+  eps.components.set('(B,B)', 'id_(B,B)');
 
   return {
     adj: { leftAdjoint: Delta, rightAdjoint: Prod, unit: eta, counit: eps },
@@ -1636,18 +1717,13 @@ export function diagonalProduct(): {
   };
 }
 
-/** Floor ⊣ Inclusion: Galois connection between Z and Q (restricted to [0, 4]). */
-export function floorInclusion(): {
+/** Ceiling ⊣ Inclusion: Galois connection between Q and Z (restricted to [0, 4]).
+ *  ⌈x⌉ ≤ n ⟺ x ≤ n for all x ∈ Q, n ∈ Z.
+ */
+export function ceilingInclusion(): {
   gc: GaloisConnection;
   description: string;
 } {
-  // Right poset: integers {0, 1, 2, 3, 4}
-  const intElements = ['0', '1', '2', '3', '4'];
-  const intLeq: [string, string][] = [
-    ['0', '1'], ['1', '2'], ['2', '3'], ['3', '4'],
-  ];
-  const intPoset = posetCategory(intElements, intLeq);
-
   // Left poset: half-integers and integers {0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4}
   const qElements = ['0', '0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4'];
   const qLeq: [string, string][] = [
@@ -1656,28 +1732,35 @@ export function floorInclusion(): {
   ];
   const qPoset = posetCategory(qElements, qLeq);
 
-  // f = floor: Q -> Z (left adjoint)
-  const floorMap = new Map<string, string>([
-    ['0', '0'], ['0.5', '0'], ['1', '1'], ['1.5', '1'],
-    ['2', '2'], ['2.5', '2'], ['3', '3'], ['3.5', '3'], ['4', '4'],
+  // Right poset: integers {0, 1, 2, 3, 4}
+  const intElements = ['0', '1', '2', '3', '4'];
+  const intLeq: [string, string][] = [
+    ['0', '1'], ['1', '2'], ['2', '3'], ['3', '4'],
+  ];
+  const intPoset = posetCategory(intElements, intLeq);
+
+  // f = ceiling: Q -> Z (left adjoint)
+  // ⌈x⌉ = smallest integer ≥ x
+  const ceilMap = new Map<string, string>([
+    ['0', '0'], ['0.5', '1'], ['1', '1'], ['1.5', '2'],
+    ['2', '2'], ['2.5', '3'], ['3', '3'], ['3.5', '4'], ['4', '4'],
   ]);
-  // Build onMorphisms for floor (monotone: if x <= y then floor(x) <= floor(y))
-  const floorMorphisms = new Map<string, string>();
+  // Build onMorphisms for ceiling (monotone: if x <= y then ceil(x) <= ceil(y))
+  const ceilMorphisms = new Map<string, string>();
   for (const m of qPoset.morphisms) {
-    const fSrc = floorMap.get(m.source);
-    const fTgt = floorMap.get(m.target);
+    const fSrc = ceilMap.get(m.source);
+    const fTgt = ceilMap.get(m.target);
     if (fSrc && fTgt) {
-      // Find the morphism fSrc <= fTgt in intPoset
       const target = intPoset.morphisms.find((im) => im.source === fSrc && im.target === fTgt);
-      if (target) floorMorphisms.set(m.label, target.label);
+      if (target) ceilMorphisms.set(m.label, target.label);
     }
   }
 
-  const floor: Functor = {
+  const ceil: Functor = {
     source: qPoset,
     target: intPoset,
-    onObjects: floorMap,
-    onMorphisms: floorMorphisms,
+    onObjects: ceilMap,
+    onMorphisms: ceilMorphisms,
     contravariant: false,
   };
 
@@ -1704,8 +1787,8 @@ export function floorInclusion(): {
   };
 
   return {
-    gc: { leftPoset: qPoset, rightPoset: intPoset, leftAdjoint: floor, rightAdjoint: inclusion },
-    description: 'Floor ⊣ Inclusion: ⌊x⌋ ≤ n ⟺ x ≤ n. The floor function is left adjoint to the inclusion of integers into rationals.',
+    gc: { leftPoset: qPoset, rightPoset: intPoset, leftAdjoint: ceil, rightAdjoint: inclusion },
+    description: 'Ceiling ⊣ Inclusion: ⌈x⌉ ≤ n ⟺ x ≤ n. The ceiling function is left adjoint to the inclusion of integers into rationals.',
   };
 }
 
@@ -1811,7 +1894,7 @@ export function getGaloisPresets(): {
   };
 }[] {
   return [
-    { name: 'Floor ⊣ Inclusion (Z ↪ Q)', build: floorInclusion },
+    { name: 'Ceiling ⊣ Inclusion (Z ↪ Q)', build: ceilingInclusion },
     { name: 'Image ⊣ Preimage (f: {1,2,3} → {a,b})', build: imagePreimage },
   ];
 }

@@ -92,9 +92,6 @@ export default function TriangleIdentityAnimator() {
     const F = data.adj.leftAdjoint;
     const G = data.adj.rightAdjoint;
     const FA = F.onObjects.get(A) ?? `F(${A})`;
-    const GB = G.onObjects.get(B) ?? `G(${B})`;
-    const GFA = G.onObjects.get(FA) ?? `GF(${A})`;
-    const FGB = F.onObjects.get(GB) ?? `FG(${B})`;
 
     // Two triangles side by side
     const triW = isNarrow ? w * 0.45 : w * 0.4;
@@ -111,8 +108,6 @@ export default function TriangleIdentityAnimator() {
       leftTriangle: boolean,
     ) => {
       const topY = 20;
-      const midY = innerH * 0.55;
-      const botY = topY; // same level, right side
       const nodeR = 18;
 
       // Positions: triangle with top-left, mid-top-right, bottom-left
@@ -137,7 +132,7 @@ export default function TriangleIdentityAnimator() {
           .attr('cx', n.x).attr('cy', n.y).attr('r', nodeR)
           .attr('fill', isActive ? COLORS.nodeActive : COLORS.node)
           .attr('stroke', isActive ? COLORS.nodeActive : COLORS.text)
-          .attr('stroke-width', 1.5);
+          .attr('stroke-width', isActive ? 2.5 : 1.5);
         g.append('text')
           .attr('x', n.x).attr('y', n.y + 4)
           .attr('text-anchor', 'middle')

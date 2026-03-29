@@ -49,7 +49,6 @@ export default function AdjunctionExplorer() {
   const [presetIdx, setPresetIdx] = useState(0);
   const [selectedA, setSelectedA] = useState<string | null>(null);
   const [selectedB, setSelectedB] = useState<string | null>(null);
-  const [showTriangle, setShowTriangle] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
 
   const { ref: containerRef, width: cw } = useResizeObserver<HTMLDivElement>();
@@ -187,8 +186,12 @@ export default function AdjunctionExplorer() {
     const srcNodes = positionObjects(data.sourceCategory.objects, srcX);
     const tgtNodes = positionObjects(data.targetCategory.objects, tgtX);
 
-    // Draw nodes
-    const drawNodes = (nodes: { label: string; x: number; y: number }[], highlight?: string | null) => {
+    // Draw nodes with click-to-select
+    const drawNodes = (
+      nodes: { label: string; x: number; y: number }[],
+      highlight: string | null | undefined,
+      onClick: (label: string) => void,
+    ) => {
       nodes.forEach((n) => {
         const isHighlighted = n.label === highlight;
         g.append('circle')
@@ -196,7 +199,8 @@ export default function AdjunctionExplorer() {
           .attr('fill', isHighlighted ? COLORS.unit : COLORS.node)
           .attr('stroke', isHighlighted ? COLORS.unit : COLORS.text)
           .attr('stroke-width', isHighlighted ? 2.5 : 1.5)
-          .style('cursor', 'pointer');
+          .style('cursor', 'pointer')
+          .on('click', () => onClick(n.label));
         g.append('text')
           .attr('x', n.x).attr('y', n.y + 4)
           .attr('text-anchor', 'middle')
@@ -208,50 +212,52 @@ export default function AdjunctionExplorer() {
       });
     };
 
-    drawNodes(srcNodes, selectedA);
-    drawNodes(tgtNodes, selectedB);
+    drawNodes(srcNodes, selectedA, (label) => setSelectedA(label));
+    drawNodes(tgtNodes, selectedB, (label) => setSelectedB(label));
 
     // Draw functor arrows (F: left→right, G: right→left)
     const F = data.adj.leftAdjoint;
     const G = data.adj.rightAdjoint;
 
-    // F arrows
+    // F arrows — highlight during zig phases (zig1: Fη, zig2: εF)
     srcNodes.forEach((sn) => {
       const fImage = F.onObjects.get(sn.label);
       if (!fImage) return;
       const tn = tgtNodes.find((t) => t.label === fImage);
       if (!tn) return;
+      const isZigActive = animPhase === 'zig1' || animPhase === 'zig2';
       g.append('path')
         .attr('d', `M ${sn.x + NODE_R + 2} ${sn.y - 4} Q ${midX} ${sn.y - 30} ${tn.x - NODE_R - 2} ${tn.y - 4}`)
         .attr('fill', 'none')
-        .attr('stroke', COLORS.functorF)
-        .attr('stroke-width', 1.8)
+        .attr('stroke', animPhase === 'zig1' ? COLORS.unit : COLORS.functorF)
+        .attr('stroke-width', isZigActive ? 3 : 1.8)
         .attr('marker-end', `url(#${uid}-arrow-f)`)
-        .attr('opacity', 0.7);
+        .attr('opacity', isZigActive ? 1 : 0.7);
     });
 
-    // G arrows
+    // G arrows — highlight during zag phases (zag1: ηG, zag2: Gε)
     tgtNodes.forEach((tn) => {
       const gImage = G.onObjects.get(tn.label);
       if (!gImage) return;
       const sn = srcNodes.find((s) => s.label === gImage);
       if (!sn) return;
+      const isZagActive = animPhase === 'zag1' || animPhase === 'zag2';
       g.append('path')
         .attr('d', `M ${tn.x - NODE_R - 2} ${tn.y + 4} Q ${midX} ${tn.y + 30} ${sn.x + NODE_R + 2} ${sn.y + 4}`)
         .attr('fill', 'none')
-        .attr('stroke', COLORS.functorG)
-        .attr('stroke-width', 1.8)
+        .attr('stroke', animPhase === 'zag2' ? COLORS.counit : COLORS.functorG)
+        .attr('stroke-width', isZagActive ? 3 : 1.8)
         .attr('marker-end', `url(#${uid}-arrow-g)`)
-        .attr('opacity', 0.7);
+        .attr('opacity', isZagActive ? 1 : 0.7);
     });
 
-    // ⊣ symbol in the middle
+    // ⊣ symbol in the middle (green when animation completes)
     g.append('text')
       .attr('x', midX).attr('y', boxH / 2)
       .attr('text-anchor', 'middle')
       .style('font-family', MATH_FONT)
       .style('font-size', '24px')
-      .style('fill', COLORS.text)
+      .style('fill', animPhase === 'done' ? COLORS.valid : COLORS.text)
       .text('⊣');
 
     // F and G labels
@@ -337,7 +343,7 @@ export default function AdjunctionExplorer() {
           .text(r);
       });
     }
-  }, [cw, data, selectedA, selectedB, uid, homBij, showTriangle, animPhase]);
+  }, [cw, data, selectedA, selectedB, uid, homBij, animPhase]);
 
   const animating = animPhase !== 'idle' && animPhase !== 'done';
 
