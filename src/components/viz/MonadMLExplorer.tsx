@@ -200,7 +200,7 @@ function BayesianInferenceTab() {
           </select>
         </label>
       </div>
-      <svg ref={svgRef} width={cw} height={SVG_H} />
+      <svg role="img" aria-label="Monad mlexplorer visualization (panel 1 of 3)" ref={svgRef} width={cw} height={SVG_H} />
       <div style={{ padding: '8px 16px', borderTop: '1px solid #e2e8f0', fontSize: '12px', color: COLORS.muted }}>
         <strong style={{ color: COLORS.text }}>Giry monad:</strong> Prior = Giry unit (δ), Likelihood = Kleisli arrow, Posterior = Kleisli composition (Chapman-Kolmogorov). Marginalization = Giry multiplication μ.
       </div>
@@ -424,7 +424,7 @@ function GNNMessagePassingTab() {
       <div style={{ padding: '10px 16px', borderBottom: '1px solid #e2e8f0', background: COLORS.bg, display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
         <label style={{ fontSize: '13px', color: COLORS.text }}>
           Aggregation:
-          <select value={aggFn} onChange={(e) => setAggFn(e.target.value as any)}
+          <select value={aggFn} onChange={(e) => setAggFn(e.target.value as 'sum' | 'mean' | 'max')}
             style={{ marginLeft: '6px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}>
             <option value="sum">Sum</option>
             <option value="mean">Mean</option>
@@ -440,7 +440,7 @@ function GNNMessagePassingTab() {
           {showExtended ? 'Show original' : 'Apply extend'}
         </button>
       </div>
-      <svg ref={svgRef} width={cw} height={SVG_H} />
+      <svg role="img" aria-label="Monad mlexplorer visualization (panel 2 of 3)" ref={svgRef} width={cw} height={SVG_H} />
       <div style={{ padding: '8px 16px', borderTop: '1px solid #e2e8f0', fontSize: '12px', color: COLORS.muted }}>
         <strong style={{ color: COLORS.text }}>Neighborhood comonad:</strong> CoKleisli arrow = aggregation function (extracts features from neighborhood). Extend = apply aggregation at every node simultaneously. One GNN layer = one coKleisli extension.
       </div>
@@ -556,7 +556,7 @@ function ProbabilisticProgrammingTab() {
 
   return (
     <div ref={containerRef} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
-      <svg ref={svgRef} width={cw} height={SVG_H} />
+      <svg role="img" aria-label="Monad mlexplorer visualization (panel 3 of 3)" ref={svgRef} width={cw} height={SVG_H} />
       <div style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
           <PipelineStep label="K₁: Sample" detail="Draw from prior N(0,1)" color={COLORS.prior} />

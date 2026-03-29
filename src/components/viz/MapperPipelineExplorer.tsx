@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { runMapper, createIntervalCover } from './shared/mapper';
-import type { MapperPoint } from './shared/types';
+import type { MapperPoint, MapperGraphNode } from './shared/types';
+import type { SimNode, SimLink } from './shared/d3Types';
 import { circlePoints } from '../../data/mapper-pipeline-data';
 
 const STEP_LABELS = [
@@ -212,7 +213,8 @@ export default function MapperPipelineExplorer() {
     const gH = 260;
 
     // Force layout
-    const simNodes = mapperResult.nodes.map((n) => ({
+    type MapperSimNode = SimNode<MapperGraphNode>;
+    const simNodes: MapperSimNode[] = mapperResult.nodes.map((n) => ({
       ...n,
       x: gW / 2 + (Math.cos((n.id / mapperResult.nodes.length) * Math.PI * 2)) * gW * 0.3,
       y: gH / 2 + (Math.sin((n.id / mapperResult.nodes.length) * Math.PI * 2)) * gH * 0.3,
@@ -220,13 +222,13 @@ export default function MapperPipelineExplorer() {
 
     const nodeMap = new Map(simNodes.map((n) => [n.id, n]));
 
-    const simEdges = mapperResult.edges
+    const simEdges: SimLink<MapperSimNode>[] = mapperResult.edges
       .map(([s, t]) => ({ source: nodeMap.get(s)!, target: nodeMap.get(t)! }))
       .filter((e) => e.source && e.target);
 
     const simulation = d3
-      .forceSimulation(simNodes as any)
-      .force('link', d3.forceLink(simEdges as any).id((d: any) => d.id).distance(40))
+      .forceSimulation<MapperSimNode>(simNodes)
+      .force('link', d3.forceLink<MapperSimNode, SimLink<MapperSimNode>>(simEdges).id((d) => (d as MapperSimNode).id).distance(40))
       .force('charge', d3.forceManyBody().strength(-80))
       .force('center', d3.forceCenter(gW / 2, gH / 2))
       .force('collision', d3.forceCollide(12));
@@ -237,8 +239,8 @@ export default function MapperPipelineExplorer() {
 
     // Clamp positions
     for (const n of simNodes) {
-      (n as any).x = Math.max(20, Math.min(gW - 20, (n as any).x));
-      (n as any).y = Math.max(20, Math.min(gH - 20, (n as any).y));
+      n.x = Math.max(20, Math.min(gW - 20, n.x!));
+      n.y = Math.max(20, Math.min(gH - 20, n.y!));
     }
 
     const g = svg.append('g');
@@ -260,10 +262,10 @@ export default function MapperPipelineExplorer() {
       .data(simEdges)
       .join('line')
       .attr('class', 'edge')
-      .attr('x1', (d: any) => d.source.x)
-      .attr('y1', (d: any) => d.source.y)
-      .attr('x2', (d: any) => d.target.x)
-      .attr('y2', (d: any) => d.target.y)
+      .attr('x1', (d) => d.source.x!)
+      .attr('y1', (d) => d.source.y!)
+      .attr('x2', (d) => d.target.x!)
+      .attr('y2', (d) => d.target.y!)
       .style('stroke', 'var(--color-text)')
       .attr('stroke-opacity', 0.25)
       .attr('stroke-width', 2);
@@ -273,8 +275,8 @@ export default function MapperPipelineExplorer() {
       .data(simNodes)
       .join('circle')
       .attr('class', 'node')
-      .attr('cx', (d: any) => d.x)
-      .attr('cy', (d: any) => d.y)
+      .attr('cx', (d) => d.x!)
+      .attr('cy', (d) => d.y!)
       .attr('r', (d) => Math.max(5, Math.min(14, d.size * 1.2)))
       .attr('fill', '#0F6E56')
       .attr('fill-opacity', 0.7)
@@ -286,8 +288,8 @@ export default function MapperPipelineExplorer() {
       .data(simNodes)
       .join('text')
       .attr('class', 'nlabel')
-      .attr('x', (d: any) => d.x)
-      .attr('y', (d: any) => d.y + 3)
+      .attr('x', (d) => d.x!)
+      .attr('y', (d) => d.y! + 3)
       .attr('text-anchor', 'middle')
       .attr('fill', '#fff')
       .style('font-family', 'var(--font-sans)')
@@ -349,14 +351,14 @@ export default function MapperPipelineExplorer() {
 
       {/* Main visualization */}
       <div className="flex flex-col items-center gap-3 md:flex-row md:items-start">
-        <svg
+        <svg role="img" aria-label="Mapper pipeline explorer visualization (panel 1 of 2)"
           ref={svgRef}
           width={panelWidth}
           height={panelHeight}
           className="rounded-lg border border-[var(--color-border)]"
         />
         {step >= 4 && (
-          <svg
+          <svg role="img" aria-label="Mapper pipeline explorer visualization (panel 2 of 2)"
             ref={graphRef}
             width={Math.min(panelWidth, 400)}
             height={260}

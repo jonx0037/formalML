@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
+import type { SimNode, SimLink } from './shared/d3Types';
 import { sensitivityGridData, type SensitivityEntry } from '../../data/mapper-sensitivity-data';
 
 interface CellProps {
@@ -23,7 +24,9 @@ function SensitivityCell({ entry, width, height }: CellProps) {
     const innerH = height - margin * 2 - 24; // leave room for label
 
     // Create node copies for simulation
-    const simNodes = entry.nodes.map((n) => ({
+    interface SensNode { id: number; size: number }
+    type SensSimNode = SimNode<SensNode>;
+    const simNodes: SensSimNode[] = entry.nodes.map((n) => ({
       ...n,
       x: innerW / 2 + (Math.random() - 0.5) * innerW * 0.3,
       y: innerH / 2 + (Math.random() - 0.5) * innerH * 0.3,
@@ -31,10 +34,10 @@ function SensitivityCell({ entry, width, height }: CellProps) {
 
     const nodeMap = new Map(simNodes.map((n) => [n.id, n]));
 
-    const simEdges = entry.edges
+    const simEdges: SimLink<SensSimNode>[] = entry.edges
       .map(([s, t]) => ({
-        source: nodeMap.get(s),
-        target: nodeMap.get(t),
+        source: nodeMap.get(s)!,
+        target: nodeMap.get(t)!,
       }))
       .filter((e) => e.source && e.target);
 
@@ -42,12 +45,12 @@ function SensitivityCell({ entry, width, height }: CellProps) {
 
     // Force simulation
     const simulation = d3
-      .forceSimulation(simNodes as any)
+      .forceSimulation<SensSimNode>(simNodes)
       .force(
         'link',
         d3
-          .forceLink(simEdges as any)
-          .id((d: any) => d.id)
+          .forceLink<SensSimNode, SimLink<SensSimNode>>(simEdges)
+          .id((d) => (d as SensSimNode).id)
           .distance(Math.min(innerW, innerH) * 0.2),
       )
       .force('charge', d3.forceManyBody().strength(-30))
@@ -70,7 +73,7 @@ function SensitivityCell({ entry, width, height }: CellProps) {
       .data(simNodes)
       .join('circle')
       .attr('class', 'node')
-      .attr('r', (d: any) => Math.max(3, Math.min(7, d.size * 0.6)))
+      .attr('r', (d) => Math.max(3, Math.min(7, d.size * 0.6)))
       .style('fill', entry.isGoldilocks ? 'var(--color-accent)' : 'var(--color-text)')
       .attr('fill-opacity', entry.isGoldilocks ? 0.8 : 0.4)
       .style('stroke', 'var(--color-surface)')
@@ -96,21 +99,21 @@ function SensitivityCell({ entry, width, height }: CellProps) {
     // Clamp positions and apply to DOM
     const NODE_PADDING = 4;
     for (const n of simNodes) {
-      (n as any).x = Math.max(NODE_PADDING, Math.min(innerW - NODE_PADDING, (n as any).x));
-      (n as any).y = Math.max(NODE_PADDING, Math.min(innerH - NODE_PADDING, (n as any).y));
+      n.x = Math.max(NODE_PADDING, Math.min(innerW - NODE_PADDING, n.x!));
+      n.y = Math.max(NODE_PADDING, Math.min(innerH - NODE_PADDING, n.y!));
     }
 
     links
-      .attr('x1', (d: any) => d.source.x)
-      .attr('y1', (d: any) => d.source.y)
-      .attr('x2', (d: any) => d.target.x)
-      .attr('y2', (d: any) => d.target.y);
+      .attr('x1', (d) => d.source.x!)
+      .attr('y1', (d) => d.source.y!)
+      .attr('x2', (d) => d.target.x!)
+      .attr('y2', (d) => d.target.y!);
 
     nodes
-      .attr('cx', (d: any) => d.x)
-      .attr('cy', (d: any) => d.y);
+      .attr('cx', (d) => d.x!)
+      .attr('cy', (d) => d.y!);
 
-    return () => simulation.stop();
+    return () => { simulation.stop(); };
   }, [entry, width, height]);
 
   return (
@@ -124,7 +127,7 @@ function SensitivityCell({ entry, width, height }: CellProps) {
           : 'var(--color-surface)',
       }}
     >
-      <svg ref={svgRef} width={width} height={height} />
+      <svg role="img" aria-label="Parameter sensitivity grid visualization" ref={svgRef} width={width} height={height} />
     </div>
   );
 }

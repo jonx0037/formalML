@@ -198,7 +198,7 @@ export default function WLExpressivenessExplorer() {
         if (graph.adjacency[i][j] > 0) links.push({ source: i, target: j });
 
     const sim = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(40))
+      .force('link', d3.forceLink<typeof nodes[number], typeof links[number]>(links).distance(40))
       .force('charge', d3.forceManyBody().strength(-80))
       .force('center', d3.forceCenter(0, 0))
       .stop();
@@ -457,12 +457,12 @@ export default function WLExpressivenessExplorer() {
       {/* Panels */}
       <div className={isSmall ? 'space-y-2' : 'flex gap-2'}>
         <div className={isSmall ? 'flex gap-2' : 'flex flex-col gap-2'}>
-          <svg ref={graphSvg1Ref} />
-          <svg ref={graphSvg2Ref} />
+          <svg role="img" aria-label="WLExpressiveness explorer visualization (panel 1 of 4)" ref={graphSvg1Ref} />
+          <svg role="img" aria-label="WLExpressiveness explorer visualization (panel 2 of 4)" ref={graphSvg2Ref} />
         </div>
         <div className="flex flex-col gap-2">
-          <svg ref={histSvgRef} />
-          <svg ref={traceSvgRef} />
+          <svg role="img" aria-label="WLExpressiveness explorer visualization (panel 3 of 4)" ref={histSvgRef} />
+          <svg role="img" aria-label="WLExpressiveness explorer visualization (panel 4 of 4)" ref={traceSvgRef} />
         </div>
       </div>
     </div>

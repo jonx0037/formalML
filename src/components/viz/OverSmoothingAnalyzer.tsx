@@ -121,7 +121,7 @@ export default function OverSmoothingAnalyzer() {
         if (graph.adjacency[i][j] > 0) links.push({ source: i, target: j });
 
     const sim = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(30))
+      .force('link', d3.forceLink<typeof nodes[number], typeof links[number]>(links).distance(30))
       .force('charge', d3.forceManyBody().strength(-60))
       .force('center', d3.forceCenter(0, 0))
       .stop();
@@ -499,12 +499,12 @@ export default function OverSmoothingAnalyzer() {
       {/* Panels */}
       <div className={isSmall ? 'space-y-2' : 'flex gap-2'}>
         <div className="shrink-0">
-          <svg ref={graphSvgRef} />
+          <svg role="img" aria-label="Over smoothing analyzer visualization (panel 1 of 4)" ref={graphSvgRef} />
         </div>
         <div className="flex flex-col gap-2">
-          <svg ref={energySvgRef} />
-          <svg ref={scatterSvgRef} />
-          <svg ref={rewireSvgRef} />
+          <svg role="img" aria-label="Over smoothing analyzer visualization (panel 2 of 4)" ref={energySvgRef} />
+          <svg role="img" aria-label="Over smoothing analyzer visualization (panel 3 of 4)" ref={scatterSvgRef} />
+          <svg role="img" aria-label="Over smoothing analyzer visualization (panel 4 of 4)" ref={rewireSvgRef} />
         </div>
       </div>
     </div>

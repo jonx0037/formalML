@@ -268,7 +268,7 @@ export default function ConvexFunctionExplorer() {
           const mouseX = event.sourceEvent.clientX - svgRect.left - MARGIN.left;
           const newX = clamp(xScale.invert(mouseX), X_DOMAIN[0], X_DOMAIN[1]);
           setChordA(newX);
-        }) as any,
+        }),
     );
 
     // Draggable endpoint B
@@ -290,7 +290,7 @@ export default function ConvexFunctionExplorer() {
           const mouseX = event.sourceEvent.clientX - svgRect.left - MARGIN.left;
           const newX = clamp(xScale.invert(mouseX), X_DOMAIN[0], X_DOMAIN[1]);
           setChordB(newX);
-        }) as any,
+        }),
     );
   }, [chordA, chordB, theta, fn, samples, innerW, innerH, panelWidth, panelHeight, xScale, yScale, lineGen, drawAxes, drawCurve]);
 
@@ -442,7 +442,7 @@ export default function ConvexFunctionExplorer() {
             const mouseX = event.sourceEvent.clientX - svgRect.left - MARGIN.left;
             const newX = clamp(xScale.invert(mouseX), X_DOMAIN[0] + 0.1, X_DOMAIN[1] - 0.1);
             setTangentX0(newX);
-          }) as any,
+          }),
       );
 
       // x₀ label
@@ -561,9 +561,9 @@ export default function ConvexFunctionExplorer() {
           justifyContent: 'center',
         }}
       >
-        <svg ref={chordRef} />
-        <svg ref={epiRef} />
-        <svg ref={tangentRef} />
+        <svg role="img" aria-label="Convex function explorer visualization (panel 1 of 3)" ref={chordRef} />
+        <svg role="img" aria-label="Convex function explorer visualization (panel 2 of 3)" ref={epiRef} />
+        <svg role="img" aria-label="Convex function explorer visualization (panel 3 of 3)" ref={tangentRef} />
       </div>
 
       {/* Controls */}

@@ -182,7 +182,7 @@ export default function AccelerationExplorer() {
       .data(contourGeo)
       .join('path')
       .attr('class', 'contour')
-      .attr('d', pathGen as any)
+      .attr('d', (d) => pathGen(d) ?? '')
       .attr('fill', 'none')
       .attr('stroke', '#64748b')
       .attr('stroke-opacity', 0.3)
@@ -488,13 +488,13 @@ export default function AccelerationExplorer() {
           gap: isWide ? 16 : 8,
         }}
       >
-        <svg
+        <svg role="img" aria-label="Acceleration explorer visualization (panel 1 of 2)"
           ref={leftSvgRef}
           width={panelWidth}
           height={PANEL_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="Acceleration explorer visualization (panel 2 of 2)"
           ref={rightSvgRef}
           width={panelWidth}
           height={PANEL_HEIGHT}

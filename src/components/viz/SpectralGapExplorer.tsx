@@ -254,19 +254,24 @@ export default function SpectralGapExplorer() {
           .attr('dy', -10)
       : null;
 
+    // After simulation init, link source/target are resolved from indices to SimNode objects.
+    // D3's type signature doesn't reflect this, so we use resolved accessors.
+    const src = (d: (typeof links)[number]): SimNode => d.source as unknown as SimNode;
+    const tgt = (d: (typeof links)[number]): SimNode => d.target as unknown as SimNode;
+
     simulation.on('tick', () => {
       linkElements
-        .attr('x1', (d: any) => d.source.x)
-        .attr('y1', (d: any) => d.source.y)
-        .attr('x2', (d: any) => d.target.x)
-        .attr('y2', (d: any) => d.target.y);
+        .attr('x1', (d) => src(d).x!)
+        .attr('y1', (d) => src(d).y!)
+        .attr('x2', (d) => tgt(d).x!)
+        .attr('y2', (d) => tgt(d).y!);
       nodeElements
-        .attr('cx', (d: any) => d.x)
-        .attr('cy', (d: any) => d.y);
+        .attr('cx', (d) => d.x!)
+        .attr('cy', (d) => d.y!);
       if (labelElements) {
         labelElements
-          .attr('x', (d: any) => d.x)
-          .attr('y', (d: any) => d.y);
+          .attr('x', (d) => d.x!)
+          .attr('y', (d) => d.y!);
       }
     });
 
@@ -629,7 +634,7 @@ export default function SpectralGapExplorer() {
             background: 'var(--color-surface)',
           }}
         >
-          <svg ref={graphSvgRef} />
+          <svg role="img" aria-label="Spectral gap explorer visualization (panel 1 of 3)" ref={graphSvgRef} />
         </div>
 
         {/* Right: spectrum + evolution stacked */}
@@ -649,7 +654,7 @@ export default function SpectralGapExplorer() {
               background: 'var(--color-surface)',
             }}
           >
-            <svg ref={spectrumSvgRef} />
+            <svg role="img" aria-label="Spectral gap explorer visualization (panel 2 of 3)" ref={spectrumSvgRef} />
           </div>
           <div
             style={{
@@ -659,7 +664,7 @@ export default function SpectralGapExplorer() {
               background: 'var(--color-surface)',
             }}
           >
-            <svg ref={evolutionSvgRef} />
+            <svg role="img" aria-label="Spectral gap explorer visualization (panel 3 of 3)" ref={evolutionSvgRef} />
           </div>
         </div>
       </div>

@@ -244,12 +244,14 @@ export default function ExpanderExplorer() {
     );
 
     // Prepare D3 simulation data
-    type SimNode = d3.SimulationNodeDatum & { id: number; inS: boolean };
+    interface ExpanderNode { id: number; inS: boolean }
+    type SimNode = d3.SimulationNodeDatum & ExpanderNode;
+    interface CutLink { source: number | SimNode; target: number | SimNode; isCut: boolean }
     const nodes: SimNode[] = Array.from({ length: n }, (_, i) => ({
       id: i,
       inS: optimalSet.has(i),
     }));
-    const links = edgeList.map(([s, t]) => ({
+    const links: CutLink[] = edgeList.map(([s, t]) => ({
       source: s,
       target: t,
       isCut: cutEdgeSet.has(`${Math.min(s, t)}-${Math.max(s, t)}`),
@@ -259,7 +261,7 @@ export default function ExpanderExplorer() {
     const innerH = panelHeight - MARGIN.top - MARGIN.bottom - 20;
 
     const simulation = d3.forceSimulation<SimNode>(nodes)
-      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(40).strength(0.8))
+      .force('link', d3.forceLink<SimNode, d3.SimulationLinkDatum<SimNode>>(links).id((d) => (d as SimNode).id).distance(40).strength(0.8))
       .force('charge', d3.forceManyBody().strength(-120))
       .force('center', d3.forceCenter(MARGIN.left + innerW / 2, MARGIN.top + 10 + innerH / 2))
       .force('collision', d3.forceCollide(12))
@@ -269,34 +271,35 @@ export default function ExpanderExplorer() {
     for (let i = 0; i < 200; i++) simulation.tick();
 
     // Clamp positions
-    for (const node of nodes as any[]) {
-      node.x = Math.max(MARGIN.left + 10, Math.min(MARGIN.left + innerW - 10, node.x));
-      node.y = Math.max(MARGIN.top + 20, Math.min(MARGIN.top + innerH, node.y));
+    for (const node of nodes) {
+      node.x = Math.max(MARGIN.left + 10, Math.min(MARGIN.left + innerW - 10, node.x!));
+      node.y = Math.max(MARGIN.top + 20, Math.min(MARGIN.top + innerH, node.y!));
     }
 
     const g = svg.append('g');
 
-    // Draw edges
+    // Draw edges — after simulation tick, source/target are resolved SimNode objects
+    type ResolvedCutLink = { source: SimNode; target: SimNode; isCut: boolean };
     g.selectAll('.edge')
-      .data(links)
+      .data(links as ResolvedCutLink[])
       .join('line')
       .attr('class', 'edge')
-      .attr('x1', (d: any) => d.source.x)
-      .attr('y1', (d: any) => d.source.y)
-      .attr('x2', (d: any) => d.target.x)
-      .attr('y2', (d: any) => d.target.y)
-      .style('stroke', (d: any) => d.isCut ? CUT_STROKE : 'var(--color-text)')
-      .style('stroke-opacity', (d: any) => d.isCut ? '0.9' : '0.3')
-      .style('stroke-width', (d: any) => d.isCut ? '3' : '1.5')
-      .style('stroke-dasharray', (d: any) => d.isCut ? '6,4' : 'none');
+      .attr('x1', (d) => d.source.x!)
+      .attr('y1', (d) => d.source.y!)
+      .attr('x2', (d) => d.target.x!)
+      .attr('y2', (d) => d.target.y!)
+      .style('stroke', (d) => d.isCut ? CUT_STROKE : 'var(--color-text)')
+      .style('stroke-opacity', (d) => d.isCut ? '0.9' : '0.3')
+      .style('stroke-width', (d) => d.isCut ? '3' : '1.5')
+      .style('stroke-dasharray', (d) => d.isCut ? '6,4' : 'none');
 
     // Draw nodes
     g.selectAll('.node')
       .data(nodes)
       .join('circle')
       .attr('class', 'node')
-      .attr('cx', (d: any) => d.x)
-      .attr('cy', (d: any) => d.y)
+      .attr('cx', (d) => d.x!)
+      .attr('cy', (d) => d.y!)
       .attr('r', 7)
       .style('fill', (d) => d.inS ? TEAL : AMBER)
       .style('fill-opacity', '0.9')
@@ -309,8 +312,8 @@ export default function ExpanderExplorer() {
         .data(nodes)
         .join('text')
         .attr('class', 'label')
-        .attr('x', (d: any) => d.x)
-        .attr('y', (d: any) => d.y - 11)
+        .attr('x', (d) => d.x!)
+        .attr('y', (d) => d.y! - 11)
         .style('fill', 'var(--color-text-secondary)')
         .style('font-size', '9px')
         .style('text-anchor', 'middle')
@@ -605,7 +608,7 @@ export default function ExpanderExplorer() {
             background: 'var(--color-surface)',
           }}
         >
-          <svg ref={graphSvgRef} />
+          <svg role="img" aria-label="Expander explorer visualization (panel 1 of 2)" ref={graphSvgRef} />
         </div>
 
         {/* Right: metric bars + Ramanujan check */}
@@ -708,7 +711,7 @@ export default function ExpanderExplorer() {
           background: 'var(--color-surface)',
         }}
       >
-        <svg ref={spectrumSvgRef} />
+        <svg role="img" aria-label="Expander explorer visualization (panel 2 of 2)" ref={spectrumSvgRef} />
       </div>
     </div>
   );

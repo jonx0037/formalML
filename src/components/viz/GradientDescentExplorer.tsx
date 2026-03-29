@@ -170,7 +170,7 @@ export default function GradientDescentExplorer() {
       .data(contourGeo)
       .join('path')
       .attr('class', 'contour')
-      .attr('d', pathGen as any)
+      .attr('d', (d) => pathGen(d) ?? '')
       .attr('fill', 'none')
       .attr('stroke', '#64748b')
       .attr('stroke-opacity', 0.3)
@@ -263,7 +263,7 @@ export default function GradientDescentExplorer() {
         d3.select(this).style('cursor', 'grab');
       });
 
-    startCircle.call(dragBehavior as any);
+    startCircle.call(dragBehavior);
 
     // Axes
     g.append('g')
@@ -468,13 +468,13 @@ export default function GradientDescentExplorer() {
           gap: isWide ? 16 : 8,
         }}
       >
-        <svg
+        <svg role="img" aria-label="Gradient descent explorer visualization (panel 1 of 2)"
           ref={leftSvgRef}
           width={panelWidth}
           height={PANEL_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="Gradient descent explorer visualization (panel 2 of 2)"
           ref={rightSvgRef}
           width={panelWidth}
           height={PANEL_HEIGHT}

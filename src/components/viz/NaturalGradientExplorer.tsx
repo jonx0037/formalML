@@ -148,7 +148,7 @@ export default function NaturalGradientExplorer() {
         .data(contourData)
         .join('path')
         .attr('class', 'contour')
-        .attr('d', contourPath as any)
+        .attr('d', (d) => contourPath(d) ?? '')
         .attr('fill', (d) => colorScale(d.value))
         .style('fill-opacity', '0.15')
         .style('stroke', (d) => colorScale(d.value))
@@ -287,7 +287,7 @@ export default function NaturalGradientExplorer() {
         Natural Gradient Explorer
       </div>
 
-      <svg ref={svgRef} width={svgWidth} height={HEIGHT} />
+      <svg role="img" aria-label="Natural gradient explorer visualization" ref={svgRef} width={svgWidth} height={HEIGHT} />
 
       <div className="mt-1 text-xs" style={{ color: 'var(--color-text-muted, #888)' }}>
         Click anywhere on the plot to add a new starting point.
