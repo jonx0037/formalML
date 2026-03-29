@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import CurriculumGraph from '../components/viz/CurriculumGraph.tsx';
+import TopicCard from '../components/ui/TopicCard.astro';
 import { getCollection } from 'astro:content';
 import { tracks } from '../data/curriculum';
 import graphData from '../data/curriculum-graph.json';
@@ -19,16 +20,10 @@ const publishedByDomain = publishedTopics.reduce<Record<string, typeof published
 );
 
 const difficultyOrder = { foundational: 0, intermediate: 1, advanced: 2 };
-
-const difficultyLabel: Record<string, string> = {
-  foundational: 'Foundational',
-  intermediate: 'Intermediate',
-  advanced: 'Advanced',
-};
 ---
 
 <BaseLayout title="Curriculum Roadmap" description="A planned roadmap of all content areas on formalML">
-  <section class="mx-auto max-w-3xl px-6 py-12">
+  <section class="mx-auto max-w-5xl px-6 py-12">
     <h1 class="text-3xl font-semibold font-[family-name:var(--font-sans)] mb-2">Curriculum Roadmap</h1>
     <p class="text-[var(--color-text-secondary)] mb-10 max-w-xl leading-relaxed">
       A planned map of content areas. Published topics are linked; everything else is on the roadmap.
@@ -43,7 +38,7 @@ const difficultyLabel: Record<string, string> = {
     </div>
 
     <div class="space-y-10">
-      {tracks.map(({ domain, label, description, planned }) => {
+      {tracks.map(({ domain, label, description, planned, calculusDependent }) => {
         const live = (publishedByDomain[domain] ?? []).sort(
           (a, b) => difficultyOrder[a.data.difficulty] - difficultyOrder[b.data.difficulty]
         );
@@ -65,38 +60,68 @@ const difficultyLabel: Record<string, string> = {
             </div>
             <p class="text-sm text-[var(--color-text-secondary)] mb-4 leading-relaxed">{description}</p>
 
-            <ul class="space-y-2">
-              {live.map((t) => (
-                <li class="flex items-center gap-3">
-                  <span class="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)] flex-shrink-0" />
-                  <a
-                    href={`/topics/${t.id}`}
-                    class="text-sm font-medium hover:text-[var(--color-accent)] transition-colors"
-                  >
-                    {t.data.title}
-                  </a>
-                  <span class="text-xs text-[var(--color-text-secondary)] capitalize">
-                    {difficultyLabel[t.data.difficulty]}
-                  </span>
-                  {t.data.prerequisites.length === 0 && (
-                    <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
-                      Start here
-                    </span>
-                  )}
-                </li>
-              ))}
+            {calculusDependent && (
+              <p class="text-xs text-[var(--color-text-secondary)] mb-4">
+                Need the calculus foundations?{' '}
+                <a
+                  href="https://formalcalculus.com"
+                  class="text-[var(--color-accent)] hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  formalcalculus.com &rarr;
+                </a>
+              </p>
+            )}
 
-              {planned.map((title) => (
-                <li class="flex items-center gap-3 opacity-40">
-                  <span class="h-1.5 w-1.5 rounded-full border border-current flex-shrink-0" />
-                  <span class="text-sm">{title}</span>
-                  <span class="text-xs text-[var(--color-text-secondary)]">Planned</span>
-                </li>
-              ))}
-            </ul>
+            {live.length > 0 && (
+              <div class="grid gap-4 sm:grid-cols-2">
+                {live.map((t) => (
+                  <TopicCard
+                    id={t.id}
+                    title={t.data.title}
+                    subtitle={t.data.subtitle}
+                    abstract={t.data.abstract}
+                    difficulty={t.data.difficulty}
+                    domain={t.data.domain}
+                    prerequisiteCount={t.data.prerequisites.length}
+                    showStartHere={t.data.prerequisites.length === 0}
+                  />
+                ))}
+              </div>
+            )}
+
+            {planned.length > 0 && (
+              <ul class="mt-4 space-y-2">
+                {planned.map((title) => (
+                  <li class="flex items-center gap-3 opacity-40">
+                    <span class="h-1.5 w-1.5 rounded-full border border-current flex-shrink-0" />
+                    <span class="text-sm">{title}</span>
+                    <span class="text-xs text-[var(--color-text-secondary)]">Planned</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         );
       })}
+    </div>
+
+    <div class="mt-16 border-t border-[var(--color-border)] pt-8">
+      <h2 class="text-lg font-semibold font-[family-name:var(--font-sans)] mb-2">Building your foundations?</h2>
+      <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed max-w-xl">
+        Many topics here assume fluency with multivariable calculus, limits, and series.
+        If you want to build or refresh those prerequisites,{' '}
+        <a
+          href="https://formalcalculus.com"
+          class="text-[var(--color-accent)] hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          formalcalculus.com
+        </a>{' '}
+        covers the calculus foundations with the same geometric-first approach.
+      </p>
     </div>
   </section>
 </BaseLayout>
