@@ -2,8 +2,6 @@ import { useState, useMemo, useEffect, useRef, useId } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  type Monad,
-  type Category,
   getMonadPresets,
   checkMonadLaws,
 } from './shared/categoryTheory';
@@ -12,8 +10,6 @@ import {
 
 const SM_BREAKPOINT = 640;
 const SVG_H = 320;
-const NODE_R = 18;
-const STEP_MS = 500;
 const MATH_FONT = 'KaTeX_Math, Georgia, serif';
 
 const COLORS = {

@@ -1953,22 +1953,18 @@ export function checkMonadLaws(
   for (const A of category.objects) {
     const TA = T.onObjects.get(A);
     if (!TA) continue;
-    const TTA = T.onObjects.get(TA);
-    if (!TTA) continue;
+
+    const muA = mu.components.get(A);
+    if (!muA) continue;
+    const idTA = category.identity(TA);
 
     // Left unit: mu_A . eta_{TA} = id_{TA}
     const etaTA = eta.components.get(TA);
-    const muA = mu.components.get(A);
-    if (etaTA && muA) {
-      const composed = category.morphisms.find(
-        (m) => m.label === muA,
-      );
-      const etaMorph = category.morphisms.find(
-        (m) => m.label === etaTA,
-      );
-      if (composed && etaMorph && composed.source !== etaMorph.target) {
+    if (etaTA) {
+      const composed = category.compose(muA, etaTA);
+      if (composed !== idTA) {
         leftUnit = false;
-        violations.push(`Left unit fails at ${A}: mu_${A} . eta_{${TA}} ≠ id`);
+        violations.push(`Left unit fails at ${A}: mu_${A} . eta_{${TA}} ≠ id_{${TA}}`);
       }
     }
 
@@ -1976,28 +1972,22 @@ export function checkMonadLaws(
     const etaA = eta.components.get(A);
     if (etaA) {
       const TetaA = T.onMorphisms.get(etaA);
-      if (TetaA && muA) {
-        // Verify composition yields identity
-        const muMorph = category.morphisms.find((m) => m.label === muA);
-        const TetaMorph = category.morphisms.find((m) => m.label === TetaA);
-        if (muMorph && TetaMorph && muMorph.source !== TetaMorph.target) {
+      if (TetaA) {
+        const composed = category.compose(muA, TetaA);
+        if (composed !== idTA) {
           rightUnit = false;
-          violations.push(`Right unit fails at ${A}: mu_${A} . T(eta_${A}) ≠ id`);
+          violations.push(`Right unit fails at ${A}: mu_${A} . T(eta_${A}) ≠ id_{${TA}}`);
         }
       }
     }
 
     // Associativity: mu_A . T(mu_A) = mu_A . mu_{TA}
     const muTA = mu.components.get(TA);
-    const TmuA = muA ? T.onMorphisms.get(muA) : undefined;
-    if (muTA && TmuA && muA) {
-      // Both paths should start at T³A and end at TA
-      // Path 1: T³A -T(mu_A)-> T²A -mu_A-> TA
-      // Path 2: T³A -mu_{TA}-> T²A -mu_A-> TA
-      // For correctness on small categories we just check the morphism labels exist
-      const muTAMorph = category.morphisms.find((m) => m.label === muTA);
-      const TmuAMorph = category.morphisms.find((m) => m.label === TmuA);
-      if (muTAMorph && TmuAMorph && muTAMorph.target !== TmuAMorph.target) {
+    const TmuA = T.onMorphisms.get(muA);
+    if (muTA && TmuA) {
+      const path1 = category.compose(muA, TmuA);   // mu_A . T(mu_A)
+      const path2 = category.compose(muA, muTA);    // mu_A . mu_{TA}
+      if (path1 !== path2) {
         associativity = false;
         violations.push(`Associativity fails at ${A}`);
       }
@@ -2030,27 +2020,27 @@ export function checkComonadLaws(
     const WA = W.onObjects.get(A);
     if (!WA) continue;
 
-    const epsWA = eps.components.get(WA);
     const deltaA = delta.components.get(A);
+    if (!deltaA) continue;
+    const idWA = category.identity(WA);
 
-    // Left counit: eps_{WA} . delta_A = id_{WA}
-    if (epsWA && deltaA) {
-      const epsMorph = category.morphisms.find((m) => m.label === epsWA);
-      const deltaMorph = category.morphisms.find((m) => m.label === deltaA);
-      if (epsMorph && deltaMorph && epsMorph.source !== deltaMorph.target) {
+    // Left counit: eps_A . delta_A = id_{WA}
+    // NaturalTransformation components keyed by source objects
+    const epsA = eps.components.get(A);
+    if (epsA) {
+      const composed = category.compose(epsA, deltaA);
+      if (composed !== idWA) {
         leftCounit = false;
         violations.push(`Left counit fails at ${A}`);
       }
     }
 
     // Right counit: W(eps_A) . delta_A = id_{WA}
-    const epsA = eps.components.get(A);
     if (epsA) {
       const WepsA = W.onMorphisms.get(epsA);
-      if (WepsA && deltaA) {
-        const WepsMorph = category.morphisms.find((m) => m.label === WepsA);
-        const deltaMorph = category.morphisms.find((m) => m.label === deltaA);
-        if (WepsMorph && deltaMorph && WepsMorph.source !== deltaMorph.target) {
+      if (WepsA) {
+        const composed = category.compose(WepsA, deltaA);
+        if (composed !== idWA) {
           rightCounit = false;
           violations.push(`Right counit fails at ${A}`);
         }
@@ -2058,16 +2048,14 @@ export function checkComonadLaws(
     }
 
     // Coassociativity: W(delta_A) . delta_A = delta_{WA} . delta_A
-    if (deltaA) {
-      const WdeltaA = W.onMorphisms.get(deltaA);
-      const deltaWA = delta.components.get(WA);
-      if (WdeltaA && deltaWA) {
-        const WdeltaMorph = category.morphisms.find((m) => m.label === WdeltaA);
-        const deltaWAMorph = category.morphisms.find((m) => m.label === deltaWA);
-        if (WdeltaMorph && deltaWAMorph && WdeltaMorph.target !== deltaWAMorph.target) {
-          coassociativity = false;
-          violations.push(`Coassociativity fails at ${A}`);
-        }
+    const WdeltaA = W.onMorphisms.get(deltaA);
+    const deltaWA = WA ? delta.components.get(WA) : undefined;
+    if (WdeltaA && deltaWA) {
+      const path1 = category.compose(WdeltaA, deltaA);
+      const path2 = category.compose(deltaWA, deltaA);
+      if (path1 !== path2) {
+        coassociativity = false;
+        violations.push(`Coassociativity fails at ${A}`);
       }
     }
   }
@@ -2079,20 +2067,16 @@ export function checkComonadLaws(
 export function kleisliCompose(
   f: KleisliArrow, // A -> TB
   g: KleisliArrow, // B -> TC
-  monad: Monad,
-  category: Category,
+  _monad: Monad,
+  _category: Category,
 ): KleisliArrow {
-  const T = monad.endofunctor;
-  const mu = monad.multiplication;
-
   // Result: A -> TC via mu_C . T(g) . f
-  const TC = T.onObjects.get(g.target);
-  const composedLabel = `(${g.morphismLabel} >=> ${f.morphismLabel})`;
-
+  // On symbolic categories we build the composed label; actual morphism
+  // composition would require resolving through category.compose().
   return {
     source: f.source,
     target: g.target,
-    morphismLabel: composedLabel,
+    morphismLabel: `(${g.morphismLabel} >=> ${f.morphismLabel})`,
   };
 }
 
@@ -2149,7 +2133,6 @@ export function comparisonFunctor(
 ): { functor: Functor; isEquivalence: boolean } {
   const F = adj.leftAdjoint;
   const G = adj.rightAdjoint;
-  const eps = adj.counit;
 
   // K sends each object B in D to the T-algebra (G(B), G(eps_B))
   const onObjects = new Map<string, string>();
@@ -2188,7 +2171,7 @@ export function comparisonFunctor(
 /** Build a comonad from an adjunction: W = FG, eps from counit, delta = F(eta)G. */
 export function comonadFromAdjunction(
   adj: Adjunction,
-  sourceCategory: Category,
+  _sourceCategory: Category,
   targetCategory: Category,
 ): Comonad {
   const F = adj.leftAdjoint;
@@ -2261,7 +2244,19 @@ export function maybeMonad(objects: string[]): { monad: Monad; category: Categor
     morphisms.push({ label: `nothing_${o}`, source: o, target: '⊥', isIdentity: false });
   }
 
-  const category: Category = { objects: allObjects, morphisms, compositionMap: new Map() };
+  const category: Category = {
+    objects: allObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
 
   // T: X -> X ∪ {⊥} on original objects, ⊥ -> ⊥
   const onObjects = new Map<string, string>();
@@ -2326,7 +2321,19 @@ export function listMonad(objects: string[]): { monad: Monad; category: Category
     morphisms.push({ label: `flatten_${o}`, source: `[${o}]`, target: `[${o}]`, isIdentity: false });
   }
 
-  const category: Category = { objects: listObjects, morphisms, compositionMap: new Map() };
+  const category: Category = {
+    objects: listObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
 
   const onObjects = new Map<string, string>();
   for (const o of objects) onObjects.set(o, `[${o}]`);
@@ -2388,7 +2395,19 @@ export function giryMonad(objects: string[]): { monad: Monad; category: Category
     });
   }
 
-  const category: Category = { objects: distObjects, morphisms, compositionMap: new Map() };
+  const category: Category = {
+    objects: distObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
 
   const onObjects = new Map<string, string>();
   for (const o of objects) onObjects.set(o, distLabel(o));
@@ -2451,7 +2470,19 @@ export function streamComonad(windowSize: number): { comonad: Comonad; category:
     });
   }
 
-  const category: Category = { objects: streamObjects, morphisms, compositionMap: new Map() };
+  const category: Category = {
+    objects: streamObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
 
   const onObjects = new Map<string, string>();
   for (const o of objects) onObjects.set(o, `S(${o})`);
@@ -2513,7 +2544,19 @@ export function neighborhoodComonad(
     });
   }
 
-  const category: Category = { objects: nObjects, morphisms, compositionMap: new Map() };
+  const category: Category = {
+    objects: nObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
 
   const onObjects = new Map<string, string>();
   for (const v of nodes) onObjects.set(v, `N(${v})`);

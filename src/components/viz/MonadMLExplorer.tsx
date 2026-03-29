@@ -4,7 +4,6 @@ import { useResizeObserver } from './shared/useResizeObserver';
 
 // ─── Constants ───
 
-const SM_BREAKPOINT = 640;
 const SVG_H = 320;
 const MATH_FONT = 'KaTeX_Math, Georgia, serif';
 

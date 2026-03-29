@@ -6,7 +6,6 @@ import type { MarkovKernel } from './shared/types';
 // ─── Constants ───
 
 const SVG_H = 300;
-const SM_BREAKPOINT = 640;
 const STEP_MS = 600;
 const MATH_FONT = 'KaTeX_Math, Georgia, serif';
 
@@ -111,7 +110,6 @@ export default function KleisliExplorer() {
   const svgRef = useRef<SVGSVGElement>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const uid = useId().replace(/:/g, '');
-  const isNarrow = cw < SM_BREAKPOINT;
 
   const preset = KLEISLI_PRESETS[presetIdx];
   const isGiry = preset.monadName === 'Giry';

@@ -5,7 +5,6 @@ import { useResizeObserver } from './shared/useResizeObserver';
 // ─── Constants ───
 
 const SVG_H = 340;
-const SM_BREAKPOINT = 640;
 const MATH_FONT = 'KaTeX_Math, Georgia, serif';
 
 const COLORS = {
@@ -128,7 +127,6 @@ export default function ComonadExplorer() {
   const { ref: containerRef, width: cw } = useResizeObserver<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const uid = useId().replace(/:/g, '');
-  const isNarrow = cw < SM_BREAKPOINT;
 
   const display = COMONAD_DISPLAYS[comonadIdx];
   const isStream = comonadIdx === 0;
@@ -311,9 +309,6 @@ export default function ComonadExplorer() {
     for (const [a, b] of GRAPH_EDGES) {
       const na = GRAPH_NODES.find((n) => n.id === a)!;
       const nb = GRAPH_NODES.find((n) => n.id === b)!;
-      const isNeighborEdge =
-        (a === graphFocus || b === graphFocus) ||
-        (neighbors.includes(a) && neighbors.includes(b));
       const highlighted = a === graphFocus || b === graphFocus;
 
       g.append('line')
