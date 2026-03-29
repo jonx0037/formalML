@@ -161,7 +161,7 @@ function CategoryDiagram({ width }: { width: number }) {
   const labelId = useId().replace(/:/g, '');
 
   return (
-    <svg width={width} height={h} style={{ display: 'block' }}>
+    <svg role="img" aria-label="Yoneda explorer visualization (panel 1 of 2)" width={width} height={h} style={{ display: 'block' }}>
       <defs>
         <marker
           id={`${labelId}-arrow`}
@@ -298,7 +298,7 @@ function ArrowOverlay({
   if (positions.length === 0) return null;
 
   return (
-    <svg
+    <svg role="img" aria-label="Yoneda explorer visualization (panel 2 of 2)"
       style={{
         position: 'absolute',
         top: 0,

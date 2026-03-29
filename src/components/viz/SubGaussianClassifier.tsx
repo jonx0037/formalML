@@ -350,10 +350,10 @@ export default function SubGaussianClassifier() {
 
       {/* Two-panel layout */}
       <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: '8px' }}>
-        <svg ref={leftSvgRef} width={panelW} height={panelH} style={{
+        <svg role="img" aria-label="Sub gaussian classifier visualization (panel 1 of 2)" ref={leftSvgRef} width={panelW} height={panelH} style={{
           border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
         }} />
-        <svg ref={rightSvgRef} width={panelW} height={panelH} style={{
+        <svg role="img" aria-label="Sub gaussian classifier visualization (panel 2 of 2)" ref={rightSvgRef} width={panelW} height={panelH} style={{
           border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
         }} />
       </div>

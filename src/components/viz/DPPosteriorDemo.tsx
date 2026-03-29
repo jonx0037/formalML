@@ -239,7 +239,7 @@ export default function DPPosteriorDemo() {
         DP Posterior Updating
       </div>
 
-      <svg
+      <svg role="img" aria-label="DPPosterior demo visualization"
         ref={svgRef}
         width={panelW}
         height={panelH}

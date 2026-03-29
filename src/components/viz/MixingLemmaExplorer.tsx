@@ -174,8 +174,10 @@ export default function MixingLemmaExplorer() {
     const sSet = new Set(setS);
     const tSet = new Set(setT);
 
-    // Prepare D3 simulation data
+    // Prepare D3 simulation data — SimulationNodeDatum already has `index?: number`
+    // which the simulation sets to the node's array position, matching our node IDs.
     type SimNode = d3.SimulationNodeDatum & { index: number };
+    type ResolvedLink = { source: SimNode; target: SimNode };
     const nodes: SimNode[] = Array.from({ length: n }, (_, i) => ({ index: i }));
     const links = edgeList.map(([s, t]) => ({ source: s, target: t }));
 
@@ -193,24 +195,29 @@ export default function MixingLemmaExplorer() {
 
     const hasSelection = setS.length > 0 || setT.length > 0;
 
+    // Helper to extract node index from a link endpoint (number before tick, object after)
+    type LinkEndpoint = number | SimNode;
+    const endpointIndex = (ep: LinkEndpoint): number =>
+      typeof ep === 'object' ? ep.index : ep;
+
     const linkElements = g.append('g')
       .selectAll('line')
       .data(links)
       .join('line')
-      .style('stroke', (d: any) => {
-        const si = typeof d.source === 'object' ? d.source.index : d.source;
-        const ti = typeof d.target === 'object' ? d.target.index : d.target;
+      .style('stroke', (d) => {
+        const si = endpointIndex(d.source as LinkEndpoint);
+        const ti = endpointIndex(d.target as LinkEndpoint);
         return isSTEdge(si, ti) ? COLOR_PURPLE : 'var(--color-text-secondary)';
       })
-      .style('stroke-opacity', (d: any) => {
+      .style('stroke-opacity', (d) => {
         if (!hasSelection) return '0.4';
-        const si = typeof d.source === 'object' ? d.source.index : d.source;
-        const ti = typeof d.target === 'object' ? d.target.index : d.target;
+        const si = endpointIndex(d.source as LinkEndpoint);
+        const ti = endpointIndex(d.target as LinkEndpoint);
         return isSTEdge(si, ti) ? '0.9' : '0.15';
       })
-      .style('stroke-width', (d: any) => {
-        const si = typeof d.source === 'object' ? d.source.index : d.source;
-        const ti = typeof d.target === 'object' ? d.target.index : d.target;
+      .style('stroke-width', (d) => {
+        const si = endpointIndex(d.source as LinkEndpoint);
+        const ti = endpointIndex(d.target as LinkEndpoint);
         return isSTEdge(si, ti) ? '3' : '1.5';
       });
 
@@ -259,19 +266,24 @@ export default function MixingLemmaExplorer() {
           .attr('dy', -13)
       : null;
 
+    // After simulation init, link source/target are resolved from indices to SimNode objects.
+    // D3's type signature doesn't reflect this, so we use a resolved accessor.
+    const src = (d: (typeof links)[number]): SimNode => d.source as unknown as SimNode;
+    const tgt = (d: (typeof links)[number]): SimNode => d.target as unknown as SimNode;
+
     simulation.on('tick', () => {
       linkElements
-        .attr('x1', (d: any) => d.source.x)
-        .attr('y1', (d: any) => d.source.y)
-        .attr('x2', (d: any) => d.target.x)
-        .attr('y2', (d: any) => d.target.y);
+        .attr('x1', (d) => src(d).x!)
+        .attr('y1', (d) => src(d).y!)
+        .attr('x2', (d) => tgt(d).x!)
+        .attr('y2', (d) => tgt(d).y!);
       nodeElements
-        .attr('cx', (d: any) => d.x)
-        .attr('cy', (d: any) => d.y);
+        .attr('cx', (d) => d.x!)
+        .attr('cy', (d) => d.y!);
       if (labelElements) {
         labelElements
-          .attr('x', (d: any) => d.x)
-          .attr('y', (d: any) => d.y);
+          .attr('x', (d) => d.x!)
+          .attr('y', (d) => d.y!);
       }
     });
 
@@ -766,7 +778,7 @@ export default function MixingLemmaExplorer() {
             background: 'var(--color-surface)',
           }}
         >
-          <svg ref={graphSvgRef} />
+          <svg role="img" aria-label="Mixing lemma explorer visualization (panel 1 of 3)" ref={graphSvgRef} />
         </div>
 
         {/* Right: bar chart + histogram stacked */}
@@ -786,7 +798,7 @@ export default function MixingLemmaExplorer() {
               background: 'var(--color-surface)',
             }}
           >
-            <svg ref={barSvgRef} />
+            <svg role="img" aria-label="Mixing lemma explorer visualization (panel 2 of 3)" ref={barSvgRef} />
           </div>
           <div
             style={{
@@ -796,7 +808,7 @@ export default function MixingLemmaExplorer() {
               background: 'var(--color-surface)',
             }}
           >
-            <svg ref={histSvgRef} />
+            <svg role="img" aria-label="Mixing lemma explorer visualization (panel 3 of 3)" ref={histSvgRef} />
           </div>
         </div>
       </div>

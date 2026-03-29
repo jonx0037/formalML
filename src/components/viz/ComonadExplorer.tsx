@@ -464,7 +464,7 @@ export default function ComonadExplorer() {
 
       {/* SVG area for Stream and Graph */}
       {(isStream || isGraph) && (
-        <svg ref={svgRef} width={cw} height={SVG_H} />
+        <svg role="img" aria-label="Comonad explorer visualization" ref={svgRef} width={cw} height={SVG_H} />
       )}
 
       {/* Text description for Store and Environment */}

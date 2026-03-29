@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { domainColorScale } from './shared/colorScales';
 import type { DAGNode, DAGEdge } from './shared/types';
+import type { SimNode, SimLink } from './shared/d3Types';
 
 interface DAGGraphProps {
   nodes: DAGNode[];
@@ -37,7 +38,7 @@ export default function DAGGraph({
 
     const simulation = d3
       .forceSimulation(simNodes)
-      .force('link', d3.forceLink(simEdges).id((d: any) => d.id).distance(100))
+      .force('link', d3.forceLink<SimNode<DAGNode>, d3.SimulationLinkDatum<SimNode<DAGNode>>>(simEdges).id((d) => d.id).distance(100))
       .force('charge', d3.forceManyBody().strength(-300))
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('y', d3.forceY(height / 2).strength(0.05));
@@ -121,16 +122,16 @@ export default function DAGGraph({
 
     simulation.on('tick', () => {
       link
-        .attr('x1', (d: any) => d.source.x)
-        .attr('y1', (d: any) => d.source.y)
-        .attr('x2', (d: any) => d.target.x)
-        .attr('y2', (d: any) => d.target.y);
+        .attr('x1', (d: SimLink<SimNode<DAGNode>>) => d.source.x!)
+        .attr('y1', (d: SimLink<SimNode<DAGNode>>) => d.source.y!)
+        .attr('x2', (d: SimLink<SimNode<DAGNode>>) => d.target.x!)
+        .attr('y2', (d: SimLink<SimNode<DAGNode>>) => d.target.y!);
 
-      node.attr('transform', (d: any) => `translate(${d.x},${d.y})`);
+      node.attr('transform', (d: SimNode<DAGNode>) => `translate(${d.x},${d.y})`);
     });
 
     return () => simulation.stop();
   }, [nodes, edges, highlightNode, onNodeClick, layout]);
 
-  return <svg ref={svgRef} className="w-full rounded-lg" style={{ minHeight: 400 }} />;
+  return <svg role="img" aria-label="DAGGraph visualization" ref={svgRef} className="w-full rounded-lg" style={{ minHeight: 400 }} />;
 }

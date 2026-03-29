@@ -283,7 +283,7 @@ export default function CellularSheafExplorer() {
       </div>
 
       {/* Graph visualization */}
-      <svg
+      <svg role="img" aria-label="Cellular sheaf explorer visualization"
         ref={svgRef}
         width={svgWidth}
         height={svgHeight}

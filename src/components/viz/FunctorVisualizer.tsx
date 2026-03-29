@@ -302,7 +302,7 @@ export default function FunctorVisualizer() {
         </label>
       </div>
 
-      <svg ref={svgRef} width={svgWidth} height={svgHeight}
+      <svg role="img" aria-label="Functor visualizer visualization" ref={svgRef} width={svgWidth} height={svgHeight}
         style={{ border: '1px solid var(--color-border)', borderRadius: 8, backgroundColor: 'var(--color-bg)' }} />
 
       <div className="mt-4 rounded-lg border p-3"

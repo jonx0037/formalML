@@ -340,7 +340,7 @@ export default function StochasticComplexityExplorer() {
           </select>
         </label>
       </div>
-      <svg ref={svgRef} width={totalWidth} height={svgHeight} />
+      <svg role="img" aria-label="Stochastic complexity explorer visualization" ref={svgRef} width={totalWidth} height={svgHeight} />
     </div>
   );
 }

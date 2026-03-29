@@ -429,7 +429,7 @@ export default function ScreePlotExplorer() {
           >
             Eigenvalue spectrum
           </p>
-          <svg
+          <svg role="img" aria-label="Scree plot explorer visualization (panel 1 of 2)"
             ref={leftSvgRef}
             width={panelWidth}
             height={SVG_HEIGHT}
@@ -446,7 +446,7 @@ export default function ScreePlotExplorer() {
           >
             Cumulative explained variance
           </p>
-          <svg
+          <svg role="img" aria-label="Scree plot explorer visualization (panel 2 of 2)"
             ref={rightSvgRef}
             width={panelWidth}
             height={SVG_HEIGHT}

@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
+import type { SimNode, SimLink } from './shared/d3Types';
 import {
   figureEightPoints,
   filterVariants,
+  type FilterVariant,
 } from '../../data/mapper-filter-data';
 
 export default function FilterFunctionComparison() {
@@ -95,7 +97,9 @@ export default function FilterFunctionComparison() {
       .text('Mapper Graph');
 
     // Force layout
-    const simNodes = graph.nodes.map((n) => ({
+    interface FilterGraphNode { id: number; size: number; filterValue: number }
+    type FilterSimNode = SimNode<FilterGraphNode>;
+    const simNodes: FilterSimNode[] = graph.nodes.map((n) => ({
       ...n,
       x: gW / 2 + (Math.cos((n.id / graph.nodes.length) * Math.PI * 2)) * gW * 0.25,
       y: gH / 2 + (Math.sin((n.id / graph.nodes.length) * Math.PI * 2)) * gH * 0.25,
@@ -103,13 +107,13 @@ export default function FilterFunctionComparison() {
 
     const nodeMap = new Map(simNodes.map((n) => [n.id, n]));
 
-    const simEdges = graph.edges
+    const simEdges: SimLink<FilterSimNode>[] = graph.edges
       .map(([s, t]) => ({ source: nodeMap.get(s)!, target: nodeMap.get(t)! }))
       .filter((e) => e.source && e.target);
 
     const simulation = d3
-      .forceSimulation(simNodes as any)
-      .force('link', d3.forceLink(simEdges as any).id((d: any) => d.id).distance(35))
+      .forceSimulation<FilterSimNode>(simNodes)
+      .force('link', d3.forceLink<FilterSimNode, SimLink<FilterSimNode>>(simEdges).id((d) => (d as FilterSimNode).id).distance(35))
       .force('charge', d3.forceManyBody().strength(-60))
       .force('center', d3.forceCenter(gW / 2, gH / 2))
       .force('collision', d3.forceCollide(10));
@@ -119,8 +123,8 @@ export default function FilterFunctionComparison() {
 
     // Clamp
     for (const n of simNodes) {
-      (n as any).x = Math.max(20, Math.min(gW - 20, (n as any).x));
-      (n as any).y = Math.max(30, Math.min(gH - 20, (n as any).y));
+      n.x = Math.max(20, Math.min(gW - 20, n.x!));
+      n.y = Math.max(30, Math.min(gH - 20, n.y!));
     }
 
     const fExtent = d3.extent(graph.nodes, (n) => n.filterValue);
@@ -134,10 +138,10 @@ export default function FilterFunctionComparison() {
       .data(simEdges)
       .join('line')
       .attr('class', 'edge')
-      .attr('x1', (d: any) => d.source.x)
-      .attr('y1', (d: any) => d.source.y)
-      .attr('x2', (d: any) => d.target.x)
-      .attr('y2', (d: any) => d.target.y)
+      .attr('x1', (d) => d.source.x!)
+      .attr('y1', (d) => d.source.y!)
+      .attr('x2', (d) => d.target.x!)
+      .attr('y2', (d) => d.target.y!)
       .style('stroke', 'var(--color-text)')
       .attr('stroke-opacity', 0.2)
       .attr('stroke-width', 2);
@@ -147,10 +151,10 @@ export default function FilterFunctionComparison() {
       .data(simNodes)
       .join('circle')
       .attr('class', 'node')
-      .attr('cx', (d: any) => d.x)
-      .attr('cy', (d: any) => d.y)
-      .attr('r', (d: any) => Math.max(5, Math.min(12, d.size * 0.8)))
-      .attr('fill', (d: any) => colorScale(d.filterValue))
+      .attr('cx', (d) => d.x!)
+      .attr('cy', (d) => d.y!)
+      .attr('r', (d) => Math.max(5, Math.min(12, d.size * 0.8)))
+      .attr('fill', (d) => colorScale(d.filterValue))
       .style('stroke', 'var(--color-surface)')
       .attr('stroke-width', 2)
       .attr('opacity', 0.85);
@@ -196,13 +200,13 @@ export default function FilterFunctionComparison() {
 
       {/* Panels */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <svg
+        <svg role="img" aria-label="Filter function comparison visualization (panel 1 of 2)"
           ref={scatterRef}
           width={panelWidth}
           height={panelHeight}
           className="rounded-lg border border-[var(--color-border)]"
         />
-        <svg
+        <svg role="img" aria-label="Filter function comparison visualization (panel 2 of 2)"
           ref={graphRef}
           width={panelWidth}
           height={panelHeight}

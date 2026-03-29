@@ -216,7 +216,7 @@ export default function PCAGeometryExplorer() {
       >
         {/* Left panel: SVG data cloud */}
         <div style={{ flex: isDesktop ? '0 0 50%' : '1 1 auto' }}>
-          <svg
+          <svg role="img" aria-label="PCAGeometry explorer visualization"
             width={svgContainerWidth}
             height={SVG_HEIGHT}
             viewBox={`0 0 ${svgContainerWidth} ${SVG_HEIGHT}`}

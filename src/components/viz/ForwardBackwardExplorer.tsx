@@ -477,7 +477,7 @@ export default function ForwardBackwardExplorer() {
           <p className="text-xs font-medium text-center mb-1 text-gray-600 dark:text-gray-400">
             Contour of g(x) + L1 trajectory
           </p>
-          <svg
+          <svg role="img" aria-label="Forward backward explorer visualization (panel 1 of 3)"
             ref={(node) => {
               (contourSvgRef as React.MutableRefObject<SVGSVGElement | null>).current = node;
               (contourAxesRef as React.MutableRefObject<SVGSVGElement | null>).current = node;
@@ -662,7 +662,7 @@ export default function ForwardBackwardExplorer() {
           <p className="text-xs font-medium text-center mb-1 text-gray-600 dark:text-gray-400">
             F(x<sub>k</sub>) &minus; F* vs iteration (log scale)
           </p>
-          <svg ref={convAxesRef} width={panelWidth} height={HEIGHT}>
+          <svg role="img" aria-label="Forward backward explorer visualization (panel 2 of 3)" ref={convAxesRef} width={panelWidth} height={HEIGHT}>
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {/* Convergence line */}
               {convLinePath && (
@@ -721,7 +721,7 @@ export default function ForwardBackwardExplorer() {
           <p className="text-xs font-medium text-center mb-1 text-gray-600 dark:text-gray-400">
             Recovered sparse vector vs ground truth
           </p>
-          <svg ref={barAxesRef} width={panelWidth} height={HEIGHT}>
+          <svg role="img" aria-label="Forward backward explorer visualization (panel 3 of 3)" ref={barAxesRef} width={panelWidth} height={HEIGHT}>
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {/* Zero line */}
               <line

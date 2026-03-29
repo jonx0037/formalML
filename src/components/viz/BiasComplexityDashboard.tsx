@@ -133,7 +133,7 @@ export default function BiasComplexityDashboard() {
         Structural Risk Minimization Dashboard
       </div>
 
-      <svg ref={svgRef} width={chartW} height={chartH} style={{
+      <svg role="img" aria-label="Bias complexity dashboard visualization" ref={svgRef} width={chartW} height={chartH} style={{
         border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
       }} />
 
@@ -143,7 +143,7 @@ export default function BiasComplexityDashboard() {
           <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>
             n (samples): <strong style={{ color: 'var(--color-text)' }}>{n.toLocaleString()}</strong>
           </div>
-          <input type="range" min={50} max={5000} step={50} value={n}
+          <input type="range" aria-label="Number of samples" min={50} max={5000} step={50} value={n}
             onChange={e => setN(parseInt(e.target.value))}
             style={{ width: '100%', accentColor: 'var(--color-accent)' }} />
         </div>
@@ -151,7 +151,7 @@ export default function BiasComplexityDashboard() {
           <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>
             Approx. decay b: <strong style={{ color: 'var(--color-text)' }}>{decayRate.toFixed(2)}</strong>
           </div>
-          <input type="range" min={0.02} max={0.2} step={0.005} value={decayRate}
+          <input type="range" aria-label="Approximation decay rate" min={0.02} max={0.2} step={0.005} value={decayRate}
             onChange={e => setDecayRate(parseFloat(e.target.value))}
             style={{ width: '100%', accentColor: 'var(--color-accent)' }} />
         </div>
@@ -159,7 +159,7 @@ export default function BiasComplexityDashboard() {
           <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>
             δ (failure prob): <strong style={{ color: 'var(--color-text)' }}>{delta.toFixed(2)}</strong>
           </div>
-          <input type="range" min={0.01} max={0.5} step={0.01} value={delta}
+          <input type="range" aria-label="Failure probability delta" min={0.01} max={0.5} step={0.01} value={delta}
             onChange={e => setDelta(parseFloat(e.target.value))}
             style={{ width: '100%', accentColor: 'var(--color-accent)' }} />
         </div>

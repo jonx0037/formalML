@@ -289,7 +289,7 @@ export default function ManifoldGalleryExplorer() {
 
           <div className={`flex ${containerWidth < 500 ? 'flex-col' : 'flex-row'} gap-5`}>
             {/* Wireframe */}
-            <svg width={160} height={140}>
+            <svg role="img" aria-label="Manifold gallery explorer visualization (panel 1 of 2)" width={160} height={140}>
               <path
                 d={m.wireframe(160, 140)}
                 fill="none"
@@ -349,7 +349,7 @@ export default function ManifoldGalleryExplorer() {
               textAlign: 'center',
             }}
           >
-            <svg width={cardSize - 24} height={Math.min(cardSize - 24, 100)} style={{ margin: '0 auto', display: 'block' }}>
+            <svg role="img" aria-label="Manifold gallery explorer visualization (panel 2 of 2)" width={cardSize - 24} height={Math.min(cardSize - 24, 100)} style={{ margin: '0 auto', display: 'block' }}>
               <path
                 d={m.wireframe(cardSize - 24, Math.min(cardSize - 24, 100))}
                 fill="none"

@@ -324,27 +324,27 @@ export default function HittingTimeExplorer() {
         if (simRef.current) {
           simRef.current.alphaTarget(0.3).restart();
         }
-        const pos = positions[i];
+        const pos = positions[i] as d3.SimulationNodeDatum;
         if (pos) {
-          (pos as any).fx = pos.x;
-          (pos as any).fy = pos.y;
+          pos.fx = pos.x;
+          pos.fy = pos.y;
         }
       })
       .on('drag', function (event, i) {
-        const pos = positions[i];
+        const pos = positions[i] as d3.SimulationNodeDatum;
         if (pos) {
-          (pos as any).fx = event.x;
-          (pos as any).fy = event.y;
+          pos.fx = event.x;
+          pos.fy = event.y;
         }
       })
       .on('end', function (_event, i) {
         if (simRef.current) {
           simRef.current.alphaTarget(0);
         }
-        const pos = positions[i];
+        const pos = positions[i] as d3.SimulationNodeDatum;
         if (pos) {
-          (pos as any).fx = null;
-          (pos as any).fy = null;
+          pos.fx = null;
+          pos.fy = null;
         }
       });
 
@@ -752,7 +752,7 @@ export default function HittingTimeExplorer() {
       >
         {/* Left: force-directed graph */}
         <div style={{ flexShrink: 0 }}>
-          <svg
+          <svg role="img" aria-label="Hitting time explorer visualization (panel 1 of 3)"
             ref={graphSvgRef}
             width={graphPanelWidth}
             height={GRAPH_PANEL_HEIGHT}
@@ -766,7 +766,7 @@ export default function HittingTimeExplorer() {
 
         {/* Right: heatmap */}
         <div style={{ flexShrink: 1, minWidth: 0, overflow: 'auto' }}>
-          <svg
+          <svg role="img" aria-label="Hitting time explorer visualization (panel 2 of 3)"
             ref={heatmapSvgRef}
             width={heatmapPanelWidth}
             height={heatmapSvgHeight}
@@ -781,7 +781,7 @@ export default function HittingTimeExplorer() {
 
       {/* Bottom: comparison bar chart */}
       <div className="mt-4">
-        <svg
+        <svg role="img" aria-label="Hitting time explorer visualization (panel 3 of 3)"
           ref={barSvgRef}
           width={barPanelWidth}
           height={BAR_PANEL_HEIGHT}

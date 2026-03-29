@@ -427,7 +427,7 @@ export default function ConcentrationRateDemo() {
       {/* 2×2 grid */}
       <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: '8px' }}>
         {svgRefs.map((ref, i) => (
-          <svg
+          <svg role="img" aria-label={`Concentration rate demo — ${['Sample paths and bands', 'Deviation histogram', 'Convergence rates', 'Hoeffding/Chebyshev ratio'][i]}`}
             key={i}
             ref={ref}
             width={panelW}

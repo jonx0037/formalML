@@ -363,10 +363,10 @@ export default function ParallelTransportExplorer() {
 
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-4`}>
         <div style={{ width: isStacked ? '100%' : `${svgWidth}px` }}>
-          <svg ref={sphereRef} width={svgWidth} height={HEIGHT} />
+          <svg role="img" aria-label="Parallel transport explorer visualization (panel 1 of 2)" ref={sphereRef} width={svgWidth} height={HEIGHT} />
         </div>
         <div style={{ width: isStacked ? '100%' : `${plotWidth}px` }}>
-          <svg ref={plotRef} width={plotWidth} height={HEIGHT} />
+          <svg role="img" aria-label="Parallel transport explorer visualization (panel 2 of 2)" ref={plotRef} width={plotWidth} height={HEIGHT} />
         </div>
       </div>
 

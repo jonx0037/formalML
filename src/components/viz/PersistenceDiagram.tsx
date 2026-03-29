@@ -214,7 +214,7 @@ export default function PersistenceDiagram({
 
   return (
     <div ref={containerRef} className="w-full">
-      <svg ref={svgRef} width={width} height={height} className="rounded-lg border border-[var(--color-border)]" />
+      <svg role="img" aria-label="Persistence diagram visualization" ref={svgRef} width={width} height={height} className="rounded-lg border border-[var(--color-border)]" />
     </div>
   );
 }

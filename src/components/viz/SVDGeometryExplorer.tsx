@@ -384,7 +384,7 @@ export default function SVDGeometryExplorer() {
       {/* Four-panel progression */}
       <div className="flex flex-wrap justify-center gap-2">
         {svgRefs.map((ref, i) => (
-          <svg
+          <svg role="img" aria-label={`SVD geometry — ${['Input space', 'After Vᵀ', 'After ΣVᵀ', 'UΣVᵀ = A'][i]}`}
             key={i}
             ref={ref}
             width={panelW}

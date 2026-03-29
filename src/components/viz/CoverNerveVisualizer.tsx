@@ -342,13 +342,13 @@ export default function CoverNerveVisualizer({
   return (
     <div ref={containerRef} className="w-full">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <svg
+        <svg role="img" aria-label="Cover nerve visualizer visualization (panel 1 of 2)"
           ref={coverRef}
           width={panelWidth}
           height={height}
           className="rounded-lg border border-[var(--color-border)]"
         />
-        <svg
+        <svg role="img" aria-label="Cover nerve visualizer visualization (panel 2 of 2)"
           ref={nerveRef}
           width={panelWidth}
           height={height}

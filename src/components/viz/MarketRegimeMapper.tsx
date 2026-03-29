@@ -96,7 +96,7 @@ function TimeSeriesPanel({ width, height, highlightIndices, onHoverIndices }: Pa
       .on('mouseleave', () => onHoverIndices(null));
   }, [width, height, highlightIndices, onHoverIndices]);
 
-  return <svg ref={svgRef} width={width} height={height} />;
+  return <svg role="img" aria-label="Market regime mapper visualization (panel 1 of 3)" ref={svgRef} width={width} height={height} />;
 }
 
 /** Center panel: Mapper graph with nodes colored by regime */
@@ -182,7 +182,7 @@ function MapperGraphPanel({ width, height, highlightIndices, onHoverIndices }: P
       .text((d) => d.size);
   }, [width, height, highlightIndices, onHoverIndices]);
 
-  return <svg ref={svgRef} width={width} height={height} />;
+  return <svg role="img" aria-label="Market regime mapper visualization (panel 2 of 3)" ref={svgRef} width={width} height={height} />;
 }
 
 /** Right panel: PCA scatter colored by regime */
@@ -254,7 +254,7 @@ function PCAPanel({ width, height, highlightIndices, onHoverIndices }: PanelProp
       .on('mouseleave', () => onHoverIndices(null));
   }, [width, height, highlightIndices, onHoverIndices]);
 
-  return <svg ref={svgRef} width={width} height={height} />;
+  return <svg role="img" aria-label="Market regime mapper visualization (panel 3 of 3)" ref={svgRef} width={width} height={height} />;
 }
 
 export default function MarketRegimeMapper() {

@@ -497,7 +497,7 @@ export default function CategoryExplorer() {
       >
         {/* Left: D3 force graph */}
         <div style={{ flexShrink: 0 }}>
-          <svg
+          <svg role="img" aria-label="Category explorer visualization"
             ref={graphSvgRef}
             width={graphPanelWidth}
             height={GRAPH_PANEL_HEIGHT}

@@ -243,7 +243,7 @@ export default function TSVDExplorer() {
     <div ref={containerRef} className="w-full space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         {/* Eckart-Young curve */}
-        <svg
+        <svg role="img" aria-label="t svdexplorer visualization (panel 1 of 2)"
           ref={curveRef}
           width={panelWidth}
           height={CHART_HEIGHT}
@@ -251,7 +251,7 @@ export default function TSVDExplorer() {
         />
 
         {/* Singular value spectrum */}
-        <svg
+        <svg role="img" aria-label="t svdexplorer visualization (panel 2 of 2)"
           ref={barRef}
           width={panelWidth}
           height={CHART_HEIGHT}

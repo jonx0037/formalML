@@ -249,7 +249,7 @@ export default function ImageCompressionDemo() {
         </div>
 
         {/* Spectrum */}
-        <svg
+        <svg role="img" aria-label="Image compression demo visualization"
           ref={spectrumRef}
           width={specWidth}
           height={SPECTRUM_HEIGHT}

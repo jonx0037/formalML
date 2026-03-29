@@ -327,12 +327,12 @@ export default function RobustPCADemo() {
 
       {/* Heatmaps */}
       <div className="overflow-x-auto">
-        <svg ref={heatmapRef} />
+        <svg role="img" aria-label="Robust pcademo visualization (panel 1 of 2)" ref={heatmapRef} />
       </div>
 
       {/* Singular value spectrum */}
       <div className="overflow-x-auto">
-        <svg ref={spectrumRef} />
+        <svg role="img" aria-label="Robust pcademo visualization (panel 2 of 2)" ref={spectrumRef} />
       </div>
 
       {/* Readout */}

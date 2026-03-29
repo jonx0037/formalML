@@ -467,7 +467,7 @@ export default function SheafDiffusionSimulator() {
       {/* Dual-panel display */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div>
-          <svg
+          <svg role="img" aria-label="Sheaf diffusion simulator visualization (panel 1 of 2)"
             ref={graphRef}
             width={panelWidth}
             height={svgHeight}
@@ -475,7 +475,7 @@ export default function SheafDiffusionSimulator() {
           />
         </div>
         <div>
-          <svg
+          <svg role="img" aria-label="Sheaf diffusion simulator visualization (panel 2 of 2)"
             ref={chartRef}
             width={panelWidth}
             height={svgHeight}

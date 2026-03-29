@@ -216,10 +216,10 @@ export default function GrowthFunctionVisualizer() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '8px' }}>
-        <svg ref={leftSvgRef} width={panelW} height={panelH} style={{
+        <svg role="img" aria-label="Growth function visualizer visualization (panel 1 of 2)" ref={leftSvgRef} width={panelW} height={panelH} style={{
           border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
         }} />
-        <svg ref={rightSvgRef} width={panelW} height={panelH} style={{
+        <svg role="img" aria-label="Growth function visualizer visualization (panel 2 of 2)" ref={rightSvgRef} width={panelW} height={panelH} style={{
           border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
         }} />
       </div>

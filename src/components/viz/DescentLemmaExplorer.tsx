@@ -343,7 +343,7 @@ export default function DescentLemmaExplorer() {
         d3.select(this).style('cursor', 'ew-resize');
       });
 
-    anchorCircle.call(dragBehavior as any);
+    anchorCircle.call(dragBehavior as d3.DragBehavior<SVGCircleElement, unknown, unknown>);
 
     // ── Legend ──
     const legendX = innerW - 150;
@@ -401,7 +401,7 @@ export default function DescentLemmaExplorer() {
 
   return (
     <div ref={containerRef} style={{ width: '100%' }}>
-      <svg ref={svgRef} />
+      <svg role="img" aria-label="Descent lemma explorer visualization" ref={svgRef} />
 
       {/* Controls */}
       <div

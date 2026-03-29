@@ -207,7 +207,7 @@ function LagrangianDualityTab() {
           onChange={(e) => setConstraint(+e.target.value)} style={{ width: '150px' }} />
         <span style={{ color: COLORS.muted }}>{constraint.toFixed(1)}</span>
       </div>
-      <svg ref={svgRef} width={cw} height={SVG_H}
+      <svg role="img" aria-label="Adjunction mlexplorer visualization (panel 1 of 3)" ref={svgRef} width={cw} height={SVG_H}
         style={{ display: 'block', background: 'white', borderRadius: '8px', border: `1px solid ${COLORS.node}` }} />
       <p style={{ fontSize: '12px', color: COLORS.muted, marginTop: '0.5rem' }}>
         Convex program: min x² s.t. x ≥ b. Strong duality holds (convex QP). The Galois connection collapses to an equality: f* = d*.
@@ -371,7 +371,7 @@ function EncoderDecoderTab() {
 
   return (
     <div ref={containerRef}>
-      <svg ref={svgRef} width={cw} height={SVG_H}
+      <svg role="img" aria-label="Adjunction mlexplorer visualization (panel 2 of 3)" ref={svgRef} width={cw} height={SVG_H}
         style={{ display: 'block', background: 'white', borderRadius: '8px', border: `1px solid ${COLORS.node}` }} />
       <p style={{ fontSize: '12px', color: COLORS.muted, marginTop: '0.5rem' }}>
         PCA as autoencoder: 2D→1D→2D. The unit η measures reconstruction error. A perfect autoencoder (η = id) means the adjunction is an equivalence.
@@ -563,7 +563,7 @@ function RegularizationTab() {
           onChange={(e) => setLambda(+e.target.value)} style={{ width: '150px' }} />
         <span style={{ color: COLORS.muted }}>{lambda.toFixed(1)}</span>
       </div>
-      <svg ref={svgRef} width={cw} height={SVG_H}
+      <svg role="img" aria-label="Adjunction mlexplorer visualization (panel 3 of 3)" ref={svgRef} width={cw} height={SVG_H}
         style={{ display: 'block', background: 'white', borderRadius: '8px', border: `1px solid ${COLORS.node}` }} />
       <p style={{ fontSize: '12px', color: COLORS.muted, marginTop: '0.5rem' }}>
         L2 regularization as unit insertion: the "free" optimum (w=3) is pulled toward zero by the penalty.

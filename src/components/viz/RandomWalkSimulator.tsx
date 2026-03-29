@@ -750,7 +750,7 @@ export default function RandomWalkSimulator() {
       >
         {/* Left: force-directed graph */}
         <div style={{ flexShrink: 0 }}>
-          <svg
+          <svg role="img" aria-label="Random walk simulator visualization (panel 1 of 3)"
             ref={graphSvgRef}
             width={graphPanelWidth}
             height={GRAPH_PANEL_HEIGHT}
@@ -764,7 +764,7 @@ export default function RandomWalkSimulator() {
 
         {/* Right: distribution chart + TV trace (stacked) */}
         <div style={{ flexShrink: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <svg
+          <svg role="img" aria-label="Random walk simulator visualization (panel 2 of 3)"
             ref={barSvgRef}
             width={rightPanelWidth}
             height={BAR_CHART_HEIGHT}
@@ -774,7 +774,7 @@ export default function RandomWalkSimulator() {
               backgroundColor: 'var(--color-bg)',
             }}
           />
-          <svg
+          <svg role="img" aria-label="Random walk simulator visualization (panel 3 of 3)"
             ref={tvSvgRef}
             width={rightPanelWidth}
             height={TV_CHART_HEIGHT}

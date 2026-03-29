@@ -392,7 +392,7 @@ export default function TwoPartCodeExplorer() {
           Regenerate data
         </button>
       </div>
-      <svg ref={svgRef} width={totalWidth} height={svgHeight} />
+      <svg role="img" aria-label="Two part code explorer visualization" ref={svgRef} width={totalWidth} height={svgHeight} />
     </div>
   );
 }

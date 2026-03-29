@@ -268,7 +268,7 @@ export default function TriangleIdentityAnimator() {
       </div>
 
       {/* SVG */}
-      <svg
+      <svg role="img" aria-label="Triangle identity animator visualization"
         ref={svgRef}
         width={cw}
         height={SVG_H}

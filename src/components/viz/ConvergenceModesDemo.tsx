@@ -390,7 +390,7 @@ export default function ConvergenceModesDemo() {
       {/* 2×2 grid */}
       <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: '8px' }}>
         {svgRefs.map((ref, i) => (
-          <svg
+          <svg role="img" aria-label={`Convergence modes — ${['Almost sure convergence', 'Typewriter (in probability)', 'Strong law of large numbers', 'Central limit theorem'][i]}`}
             key={i}
             ref={ref}
             width={panelW}
@@ -409,7 +409,7 @@ export default function ConvergenceModesDemo() {
 
       {/* Hierarchy diagram */}
       <div style={{ marginTop: '12px' }}>
-        <svg width={containerWidth} height={60} style={{ display: 'block' }}>
+        <svg role="img" aria-label="Convergence modes demo visualization (panel 2 of 2)" width={containerWidth} height={60} style={{ display: 'block' }}>
           {/* Layout: Lp -> in prob -> in dist, a.s. -> in prob */}
           {(() => {
             const cx = containerWidth / 2;

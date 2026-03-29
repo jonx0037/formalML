@@ -115,7 +115,7 @@ export default function ConditionalExpectationProjection() {
 
       <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '12px' }}>
         {/* Left: Scatter plot */}
-        <svg width={panelW} height={panelH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
+        <svg role="img" aria-label="Conditional expectation projection visualization (panel 1 of 2)" width={panelW} height={panelH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
           {/* Grid lines */}
           {xTicks.map(t => (
             <line key={`gx-${t}`} x1={scatterScaleX(t)} x2={scatterScaleX(t)} y1={MARGIN.top} y2={panelH - MARGIN.bottom}
@@ -165,7 +165,7 @@ export default function ConditionalExpectationProjection() {
         </svg>
 
         {/* Right: MSE curve */}
-        <svg width={panelW} height={panelH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
+        <svg role="img" aria-label="Conditional expectation projection visualization (panel 2 of 2)" width={panelW} height={panelH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
           {/* Grid */}
           {bTicks.map(t => (
             <line key={`gb-${t}`} x1={mseScaleX(t)} x2={mseScaleX(t)} y1={MARGIN.top} y2={panelH - MARGIN.bottom}

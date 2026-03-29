@@ -366,7 +366,7 @@ export default function GaloisConnectionExplorer() {
       </div>
 
       {/* SVG */}
-      <svg
+      <svg role="img" aria-label="Galois connection explorer visualization"
         ref={svgRef}
         width={cw}
         height={SVG_H}

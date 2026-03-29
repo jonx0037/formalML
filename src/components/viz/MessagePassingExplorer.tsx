@@ -135,7 +135,7 @@ export default function MessagePassingExplorer() {
         if (graph.adjacency[i][j] > 0) links.push({ source: i, target: j });
 
     const sim = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(30))
+      .force('link', d3.forceLink<typeof nodes[number], typeof links[number]>(links).distance(30))
       .force('charge', d3.forceManyBody().strength(-60))
       .force('center', d3.forceCenter(0, 0))
       .stop();
@@ -408,11 +408,11 @@ export default function MessagePassingExplorer() {
       {/* Panels */}
       <div className={isSmall ? 'space-y-2' : 'flex gap-2'}>
         <div className={isSmall ? '' : 'shrink-0'}>
-          <svg ref={graphSvgRef} />
+          <svg role="img" aria-label="Message passing explorer visualization (panel 1 of 3)" ref={graphSvgRef} />
         </div>
         <div className="flex flex-col gap-2">
-          <svg ref={heatmapSvgRef} />
-          <svg ref={energySvgRef} />
+          <svg role="img" aria-label="Message passing explorer visualization (panel 2 of 3)" ref={heatmapSvgRef} />
+          <svg role="img" aria-label="Message passing explorer visualization (panel 3 of 3)" ref={energySvgRef} />
         </div>
       </div>
     </div>

@@ -175,9 +175,9 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
         for (const s of successors.get(d.id) ?? []) neighbors.add(s);
 
         node.attr('opacity', (n) => (neighbors.has(n.id) ? 1 : 0.12));
-        link.attr('opacity', (l: any) => {
-          const src = typeof l.source === 'string' ? l.source : l.source.id;
-          const tgt = typeof l.target === 'string' ? l.target : l.target.id;
+        link.attr('opacity', (l: SimEdge) => {
+          const src = typeof l.source === 'string' ? l.source : (l.source as SimNode).id;
+          const tgt = typeof l.target === 'string' ? l.target : (l.target as SimNode).id;
           return neighbors.has(src) && neighbors.has(tgt) ? 1 : 0.08;
         });
       })
@@ -223,11 +223,11 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
     // Tick
     simulation.on('tick', () => {
       link
-        .attr('x1', (d: any) => d.source.x)
-        .attr('y1', (d: any) => d.source.y)
-        .attr('x2', (d: any) => d.target.x)
-        .attr('y2', (d: any) => d.target.y);
-      node.attr('transform', (d: any) => `translate(${d.x},${d.y})`);
+        .attr('x1', (d: { source: SimNode; target: SimNode }) => d.source.x!)
+        .attr('y1', (d: { source: SimNode; target: SimNode }) => d.source.y!)
+        .attr('x2', (d: { source: SimNode; target: SimNode }) => d.target.x!)
+        .attr('y2', (d: { source: SimNode; target: SimNode }) => d.target.y!);
+      node.attr('transform', (d: SimNode) => `translate(${d.x},${d.y})`);
     });
 
     return () => simulation.stop();
@@ -238,7 +238,7 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
 
   return (
     <div ref={containerRef} className="relative">
-      <svg
+      <svg role="img" aria-label="Curriculum graph visualization"
         ref={svgRef}
         className="w-full rounded-lg border border-[var(--color-border)]"
         style={{ minHeight: 500 }}

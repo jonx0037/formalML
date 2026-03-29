@@ -389,9 +389,9 @@ export default function MetricTensorExplorer() {
         {/* SVG Panel */}
         <div style={{ width: isStacked ? '100%' : `${svgWidth}px` }}>
           {manifold === 'poincare' ? (
-            <svg ref={poincareRef} width={svgWidth} height={HEIGHT} />
+            <svg role="img" aria-label="Metric tensor explorer visualization (panel 1 of 2)" ref={poincareRef} width={svgWidth} height={HEIGHT} />
           ) : (
-            <svg ref={sphereRef} width={svgWidth} height={HEIGHT} />
+            <svg role="img" aria-label="Metric tensor explorer visualization (panel 2 of 2)" ref={sphereRef} width={svgWidth} height={HEIGHT} />
           )}
         </div>
 

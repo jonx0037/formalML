@@ -827,7 +827,7 @@ export default function MixingTimeExplorer() {
       >
         {/* Left: force-directed graph with distribution heatmap */}
         <div style={{ flexShrink: 0 }}>
-          <svg
+          <svg role="img" aria-label="Mixing time explorer visualization (panel 1 of 3)"
             ref={graphSvgRef}
             width={leftPanelWidth}
             height={GRAPH_PANEL_HEIGHT}
@@ -842,7 +842,7 @@ export default function MixingTimeExplorer() {
         {/* Right: stacked charts */}
         <div style={{ flexShrink: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* TV distance curves */}
-          <svg
+          <svg role="img" aria-label="Mixing time explorer visualization (panel 2 of 3)"
             ref={tvSvgRef}
             width={rightPanelWidth}
             height={TV_CHART_HEIGHT}
@@ -854,7 +854,7 @@ export default function MixingTimeExplorer() {
           />
 
           {/* Spectral gap bar chart */}
-          <svg
+          <svg role="img" aria-label="Mixing time explorer visualization (panel 3 of 3)"
             ref={barSvgRef}
             width={rightPanelWidth}
             height={BAR_CHART_HEIGHT}

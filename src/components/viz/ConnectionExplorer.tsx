@@ -293,7 +293,7 @@ export default function ConnectionExplorer() {
 
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-4`}>
         <div style={{ width: isStacked ? '100%' : `${svgWidth}px` }}>
-          <svg ref={sphereRef} width={svgWidth} height={HEIGHT} />
+          <svg role="img" aria-label="Connection explorer visualization" ref={sphereRef} width={svgWidth} height={HEIGHT} />
         </div>
 
         {/* Christoffel symbol table */}

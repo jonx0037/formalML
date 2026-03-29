@@ -377,8 +377,8 @@ export default function FisherMetricExplorer() {
   return (
     <div ref={containerRef} className="my-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-1`}>
-        <svg ref={svgRef} width={svgWidth} height={HEIGHT} />
-        <svg ref={rightRef} width={rightWidth} height={HEIGHT} />
+        <svg role="img" aria-label="Fisher metric explorer visualization (panel 1 of 2)" ref={svgRef} width={svgWidth} height={HEIGHT} />
+        <svg role="img" aria-label="Fisher metric explorer visualization (panel 2 of 2)" ref={rightRef} width={rightWidth} height={HEIGHT} />
       </div>
 
       {/* Controls */}

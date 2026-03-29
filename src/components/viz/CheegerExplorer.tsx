@@ -200,22 +200,25 @@ export default function CheegerExplorer() {
     );
 
     // Build node and link data for force simulation
-    const nodes = Array.from({ length: graph.n }, (_, i) => ({
+    interface CheegerNode { id: number; side: string }
+    type SimNode = d3.SimulationNodeDatum & CheegerNode;
+    interface CheegerLink { source: number | SimNode; target: number | SimNode; isCut: boolean }
+    const nodes: SimNode[] = Array.from({ length: graph.n }, (_, i) => ({
       id: i,
       side: sideASet.has(i) ? 'A' : 'B',
     }));
 
     const edges = getEdges(graph);
-    const links = edges.map(([source, target]) => ({
+    const links: CheegerLink[] = edges.map(([source, target]) => ({
       source,
       target,
       isCut: cutEdgeSet.has(`${Math.min(source, target)}-${Math.max(source, target)}`),
     }));
 
     // Force simulation
-    const sim = d3.forceSimulation(nodes as d3.SimulationNodeDatum[])
-      .force('link', d3.forceLink(links as d3.SimulationLinkDatum<d3.SimulationNodeDatum>[])
-        .id((d: any) => d.id)
+    const sim = d3.forceSimulation<SimNode>(nodes)
+      .force('link', d3.forceLink<SimNode, d3.SimulationLinkDatum<SimNode>>(links)
+        .id((d) => (d as SimNode).id)
         .distance(40))
       .force('charge', d3.forceManyBody().strength(-120))
       .force('center', d3.forceCenter(innerW / 2, innerH / 2))
@@ -226,32 +229,33 @@ export default function CheegerExplorer() {
     for (let i = 0; i < 200; i++) sim.tick();
 
     // Clamp positions
-    for (const node of nodes as any[]) {
-      node.x = Math.max(10, Math.min(innerW - 10, node.x));
-      node.y = Math.max(10, Math.min(innerH - 10, node.y));
+    for (const node of nodes) {
+      node.x = Math.max(10, Math.min(innerW - 10, node.x!));
+      node.y = Math.max(10, Math.min(innerH - 10, node.y!));
     }
 
-    // Draw edges
+    // Draw edges — after simulation, source/target are resolved SimNode objects
+    type ResolvedLink = { source: SimNode; target: SimNode; isCut: boolean };
     g.selectAll('.edge')
-      .data(links)
+      .data(links as ResolvedLink[])
       .join('line')
       .attr('class', 'edge')
-      .attr('x1', (d: any) => d.source.x)
-      .attr('y1', (d: any) => d.source.y)
-      .attr('x2', (d: any) => d.target.x)
-      .attr('y2', (d: any) => d.target.y)
-      .style('stroke', (d: any) => d.isCut ? CUT_STROKE : 'var(--color-text)')
-      .attr('stroke-opacity', (d: any) => d.isCut ? 0.9 : 0.3)
-      .attr('stroke-width', (d: any) => d.isCut ? 3 : 1.5)
-      .attr('stroke-dasharray', (d: any) => d.isCut ? '6,4' : 'none');
+      .attr('x1', (d) => d.source.x!)
+      .attr('y1', (d) => d.source.y!)
+      .attr('x2', (d) => d.target.x!)
+      .attr('y2', (d) => d.target.y!)
+      .style('stroke', (d) => d.isCut ? CUT_STROKE : 'var(--color-text)')
+      .attr('stroke-opacity', (d) => d.isCut ? 0.9 : 0.3)
+      .attr('stroke-width', (d) => d.isCut ? 3 : 1.5)
+      .attr('stroke-dasharray', (d) => d.isCut ? '6,4' : 'none');
 
     // Draw nodes
     g.selectAll('.node')
       .data(nodes)
       .join('circle')
       .attr('class', 'node')
-      .attr('cx', (d: any) => d.x)
-      .attr('cy', (d: any) => d.y)
+      .attr('cx', (d) => d.x!)
+      .attr('cy', (d) => d.y!)
       .attr('r', 7)
       .attr('fill', (d) => d.side === 'A' ? BLUE : RED)
       .attr('fill-opacity', 0.9)
@@ -669,7 +673,7 @@ export default function CheegerExplorer() {
         style={{ flexDirection: isNarrow ? 'column' : 'row' }}
       >
         {/* Graph panel */}
-        <svg
+        <svg role="img" aria-label="Cheeger explorer visualization (panel 1 of 3)"
           ref={graphSvgRef}
           width={graphPanelWidth}
           height={PANEL_HEIGHT}
@@ -678,7 +682,7 @@ export default function CheegerExplorer() {
 
         {/* Bounds panel */}
         <div className="flex flex-col gap-2" style={{ width: isNarrow ? undefined : boundsPanelWidth }}>
-          <svg
+          <svg role="img" aria-label="Cheeger explorer visualization (panel 2 of 3)"
             ref={boundsSvgRef}
             width={boundsPanelWidth}
             height={BOUNDS_HEIGHT}
@@ -716,7 +720,7 @@ export default function CheegerExplorer() {
       </div>
 
       {/* Scatter panel */}
-      <svg
+      <svg role="img" aria-label="Cheeger explorer visualization (panel 3 of 3)"
         ref={scatterSvgRef}
         width={scatterPanelWidth}
         height={SCATTER_HEIGHT}

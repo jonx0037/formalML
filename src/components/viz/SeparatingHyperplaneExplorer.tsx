@@ -561,7 +561,7 @@ export default function SeparatingHyperplaneExplorer() {
 
   return (
     <div ref={containerRef} style={{ width: '100%' }}>
-      <svg
+      <svg role="img" aria-label="Separating hyperplane explorer visualization"
         ref={svgRef}
         width={containerWidth}
         height={svgHeight}

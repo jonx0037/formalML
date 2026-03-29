@@ -383,27 +383,27 @@ export default function GraphLaplacianExplorer() {
         if (simRef.current) {
           simRef.current.alphaTarget(0.3).restart();
         }
-        const pos = positions[i];
+        const pos = positions[i] as d3.SimulationNodeDatum;
         if (pos) {
-          (pos as any).fx = pos.x;
-          (pos as any).fy = pos.y;
+          pos.fx = pos.x;
+          pos.fy = pos.y;
         }
       })
       .on('drag', function (event, i) {
-        const pos = positions[i];
+        const pos = positions[i] as d3.SimulationNodeDatum;
         if (pos) {
-          (pos as any).fx = event.x;
-          (pos as any).fy = event.y;
+          pos.fx = event.x;
+          pos.fy = event.y;
         }
       })
       .on('end', function (event, i) {
         if (simRef.current) {
           simRef.current.alphaTarget(0);
         }
-        const pos = positions[i];
+        const pos = positions[i] as d3.SimulationNodeDatum;
         if (pos) {
-          (pos as any).fx = null;
-          (pos as any).fy = null;
+          pos.fx = null;
+          pos.fy = null;
         }
       });
 
@@ -731,7 +731,7 @@ export default function GraphLaplacianExplorer() {
       >
         {/* Left: force-directed graph */}
         <div style={{ flexShrink: 0 }}>
-          <svg
+          <svg role="img" aria-label="Graph laplacian explorer visualization (panel 1 of 3)"
             ref={graphSvgRef}
             width={graphPanelWidth}
             height={GRAPH_PANEL_HEIGHT}
@@ -746,7 +746,7 @@ export default function GraphLaplacianExplorer() {
         {/* Right: matrices */}
         {showMatrices && (
           <div style={{ flexShrink: 1, minWidth: 0, overflow: 'auto' }}>
-            <svg
+            <svg role="img" aria-label="Graph laplacian explorer visualization (panel 2 of 3)"
               ref={matrixSvgRef}
               width={matrixPanelWidth}
               height={matrixSvgHeight}
@@ -762,7 +762,7 @@ export default function GraphLaplacianExplorer() {
 
       {/* Bottom: eigenvalue bar chart */}
       <div className="mt-4">
-        <svg
+        <svg role="img" aria-label="Graph laplacian explorer visualization (panel 3 of 3)"
           ref={eigenSvgRef}
           width={eigenPanelWidth}
           height={EIGEN_BAR_HEIGHT}

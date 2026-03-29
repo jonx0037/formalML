@@ -395,13 +395,13 @@ export default function VariationalBoundsExplorer() {
           flexDirection: isStacked ? 'column' : 'row',
         }}
       >
-        <svg
+        <svg role="img" aria-label="Variational bounds explorer visualization (panel 1 of 2)"
           ref={fenchelRef}
           width={fenchelWidth}
           height={PANEL_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="Variational bounds explorer visualization (panel 2 of 2)"
           ref={nwjRef}
           width={nwjWidth}
           height={PANEL_HEIGHT}

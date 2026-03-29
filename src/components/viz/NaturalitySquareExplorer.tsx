@@ -348,7 +348,7 @@ export default function NaturalitySquareExplorer() {
 
         {/* Diagram */}
         <div style={{ flex: isNarrow ? 'none' : '3 1 0%', minWidth: 0 }}>
-          <svg ref={svgRef} width={svgW} height={SVG_H} viewBox={`0 0 ${svgW} ${SVG_H}`} style={{ display: 'block', maxWidth: '100%' }} />
+          <svg role="img" aria-label="Naturality square explorer visualization" ref={svgRef} width={svgW} height={SVG_H} viewBox={`0 0 ${svgW} ${SVG_H}`} style={{ display: 'block', maxWidth: '100%' }} />
           {/* Legend */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '8px', padding: '6px 10px', fontSize: '11px', color: COLORS.muted }}>
             {[

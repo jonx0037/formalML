@@ -321,7 +321,7 @@ export default function KleisliExplorer() {
       </div>
 
       {/* Composition diagram */}
-      <svg ref={svgRef} width={cw} height={SVG_H} />
+      <svg role="img" aria-label="Kleisli explorer visualization" ref={svgRef} width={cw} height={SVG_H} />
 
       {/* Kleisli steps detail */}
       <div

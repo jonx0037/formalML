@@ -172,7 +172,7 @@ export default function StepSizeExplorer() {
       .enter()
       .append('path')
       .attr('class', 'contour')
-      .attr('d', pathGen as any)
+      .attr('d', (d) => pathGen(d) ?? '')
       .attr('fill', 'none')
       .attr('stroke', '#64748b')
       .attr('stroke-opacity', 0.3)
@@ -393,8 +393,8 @@ export default function StepSizeExplorer() {
           gap: isWide ? 16 : 0,
         }}
       >
-        <svg ref={leftSvgRef} />
-        <svg ref={rightSvgRef} />
+        <svg role="img" aria-label="Step size explorer visualization (panel 1 of 2)" ref={leftSvgRef} />
+        <svg role="img" aria-label="Step size explorer visualization (panel 2 of 2)" ref={rightSvgRef} />
       </div>
 
       {/* ── Controls ── */}

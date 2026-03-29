@@ -441,7 +441,7 @@ export default function UniversalPropertyExplorer() {
       </div>
 
       {/* SVG Diagram */}
-      <svg
+      <svg role="img" aria-label="Universal property explorer visualization"
         ref={svgRef}
         width={svgWidth}
         height={SVG_HEIGHT}

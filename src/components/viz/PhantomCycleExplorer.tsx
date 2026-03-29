@@ -193,7 +193,7 @@ export default function PhantomCycleExplorer() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left panel: SVG visualization */}
         <div>
-          <svg
+          <svg role="img" aria-label="Phantom cycle explorer visualization"
             ref={svgRef}
             width={width}
             height={height}

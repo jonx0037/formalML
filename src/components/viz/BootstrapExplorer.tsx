@@ -101,7 +101,7 @@ export default function BootstrapExplorer() {
       </div>
 
       {/* Persistence diagram */}
-      <svg
+      <svg role="img" aria-label="Bootstrap explorer visualization"
         width={panelWidth}
         height={SVG_HEIGHT}
         className="rounded-lg border border-[var(--color-border)]"

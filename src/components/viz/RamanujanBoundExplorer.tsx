@@ -753,7 +753,7 @@ export default function RamanujanBoundExplorer() {
               background: 'var(--color-surface)',
             }}
           >
-            <svg ref={histSvgRef} />
+            <svg role="img" aria-label="Ramanujan bound explorer visualization (panel 1 of 3)" ref={histSvgRef} />
           </div>
 
           {/* Right: box plot + line plot stacked */}
@@ -773,7 +773,7 @@ export default function RamanujanBoundExplorer() {
                 background: 'var(--color-surface)',
               }}
             >
-              <svg ref={boxSvgRef} />
+              <svg role="img" aria-label="Ramanujan bound explorer visualization (panel 2 of 3)" ref={boxSvgRef} />
             </div>
             <div
               style={{
@@ -783,7 +783,7 @@ export default function RamanujanBoundExplorer() {
                 background: 'var(--color-surface)',
               }}
             >
-              <svg ref={lineSvgRef} />
+              <svg role="img" aria-label="Ramanujan bound explorer visualization (panel 3 of 3)" ref={lineSvgRef} />
             </div>
           </div>
         </div>

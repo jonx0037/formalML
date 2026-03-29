@@ -168,7 +168,7 @@ export default function GeneralizationBoundCalculator() {
         </div>
 
         {/* Chart */}
-        <svg ref={svgRef} width={chartW} height={chartH} style={{
+        <svg role="img" aria-label="Generalization bound calculator visualization" ref={svgRef} width={chartW} height={chartH} style={{
           border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
         }} />
       </div>

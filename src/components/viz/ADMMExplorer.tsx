@@ -393,8 +393,8 @@ export default function ADMMExplorer() {
         </select>
       </div>
       <div className={`flex ${isMobile ? 'flex-col' : 'flex-row'} gap-0`}>
-        <svg ref={leftRef} width={halfW} height={HEIGHT} className="overflow-visible" />
-        <svg ref={rightRef} width={halfW} height={HEIGHT} className="overflow-visible" />
+        <svg role="img" aria-label="ADMMExplorer visualization (panel 1 of 2)" ref={leftRef} width={halfW} height={HEIGHT} className="overflow-visible" />
+        <svg role="img" aria-label="ADMMExplorer visualization (panel 2 of 2)" ref={rightRef} width={halfW} height={HEIGHT} className="overflow-visible" />
       </div>
     </div>
   );

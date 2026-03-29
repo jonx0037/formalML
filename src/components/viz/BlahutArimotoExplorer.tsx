@@ -370,8 +370,8 @@ export default function BlahutArimotoExplorer() {
           Iteration: {history.length}
         </span>
       </div>
-      <svg ref={topSvgRef} width={containerWidth} height={topHeight} />
-      <svg ref={barSvgRef} width={containerWidth} height={BAR_HEIGHT} />
+      <svg role="img" aria-label="Blahut arimoto explorer visualization (panel 1 of 2)" ref={topSvgRef} width={containerWidth} height={topHeight} />
+      <svg role="img" aria-label="Blahut arimoto explorer visualization (panel 2 of 2)" ref={barSvgRef} width={containerWidth} height={BAR_HEIGHT} />
     </div>
   );
 }

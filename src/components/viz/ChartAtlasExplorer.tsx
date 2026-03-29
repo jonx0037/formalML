@@ -129,7 +129,9 @@ export default function ChartAtlasExplorer() {
         .rotate([-20, -20, 0])
         .clipAngle(90);
 
-      const path = d3.geoPath(projection);
+      const geoPath = d3.geoPath(projection);
+      // Wrapper that returns string (never null) for use in .attr('d', ...)
+      const path = (feature: d3.GeoPermissibleObjects): string => geoPath(feature) ?? '';
 
       // Globe outline
       svg.append('circle')
@@ -144,7 +146,7 @@ export default function ChartAtlasExplorer() {
       const graticule = d3.geoGraticule().step([30, 30]);
       svg.append('path')
         .datum(graticule())
-        .attr('d', path as any)
+        .attr('d', path)
         .style('fill', 'none')
         .style('stroke', 'var(--color-muted-border)')
         .style('stroke-width', 0.5)
@@ -206,26 +208,26 @@ export default function ChartAtlasExplorer() {
 
           svg.append('path')
             .datum(overlapBand)
-            .attr('d', path as any)
+            .attr('d', path)
             .style('fill', TEAL)
             .style('opacity', 0.08);
 
           svg.append('path')
             .datum(overlapBand)
-            .attr('d', path as any)
+            .attr('d', path)
             .style('fill', PURPLE)
             .style('opacity', 0.08);
 
           // Draw excluded caps
           svg.append('path')
             .datum(northCap)
-            .attr('d', path as any)
+            .attr('d', path)
             .style('fill', PURPLE)
             .style('opacity', 0.12);
 
           svg.append('path')
             .datum(southCap)
-            .attr('d', path as any)
+            .attr('d', path)
             .style('fill', TEAL)
             .style('opacity', 0.12);
         } else {
@@ -274,13 +276,13 @@ export default function ChartAtlasExplorer() {
 
           svg.append('path')
             .datum(frontHemi)
-            .attr('d', path as any)
+            .attr('d', path)
             .style('fill', TEAL)
             .style('opacity', 0.12);
 
           svg.append('path')
             .datum(backHemi)
-            .attr('d', path as any)
+            .attr('d', path)
             .style('fill', PURPLE)
             .style('opacity', 0.12);
         }
@@ -513,8 +515,8 @@ export default function ChartAtlasExplorer() {
   return (
     <div ref={containerRef} className="w-full my-8">
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-3`}>
-        <svg ref={leftRef} />
-        <svg ref={rightRef} />
+        <svg role="img" aria-label="Chart atlas explorer visualization (panel 1 of 2)" ref={leftRef} />
+        <svg role="img" aria-label="Chart atlas explorer visualization (panel 2 of 2)" ref={rightRef} />
       </div>
 
       {/* Controls */}

@@ -259,7 +259,7 @@ export default function MartingalePathSimulator() {
 
       <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '12px' }}>
         {/* Chart */}
-        <svg ref={svgRef} width={chartW} height={chartH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }} />
+        <svg role="img" aria-label="Martingale path simulator visualization" ref={svgRef} width={chartW} height={chartH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }} />
 
         {/* Readout */}
         <div style={{ width: readoutW, fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>

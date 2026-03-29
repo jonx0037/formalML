@@ -413,8 +413,8 @@ export default function SmoothMapExplorer() {
   return (
     <div ref={containerRef} className="w-full my-8">
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-3`}>
-        <svg ref={leftRef} />
-        <svg ref={rightRef} />
+        <svg role="img" aria-label="Smooth map explorer visualization (panel 1 of 2)" ref={leftRef} />
+        <svg role="img" aria-label="Smooth map explorer visualization (panel 2 of 2)" ref={rightRef} />
       </div>
 
       {/* Controls */}

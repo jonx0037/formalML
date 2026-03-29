@@ -256,7 +256,7 @@ export default function EigenDecompositionExplorer() {
       {/* Two-panel layout */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         {/* Left panel: SVG */}
-        <svg
+        <svg role="img" aria-label="Eigen decomposition explorer visualization"
           ref={svgRef}
           width={panelWidth}
           height={panelHeight}

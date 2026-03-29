@@ -179,7 +179,7 @@ export default function KKTExplorer() {
         .data(contourGeo)
         .enter()
         .append('path')
-        .attr('d', pathGen as any)
+        .attr('d', (d) => pathGen(d) ?? '')
         .style('fill', 'none')
         .style('stroke', (d) => contourColor(d.value))
         .style('stroke-width', '0.8')
@@ -394,7 +394,7 @@ export default function KKTExplorer() {
 
       {/* Panels */}
       <div className="flex gap-4" style={{ flexDirection: isStacked ? 'column' : 'row' }}>
-        <svg ref={leftRef} />
+        <svg role="img" aria-label="KKTExplorer visualization" ref={leftRef} />
 
         {/* KKT checklist */}
         <div
