@@ -412,13 +412,13 @@ export default function GeodesicExplorer() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: isStacked ? 'column' : 'row', gap: '4px' }}>
-        <svg
+        <svg role="img" aria-label="Geodesic explorer visualization (panel 1 of 2)"
           ref={surfaceRef}
           width={svgWidth}
           height={HEIGHT}
           style={{ background: 'var(--color-bg-primary, #fff)', borderRadius: '6px' }}
         />
-        <svg
+        <svg role="img" aria-label="Geodesic explorer visualization (panel 2 of 2)"
           ref={tangentRef}
           width={tangentWidth}
           height={HEIGHT}

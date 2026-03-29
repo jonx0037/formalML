@@ -450,9 +450,9 @@ export default function SVMDualExplorer() {
 
       {/* Panels */}
       <div className="flex gap-2" style={{ flexDirection: isStacked ? 'column' : 'row' }}>
-        <svg ref={leftRef} />
-        {showDualVars && <svg ref={centerRef} />}
-        {showCompSlack && <svg ref={rightRef} />}
+        <svg role="img" aria-label="SVMDual explorer visualization (panel 1 of 3)" ref={leftRef} />
+        {showDualVars && <svg role="img" aria-label="SVMDual explorer visualization (panel 2 of 3)" ref={centerRef} />}
+        {showCompSlack && <svg role="img" aria-label="SVMDual explorer visualization (panel 3 of 3)" ref={rightRef} />}
       </div>
 
       {/* Readout */}

@@ -301,7 +301,7 @@ export default function TensorUnfoldingExplorer() {
           >
             Tensor (4 × 3 × 2)
           </p>
-          <svg
+          <svg role="img" aria-label="Tensor unfolding explorer visualization (panel 1 of 2)"
             ref={tensorRef}
             width={tensorW}
             height={tensorH}
@@ -318,7 +318,7 @@ export default function TensorUnfoldingExplorer() {
           >
             Unfolding
           </p>
-          <svg
+          <svg role="img" aria-label="Tensor unfolding explorer visualization (panel 2 of 2)"
             ref={unfoldRef}
             width={unfoldW}
             height={unfoldH + 16}

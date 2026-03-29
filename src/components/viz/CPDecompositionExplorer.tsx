@@ -269,7 +269,7 @@ export default function CPDecompositionExplorer() {
       {/* Top row: Original + Approximation */}
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
         <div className="flex flex-col items-center">
-          <svg
+          <svg role="img" aria-label="CPDecomposition explorer visualization (panel 1 of 4)"
             ref={heatOrigRef}
             width={heatW}
             height={heatH}
@@ -283,7 +283,7 @@ export default function CPDecompositionExplorer() {
           </span>
         </div>
         <div className="flex flex-col items-center">
-          <svg
+          <svg role="img" aria-label="CPDecomposition explorer visualization (panel 2 of 4)"
             ref={heatApproxRef}
             width={heatW}
             height={heatH}
@@ -301,7 +301,7 @@ export default function CPDecompositionExplorer() {
       {/* Bottom row: Residual + Error chart */}
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
         <div className="flex flex-col items-center">
-          <svg
+          <svg role="img" aria-label="CPDecomposition explorer visualization (panel 3 of 4)"
             ref={heatResidRef}
             width={heatW}
             height={heatH}
@@ -315,7 +315,7 @@ export default function CPDecompositionExplorer() {
           </span>
         </div>
         <div className="flex flex-col items-center">
-          <svg
+          <svg role="img" aria-label="CPDecomposition explorer visualization (panel 4 of 4)"
             ref={barRef}
             width={barWidth}
             height={BAR_HEIGHT}

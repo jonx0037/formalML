@@ -231,7 +231,7 @@ export default function EckartYoungExplorer() {
     <div ref={containerRef} className="w-full space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         {/* Bar chart */}
-        <svg
+        <svg role="img" aria-label="Eckart young explorer visualization (panel 1 of 4)"
           ref={barRef}
           width={barWidth}
           height={BAR_HEIGHT}
@@ -240,9 +240,9 @@ export default function EckartYoungExplorer() {
 
         {/* Heatmaps */}
         <div className="flex flex-wrap justify-center gap-2">
-          <svg ref={heatOrigRef} width={heatW} height={heatH} className="rounded border border-[var(--color-border)]" />
-          <svg ref={heatApproxRef} width={heatW} height={heatH} className="rounded border border-[var(--color-border)]" />
-          <svg ref={heatDiffRef} width={heatW} height={heatH} className="rounded border border-[var(--color-border)]" />
+          <svg role="img" aria-label="Eckart young explorer visualization (panel 2 of 4)" ref={heatOrigRef} width={heatW} height={heatH} className="rounded border border-[var(--color-border)]" />
+          <svg role="img" aria-label="Eckart young explorer visualization (panel 3 of 4)" ref={heatApproxRef} width={heatW} height={heatH} className="rounded border border-[var(--color-border)]" />
+          <svg role="img" aria-label="Eckart young explorer visualization (panel 4 of 4)" ref={heatDiffRef} width={heatW} height={heatH} className="rounded border border-[var(--color-border)]" />
         </div>
       </div>
 

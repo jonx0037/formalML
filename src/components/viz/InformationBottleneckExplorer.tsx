@@ -368,7 +368,7 @@ export default function InformationBottleneckExplorer() {
           </select>
         </label>
       </div>
-      <svg ref={svgRef} width={containerWidth} height={svgHeight} />
+      <svg role="img" aria-label="Information bottleneck explorer visualization" ref={svgRef} width={containerWidth} height={svgHeight} />
     </div>
   );
 }

@@ -288,7 +288,7 @@ export default function CompositionExplorer() {
       </div>
 
       {/* Chain diagram */}
-      <svg
+      <svg role="img" aria-label="Composition explorer visualization (panel 1 of 3)"
         ref={chainSvgRef}
         width={chainWidth}
         height={CHAIN_HEIGHT}
@@ -304,7 +304,7 @@ export default function CompositionExplorer() {
         className={isNarrow ? 'mt-4 flex flex-col gap-4' : 'mt-4 flex gap-4'}
         style={{ alignItems: 'flex-start' }}
       >
-        <svg
+        <svg role="img" aria-label="Composition explorer visualization (panel 2 of 3)"
           ref={leftSvgRef}
           width={panelWidth}
           height={PANEL_HEIGHT}
@@ -322,7 +322,7 @@ export default function CompositionExplorer() {
             =
           </div>
         )}
-        <svg
+        <svg role="img" aria-label="Composition explorer visualization (panel 3 of 3)"
           ref={rightSvgRef}
           width={panelWidth}
           height={PANEL_HEIGHT}

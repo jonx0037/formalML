@@ -385,7 +385,7 @@ export default function BottleneckMatchingViz() {
         ))}
       </div>
 
-      <svg
+      <svg role="img" aria-label="Bottleneck matching viz visualization"
         ref={svgRef}
         width={width}
         height={height}

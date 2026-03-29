@@ -408,7 +408,7 @@ export default function ConvexSetExplorer() {
 
   return (
     <div ref={containerRef} className="w-full">
-      <svg
+      <svg role="img" aria-label="Convex set explorer visualization"
         ref={svgRef}
         width={svgWidth}
         height={svgHeight}

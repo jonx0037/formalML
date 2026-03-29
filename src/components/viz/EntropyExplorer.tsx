@@ -460,12 +460,12 @@ export default function EntropyExplorer() {
 
       {/* Top panels: distribution + binary entropy */}
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-2`}>
-        <svg ref={distRef} width={distWidth} height={HEIGHT} />
-        <svg ref={binaryRef} width={binaryWidth} height={BINARY_HEIGHT} />
+        <svg role="img" aria-label="Entropy explorer visualization (panel 1 of 3)" ref={distRef} width={distWidth} height={HEIGHT} />
+        <svg role="img" aria-label="Entropy explorer visualization (panel 2 of 3)" ref={binaryRef} width={binaryWidth} height={BINARY_HEIGHT} />
       </div>
 
       {/* Bottom panel: surprise chart */}
-      <svg ref={surpriseRef} width={containerWidth} height={SURPRISE_HEIGHT} />
+      <svg role="img" aria-label="Entropy explorer visualization (panel 3 of 3)" ref={surpriseRef} width={containerWidth} height={SURPRISE_HEIGHT} />
     </div>
   );
 }

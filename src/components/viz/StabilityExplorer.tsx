@@ -108,7 +108,7 @@ export default function StabilityExplorer() {
       </div>
 
       {/* Scatter plot */}
-      <svg
+      <svg role="img" aria-label="Stability explorer visualization (panel 1 of 2)"
         width={panelWidth}
         height={SCATTER_HEIGHT}
         className="rounded-lg border border-[var(--color-border)]"
@@ -184,7 +184,7 @@ export default function StabilityExplorer() {
         >
           Bottleneck distance d<sub>B</sub> = {bottleneckDistance.toFixed(3)}
         </p>
-        <svg
+        <svg role="img" aria-label="Stability explorer visualization (panel 2 of 2)"
           width={panelWidth}
           height={CHART_HEIGHT}
           className="rounded-lg border border-[var(--color-border)]"

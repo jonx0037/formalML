@@ -303,7 +303,7 @@ export default function ShatteringExplorer() {
 
       <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '16px' }}>
         {/* Canvas */}
-        <svg
+        <svg role="img" aria-label="Shattering explorer visualization (panel 1 of 2)"
           ref={svgRef}
           width={canvasSize}
           height={canvasSize}
@@ -387,7 +387,7 @@ function LabelingThumbnail({
   size: number;
 }) {
   return (
-    <svg
+    <svg role="img" aria-label="Shattering explorer visualization (panel 2 of 2)"
       width={size}
       height={size}
       style={{

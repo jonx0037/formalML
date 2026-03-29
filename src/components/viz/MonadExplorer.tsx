@@ -345,7 +345,7 @@ export default function MonadExplorer() {
       </div>
 
       {/* ─── Abstract diagram ─── */}
-      <svg ref={svgRef} width={cw} height={SVG_H} />
+      <svg role="img" aria-label="Monad explorer visualization" ref={svgRef} width={cw} height={SVG_H} />
 
       {/* ─── Monad laws panel ─── */}
       {showLaws && (

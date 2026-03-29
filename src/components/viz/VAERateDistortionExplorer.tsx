@@ -287,7 +287,7 @@ export default function VAERateDistortionExplorer() {
           </select>
         </label>
       </div>
-      <svg ref={svgRef} width={containerWidth} height={svgHeight} />
+      <svg role="img" aria-label="VAERate distortion explorer visualization" ref={svgRef} width={containerWidth} height={svgHeight} />
     </div>
   );
 }

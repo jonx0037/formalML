@@ -476,7 +476,7 @@ export default function PrequentialCodeExplorer() {
           i = {currentStep} / {N_OBS}
         </span>
       </div>
-      <svg ref={svgRef} width={totalWidth} height={svgHeight} />
+      <svg role="img" aria-label="Prequential code explorer visualization" ref={svgRef} width={totalWidth} height={svgHeight} />
     </div>
   );
 }

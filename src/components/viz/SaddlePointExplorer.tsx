@@ -422,8 +422,8 @@ export default function SaddlePointExplorer() {
 
       {/* Panels */}
       <div className="flex gap-4" style={{ flexDirection: isStacked ? 'column' : 'row' }}>
-        <svg ref={leftRef} />
-        <svg ref={rightRef} />
+        <svg role="img" aria-label="Saddle point explorer visualization (panel 1 of 2)" ref={leftRef} />
+        <svg role="img" aria-label="Saddle point explorer visualization (panel 2 of 2)" ref={rightRef} />
       </div>
 
       {/* Readout */}

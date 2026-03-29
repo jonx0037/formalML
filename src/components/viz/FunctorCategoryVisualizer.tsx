@@ -436,7 +436,7 @@ export default function FunctorCategoryVisualizer() {
           <div style={{ fontSize: 11, fontWeight: 600, color: COLORS.muted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
             Source category C
           </div>
-          <svg width={srcW} height={panelH} style={{ background: '#fff', borderRadius: 6, border: `1px solid ${COLORS.edge}` }}>
+          <svg role="img" aria-label="Functor category visualizer visualization (panel 1 of 2)" width={srcW} height={panelH} style={{ background: '#fff', borderRadius: 6, border: `1px solid ${COLORS.edge}` }}>
             <defs>{renderDefs(COLORS.edge, markerId)}</defs>
             {/* Edges */}
             {preset.sourceCategory.morphisms.filter((m) => !m.isIdentity).map((m) => {
@@ -470,7 +470,7 @@ export default function FunctorCategoryVisualizer() {
           <div style={{ fontSize: 11, fontWeight: 600, color: COLORS.muted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
             Functor category [C, D]
           </div>
-          <svg width={fcW} height={panelH} style={{ background: '#fff', borderRadius: 6, border: `1px solid ${COLORS.edge}` }}>
+          <svg role="img" aria-label="Functor category visualizer visualization (panel 2 of 2)" width={fcW} height={panelH} style={{ background: '#fff', borderRadius: 6, border: `1px solid ${COLORS.edge}` }}>
             <defs>
               {renderDefs(COLORS.natTrans, markerNtId)}
               {renderDefs(COLORS.composition, markerCompId)}

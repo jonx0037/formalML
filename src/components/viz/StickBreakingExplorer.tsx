@@ -379,12 +379,12 @@ export default function StickBreakingExplorer() {
         gap: '12px',
       }}>
         {/* Left panel — stick bar */}
-        <svg ref={stickSvgRef} width={panelW} height={stickH} style={{
+        <svg role="img" aria-label="Stick breaking explorer visualization (panel 1 of 2)" ref={stickSvgRef} width={panelW} height={stickH} style={{
           border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
         }} />
 
         {/* Right panel — CDF */}
-        <svg ref={cdfSvgRef} width={panelW} height={cdfH} style={{
+        <svg role="img" aria-label="Stick breaking explorer visualization (panel 2 of 2)" ref={cdfSvgRef} width={panelW} height={cdfH} style={{
           border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)',
         }} />
       </div>
@@ -398,6 +398,7 @@ export default function StickBreakingExplorer() {
           </div>
           <input
             type="range"
+            aria-label="Concentration parameter alpha"
             min={0}
             max={100}
             step={0.5}
@@ -417,6 +418,7 @@ export default function StickBreakingExplorer() {
           </div>
           <input
             type="range"
+            aria-label="Truncation level K"
             min={5}
             max={50}
             step={1}

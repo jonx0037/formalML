@@ -351,7 +351,7 @@ export default function RateDistortionExplorer() {
           <span className="ml-1 text-xs font-mono">{operatingD.toFixed(3)}</span>
         </label>
       </div>
-      <svg ref={svgRef} width={totalWidth} height={svgHeight} />
+      <svg role="img" aria-label="Rate distortion explorer visualization" ref={svgRef} width={totalWidth} height={svgHeight} />
     </div>
   );
 }

@@ -223,7 +223,7 @@ export default function StorageScalingExplorer() {
     <div ref={ref} className="w-full space-y-3">
       {/* Chart */}
       <div className="relative">
-        <svg
+        <svg role="img" aria-label="Storage scaling explorer visualization"
           ref={svgRef}
           width={totalWidth}
           height={SVG_HEIGHT}

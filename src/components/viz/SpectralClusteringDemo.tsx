@@ -452,7 +452,7 @@ export default function SpectralClusteringDemo() {
         }}
       >
         {[svgRef1, svgRef2, svgRef3, svgRef4].map((ref, idx) => (
-          <svg
+          <svg role="img" aria-label="Spectral clustering demo visualization"
             key={idx}
             ref={ref}
             width={panelWidth}

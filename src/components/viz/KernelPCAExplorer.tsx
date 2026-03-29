@@ -405,7 +405,7 @@ export default function KernelPCAExplorer() {
           >
             Original data
           </p>
-          <svg
+          <svg role="img" aria-label="Kernel pcaexplorer visualization (panel 1 of 3)"
             ref={leftSvgRef}
             width={panelWidth}
             height={SVG_HEIGHT}
@@ -422,7 +422,7 @@ export default function KernelPCAExplorer() {
           >
             {kernelType === 'linear' ? 'Linear PCA' : `RBF Kernel PCA (\u03B3=${gamma})`}
           </p>
-          <svg
+          <svg role="img" aria-label="Kernel pcaexplorer visualization (panel 2 of 3)"
             ref={centerSvgRef}
             width={panelWidth}
             height={SVG_HEIGHT}
@@ -439,7 +439,7 @@ export default function KernelPCAExplorer() {
           >
             Kernel matrix
           </p>
-          <svg
+          <svg role="img" aria-label="Kernel pcaexplorer visualization (panel 3 of 3)"
             ref={rightSvgRef}
             width={panelWidth}
             height={SVG_HEIGHT}

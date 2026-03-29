@@ -186,7 +186,7 @@ export default function SimplicialComplex({
 
   return (
     <div ref={containerRef} className="w-full">
-      <svg ref={svgRef} width={width} height={height} className="rounded-lg border border-[var(--color-border)]" />
+      <svg role="img" aria-label="Simplicial complex visualization" ref={svgRef} width={width} height={height} className="rounded-lg border border-[var(--color-border)]" />
       {showSlider && (
         <div className="mt-3 flex items-center gap-4">
           <label className="text-sm font-medium whitespace-nowrap" style={{ fontFamily: 'var(--font-sans)' }}>

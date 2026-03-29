@@ -536,13 +536,13 @@ export default function KLDivergenceExplorer() {
           gap: '0px',
         }}
       >
-        <svg
+        <svg role="img" aria-label="KLDivergence explorer visualization (panel 1 of 3)"
           ref={distRef}
           width={distWidth}
           height={DIST_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="KLDivergence explorer visualization (panel 2 of 3)"
           ref={asymRef}
           width={asymWidth}
           height={ASYM_HEIGHT}
@@ -551,7 +551,7 @@ export default function KLDivergenceExplorer() {
       </div>
 
       {/* Pointwise KL chart */}
-      <svg
+      <svg role="img" aria-label="KLDivergence explorer visualization (panel 3 of 3)"
         ref={pwRef}
         width={containerWidth}
         height={PW_HEIGHT}

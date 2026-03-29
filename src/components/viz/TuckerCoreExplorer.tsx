@@ -207,7 +207,7 @@ export default function TuckerCoreExplorer() {
         </p>
         <div className="flex flex-wrap justify-start gap-3">
           {factorDims.map((dim, mode) => (
-            <svg
+            <svg role="img" aria-label="Tucker core explorer visualization (panel 1 of 2)"
               key={mode}
               ref={factorRefs[mode]}
               width={dim.w}
@@ -230,7 +230,7 @@ export default function TuckerCoreExplorer() {
           </p>
           <div className="flex flex-wrap gap-2">
             {Array.from({ length: coreSliceCount }, (_, k) => (
-              <svg
+              <svg role="img" aria-label="Tucker core explorer visualization (panel 2 of 2)"
                 key={k}
                 ref={(el) => { coreRefs.current[k] = el; }}
                 width={coreDims.w}

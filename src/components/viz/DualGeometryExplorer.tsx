@@ -338,7 +338,7 @@ export default function DualGeometryExplorer() {
 
   return (
     <div ref={containerRef} className="my-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
-      <svg ref={svgRef} width={svgWidth} height={HEIGHT} />
+      <svg role="img" aria-label="Dual geometry explorer visualization" ref={svgRef} width={svgWidth} height={HEIGHT} />
 
       <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
         <label className="flex items-center gap-1.5 text-[var(--color-text-secondary)]">

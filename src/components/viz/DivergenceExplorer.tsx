@@ -242,8 +242,8 @@ export default function DivergenceExplorer() {
   return (
     <div ref={containerRef} className="my-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-1`}>
-        <svg ref={leftRef} width={leftWidth} height={HEIGHT} />
-        <svg ref={rightRef} width={rightWidth} height={HEIGHT} />
+        <svg role="img" aria-label="Divergence explorer visualization (panel 1 of 2)" ref={leftRef} width={leftWidth} height={HEIGHT} />
+        <svg role="img" aria-label="Divergence explorer visualization (panel 2 of 2)" ref={rightRef} width={rightWidth} height={HEIGHT} />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">

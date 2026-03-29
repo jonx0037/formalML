@@ -418,7 +418,7 @@ export default function AdjunctionExplorer() {
       </div>
 
       {/* SVG */}
-      <svg
+      <svg role="img" aria-label="Adjunction explorer visualization"
         ref={svgRef}
         width={cw}
         height={SVG_H}

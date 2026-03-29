@@ -655,7 +655,7 @@ export default function GPPosteriorExplorer() {
         Click to add observations (max 10)
       </div>
 
-      <svg
+      <svg role="img" aria-label="GPPosterior explorer visualization"
         ref={svgRef}
         width={plotW}
         height={plotH}

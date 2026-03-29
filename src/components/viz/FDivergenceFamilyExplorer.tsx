@@ -523,13 +523,13 @@ export default function FDivergenceFamilyExplorer() {
           flexDirection: isStacked ? 'column' : 'row',
         }}
       >
-        <svg
+        <svg role="img" aria-label="FDivergence family explorer visualization (panel 1 of 3)"
           ref={genRef}
           width={genWidth}
           height={PANEL_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="FDivergence family explorer visualization (panel 2 of 3)"
           ref={compRef}
           width={compWidth}
           height={PANEL_HEIGHT}
@@ -538,7 +538,7 @@ export default function FDivergenceFamilyExplorer() {
       </div>
 
       {/* Pinsker scatter */}
-      <svg
+      <svg role="img" aria-label="FDivergence family explorer visualization (panel 3 of 3)"
         ref={pinskerRef}
         width={containerWidth}
         height={PINSKER_HEIGHT}

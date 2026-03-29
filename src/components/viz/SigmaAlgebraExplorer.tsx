@@ -234,7 +234,7 @@ export default function SigmaAlgebraExplorer() {
       <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '16px' }}>
         {/* Left: Venn diagram */}
         <div style={{ flexShrink: 0 }}>
-          <svg width={vennSize} height={vennSize} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
+          <svg role="img" aria-label="Sigma algebra explorer visualization (panel 1 of 2)" width={vennSize} height={vennSize} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
             {/* Grid background circle for Omega */}
             <rect x={10} y={10} width={vennSize - 20} height={vennSize - 20} rx={8} fill="none" stroke="var(--color-border)" strokeDasharray="4 4" />
             <text x={vennSize - 16} y={24} fontSize={12} fontFamily="var(--font-serif)" fill="var(--color-text-secondary)" textAnchor="end">Ω</text>
@@ -277,7 +277,7 @@ export default function SigmaAlgebraExplorer() {
 
         {/* Right: Hasse diagram */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <svg width={hassePanelW} height={hassePanelH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
+          <svg role="img" aria-label="Sigma algebra explorer visualization (panel 2 of 2)" width={hassePanelW} height={hassePanelH} style={{ border: '1px solid var(--color-border)', borderRadius: '6px', background: 'var(--color-muted-bg)' }}>
             {/* Edges */}
             {hasseEdges.map((e, i) => {
               const from = nodePos.get(e.from);

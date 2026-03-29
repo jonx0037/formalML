@@ -297,13 +297,13 @@ export default function RayleighQuotientSurface() {
     <div ref={containerRef} className="w-full space-y-3">
       {/* Panels */}
       <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-center">
-        <svg
+        <svg role="img" aria-label="Rayleigh quotient surface visualization (panel 1 of 2)"
           ref={polarRef}
           width={panelSize}
           height={panelH}
           className="rounded-lg border border-[var(--color-border)]"
         />
-        <svg
+        <svg role="img" aria-label="Rayleigh quotient surface visualization (panel 2 of 2)"
           ref={cartRef}
           width={panelSize}
           height={panelH}

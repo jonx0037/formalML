@@ -296,8 +296,8 @@ export default function SourceCodingExplorer() {
 
       {/* Main panels */}
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-2`}>
-        <svg ref={distRef} width={distWidth} height={DIST_HEIGHT} />
-        {showTree && <svg ref={treeRef} width={treeWidth} height={TREE_HEIGHT} />}
+        <svg role="img" aria-label="Source coding explorer visualization (panel 1 of 2)" ref={distRef} width={distWidth} height={DIST_HEIGHT} />
+        {showTree && <svg role="img" aria-label="Source coding explorer visualization (panel 2 of 2)" ref={treeRef} width={treeWidth} height={TREE_HEIGHT} />}
 
         {/* Comparison table */}
         <div

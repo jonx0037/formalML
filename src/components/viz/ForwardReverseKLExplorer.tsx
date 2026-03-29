@@ -444,19 +444,19 @@ export default function ForwardReverseKLExplorer() {
           flexDirection: isStacked ? 'column' : 'row',
         }}
       >
-        <svg
+        <svg role="img" aria-label="Forward reverse klexplorer visualization (panel 1 of 4)"
           ref={targetRef}
           width={panelWidth}
           height={DENSITY_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="Forward reverse klexplorer visualization (panel 2 of 4)"
           ref={forwardRef}
           width={panelWidth}
           height={DENSITY_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="Forward reverse klexplorer visualization (panel 3 of 4)"
           ref={reverseRef}
           width={panelWidth}
           height={DENSITY_HEIGHT}
@@ -465,7 +465,7 @@ export default function ForwardReverseKLExplorer() {
       </div>
 
       {/* Penalty landscape */}
-      <svg
+      <svg role="img" aria-label="Forward reverse klexplorer visualization (panel 4 of 4)"
         ref={penaltyRef}
         width={containerWidth}
         height={PENALTY_HEIGHT}

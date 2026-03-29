@@ -229,7 +229,7 @@ export default function EquivarianceExplorer() {
           {match ? '✓ Paths match!' : '✗ Mismatch'}
         </span>}
       </div>
-      <svg ref={svgRef} style={{ display: 'block', width: '100%' }} />
+      <svg role="img" aria-label="Equivariance explorer visualization" ref={svgRef} style={{ display: 'block', width: '100%' }} />
       <div style={{ marginTop: 8, padding: '10px 14px', background: COLORS.bg, borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, color: COLORS.text, lineHeight: 1.7, fontFamily: 'ui-monospace, monospace' }}>
         <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: 4, fontSize: 13 }}>Naturality Square</div>
         <div style={{ textAlign: 'center', whiteSpace: 'pre' }}>

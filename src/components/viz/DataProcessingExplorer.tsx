@@ -410,10 +410,10 @@ export default function DataProcessingExplorer() {
       </div>
 
       {/* Markov chain diagram */}
-      <svg ref={diagramRef} width={containerWidth} height={DIAGRAM_HEIGHT} />
+      <svg role="img" aria-label="Data processing explorer visualization (panel 1 of 2)" ref={diagramRef} width={containerWidth} height={DIAGRAM_HEIGHT} />
 
       {/* MI vs. noise plot */}
-      <svg ref={plotRef} width={containerWidth} height={PLOT_HEIGHT} />
+      <svg role="img" aria-label="Data processing explorer visualization (panel 2 of 2)" ref={plotRef} width={containerWidth} height={PLOT_HEIGHT} />
     </div>
   );
 }

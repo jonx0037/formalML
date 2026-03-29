@@ -674,8 +674,8 @@ export default function MoreauEnvelopeExplorer() {
           gap: 0,
         }}
       >
-        <svg ref={leftSvgRef} />
-        <svg ref={rightSvgRef} />
+        <svg role="img" aria-label="Moreau envelope explorer visualization (panel 1 of 2)" ref={leftSvgRef} />
+        <svg role="img" aria-label="Moreau envelope explorer visualization (panel 2 of 2)" ref={rightSvgRef} />
       </div>
     </div>
   );

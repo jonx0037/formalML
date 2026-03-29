@@ -281,7 +281,7 @@ export default function LandscapeVisualizer() {
       {/* SVG container with transition */}
       <div className="relative" style={{ height: SVG_HEIGHT }}>
         {/* Diagram mode */}
-        <svg
+        <svg role="img" aria-label="Landscape visualizer visualization (panel 1 of 2)"
           width={panelWidth}
           height={SVG_HEIGHT}
           className="rounded-lg border border-[var(--color-border)] absolute top-0 left-0 transition-opacity duration-300"
@@ -319,7 +319,7 @@ export default function LandscapeVisualizer() {
         </svg>
 
         {/* Landscape mode */}
-        <svg
+        <svg role="img" aria-label="Landscape visualizer visualization (panel 2 of 2)"
           width={panelWidth}
           height={SVG_HEIGHT}
           className="rounded-lg border border-[var(--color-border)] absolute top-0 left-0 transition-opacity duration-300"

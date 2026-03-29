@@ -430,8 +430,8 @@ export default function MutualInformationDiagram() {
 
       {/* Panels */}
       <div className={`flex ${isStacked ? 'flex-col' : 'flex-row'} gap-2`}>
-        <svg ref={vennRef} width={vennWidth} height={VENN_HEIGHT} />
-        <svg ref={heatRef} width={heatWidth} height={HEAT_HEIGHT} />
+        <svg role="img" aria-label="Mutual information diagram visualization (panel 1 of 2)" ref={vennRef} width={vennWidth} height={VENN_HEIGHT} />
+        <svg role="img" aria-label="Mutual information diagram visualization (panel 2 of 2)" ref={heatRef} width={heatWidth} height={HEAT_HEIGHT} />
       </div>
 
       {/* Formula highlight on hover */}

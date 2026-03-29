@@ -444,13 +444,13 @@ export default function MirrorDescentExplorer() {
           gap: isWide ? 16 : 8,
         }}
       >
-        <svg
+        <svg role="img" aria-label="Mirror descent explorer visualization (panel 1 of 2)"
           ref={leftSvgRef}
           width={panelWidth}
           height={LEFT_HEIGHT}
           style={{ overflow: 'visible' }}
         />
-        <svg
+        <svg role="img" aria-label="Mirror descent explorer visualization (panel 2 of 2)"
           ref={rightSvgRef}
           width={panelWidth}
           height={RIGHT_HEIGHT}

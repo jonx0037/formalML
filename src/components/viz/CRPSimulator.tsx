@@ -400,7 +400,7 @@ export default function CRPSimulator() {
             </span>
             <span>Customer {currentStep}/{totalN}</span>
           </div>
-          <svg
+          <svg role="img" aria-label="CRPSimulator visualization (panel 1 of 2)"
             ref={restaurantSvgRef}
             width={panelW}
             height={panelH}
@@ -419,7 +419,7 @@ export default function CRPSimulator() {
             </span>
             <span>{numTables} table{numTables !== 1 ? 's' : ''}</span>
           </div>
-          <svg
+          <svg role="img" aria-label="CRPSimulator visualization (panel 2 of 2)"
             ref={barSvgRef}
             width={panelW}
             height={panelH}

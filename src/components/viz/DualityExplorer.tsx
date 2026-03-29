@@ -560,9 +560,9 @@ export default function DualityExplorer() {
 
       {/* Three panels */}
       <div className="flex gap-2" style={{ flexDirection: isStacked ? 'column' : 'row' }}>
-        <svg ref={leftRef} />
-        <svg ref={centerRef} />
-        <svg ref={rightRef} />
+        <svg role="img" aria-label="Duality explorer visualization (panel 1 of 3)" ref={leftRef} />
+        <svg role="img" aria-label="Duality explorer visualization (panel 2 of 3)" ref={centerRef} />
+        <svg role="img" aria-label="Duality explorer visualization (panel 3 of 3)" ref={rightRef} />
       </div>
 
       {/* Readout */}

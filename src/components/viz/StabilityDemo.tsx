@@ -295,7 +295,7 @@ export default function StabilityDemo() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Left: Point cloud */}
         <div>
-          <svg
+          <svg role="img" aria-label="Stability demo visualization"
             ref={svgRef}
             width={scatterWidth}
             height={scatterHeight}

@@ -238,7 +238,7 @@ export default function GaussBonnetExplorer() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: isStacked ? 'column' : 'row', gap: '8px' }}>
-        <svg
+        <svg role="img" aria-label="Gauss bonnet explorer visualization"
           ref={surfaceRef}
           width={svgWidth}
           height={HEIGHT}

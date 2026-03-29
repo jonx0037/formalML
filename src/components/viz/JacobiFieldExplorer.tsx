@@ -276,19 +276,19 @@ export default function JacobiFieldExplorer() {
 
       {/* Three-column layout */}
       <div style={{ display: 'flex', flexDirection: isStacked ? 'column' : 'row', gap: '4px' }}>
-        <svg
+        <svg role="img" aria-label="Jacobi field explorer visualization (panel 1 of 4)"
           ref={posRef}
           width={panelWidth}
           height={HEIGHT}
           style={{ background: 'var(--color-bg-primary, #fff)', borderRadius: '6px' }}
         />
-        <svg
+        <svg role="img" aria-label="Jacobi field explorer visualization (panel 2 of 4)"
           ref={zeroRef}
           width={panelWidth}
           height={HEIGHT}
           style={{ background: 'var(--color-bg-primary, #fff)', borderRadius: '6px' }}
         />
-        <svg
+        <svg role="img" aria-label="Jacobi field explorer visualization (panel 3 of 4)"
           ref={negRef}
           width={panelWidth}
           height={HEIGHT}
@@ -298,7 +298,7 @@ export default function JacobiFieldExplorer() {
 
       {/* Norm plot */}
       {showNormPlot && (
-        <svg
+        <svg role="img" aria-label="Jacobi field explorer visualization (panel 4 of 4)"
           ref={normRef}
           width={containerWidth}
           height={PLOT_HEIGHT}

@@ -412,8 +412,8 @@ export default function ProximalOperatorExplorer() {
         className="flex gap-4"
         style={{ flexDirection: isStacked ? 'column' : 'row' }}
       >
-        <svg ref={leftRef} className="overflow-visible" />
-        <svg ref={rightRef} className="overflow-visible" />
+        <svg role="img" aria-label="Proximal operator explorer visualization (panel 1 of 2)" ref={leftRef} className="overflow-visible" />
+        <svg role="img" aria-label="Proximal operator explorer visualization (panel 2 of 2)" ref={rightRef} className="overflow-visible" />
       </div>
 
       {/* Formula readout */}
