@@ -1898,3 +1898,756 @@ export function getGaloisPresets(): {
     { name: 'Image ⊣ Preimage (f: {1,2,3} → {a,b})', build: imagePreimage },
   ];
 }
+
+// ============================================================
+// Monads & Comonads (Topic 4 — final extension)
+// ============================================================
+
+export interface Monad {
+  endofunctor: Functor; // T: C -> C
+  unit: NaturalTransformation; // eta: Id => T
+  multiplication: NaturalTransformation; // mu: T^2 => T
+}
+
+export interface Comonad {
+  endofunctor: Functor; // W: C -> C
+  counit: NaturalTransformation; // epsilon: W => Id
+  comultiplication: NaturalTransformation; // delta: W => W^2
+}
+
+export interface TAlgebra {
+  carrier: string; // Object X
+  structureMap: string; // Morphism label for h: TX -> X
+}
+
+export interface WCoalgebra {
+  carrier: string; // Object X
+  structureMap: string; // Morphism label for k: X -> WX
+}
+
+export interface KleisliArrow {
+  source: string; // Object A
+  target: string; // Object B (pure target; actual arrow is A -> TB)
+  morphismLabel: string;
+}
+
+/** Verify monad laws on a small category. */
+export function checkMonadLaws(
+  monad: Monad,
+  category: Category,
+): {
+  associativity: boolean; // mu . T(mu) = mu . mu_T
+  leftUnit: boolean; // mu . eta_T = id_T
+  rightUnit: boolean; // mu . T(eta) = id_T
+  violations: string[];
+} {
+  const violations: string[] = [];
+  let associativity = true;
+  let leftUnit = true;
+  let rightUnit = true;
+
+  const T = monad.endofunctor;
+  const eta = monad.unit;
+  const mu = monad.multiplication;
+
+  for (const A of category.objects) {
+    const TA = T.onObjects.get(A);
+    if (!TA) continue;
+
+    const muA = mu.components.get(A);
+    if (!muA) continue;
+    const idTA = category.identity(TA);
+
+    // Left unit: mu_A . eta_{TA} = id_{TA}
+    const etaTA = eta.components.get(TA);
+    if (etaTA) {
+      const composed = category.compose(muA, etaTA);
+      if (composed !== idTA) {
+        leftUnit = false;
+        violations.push(`Left unit fails at ${A}: mu_${A} . eta_{${TA}} ≠ id_{${TA}}`);
+      }
+    }
+
+    // Right unit: mu_A . T(eta_A) = id_{TA}
+    const etaA = eta.components.get(A);
+    if (etaA) {
+      const TetaA = T.onMorphisms.get(etaA);
+      if (TetaA) {
+        const composed = category.compose(muA, TetaA);
+        if (composed !== idTA) {
+          rightUnit = false;
+          violations.push(`Right unit fails at ${A}: mu_${A} . T(eta_${A}) ≠ id_{${TA}}`);
+        }
+      }
+    }
+
+    // Associativity: mu_A . T(mu_A) = mu_A . mu_{TA}
+    const muTA = mu.components.get(TA);
+    const TmuA = T.onMorphisms.get(muA);
+    if (muTA && TmuA) {
+      const path1 = category.compose(muA, TmuA);   // mu_A . T(mu_A)
+      const path2 = category.compose(muA, muTA);    // mu_A . mu_{TA}
+      if (path1 !== path2) {
+        associativity = false;
+        violations.push(`Associativity fails at ${A}`);
+      }
+    }
+  }
+
+  return { associativity, leftUnit, rightUnit, violations };
+}
+
+/** Verify comonad laws on a small category. */
+export function checkComonadLaws(
+  comonad: Comonad,
+  category: Category,
+): {
+  coassociativity: boolean;
+  leftCounit: boolean;
+  rightCounit: boolean;
+  violations: string[];
+} {
+  const violations: string[] = [];
+  let coassociativity = true;
+  let leftCounit = true;
+  let rightCounit = true;
+
+  const W = comonad.endofunctor;
+  const eps = comonad.counit;
+  const delta = comonad.comultiplication;
+
+  for (const A of category.objects) {
+    const WA = W.onObjects.get(A);
+    if (!WA) continue;
+
+    const deltaA = delta.components.get(A);
+    if (!deltaA) continue;
+    const idWA = category.identity(WA);
+
+    // Left counit: eps_A . delta_A = id_{WA}
+    // NaturalTransformation components keyed by source objects
+    const epsA = eps.components.get(A);
+    if (epsA) {
+      const composed = category.compose(epsA, deltaA);
+      if (composed !== idWA) {
+        leftCounit = false;
+        violations.push(`Left counit fails at ${A}`);
+      }
+    }
+
+    // Right counit: W(eps_A) . delta_A = id_{WA}
+    if (epsA) {
+      const WepsA = W.onMorphisms.get(epsA);
+      if (WepsA) {
+        const composed = category.compose(WepsA, deltaA);
+        if (composed !== idWA) {
+          rightCounit = false;
+          violations.push(`Right counit fails at ${A}`);
+        }
+      }
+    }
+
+    // Coassociativity: W(delta_A) . delta_A = delta_{WA} . delta_A
+    const WdeltaA = W.onMorphisms.get(deltaA);
+    const deltaWA = WA ? delta.components.get(WA) : undefined;
+    if (WdeltaA && deltaWA) {
+      const path1 = category.compose(WdeltaA, deltaA);
+      const path2 = category.compose(deltaWA, deltaA);
+      if (path1 !== path2) {
+        coassociativity = false;
+        violations.push(`Coassociativity fails at ${A}`);
+      }
+    }
+  }
+
+  return { coassociativity, leftCounit, rightCounit, violations };
+}
+
+/** Compose two Kleisli arrows: (g >=> f) = mu . T(g) . f */
+export function kleisliCompose(
+  f: KleisliArrow, // A -> TB
+  g: KleisliArrow, // B -> TC
+  _monad: Monad,
+  _category: Category,
+): KleisliArrow {
+  // Result: A -> TC via mu_C . T(g) . f
+  // On symbolic categories we build the composed label; actual morphism
+  // composition would require resolving through category.compose().
+  return {
+    source: f.source,
+    target: g.target,
+    morphismLabel: `(${g.morphismLabel} >=> ${f.morphismLabel})`,
+  };
+}
+
+/** Check if a T-algebra satisfies the algebra axioms. */
+export function checkTAlgebra(
+  algebra: TAlgebra,
+  monad: Monad,
+  category: Category,
+): { unitLaw: boolean; assocLaw: boolean; violations: string[] } {
+  const violations: string[] = [];
+  let unitLaw = true;
+  let assocLaw = true;
+
+  const T = monad.endofunctor;
+  const eta = monad.unit;
+  const mu = monad.multiplication;
+  const X = algebra.carrier;
+  const h = algebra.structureMap;
+
+  // Unit law: h . eta_X = id_X
+  const etaX = eta.components.get(X);
+  if (etaX) {
+    const hMorph = category.morphisms.find((m) => m.label === h);
+    const etaMorph = category.morphisms.find((m) => m.label === etaX);
+    if (hMorph && etaMorph) {
+      // h: TX -> X, eta_X: X -> TX, so h . eta_X should be id_X
+      if (hMorph.source !== etaMorph.target) {
+        unitLaw = false;
+        violations.push(`Unit law: h . eta_${X} ≠ id_${X}`);
+      }
+    }
+  }
+
+  // Associativity: h . T(h) = h . mu_X
+  const Th = T.onMorphisms.get(h);
+  const muX = mu.components.get(X);
+  if (Th && muX) {
+    // Both should map T²X -> X through TX
+    const ThMorph = category.morphisms.find((m) => m.label === Th);
+    const muMorph = category.morphisms.find((m) => m.label === muX);
+    if (ThMorph && muMorph && ThMorph.target !== muMorph.target) {
+      assocLaw = false;
+      violations.push(`Associativity: h . T(h) ≠ h . mu_${X}`);
+    }
+  }
+
+  return { unitLaw, assocLaw, violations };
+}
+
+/** Construct comparison functor K: D -> C^T for Beck's theorem. */
+export function comparisonFunctor(
+  adj: Adjunction,
+  targetCategory: Category,
+): { functor: Functor; isEquivalence: boolean } {
+  const F = adj.leftAdjoint;
+  const G = adj.rightAdjoint;
+
+  // K sends each object B in D to the T-algebra (G(B), G(eps_B))
+  const onObjects = new Map<string, string>();
+  const onMorphisms = new Map<string, string>();
+
+  for (const B of targetCategory.objects) {
+    const GB = G.onObjects.get(B);
+    if (GB) {
+      // K(B) = (G(B), G(eps_B)) — we label it as the carrier G(B)
+      onObjects.set(B, GB);
+    }
+  }
+
+  for (const m of targetCategory.morphisms) {
+    const Gm = G.onMorphisms.get(m.label);
+    if (Gm) {
+      onMorphisms.set(m.label, Gm);
+    }
+  }
+
+  const functor: Functor = {
+    source: targetCategory,
+    target: F.source, // C (source of the adjunction)
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  // K is an equivalence iff the adjunction is monadic
+  // Heuristic: check if K is essentially surjective and fully faithful
+  const isEquivalence = onObjects.size === targetCategory.objects.length;
+
+  return { functor, isEquivalence };
+}
+
+/** Build a comonad from an adjunction: W = FG, eps from counit, delta = F(eta)G. */
+export function comonadFromAdjunction(
+  adj: Adjunction,
+  _sourceCategory: Category,
+  targetCategory: Category,
+): Comonad {
+  const F = adj.leftAdjoint;
+  const G = adj.rightAdjoint;
+
+  // W = FG: D -> D
+  const onObjects = new Map<string, string>();
+  const onMorphisms = new Map<string, string>();
+  for (const B of targetCategory.objects) {
+    const GB = G.onObjects.get(B);
+    if (GB) {
+      const FGB = F.onObjects.get(GB);
+      if (FGB) onObjects.set(B, FGB);
+    }
+  }
+  for (const m of targetCategory.morphisms) {
+    const Gm = G.onMorphisms.get(m.label);
+    if (Gm) {
+      const FGm = F.onMorphisms.get(Gm);
+      if (FGm) onMorphisms.set(m.label, FGm);
+    }
+  }
+
+  const endofunctor: Functor = {
+    source: targetCategory,
+    target: targetCategory,
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  // delta_B = F(eta_{G(B)}): FG(B) -> FGFG(B)
+  const deltaComponents = new Map<string, string>();
+  for (const B of targetCategory.objects) {
+    const GB = G.onObjects.get(B);
+    if (!GB) continue;
+    const etaGB = adj.unit.components.get(GB);
+    if (!etaGB) continue;
+    const FetaGB = F.onMorphisms.get(etaGB);
+    if (FetaGB) deltaComponents.set(B, FetaGB);
+  }
+
+  const comultiplication: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor, // W => W^2 (simplified — target is W composed with W)
+    components: deltaComponents,
+  };
+
+  return {
+    endofunctor,
+    counit: adj.counit,
+    comultiplication,
+  };
+}
+
+// === Preset Monads ===
+
+/** Maybe monad on a small finite set: T(X) = X ∪ {⊥}. */
+export function maybeMonad(objects: string[]): { monad: Monad; category: Category } {
+  // Extended category: original objects plus ⊥ (Nothing)
+  const allObjects = [...objects, '⊥'];
+  const morphisms: Morphism[] = [];
+
+  // Identities
+  for (const o of allObjects) {
+    morphisms.push({ label: `id_${o}`, source: o, target: o, isIdentity: true });
+  }
+  // Collapse morphisms: each object maps to ⊥ via "nothing"
+  for (const o of objects) {
+    morphisms.push({ label: `nothing_${o}`, source: o, target: '⊥', isIdentity: false });
+  }
+
+  const category: Category = {
+    objects: allObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  // T: X -> X ∪ {⊥} on original objects, ⊥ -> ⊥
+  const onObjects = new Map<string, string>();
+  for (const o of objects) onObjects.set(o, o); // Just wrapping (identity on carriers)
+  onObjects.set('⊥', '⊥');
+
+  const onMorphisms = new Map<string, string>();
+  for (const m of morphisms) onMorphisms.set(m.label, m.label);
+
+  const endofunctor: Functor = {
+    source: category,
+    target: category,
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  // eta: X -> Just(X), i.e., identity embedding
+  const unitComponents = new Map<string, string>();
+  for (const o of objects) unitComponents.set(o, `id_${o}`);
+
+  const unit: NaturalTransformation = {
+    source: endofunctor, // Id
+    target: endofunctor, // T
+    components: unitComponents,
+  };
+
+  // mu: T(T(X)) -> T(X), i.e., flatten Just(Just(x)) = Just(x), Just(Nothing) = Nothing
+  const muComponents = new Map<string, string>();
+  for (const o of objects) muComponents.set(o, `id_${o}`); // flatten is identity on the carrier
+  muComponents.set('⊥', `id_⊥`);
+
+  const multiplication: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: muComponents,
+  };
+
+  return { monad: { endofunctor, unit, multiplication }, category };
+}
+
+/** List monad (free monoid) on a small finite set: T(X) = X*. */
+export function listMonad(objects: string[]): { monad: Monad; category: Category } {
+  // For visualization, we work with symbolic labels
+  // Objects: original + list wrappers [x], [x,y], [[x]], etc.
+  const listObjects = [
+    ...objects,
+    ...objects.map((o) => `[${o}]`),
+    `[]`, // empty list
+  ];
+
+  const morphisms: Morphism[] = [];
+  for (const o of listObjects) {
+    morphisms.push({ label: `id_${o}`, source: o, target: o, isIdentity: true });
+  }
+  // Unit: x -> [x]
+  for (const o of objects) {
+    morphisms.push({ label: `wrap_${o}`, source: o, target: `[${o}]`, isIdentity: false });
+  }
+  // Mu: [[x]] -> [x] (concat/flatten)
+  for (const o of objects) {
+    morphisms.push({ label: `flatten_${o}`, source: `[${o}]`, target: `[${o}]`, isIdentity: false });
+  }
+
+  const category: Category = {
+    objects: listObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  const onObjects = new Map<string, string>();
+  for (const o of objects) onObjects.set(o, `[${o}]`);
+  onObjects.set('[]', '[]');
+
+  const onMorphisms = new Map<string, string>();
+  for (const m of morphisms) onMorphisms.set(m.label, m.label);
+
+  const endofunctor: Functor = {
+    source: category,
+    target: category,
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  const unitComponents = new Map<string, string>();
+  for (const o of objects) unitComponents.set(o, `wrap_${o}`);
+
+  const unit: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: unitComponents,
+  };
+
+  const muComponents = new Map<string, string>();
+  for (const o of objects) muComponents.set(o, `flatten_${o}`);
+
+  const multiplication: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: muComponents,
+  };
+
+  return { monad: { endofunctor, unit, multiplication }, category };
+}
+
+/** Giry monad (discrete) on a small finite set: T(X) = Dist(X). */
+export function giryMonad(objects: string[]): { monad: Monad; category: Category } {
+  // For visualization, objects include the originals + symbolic distribution labels
+  const distLabel = (o: string) => `P(${o})`;
+  const distObjects = [...objects, ...objects.map(distLabel)];
+
+  const morphisms: Morphism[] = [];
+  for (const o of distObjects) {
+    morphisms.push({ label: `id_${o}`, source: o, target: o, isIdentity: true });
+  }
+  // Unit: x -> delta_x (Dirac delta)
+  for (const o of objects) {
+    morphisms.push({ label: `delta_${o}`, source: o, target: distLabel(o), isIdentity: false });
+  }
+  // Mu: P(P(x)) -> P(x) (integration / expectation)
+  for (const o of objects) {
+    morphisms.push({
+      label: `integrate_${o}`,
+      source: distLabel(o),
+      target: distLabel(o),
+      isIdentity: false,
+    });
+  }
+
+  const category: Category = {
+    objects: distObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  const onObjects = new Map<string, string>();
+  for (const o of objects) onObjects.set(o, distLabel(o));
+
+  const onMorphisms = new Map<string, string>();
+  for (const m of morphisms) onMorphisms.set(m.label, m.label);
+
+  const endofunctor: Functor = {
+    source: category,
+    target: category,
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  const unitComponents = new Map<string, string>();
+  for (const o of objects) unitComponents.set(o, `delta_${o}`);
+
+  const unit: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: unitComponents,
+  };
+
+  const muComponents = new Map<string, string>();
+  for (const o of objects) muComponents.set(o, `integrate_${o}`);
+
+  const multiplication: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: muComponents,
+  };
+
+  return { monad: { endofunctor, unit, multiplication }, category };
+}
+
+// === Preset Comonads ===
+
+/** Stream comonad: infinite sequence with a focus position. */
+export function streamComonad(windowSize: number): { comonad: Comonad; category: Category } {
+  // Model as positions 0..windowSize-1 with shift operation
+  const objects = Array.from({ length: windowSize }, (_, i) => `s${i}`);
+  const streamObjects = [...objects, ...objects.map((o) => `S(${o})`)];
+
+  const morphisms: Morphism[] = [];
+  for (const o of streamObjects) {
+    morphisms.push({ label: `id_${o}`, source: o, target: o, isIdentity: true });
+  }
+  // Counit (extract): S(s_i) -> s_i (read the focused element)
+  for (const o of objects) {
+    morphisms.push({ label: `extract_${o}`, source: `S(${o})`, target: o, isIdentity: false });
+  }
+  // Comultiplication (duplicate): S(s_i) -> S(S(s_i)) (create stream of streams)
+  for (const o of objects) {
+    morphisms.push({
+      label: `duplicate_${o}`,
+      source: `S(${o})`,
+      target: `S(${o})`,
+      isIdentity: false,
+    });
+  }
+
+  const category: Category = {
+    objects: streamObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  const onObjects = new Map<string, string>();
+  for (const o of objects) onObjects.set(o, `S(${o})`);
+
+  const onMorphisms = new Map<string, string>();
+  for (const m of morphisms) onMorphisms.set(m.label, m.label);
+
+  const endofunctor: Functor = {
+    source: category,
+    target: category,
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  const counitComponents = new Map<string, string>();
+  for (const o of objects) counitComponents.set(o, `extract_${o}`);
+
+  const counit: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: counitComponents,
+  };
+
+  const deltaComponents = new Map<string, string>();
+  for (const o of objects) deltaComponents.set(o, `duplicate_${o}`);
+
+  const comultiplication: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: deltaComponents,
+  };
+
+  return { comonad: { endofunctor, counit, comultiplication }, category };
+}
+
+/** Neighborhood comonad on a small graph. */
+export function neighborhoodComonad(
+  adjacency: Map<string, string[]>,
+): { comonad: Comonad; category: Category } {
+  const nodes = Array.from(adjacency.keys());
+  const nObjects = [...nodes, ...nodes.map((v) => `N(${v})`)];
+
+  const morphisms: Morphism[] = [];
+  for (const o of nObjects) {
+    morphisms.push({ label: `id_${o}`, source: o, target: o, isIdentity: true });
+  }
+  // Counit (extract): N(v) -> v (read the focused node)
+  for (const v of nodes) {
+    morphisms.push({ label: `extract_${v}`, source: `N(${v})`, target: v, isIdentity: false });
+  }
+  // Comultiplication (duplicate): N(v) -> N(N(v)) (nested neighborhoods)
+  for (const v of nodes) {
+    morphisms.push({
+      label: `duplicate_${v}`,
+      source: `N(${v})`,
+      target: `N(${v})`,
+      isIdentity: false,
+    });
+  }
+
+  const category: Category = {
+    objects: nObjects,
+    morphisms,
+    compose: (g, f) => {
+      const gm = morphisms.find((m) => m.label === g);
+      const fm = morphisms.find((m) => m.label === f);
+      if (!gm || !fm || gm.source !== fm.target) return null;
+      if (gm.isIdentity) return f;
+      if (fm.isIdentity) return g;
+      return null;
+    },
+    identity: (obj) => `id_${obj}`,
+  };
+
+  const onObjects = new Map<string, string>();
+  for (const v of nodes) onObjects.set(v, `N(${v})`);
+
+  const onMorphisms = new Map<string, string>();
+  for (const m of morphisms) onMorphisms.set(m.label, m.label);
+
+  const endofunctor: Functor = {
+    source: category,
+    target: category,
+    onObjects,
+    onMorphisms,
+    contravariant: false,
+  };
+
+  const counitComponents = new Map<string, string>();
+  for (const v of nodes) counitComponents.set(v, `extract_${v}`);
+
+  const counit: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: counitComponents,
+  };
+
+  const deltaComponents = new Map<string, string>();
+  for (const v of nodes) deltaComponents.set(v, `duplicate_${v}`);
+
+  const comultiplication: NaturalTransformation = {
+    source: endofunctor,
+    target: endofunctor,
+    components: deltaComponents,
+  };
+
+  return { comonad: { endofunctor, counit, comultiplication }, category };
+}
+
+/** Get all preset monads for the MonadExplorer. */
+export function getMonadPresets(): {
+  name: string;
+  build: () => { monad: Monad; category: Category; description: string };
+}[] {
+  return [
+    {
+      name: 'Maybe (Partiality)',
+      build: () => {
+        const { monad, category } = maybeMonad(['a', 'b', 'c']);
+        return { monad, category, description: 'T(X) = X ∪ {⊥} — partial functions, with unit η(x) = Just(x) and multiplication μ = flatten' };
+      },
+    },
+    {
+      name: 'List (Nondeterminism)',
+      build: () => {
+        const { monad, category } = listMonad(['a', 'b', 'c']);
+        return { monad, category, description: 'T(X) = X* — nondeterministic computation, with unit η(x) = [x] and multiplication μ = concat' };
+      },
+    },
+    {
+      name: 'Giry (Probability)',
+      build: () => {
+        const { monad, category } = giryMonad(['s₁', 's₂', 's₃']);
+        return { monad, category, description: 'T(X) = Dist(X) — probabilistic computation, with unit η(x) = δₓ and multiplication μ = integration' };
+      },
+    },
+  ];
+}
+
+/** Get all preset comonads for the ComonadExplorer. */
+export function getComonadPresets(): {
+  name: string;
+  build: () => { comonad: Comonad; category: Category; description: string; adjacency?: Map<string, string[]> };
+}[] {
+  return [
+    {
+      name: 'Stream (Signal Processing)',
+      build: () => {
+        const { comonad, category } = streamComonad(9);
+        return { comonad, category, description: 'W(X) = Xᴺ — infinite sequence with focus, extract reads head, duplicate creates stream of shifted streams' };
+      },
+    },
+    {
+      name: 'Neighborhood (Graph)',
+      build: () => {
+        const adj = new Map<string, string[]>();
+        adj.set('v₁', ['v₂', 'v₃']);
+        adj.set('v₂', ['v₁', 'v₃', 'v₄']);
+        adj.set('v₃', ['v₁', 'v₂', 'v₅']);
+        adj.set('v₄', ['v₂', 'v₅']);
+        adj.set('v₅', ['v₃', 'v₄']);
+        const { comonad, category } = neighborhoodComonad(adj);
+        return { comonad, category, description: 'W(v) = (v, N(v)) — node with neighborhood context, extract reads focus, extend applies aggregation at every node', adjacency: adj };
+      },
+    },
+  ];
+}

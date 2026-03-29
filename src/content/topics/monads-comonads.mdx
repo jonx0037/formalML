@@ -1,0 +1,605 @@
+---
+title: "Monads & Comonads"
+subtitle: "The categorical calculus of effects and contexts — from Bayesian inference to backpropagation, from probability monads to graph comonads"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "adjunctions"
+tags:
+  - "category-theory"
+  - "monads"
+  - "comonads"
+  - "kleisli-categories"
+  - "eilenberg-moore"
+  - "becks-theorem"
+  - "giry-monad"
+domain: "category-theory"
+videoId: null
+notebookPath: "notebooks/monads-comonads/04_monads_comonads.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/monads-comonads.mdx"
+datePublished: 2026-03-28
+estimatedReadTime: 50
+abstract: "A monad on a category C is a triple (T, η, μ) consisting of an endofunctor T: C → C, a unit η: Id ⇒ T, and a multiplication μ: T² ⇒ T, satisfying associativity and unit laws — equivalently, a monoid in the monoidal category of endofunctors [C, C] under composition. Every adjunction F ⊣ G yields a monad T = GF, with the unit inherited from the adjunction and the multiplication μ = GεF constructed from the counit. The Kleisli category C_T captures 'effectful computations' — its morphisms A → TB model computations that produce a B with a side effect encoded by T. The Maybe monad models partiality, the List monad models nondeterminism, and the Giry monad on Meas models probabilistic computation, with Kleisli arrows as Markov kernels and Kleisli composition as the Chapman-Kolmogorov equation. The Eilenberg-Moore category C^T captures 'T-algebraic structures' — Maybe-algebras are pointed sets, List-algebras are monoids, and Giry-algebras are convex spaces. Beck's Monadicity Theorem characterizes when a functor is monadic: it must have a left adjoint, reflect isomorphisms, and preserve G-split coequalizers. This theorem draws the fundamental boundary between algebraic structures (groups, vector spaces, modules) and non-algebraic ones (topological spaces, partial orders). Dually, a comonad (W, ε, δ) encodes 'contextual computations' — the Stream comonad models signal processing, the Store comonad models indexed state, and the Neighborhood comonad on a graph models exactly the message-passing operation in graph neural networks: a coKleisli arrow WA → B extracts features from a neighborhood, and the coKleisli extension applies this extraction at every node. For machine learning, the Giry monad provides the categorical foundation of Bayesian inference, the continuation monad reveals backpropagation as Kleisli composition (the chain rule as functoriality of CPS), and the neighborhood comonad unifies attention mechanisms and GNN message passing under a single comonadic framework."
+connections:
+  - topic: "adjunctions"
+    relationship: "Direct prerequisite. Every adjunction F ⊣ G yields a monad T = GF on the source and a comonad W = FG on the target. The Kleisli and Eilenberg-Moore categories provide canonical adjunctions that recover the monad. The triangle identities imply the monad laws."
+  - topic: "natural-transformations"
+    relationship: "Transitive prerequisite. The unit η and multiplication μ are natural transformations. Monad laws are commutative diagrams. A monad is a monoid in the functor category [C, C] — whose morphisms are natural transformations."
+  - topic: "categories-functors"
+    relationship: "Transitive prerequisite. All foundational definitions. Endofunctors T: C → C, functor composition, the category Cat. Products and coproducts connect to monadic constructions via RAPL."
+  - topic: "bayesian-nonparametrics"
+    relationship: "Cross-track prerequisite. The Giry monad G on Meas is the categorical foundation of Bayesian probability. Kleisli arrows are Markov kernels. The Dirichlet process — the central object of Bayesian nonparametrics — is a G-algebra on the space of probability measures."
+  - topic: "random-walks"
+    relationship: "Cross-track connection. Markov chains are Kleisli arrows of the Giry monad. The Chapman-Kolmogorov equation is Kleisli composition. Random walk mixing corresponds to iterating the Kleisli endomorphism and studying convergence in the EM category."
+  - topic: "message-passing"
+    relationship: "Cross-track connection. GNN message-passing layers are coKleisli extensions of the neighborhood comonad. The aggregation step is the comonadic extend operation. Multi-hop aggregation corresponds to iterated coKleisli composition."
+  - topic: "gradient-descent"
+    relationship: "Cross-track connection. The continuation monad C_R(X) = (X → R) → R provides the categorical framework for automatic differentiation. Backpropagation is Kleisli composition in the continuation monad — the chain rule is functoriality of CPS."
+  - topic: "lagrangian-duality"
+    relationship: "Cross-track connection. The monad T = GF from the Lagrangian duality Galois connection captures the primal-dual relationship. T-algebras are optimization problems where strong duality holds."
+  - topic: "measure-theoretic-probability"
+    relationship: "Cross-track connection. The Giry monad's unit is the Dirac delta x ↦ δ_x, and its multiplication is integration over probability measures. Meas is the natural habitat of the Giry monad."
+  - topic: "shannon-entropy"
+    relationship: "Cross-track connection. Entropy H is a monad morphism from the Giry monad to the additive reals. The data processing inequality follows from the monad morphism property."
+references:
+  - type: "book"
+    title: "Categories for the Working Mathematician"
+    authors: "Mac Lane"
+    year: 1998
+    note: "Chapter VI covers monads (triples) definitively — the standard reference for monad laws, Kleisli and EM categories, Beck's theorem"
+  - type: "book"
+    title: "Category Theory in Context"
+    authors: "Riehl"
+    year: 2016
+    note: "Chapter 5 develops monads with Beck's theorem and excellent exercises — freely available online"
+  - type: "book"
+    title: "Category Theory"
+    authors: "Awodey"
+    year: 2010
+    note: "Chapter 10 on monads with accessible examples for algebraists"
+  - type: "book"
+    title: "An Invitation to Applied Category Theory: Seven Sketches in Compositionality"
+    authors: "Fong & Spivak"
+    year: 2019
+    note: "Monads in applied settings — databases, probability, programming"
+  - type: "paper"
+    title: "Notions of Computation Determine Monads"
+    authors: "Plotkin & Power"
+    year: 2002
+    url: "https://doi.org/10.1007/3-540-45931-6_24"
+    note: "The fundamental correspondence between computational effects and monads"
+  - type: "paper"
+    title: "Category Theory in Machine Learning"
+    authors: "Shiebler, Gavranović & Wilson"
+    year: 2021
+    url: "https://arxiv.org/abs/2106.07032"
+    note: "Sections on monadic and comonadic ML structures"
+  - type: "paper"
+    title: "Comonadic Notions of Computation"
+    authors: "Uustalu & Vene"
+    year: 2008
+    url: "https://doi.org/10.1016/j.entcs.2008.05.029"
+    note: "Foundational treatment of comonadic computation patterns"
+  - type: "paper"
+    title: "Backprop as Functor: A compositional perspective on supervised learning"
+    authors: "Fong, Spivak & Tuyéras"
+    year: 2019
+    url: "https://arxiv.org/abs/1711.10455"
+    note: "CPS and the continuation monad in automatic differentiation"
+  - type: "paper"
+    title: "A Categorical Approach to Probability Theory"
+    authors: "Giry"
+    year: 1982
+    url: "https://doi.org/10.1007/BFb0092872"
+    note: "The original construction of the probability monad on Meas"
+  - type: "book"
+    title: "Topology: A Categorical Approach"
+    authors: "Bradley, Bryson & Terilla"
+    year: 2020
+    note: "The ultrafilter monad, compact Hausdorff spaces as monadic over Set"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import MonadExplorer from '../../components/viz/MonadExplorer.tsx';
+import KleisliExplorer from '../../components/viz/KleisliExplorer.tsx';
+import ComonadExplorer from '../../components/viz/ComonadExplorer.tsx';
+import MonadMLExplorer from '../../components/viz/MonadMLExplorer.tsx';
+
+## Overview and Motivation
+
+We have arrived at the capstone. Over the previous three topics we built the language of [categories and functors](/topics/categories-functors), extended it with [natural transformations](/topics/natural-transformations), and used these pieces to define [adjunctions](/topics/adjunctions) — the universal pattern connecting free constructions to forgetful functors, discrete spaces to indiscrete ones, and primal optimization to dual. The preview at the end of the Adjunctions topic left an open thread: every adjunction $F \dashv G$ generates something called a **monad** $T = GF$ on the source category, with the adjunction's unit and counit providing the monad's structure maps.
+
+This topic resolves that thread completely. A monad is an endofunctor equipped with two natural transformations — a unit $\eta$ and a multiplication $\mu$ — satisfying associativity and unit laws. Mac Lane's famous dictum captures the essence: **a monad is a monoid in the category of endofunctors**. But what makes monads essential for machine learning is not the abstract definition — it is the gallery of instances and the computational structures they organize:
+
+- The **Maybe monad** captures partiality — computations that may fail.
+- The **List monad** captures nondeterminism — computations with multiple outcomes.
+- The **Giry monad** on $\mathbf{Meas}$ captures probabilistic computation — its Kleisli arrows are Markov kernels, and Kleisli composition is the Chapman-Kolmogorov equation. This is the categorical foundation of [Bayesian inference](/topics/bayesian-nonparametrics).
+- The **continuation monad** captures CPS (continuation-passing style) — and backpropagation is Kleisli composition in this monad, with the chain rule emerging as functoriality.
+
+Dually, **comonads** encode contextual computation — where every point carries information about its surroundings:
+
+- The **Stream comonad** models signal processing — each time step sees the entire future.
+- The **Neighborhood comonad** on a graph models exactly the [message-passing operation in GNNs](/topics/message-passing): a coKleisli arrow extracts features from a local neighborhood, and the coKleisli extension applies this extraction at every node simultaneously.
+
+The deep structural result is **Beck's Monadicity Theorem**, which tells us precisely when a category of structured objects (groups, vector spaces, modules) can be described as the category of algebras for a monad — drawing the fundamental boundary between algebraic and non-algebraic mathematics.
+
+---
+
+## Monads: Definition and Laws
+
+<TheoremBlock type="definition" number={1} title="Monad">
+A **monad** on a category $\mathcal{C}$ is a triple $(T, \eta, \mu)$ where:
+- $T: \mathcal{C} \to \mathcal{C}$ is an endofunctor,
+- $\eta: \mathrm{Id}_{\mathcal{C}} \Rightarrow T$ is a natural transformation called the **unit**,
+- $\mu: T^2 \Rightarrow T$ is a natural transformation called the **multiplication**,
+
+satisfying the monad laws (Definition 2).
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={2} title="Monad Laws">
+A monad $(T, \eta, \mu)$ must satisfy:
+
+**Associativity.** $\mu \circ T\mu = \mu \circ \mu_T$, i.e., for every object $A$:
+$$\mu_A \circ T(\mu_A) = \mu_A \circ \mu_{TA}$$
+
+**Left unit.** $\mu \circ \eta_T = \mathrm{id}_T$, i.e., for every object $A$:
+$$\mu_A \circ \eta_{TA} = \mathrm{id}_{TA}$$
+
+**Right unit.** $\mu \circ T\eta = \mathrm{id}_T$, i.e., for every object $A$:
+$$\mu_A \circ T(\eta_A) = \mathrm{id}_{TA}$$
+</TheoremBlock>
+
+These laws say that $\mu$ is an associative operation with $\eta$ as its two-sided unit — exactly the axioms of a monoid, but internal to the category of endofunctors.
+
+<TheoremBlock type="remark" title="Mac Lane's Dictum">
+A monad is a **monoid in the category of endofunctors** $[\mathcal{C}, \mathcal{C}]$. The functor category $[\mathcal{C}, \mathcal{C}]$ carries a monoidal structure with composition $\circ$ as the tensor and $\mathrm{Id}_{\mathcal{C}}$ as the unit. A monoid object in this monoidal category is precisely an endofunctor $T$ equipped with a multiplication $\mu: T \circ T \Rightarrow T$ and a unit $\eta: \mathrm{Id} \Rightarrow T$ satisfying associativity and unit laws — which is exactly a monad.
+</TheoremBlock>
+
+<MonadExplorer client:visible />
+
+<img src="/images/topics/monads-comonads/monads-definition.png" alt="Monad definition: endofunctor, unit, multiplication, monad laws, adjunction construction, monoid analogy" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+---
+
+## From Adjunctions to Monads
+
+We now make good on the promise from [Adjunctions](/topics/adjunctions). Every adjunction produces a monad.
+
+<TheoremBlock type="proposition" number={1} title="Adjunction → Monad">
+Let $F \dashv G$ be an adjunction with unit $\eta: \mathrm{Id}_{\mathcal{C}} \Rightarrow GF$ and counit $\varepsilon: FG \Rightarrow \mathrm{Id}_{\mathcal{D}}$. Then $(T, \eta, \mu)$ is a monad on $\mathcal{C}$, where:
+- $T = GF$,
+- $\eta$ is the adjunction unit,
+- $\mu = G\varepsilon F$, i.e., $\mu_A = G(\varepsilon_{F(A)}): GFGF(A) \to GF(A)$.
+
+**Proof.** We must verify the three monad laws.
+
+*Associativity:* We need $\mu_A \circ T(\mu_A) = \mu_A \circ \mu_{TA}$, i.e., $G(\varepsilon_{FA}) \circ GF(G(\varepsilon_{FA})) = G(\varepsilon_{FA}) \circ G(\varepsilon_{GFFA})$. Applying $G$ to both sides, this follows from the naturality of $\varepsilon$: the square $\varepsilon_{FA} \circ FG(\varepsilon_{FA}) = \varepsilon_{FA} \circ \varepsilon_{FGFA}$ commutes because $\varepsilon$ is natural.
+
+*Left unit:* We need $\mu_A \circ \eta_{TA} = \mathrm{id}_{TA}$, i.e., $G(\varepsilon_{FA}) \circ \eta_{GFA} = \mathrm{id}_{GFA}$. This is exactly the first triangle identity $G\varepsilon \circ \eta G = \mathrm{id}_G$ applied to $FA$.
+
+*Right unit:* We need $\mu_A \circ T(\eta_A) = \mathrm{id}_{TA}$, i.e., $G(\varepsilon_{FA}) \circ GF(\eta_A) = \mathrm{id}_{GFA}$. Applying $G$, this becomes $G(\varepsilon_{FA} \circ F(\eta_A)) = G(\mathrm{id}_{FA})$, which follows from the second triangle identity $\varepsilon F \circ F\eta = \mathrm{id}_F$. $\square$
+</TheoremBlock>
+
+The construction $T = GF$, $\mu = G\varepsilon F$ is the canonical way to build monads. The converse question — does every monad arise from an adjunction? — is answered by the Kleisli and Eilenberg-Moore categories below.
+
+---
+
+## A Gallery of Monads
+
+<img src="/images/topics/monads-comonads/monads-gallery.png" alt="Gallery of monads: Maybe, List, Giry, Power Set, Reader, Continuation" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+| Monad | Endofunctor $T$ | Unit $\eta$ | Multiplication $\mu$ | Effect |
+|---|---|---|---|---|
+| **Maybe** | $T(X) = X \cup \{\bot\}$ | $\eta(x) = \mathrm{Just}(x)$ | Flatten: $\mathrm{Just}(\mathrm{Just}(x)) \mapsto \mathrm{Just}(x)$ | Partiality |
+| **List** | $T(X) = X^*$ (free monoid) | $\eta(x) = [x]$ | Concat: $[[a,b],[c]] \mapsto [a,b,c]$ | Nondeterminism |
+| **Giry** | $T(X) = \mathrm{Dist}(X)$ | $\eta(x) = \delta_x$ (Dirac) | Integration: $\mu(\Phi) = \int p \, d\Phi(p)$ | Probability |
+| **Power Set** | $T(X) = \mathcal{P}(X)$ | $\eta(x) = \{x\}$ | Union: $\mu(\mathcal{A}) = \bigcup_{A \in \mathcal{A}} A$ | Nondeterminism (Set) |
+| **Reader** | $T(X) = (E \to X)$ | $\eta(x) = \lambda e.\, x$ | Diagonal: $\mu(f) = \lambda e.\, f(e)(e)$ | Environment |
+| **Continuation** | $T(X) = (X \to R) \to R$ | $\eta(x) = \lambda k.\, k(x)$ | $\mu(\Phi) = \lambda k.\, \Phi(\lambda f.\, f(k))$ | CPS/Backprop |
+
+Each monad captures a specific notion of computational effect. The unit $\eta$ is the "pure" computation — wrapping a value with no effect. The multiplication $\mu$ collapses a doubled effect into a single one: flattening nested `Maybe`s, concatenating nested lists, or integrating over distributions of distributions.
+
+---
+
+## Kleisli Categories
+
+<TheoremBlock type="definition" number={3} title="Kleisli Category">
+Let $(T, \eta, \mu)$ be a monad on $\mathcal{C}$. The **Kleisli category** $\mathcal{C}_T$ has:
+- **Objects:** The same as $\mathcal{C}$.
+- **Morphisms:** A morphism $A \to B$ in $\mathcal{C}_T$ is a morphism $A \to TB$ in $\mathcal{C}$ (a **Kleisli arrow**).
+- **Identity:** $\eta_A: A \to TA$.
+- **Composition:** Given $f: A \to TB$ and $g: B \to TC$, the Kleisli composite is $g \circ_T f = \mu_C \circ Tg \circ f$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={4} title="Kleisli Composition (Fish Operator)">
+The **Kleisli composition** or **fish operator** is:
+$$(g \mathbin{>=>} f)(a) = \mu_C(T(g)(f(a)))$$
+for $f: A \to TB$ and $g: B \to TC$, yielding $g \mathbin{>=>} f: A \to TC$.
+
+In Haskell notation, this is `(>=>)`, and its "bind" variant is `(>>=)`:
+$$a \mathbin{>>=} f = \mu(T(f)(\eta(a)))$$
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Kleisli Adjunction">
+The Kleisli category $\mathcal{C}_T$ carries a canonical adjunction $F_T \dashv G_T$ where:
+- $F_T: \mathcal{C} \to \mathcal{C}_T$ sends $A$ to $A$ and $f: A \to B$ to $\eta_B \circ f: A \to TB$.
+- $G_T: \mathcal{C}_T \to \mathcal{C}$ sends $A$ to $TA$ and $(f: A \to TB)$ to $\mu_B \circ T(f): TA \to TB$.
+
+Moreover, $G_T F_T = T$, recovering the original monad.
+
+**Proof.** We verify $G_T F_T(A) = T(A)$ and that the unit of this adjunction is $\eta$. For any object $A$, $F_T(A) = A$ and $G_T(A) = TA$, so $G_T F_T(A) = TA = T(A)$. The unit component $\eta_A: A \to G_T(F_T(A)) = TA$ is the monad unit. The adjunction condition follows from the monad laws. $\square$
+</TheoremBlock>
+
+<KleisliExplorer client:visible />
+
+<img src="/images/topics/monads-comonads/kleisli-categories.png" alt="Kleisli categories: composition, adjunction, effectful computation, Markov kernels" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+---
+
+## Markov Kernels and the Giry Monad
+
+The Giry monad $\mathcal{G}$ on $\mathbf{Meas}$ (the category of measurable spaces) sends a measurable space $X$ to the space of probability measures $\mathcal{G}(X) = \mathrm{Prob}(X)$. Its Kleisli category has a beautiful probabilistic interpretation.
+
+A **Kleisli arrow** $A \to \mathcal{G}(B)$ is a function sending each point $a \in A$ to a probability distribution on $B$ — this is precisely a **Markov kernel** (also called a stochastic kernel or transition kernel). Kleisli composition of two kernels $K_1: A \to \mathcal{G}(B)$ and $K_2: B \to \mathcal{G}(C)$ is:
+
+$$(K_2 \mathbin{>=>} K_1)(a) = \int_B K_2(b) \, dK_1(a)(b) = \mu_C(T(K_2)(K_1(a)))$$
+
+This is the **Chapman-Kolmogorov equation** — the composition law for Markov chains. When $A = B = C$ is a finite set with $n$ states, each kernel is a row-stochastic matrix, and Kleisli composition is matrix multiplication.
+
+The connection to [random walks](/topics/random-walks) is immediate: a Markov chain with transition matrix $P$ is a Kleisli endomorphism $P: S \to \mathcal{G}(S)$. Running the chain for $k$ steps is the $k$-fold Kleisli composite $P^{>=>k}$, and the Chapman-Kolmogorov equation ensures consistency.
+
+---
+
+## Eilenberg-Moore Algebras
+
+<TheoremBlock type="definition" number={5} title="T-Algebra (Eilenberg-Moore)">
+Let $(T, \eta, \mu)$ be a monad on $\mathcal{C}$. A **$T$-algebra** (or **Eilenberg-Moore algebra**) is a pair $(X, h)$ where:
+- $X$ is an object of $\mathcal{C}$ (the **carrier**),
+- $h: TX \to X$ is a morphism (the **structure map**),
+
+satisfying:
+
+**Unit law:** $h \circ \eta_X = \mathrm{id}_X$ (the structure map inverts the unit).
+
+**Associativity:** $h \circ Th = h \circ \mu_X$ (flattening before or after applying $h$ gives the same result).
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={6} title="T-Algebra Homomorphism">
+A **$T$-algebra homomorphism** $(X, h) \to (Y, k)$ is a morphism $f: X \to Y$ in $\mathcal{C}$ such that $f \circ h = k \circ Tf$, i.e., $f$ commutes with the structure maps.
+</TheoremBlock>
+
+| Monad | $T$-Algebras | Structure Map $h: TX \to X$ |
+|---|---|---|
+| **Maybe** | Pointed sets $(X, x_0)$ | $h(\bot) = x_0$, $h(\mathrm{Just}(x)) = x$ |
+| **List** | Monoids $(M, \cdot, e)$ | $h([a_1, \ldots, a_n]) = a_1 \cdot \ldots \cdot a_n$ |
+| **Giry** | Convex spaces | $h(\sum p_i \delta_{x_i}) = \sum p_i x_i$ (convex combination) |
+| **Power Set** | Complete join-semilattices | $h(\mathcal{A}) = \bigvee \mathcal{A}$ |
+
+<TheoremBlock type="theorem" number={2} title="List-Algebras are Monoids">
+A $T$-algebra $(M, h)$ for the List monad is exactly a monoid.
+
+**Proof.** Given $(M, h: M^* \to M)$, we define:
+- **Binary operation:** $a \cdot b = h([a, b])$.
+- **Identity element:** $e = h([])$ (the empty list).
+
+*Associativity:* $(a \cdot b) \cdot c = h([h([a,b]), c])$ and $a \cdot (b \cdot c) = h([a, h([b,c])])$. The $T$-algebra associativity law $h \circ Th = h \circ \mu$ gives $h([\ldots]) = h(\mathrm{concat}(\ldots))$ for nested lists, so both equal $h([a,b,c])$.
+
+*Identity:* $e \cdot a = h([h([]), a]) = h([a]) = a$ by the unit law. Similarly $a \cdot e = a$.
+
+Conversely, given a monoid $(M, \cdot, e)$, the structure map $h([a_1, \ldots, a_n]) = a_1 \cdot \ldots \cdot a_n$ (with $h([]) = e$) satisfies the algebra axioms. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Giry-Algebras and Convex Spaces">
+A Giry-algebra $(X, h: \mathcal{G}(X) \to X)$ assigns to each probability distribution on $X$ a "center" in $X$. The algebra axioms force this assignment to behave like taking convex combinations: $h(\sum p_i \delta_{x_i}) = \sum p_i x_i$. Thus Giry-algebras are precisely **convex spaces** — spaces where you can form weighted averages. This connects the Giry monad to [Bayesian nonparametrics](/topics/bayesian-nonparametrics): the Dirichlet process is a Giry-algebra on the space of probability measures.
+</TheoremBlock>
+
+<img src="/images/topics/monads-comonads/eilenberg-moore.png" alt="Eilenberg-Moore algebras: definition, gallery, EM adjunction, two canonical adjunctions" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+---
+
+## Two Canonical Adjunctions
+
+<TheoremBlock type="proposition" number={3} title="Eilenberg-Moore Adjunction">
+The Eilenberg-Moore category $\mathcal{C}^T$ carries a canonical adjunction $F^T \dashv U^T$ where:
+- $F^T: \mathcal{C} \to \mathcal{C}^T$ sends $A$ to the **free** $T$-algebra $(TA, \mu_A)$.
+- $U^T: \mathcal{C}^T \to \mathcal{C}$ is the **forgetful** functor sending $(X, h)$ to $X$.
+
+Moreover, $U^T F^T = T$, recovering the original monad.
+
+**Proof.** $U^T F^T(A) = U^T(TA, \mu_A) = TA = T(A)$. The unit is $\eta_A: A \to U^T F^T(A) = TA$. The counit at $(X, h)$ is $h: F^T U^T(X, h) = (TX, \mu_X) \to (X, h)$, which is a $T$-algebra homomorphism by the associativity law. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={4} title="Kleisli is Initial, Eilenberg-Moore is Terminal">
+In the category of adjunctions that give rise to the monad $T$ (where objects are adjunctions $F \dashv G$ with $GF = T$, and morphisms are comparison functors), the Kleisli adjunction $F_T \dashv G_T$ is the **initial** object and the Eilenberg-Moore adjunction $F^T \dashv U^T$ is the **terminal** object.
+
+Every adjunction $F \dashv G$ with $GF = T$ factors through both:
+$$\mathcal{C}_T \xrightarrow{\text{comparison}} \mathcal{D} \xrightarrow{\text{comparison}} \mathcal{C}^T$$
+</TheoremBlock>
+
+This tells us that every monad arises from an adjunction — but not uniquely. The Kleisli category gives the smallest target, the Eilenberg-Moore category the largest, and the actual adjunction sits somewhere in between.
+
+---
+
+## Beck's Monadicity Theorem
+
+<TheoremBlock type="definition" number={7} title="Monadic Functor">
+A functor $U: \mathcal{D} \to \mathcal{C}$ is **monadic** if:
+1. $U$ has a left adjoint $F$,
+2. The comparison functor $K: \mathcal{D} \to \mathcal{C}^T$ (where $T = UF$) is an equivalence of categories.
+
+Equivalently, $\mathcal{D}$ is (equivalent to) the category of $T$-algebras.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={1} title="Beck's Monadicity Theorem">
+A functor $U: \mathcal{D} \to \mathcal{C}$ is monadic if and only if:
+1. $U$ has a left adjoint,
+2. $U$ **reflects isomorphisms**: if $Uf$ is an isomorphism in $\mathcal{C}$, then $f$ is an isomorphism in $\mathcal{D}$,
+3. $U$ **preserves $U$-split coequalizers**: if a parallel pair in $\mathcal{D}$ has a split coequalizer after applying $U$, then the pair has a coequalizer in $\mathcal{D}$ and $U$ preserves it.
+
+**Proof sketch.** The comparison functor $K: \mathcal{D} \to \mathcal{C}^T$ sends $D$ to the $T$-algebra $(UD, U\varepsilon_D)$. For $K$ to be an equivalence, we need essential surjectivity (every $T$-algebra arises from some object of $\mathcal{D}$) and full faithfulness.
+
+*Necessity:* If $U$ is monadic, then $\mathcal{D} \simeq \mathcal{C}^T$, and the forgetful functor $U^T: \mathcal{C}^T \to \mathcal{C}$ reflects isomorphisms (an isomorphism of carriers that respects the algebra structure is an algebra isomorphism) and creates coequalizers of $U^T$-split pairs (by the general machinery of algebras).
+
+*Sufficiency:* Condition (2) ensures $K$ is faithful and conservative. Condition (3) allows us to construct the required coequalizers in $\mathcal{D}$ to build the inverse of $K$, establishing the equivalence. $\square$
+</TheoremBlock>
+
+<img src="/images/topics/monads-comonads/becks-theorem.png" alt="Beck's monadicity theorem: comparison functor, conditions, monadic examples, split coequalizers" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+**Monadic examples** (the forgetful functor is monadic):
+- $\mathbf{Grp} \to \mathbf{Set}$: Groups are algebras for the free-group monad.
+- $\mathbf{Vec}_k \to \mathbf{Set}$: Vector spaces are algebras for the free-vector-space monad.
+- $\mathbf{Mod}_R \to \mathbf{Set}$: $R$-modules are algebras for the free-$R$-module monad.
+- $\mathbf{CompHaus} \to \mathbf{Set}$: Compact Hausdorff spaces are monadic over $\mathbf{Set}$ (via the ultrafilter monad).
+
+**Non-monadic examples:**
+- $\mathbf{Top} \to \mathbf{Set}$: Topological spaces are *not* monadic — the forgetful functor has a left adjoint (discrete topology) but does not reflect isomorphisms (a continuous bijection need not be a homeomorphism).
+- $\mathbf{Pos} \to \mathbf{Set}$: Partially ordered sets are not monadic.
+
+Beck's theorem draws the fundamental **boundary between algebra and topology**: algebraic structures (groups, rings, modules, lattices) are monadic over $\mathbf{Set}$, while topological and order-theoretic structures are not.
+
+---
+
+## Comonads
+
+<TheoremBlock type="definition" number={8} title="Comonad">
+A **comonad** on a category $\mathcal{C}$ is a triple $(W, \varepsilon, \delta)$ where:
+- $W: \mathcal{C} \to \mathcal{C}$ is an endofunctor,
+- $\varepsilon: W \Rightarrow \mathrm{Id}_{\mathcal{C}}$ is a natural transformation called the **counit** (or **extraction**),
+- $\delta: W \Rightarrow W^2$ is a natural transformation called the **comultiplication** (or **duplication**).
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={9} title="Comonad Laws">
+A comonad $(W, \varepsilon, \delta)$ must satisfy:
+
+**Coassociativity.** $W\delta \circ \delta = \delta_W \circ \delta$
+
+**Left counit.** $\varepsilon_W \circ \delta = \mathrm{id}_W$
+
+**Right counit.** $W\varepsilon \circ \delta = \mathrm{id}_W$
+</TheoremBlock>
+
+The intuition is dual to monads: if a monad wraps values with effects, a comonad *unwraps* contexts to extract values. The counit $\varepsilon$ reads the focus from a context, and the comultiplication $\delta$ creates a "context of contexts" — every point can see not just its immediate surroundings, but the surroundings of its surroundings.
+
+<TheoremBlock type="proposition" number={5} title="Adjunction → Comonad">
+Every adjunction $F \dashv G$ with unit $\eta$ and counit $\varepsilon$ yields a comonad $(W, \varepsilon, \delta)$ on the *target* category $\mathcal{D}$, where:
+- $W = FG$,
+- $\varepsilon$ is the adjunction counit,
+- $\delta = F\eta G$, i.e., $\delta_B = F(\eta_{G(B)}): FG(B) \to FGFG(B)$.
+
+**Proof.** Dual to the monad case: the triangle identities imply the comonad laws. $\square$
+</TheoremBlock>
+
+<ComonadExplorer client:visible />
+
+<img src="/images/topics/monads-comonads/comonads.png" alt="Comonads: definition, monad-comonad duality, adjunction yields both, coKleisli composition" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+---
+
+## Monad-Comonad Duality
+
+Every adjunction $F \dashv G$ yields **both** a monad $T = GF$ on the source and a comonad $W = FG$ on the target. This duality runs deep:
+
+| | Monad $(T, \eta, \mu)$ | Comonad $(W, \varepsilon, \delta)$ |
+|---|---|---|
+| **Interpretation** | Effects (wrap) | Contexts (unwrap) |
+| **Unit / Counit** | $\eta: \mathrm{Id} \Rightarrow T$ (pure) | $\varepsilon: W \Rightarrow \mathrm{Id}$ (extract) |
+| **Multiplication / Comultiplication** | $\mu: T^2 \Rightarrow T$ (flatten) | $\delta: W \Rightarrow W^2$ (duplicate) |
+| **Kleisli arrows** | $A \to TB$ (effectful) | $WA \to B$ (contextual) |
+| **Composition** | $\mu \circ Tg \circ f$ | $g \circ W f \circ \delta$ |
+| **Algebras / Coalgebras** | $(X, h: TX \to X)$ | $(X, k: X \to WX)$ |
+| **ML examples** | Giry (probability), Cont (backprop) | Neighborhood (GNN), Stream (signals) |
+
+---
+
+## A Gallery of Comonads
+
+<TheoremBlock type="definition" number={10} title="CoKleisli Category">
+The **coKleisli category** $\mathcal{C}_W$ of a comonad $(W, \varepsilon, \delta)$ has the same objects as $\mathcal{C}$, with morphisms $A \to B$ being morphisms $WA \to B$ in $\mathcal{C}$. Composition of $f: WA \to B$ and $g: WB \to C$ is:
+$$g \circ_W f = g \circ Wf \circ \delta_A$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={11} title="W-Coalgebra">
+A **$W$-coalgebra** for a comonad $(W, \varepsilon, \delta)$ is a pair $(X, k: X \to WX)$ satisfying:
+
+**Counit law:** $\varepsilon_X \circ k = \mathrm{id}_X$
+
+**Coassociativity:** $\delta_X \circ k = Wk \circ k$
+</TheoremBlock>
+
+<img src="/images/topics/monads-comonads/comonads-gallery.png" alt="Gallery of comonads: Stream, Store, Neighborhood, Environment" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+| Comonad | Endofunctor $W$ | Counit $\varepsilon$ | Comultiplication $\delta$ | Context |
+|---|---|---|---|---|
+| **Stream** | $W(X) = X^{\mathbb{N}}$ (infinite seq.) | Extract head | All shifts: $\delta(s)_i = \mathrm{shift}^i(s)$ | Signal processing |
+| **Store** | $W(X) = (S \to X) \times S$ | Evaluate at position | All refocusings | Cellular automata, lenses |
+| **Neighborhood** | $W(v) = (v, N(v))$ | Extract focus feature | Nested neighborhoods | GNN message passing |
+| **Environment** | $W(X) = E \times X$ | Extract value | Duplicate environment | Dual of Reader monad |
+
+---
+
+## Monads and Comonads in Machine Learning
+
+<MonadMLExplorer client:visible />
+
+<img src="/images/topics/monads-comonads/monads-ml.png" alt="ML connections: Bayesian inference, backpropagation, comonadic attention, GNN message passing" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
+
+**Giry monad and Bayesian inference.** A prior $\pi \in \mathcal{G}(\Theta)$ is a Giry element. A likelihood function $\ell: \Theta \to \mathcal{G}(X)$ is a Kleisli arrow. The posterior is computed via Kleisli composition — the Chapman-Kolmogorov equation applied to Bayesian updating. See [Bayesian Nonparametrics](/topics/bayesian-nonparametrics) for the Dirichlet process as a Giry-algebra.
+
+**Continuation monad and backpropagation.** Each differentiable layer $f: \mathbb{R}^m \to \mathbb{R}^n$ wraps into a Kleisli arrow of the continuation monad: $\hat{f}(x) = \lambda k.\, k(f(x))$ where $k$ is the continuation (what comes after). Composing two Kleisli arrows chains the forward computation. The backward pass emerges by running the continuation in reverse — applying $k$ extracts the gradient. The chain rule $\frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \frac{\partial y}{\partial x}$ is the functoriality of CPS. See [Gradient Descent](/topics/gradient-descent).
+
+**Neighborhood comonad and GNNs.** On a graph $G = (V, E)$, the neighborhood comonad sends each node $v$ to the pair $(v, \{u : u \in N(v)\})$. A coKleisli arrow $f: W(v) \to \mathbb{R}^d$ extracts features from a neighborhood — this is exactly the aggregation function in [message-passing GNNs](/topics/message-passing). The coKleisli extension $\hat{f}: W(v) \to W(\mathbb{R}^d)$ applies $f$ at every node simultaneously — one GNN layer. Multi-hop aggregation is iterated coKleisli composition.
+
+**Entropy as a monad morphism.** Shannon entropy $H: \mathcal{G}(X) \to [0, \infty)$ is a monad morphism from the Giry monad to the additive reals. The data processing inequality $H(f(X)) \leq H(X)$ follows from the monad morphism property. See [Shannon Entropy](/topics/shannon-entropy).
+
+<TheoremBlock type="remark" title="Distributive Laws (Preview)">
+When a monad $T$ and a comonad $W$ live on the same category, a **distributive law** $\lambda: TW \Rightarrow WT$ allows their effects and contexts to interact coherently. This arises in probabilistic programming (combining the Giry monad with the Store comonad for spatial probabilistic models) and in reinforcement learning (combining the continuation monad with the Stream comonad for temporal credit assignment). The full development of distributive laws is beyond this topic but connects to recent work in compositional game theory and open dynamical systems.
+</TheoremBlock>
+
+---
+
+## Computational Notes
+
+The following Python code verifies the monad and comonad laws computationally.
+
+### Maybe monad verification
+
+```python
+# Maybe monad: T(X) = X ∪ {None}
+def maybe_unit(x): return ('Just', x)
+def maybe_bind(mx, f):
+    if mx[0] == 'Nothing': return ('Nothing',)
+    return f(mx[1])
+
+# Test laws
+f = lambda x: ('Just', x * 2)
+g = lambda x: ('Just', x + 5) if x > 0 else ('Nothing',)
+
+# Left unit: bind(unit(x), f) = f(x)
+assert maybe_bind(maybe_unit(5), f) == f(5)  # Just(10) == Just(10)
+
+# Right unit: bind(m, unit) = m
+m = ('Just', 42)
+assert maybe_bind(m, maybe_unit) == m  # Just(42) == Just(42)
+
+# Associativity: bind(bind(m, f), g) = bind(m, lambda x: bind(f(x), g))
+m = ('Just', 5)
+assert maybe_bind(maybe_bind(m, f), g) == maybe_bind(m, lambda x: maybe_bind(f(x), g))
+```
+
+### Giry monad (discrete) verification
+
+```python
+def giry_unit(x, support):
+    """Dirac delta: delta_x gives probability 1 to x."""
+    return {s: (1.0 if s == x else 0.0) for s in support}
+
+def giry_bind(p, kernel, support):
+    """Kleisli composition = Chapman-Kolmogorov."""
+    result = {y: 0.0 for y in support}
+    for x, px in p.items():
+        k = kernel(x)
+        for y in support:
+            result[y] += px * k.get(y, 0.0)
+    return result
+
+support = ['a', 'b', 'c']
+p = {'a': 0.5, 'b': 0.3, 'c': 0.2}
+kernel = lambda x: {'a': 0.1, 'b': 0.7, 'c': 0.2} if x == 'a' else \
+                    {'a': 0.3, 'b': 0.4, 'c': 0.3} if x == 'b' else \
+                    {'a': 0.6, 'b': 0.1, 'c': 0.3}
+
+# Left unit: bind(delta_a, kernel) = kernel(a)
+result = giry_bind(giry_unit('a', support), kernel, support)
+assert all(abs(result[s] - kernel('a')[s]) < 1e-10 for s in support)
+```
+
+### Stream comonad verification
+
+```python
+class Stream:
+    """Stream comonad: infinite sequence with a focus."""
+    def __init__(self, gen_fn, index=0):
+        self.gen_fn = gen_fn
+        self.index = index
+
+    def extract(self):
+        return self.gen_fn(self.index)
+
+    def duplicate(self):
+        return Stream(lambda i: Stream(self.gen_fn, i), self.index)
+
+    def extend(self, f):
+        return Stream(lambda i: f(Stream(self.gen_fn, i)), self.index)
+
+    def take(self, n):
+        return [self.gen_fn(self.index + i) for i in range(n)]
+
+# Fibonacci stream
+def fib(n):
+    a, b = 0, 1
+    for _ in range(n): a, b = b, a + b
+    return a
+
+s = Stream(fib, 0)
+
+# Counit law: extract(duplicate(s)) = extract(s)
+assert s.duplicate().extract().extract() == s.extract()
+
+# Extend-extract law: extend(extract)(s) = s
+id_s = s.extend(lambda w: w.extract())
+assert id_s.take(5) == s.take(5)
+```
+
+### Monad from adjunction
+
+```python
+# The List monad arises from the Free monoid adjunction:
+#   F: Set → Mon (free monoid = list construction)
+#   U: Mon → Set (forgetful: forget the multiplication)
+# T = UF: Set → Set sends X to X* (lists over X)
+print("T(X) = X* = Free(X) = List(X)")
+print("η('a') = ['a']")       # unit = singleton list
+print("μ([['a','b'],['c']]) = ['a','b','c']")  # multiplication = concat
+```
+
+---
+
+## Connections and Further Reading
+
+### Within-track connections
+
+| Topic | Relationship |
+|---|---|
+| [Categories & Functors](/topics/categories-functors) | All foundational definitions — categories, functors, endofunctors, products, coproducts. The category $\mathbf{Cat}$ of small categories. |
+| [Natural Transformations](/topics/natural-transformations) | Unit $\eta$ and multiplication $\mu$ are natural transformations. A monad is a monoid in the functor category $[\mathcal{C}, \mathcal{C}]$. |
+| [Adjunctions](/topics/adjunctions) | Direct prerequisite. Every adjunction yields a monad ($T = GF$, $\mu = G\varepsilon F$) and a comonad ($W = FG$, $\delta = F\eta G$). Kleisli and EM categories provide canonical adjunctions. |
+
+### Cross-track connections
+
+| Topic | Relationship |
+|---|---|
+| [Bayesian Nonparametrics](/topics/bayesian-nonparametrics) | The Giry monad is the categorical foundation of Bayesian probability. Kleisli arrows = Markov kernels. Giry-algebras = convex spaces. The Dirichlet process is a Giry-algebra. |
+| [Random Walks & Mixing](/topics/random-walks) | Markov chains are Kleisli arrows of the Giry monad. Chapman-Kolmogorov = Kleisli composition. |
+| [Message Passing & GNNs](/topics/message-passing) | GNN layers are coKleisli extensions of the neighborhood comonad. Aggregation = comonadic extend. |
+| [Gradient Descent](/topics/gradient-descent) | Backpropagation is Kleisli composition in the continuation monad. The chain rule = functoriality of CPS. |
+| [Lagrangian Duality](/topics/lagrangian-duality) | The monad $T = GF$ from the duality Galois connection. $T$-algebras are problems with strong duality. |
+| [Measure-Theoretic Probability](/topics/measure-theoretic-probability) | Giry monad unit = Dirac delta. Giry multiplication = integration over probability measures. |
+| [Shannon Entropy](/topics/shannon-entropy) | Entropy $H$ is a monad morphism from Giry to the additive reals. Data processing inequality follows. |
+
+### Notation Summary
+
+| Symbol | Meaning |
+|---|---|
+| $(T, \eta, \mu)$ | Monad (endofunctor, unit, multiplication) |
+| $\eta: \mathrm{Id} \Rightarrow T$ | Monad unit |
+| $\mu: T^2 \Rightarrow T$ | Monad multiplication |
+| $\mathcal{C}_T$ | Kleisli category |
+| $\mathcal{C}^T$ | Eilenberg-Moore category |
+| $F_T \dashv G_T$ | Kleisli adjunction |
+| $F^T \dashv U^T$ | Eilenberg-Moore adjunction |
+| $(W, \varepsilon, \delta)$ | Comonad (endofunctor, counit, comultiplication) |
+| $\varepsilon: W \Rightarrow \mathrm{Id}$ | Counit (extraction) |
+| $\delta: W \Rightarrow W^2$ | Comultiplication (duplication) |
+| $\mathcal{G}$ | Giry monad on $\mathbf{Meas}$ |
+| $\delta_x$ | Dirac delta measure at $x$ |
+| $g \mathbin{>=>} f$ | Kleisli composition (fish operator) |

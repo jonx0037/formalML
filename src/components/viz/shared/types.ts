@@ -253,3 +253,32 @@ export interface GaloisConnectionData {
   rightMap: Map<string, string>;   // g: Q -> P (right adjoint)
 }
 
+// === Monads & Comonads (Topic 4) ===
+
+export interface MonadData {
+  name: string;                         // Display name
+  endofunctorDescription: string;       // "T(X) = X ∪ {⊥}" etc.
+  unitDescription: string;              // "η(x) = Just(x)" etc.
+  multiplicationDescription: string;    // "μ = flatten" etc.
+  effectInterpretation: string;         // "partiality", "nondeterminism", etc.
+}
+
+export interface ComonadData {
+  name: string;
+  endofunctorDescription: string;
+  counitDescription: string;            // "ε = extract head" etc.
+  comultiplicationDescription: string;  // "δ = duplicate context" etc.
+  contextInterpretation: string;        // "signal processing", "graph neighborhood", etc.
+}
+
+export interface KleisliPipeline {
+  arrows: { source: string; target: string; label: string }[];
+  intermediateStates: string[];         // Labels for intermediate T-wrapped values
+}
+
+export interface MarkovKernel {
+  states: string[];                     // State space
+  transitionMatrix: number[][];         // Row-stochastic matrix
+  label: string;                        // Display label
+}
+
