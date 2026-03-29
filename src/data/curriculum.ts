@@ -53,9 +53,7 @@ export const tracks = [
     label: 'Category Theory',
     description:
       'Functors, adjunctions, and monads \u2014 the abstract language that unifies disparate ML structures.',
-    planned: [
-      'Monads & Comonads',
-    ],
+    planned: [],
   },
 ] as const;
 
