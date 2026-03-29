@@ -390,7 +390,7 @@ export default function ConvergenceModesDemo() {
       {/* 2×2 grid */}
       <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: '8px' }}>
         {svgRefs.map((ref, i) => (
-          <svg role="img" aria-label="Convergence modes demo visualization (panel 1 of 2)"
+          <svg role="img" aria-label={`Convergence modes — ${['Almost sure convergence', 'Typewriter (in probability)', 'Strong law of large numbers', 'Central limit theorem'][i]}`}
             key={i}
             ref={ref}
             width={panelW}

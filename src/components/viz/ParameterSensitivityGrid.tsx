@@ -127,7 +127,7 @@ function SensitivityCell({ entry, width, height }: CellProps) {
           : 'var(--color-surface)',
       }}
     >
-      <svg role="img" aria-label="Parameter sensitivity grid visualization" ref={svgRef} width={width} height={height} />
+      <svg role="img" aria-label={`Mapper sensitivity — ${entry.label}`} ref={svgRef} width={width} height={height} />
     </div>
   );
 }
