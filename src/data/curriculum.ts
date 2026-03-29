@@ -5,6 +5,7 @@ export const tracks = [
     description:
       'Topological Data Analysis \u2014 from simplices to persistence diagrams. The geometric heart of the site.',
     planned: [],
+    calculusDependent: false,
   },
   {
     domain: 'linear-algebra',
@@ -12,6 +13,7 @@ export const tracks = [
     description:
       'Spectral theory, matrix decompositions, and the algebraic backbone of nearly every ML method.',
     planned: [],
+    calculusDependent: false,
   },
   {
     domain: 'probability',
@@ -19,6 +21,7 @@ export const tracks = [
     description:
       'Measure-theoretic foundations through PAC learning and concentration inequalities.',
     planned: [],
+    calculusDependent: true,
   },
   {
     domain: 'optimization',
@@ -26,6 +29,7 @@ export const tracks = [
     description:
       'Convex analysis, gradient methods, and the theoretical tools behind modern training algorithms.',
     planned: [],
+    calculusDependent: true,
   },
   {
     domain: 'geometry',
@@ -33,6 +37,7 @@ export const tracks = [
     description:
       'Smooth manifolds, Riemannian metrics, and information geometry for probabilistic models.',
     planned: [],
+    calculusDependent: true,
   },
   {
     domain: 'information-theory',
@@ -40,6 +45,7 @@ export const tracks = [
     description:
       'Entropy, divergences, and the theoretical limits that underpin compression, coding, and learning.',
     planned: [],
+    calculusDependent: false,
   },
   {
     domain: 'graph-theory',
@@ -47,6 +53,7 @@ export const tracks = [
     description:
       'Spectral graph theory and random walks \u2014 the mathematical foundation of graph neural networks.',
     planned: [],
+    calculusDependent: false,
   },
   {
     domain: 'category-theory',
@@ -54,6 +61,7 @@ export const tracks = [
     description:
       'Functors, adjunctions, and monads \u2014 the abstract language that unifies disparate ML structures.',
     planned: [],
+    calculusDependent: false,
   },
 ] as const;
 
