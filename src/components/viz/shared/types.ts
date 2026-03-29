@@ -233,3 +233,23 @@ export interface NaturalitySquareData {
   commutes: boolean;     // Whether the square commutes
 }
 
+// ─── Adjunction Types (Topic 3) ───
+
+export interface AdjunctionData {
+  leftAdjointName: string;       // Display name for F
+  rightAdjointName: string;      // Display name for G
+  sourceCategoryName: string;    // Display name for C
+  targetCategoryName: string;    // Display name for D
+  unitComponents: Map<string, string>;    // A -> eta_A morphism label
+  counitComponents: Map<string, string>;  // B -> epsilon_B morphism label
+}
+
+export interface GaloisConnectionData {
+  leftPosetElements: string[];
+  rightPosetElements: string[];
+  leftOrder: [string, string][];   // Covering relations in P
+  rightOrder: [string, string][];  // Covering relations in Q
+  leftMap: Map<string, string>;    // f: P -> Q (left adjoint)
+  rightMap: Map<string, string>;   // g: Q -> P (right adjoint)
+}
+

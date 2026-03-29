@@ -1,0 +1,531 @@
+---
+title: "Adjunctions"
+subtitle: "The free-forgetful paradigm, unit-counit pairs, and the universal optimization pattern that connects algebra, logic, and machine learning"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "natural-transformations"
+tags:
+  - "category-theory"
+  - "adjunctions"
+  - "unit-counit"
+  - "galois-connections"
+  - "free-forgetful"
+  - "rapl"
+domain: "category-theory"
+videoId: null
+notebookPath: "notebooks/adjunctions/03_adjunctions.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/adjunctions.mdx"
+datePublished: 2026-03-28
+estimatedReadTime: 45
+abstract: "An adjunction is a pair of functors F and G between categories C and D that are optimally related: a natural isomorphism Hom(F(A), B) ≅ Hom(A, G(B)) establishes a bijection between morphisms in D out of F(A) and morphisms in C into G(B). Equivalently, an adjunction consists of natural transformations η: Id → GF (the unit) and ε: FG → Id (the counit) satisfying the triangle identities — the zig-zag equations that ensure the two round-trip compositions collapse to identities. The free-forgetful adjunction between Set and Vec is the prototypical example: a linear map from the free vector space F(S) is determined by where the basis elements go, which is just a function from S. This free construction pattern — where a left adjoint builds structure freely and a right adjoint forgets it — pervades algebra (free groups, free modules), topology (discrete ⊣ forgetful ⊣ indiscrete), and logic (existential ⊣ substitution ⊣ universal). Galois connections — adjunctions between posets — give the floor-ceiling connection between the reals and integers, the closure-interior duality in topology, and the classical Galois correspondence between subfields and subgroups. The RAPL theorem (right adjoints preserve limits) is one of the most useful results in category theory, explaining why forgetful functors preserve products and why free functors preserve coproducts. Every adjunction generates a monad, connecting this topic to the capstone. For machine learning, Lagrangian duality is a Galois connection between primal and dual optimization problems, the encoder-decoder paradigm is an adjunction where the unit measures reconstruction error, and the tensor-hom adjunction underlies the currying that makes attention mechanisms work."
+connections:
+  - topic: "natural-transformations"
+    relationship: "Direct prerequisite. The unit and counit of an adjunction are natural transformations. The Hom-set definition requires naturality in both variables. The Yoneda lemma underlies the proof that right adjoints are unique up to natural isomorphism."
+  - topic: "categories-functors"
+    relationship: "Transitive prerequisite. All category, functor, and morphism definitions assumed. Products and coproducts from Topic 1 are special cases of limits and colimits — the structures that right and left adjoints preserve, respectively."
+  - topic: "lagrangian-duality"
+    relationship: "Cross-track connection. Lagrangian duality between primal and dual optimization problems is a Galois connection — an adjunction between posets. Weak duality (d* ≤ f*) is the counit condition. Strong duality (d* = f*) is when the unit and counit are isomorphisms. The KKT conditions characterize when the adjunction is tight."
+  - topic: "spectral-theorem"
+    relationship: "The free-forgetful adjunction Free ⊣ Forget between Set and Vec is the primary running example. The tensor-hom adjunction (- ⊗ V) ⊣ Hom(V, -) operates on the vector spaces where the Spectral Theorem applies."
+  - topic: "measure-theoretic-probability"
+    relationship: "The Giry monad on Meas arises from an adjunction between measurable spaces and probability spaces. The unit is the Dirac delta embedding x ↦ δ_x, and the multiplication is given by the counit. This monad is the categorical foundation of Bayesian probability."
+  - topic: "convex-analysis"
+    relationship: "Convex conjugation f ↦ f* is a Galois connection on the poset of extended real-valued functions. The Fenchel-Moreau theorem (f** = f for closed convex f) is the statement that the unit of this adjunction is an isomorphism on closed convex functions."
+references:
+  - type: "book"
+    title: "Categories for the Working Mathematician"
+    authors: "Mac Lane"
+    year: 1998
+    note: "Chapter IV covers adjunctions definitively — the three equivalent definitions, examples, and the relationship to limits"
+  - type: "book"
+    title: "Category Theory"
+    authors: "Awodey"
+    year: 2010
+    note: "Chapter 9 on adjunctions with accessible algebraic examples"
+  - type: "book"
+    title: "Category Theory in Context"
+    authors: "Riehl"
+    year: 2016
+    note: "Chapter 4 develops adjunctions with excellent motivation and proof of RAPL — freely available online"
+  - type: "book"
+    title: "An Invitation to Applied Category Theory: Seven Sketches in Compositionality"
+    authors: "Fong & Spivak"
+    year: 2019
+    note: "Galois connections as the entry point to adjunctions — applied examples from databases and optimization"
+  - type: "paper"
+    title: "Category Theory in Machine Learning"
+    authors: "Shiebler, Gavranović & Wilson"
+    year: 2021
+    url: "https://arxiv.org/abs/2106.07032"
+    note: "Sections on categorical optimization and functorial learning via adjunctions"
+  - type: "book"
+    title: "Topology: A Categorical Approach"
+    authors: "Bradley, Bryson & Terilla"
+    year: 2020
+    note: "Adjunctions in topology — discrete ⊣ forgetful ⊣ indiscrete, compactification as left adjoint"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import AdjunctionExplorer from '../../components/viz/AdjunctionExplorer.tsx';
+import TriangleIdentityAnimator from '../../components/viz/TriangleIdentityAnimator.tsx';
+import GaloisConnectionExplorer from '../../components/viz/GaloisConnectionExplorer.tsx';
+import AdjunctionMLExplorer from '../../components/viz/AdjunctionMLExplorer.tsx';
+
+## Overview & Motivation
+
+Consider a problem we've already encountered concretely. You have a set $S = \{a, b\}$ and a vector space $V = \mathbb{R}^3$. You want to define a linear map from "the vector space built from $S$" to $V$. The free vector space $F(S)$ has basis $\{e_a, e_b\}$, so $F(S) \cong \mathbb{R}^2$. A linear map $T: \mathbb{R}^2 \to \mathbb{R}^3$ is determined by the matrix $[T(e_a) \mid T(e_b)]$ — that is, by specifying where the two basis elements go. But specifying where basis elements go is just a function $f: S \to \mathbb{R}^3$. We've established a bijection:
+
+$$\text{Linear maps } F(S) \to V \;\;\longleftrightarrow\;\; \text{Functions } S \to U(V)$$
+
+where $U(V)$ is the underlying set of $V$ (forgetting the vector space structure). This bijection is not a coincidence — it's a natural isomorphism, and the pattern it instantiates is called an **adjunction**.
+
+An adjunction $F \dashv G$ between categories $\mathcal{C}$ and $\mathcal{D}$ says: for every $A \in \mathcal{C}$ and $B \in \mathcal{D}$, there is a bijection
+
+$$\mathrm{Hom}_\mathcal{D}(F(A), B) \cong \mathrm{Hom}_\mathcal{C}(A, G(B))$$
+
+that is natural in both variables. The left adjoint $F$ "freely builds structure," and the right adjoint $G$ "forgets structure." This free-forgetful pattern appears everywhere:
+
+- **Free groups:** $F \dashv U : \mathbf{Grp} \to \mathbf{Set}$ — a group homomorphism from $F(S)$ is determined by where generators go.
+- **Products:** $\Delta \dashv \Pi$ — a morphism into a product is a pair of morphisms.
+- **Tensor-hom:** $(- \otimes V) \dashv \mathrm{Hom}(V, -)$ — bilinear maps from $U \otimes V$ to $W$ correspond to linear maps $U \to \mathrm{Hom}(V, W)$. This is currying.
+- **Quantifiers:** $\exists_f \dashv f^* \dashv \forall_f$ — the existential and universal quantifiers are adjoints of substitution in logical syntax.
+
+For machine learning, adjunctions formalize [Lagrangian duality](/topics/lagrangian-duality) as a Galois connection between primal and dual optimization problems, the encoder-decoder paradigm as a pair of approximately inverse functors, and attention mechanisms as instances of the tensor-hom adjunction (currying).
+
+Every adjunction $F \dashv G$ also generates a **monad** $T = GF$ — the round-trip composition that "freely builds and then forgets." This connects adjunctions to the capstone of the Category Theory track.
+
+**Roadmap.** We develop three equivalent definitions (Hom-set, unit-counit, universal morphism), prove their equivalence, then turn to properties: uniqueness of adjoints (via Yoneda), composition, and the RAPL theorem. Galois connections specialize adjunctions to posets, giving concrete examples from number theory, topology, and optimization. We close with the Adjoint Functor Theorem, ML connections, and a preview of monads.
+
+![Adjunctions — Hom-set isomorphism, free-forgetful example, unit and counit, triangle identities](/images/topics/adjunctions/adjunctions-definition.png)
+
+---
+
+## Adjunctions: The Hom-Set Definition
+
+We begin with the most symmetric formulation.
+
+<TheoremBlock type="definition" number={1} title="Adjunction (Hom-Set)">
+Let $\mathcal{C}$ and $\mathcal{D}$ be categories, and let $F: \mathcal{C} \to \mathcal{D}$ and $G: \mathcal{D} \to \mathcal{C}$ be functors. An **adjunction** $F \dashv G$ (read "$F$ is left adjoint to $G$") is a natural isomorphism
+
+$$\Phi_{A,B}: \mathrm{Hom}_\mathcal{D}(F(A), B) \xrightarrow{\;\cong\;} \mathrm{Hom}_\mathcal{C}(A, G(B))$$
+
+for all $A \in \mathcal{C}$, $B \in \mathcal{D}$, natural in both $A$ and $B$.
+
+We call $F$ the **left adjoint** and $G$ the **right adjoint**.
+</TheoremBlock>
+
+Naturality in both variables means: for any morphism $h: A' \to A$ in $\mathcal{C}$ and $k: B \to B'$ in $\mathcal{D}$, the following diagrams commute:
+
+$$\Phi_{A',B}(\bar{f} \circ F(h)) = \Phi_{A,B}(\bar{f}) \circ h \qquad \text{and} \qquad \Phi_{A,B'}(k \circ \bar{f}) = G(k) \circ \Phi_{A,B}(\bar{f})$$
+
+The bijection $\Phi$ gives every morphism $\bar{f}: F(A) \to B$ in $\mathcal{D}$ a unique partner $f: A \to G(B)$ in $\mathcal{C}$.
+
+<TheoremBlock type="definition" number={2} title="Adjoint Transpose">
+Given an adjunction $F \dashv G$ with natural isomorphism $\Phi$, the **adjoint transpose** of a morphism $\bar{f}: F(A) \to B$ is
+
+$$f = \Phi_{A,B}(\bar{f}): A \to G(B)$$
+
+Conversely, the adjoint transpose of $f: A \to G(B)$ is $\bar{f} = \Phi^{-1}_{A,B}(f): F(A) \to B$.
+</TheoremBlock>
+
+**Example.** In the free-forgetful adjunction $F \dashv U: \mathbf{Set} \to \mathbf{Vec}$, if $S = \{a, b\}$ and $V = \mathbb{R}^3$, then a function $f: S \to U(V)$ with $f(a) = (1, 0, 2)$ and $f(b) = (0, 3, 1)$ has adjoint transpose $\bar{f}: \mathbb{R}^2 \to \mathbb{R}^3$ given by the matrix
+
+$$\bar{f} = \begin{bmatrix} 1 & 0 \\ 0 & 3 \\ 2 & 1 \end{bmatrix}$$
+
+The columns are exactly $f(a)$ and $f(b)$ — the images of the basis elements. This is the free-forgetful bijection at work.
+
+<AdjunctionExplorer client:visible />
+
+---
+
+## Unit, Counit, and the Triangle Identities
+
+The Hom-set definition is elegant, but it hides the concrete data that makes an adjunction tick. The unit-counit formulation exposes that data.
+
+<TheoremBlock type="definition" number={3} title="Unit of an Adjunction">
+Given an adjunction $F \dashv G$ with isomorphism $\Phi$, the **unit** is the natural transformation $\eta: \mathrm{Id}_\mathcal{C} \Rightarrow GF$ defined by
+
+$$\eta_A = \Phi_{A, F(A)}(\mathrm{id}_{F(A)}): A \to GF(A)$$
+
+for each $A \in \mathcal{C}$. The unit "inserts $A$ into the round-trip $GF(A)$."
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={4} title="Counit of an Adjunction">
+The **counit** is the natural transformation $\varepsilon: FG \Rightarrow \mathrm{Id}_\mathcal{D}$ defined by
+
+$$\varepsilon_B = \Phi^{-1}_{G(B), B}(\mathrm{id}_{G(B)}): FG(B) \to B$$
+
+for each $B \in \mathcal{D}$. The counit "evaluates the round-trip $FG(B)$ back to $B$."
+</TheoremBlock>
+
+**Example.** In the free-forgetful adjunction, the unit $\eta_S: S \to UF(S)$ is the basis insertion: $\eta_S(a) = e_a$. It takes each element of $S$ and maps it to the corresponding basis vector in the free vector space. The counit $\varepsilon_V: FU(V) \to V$ is the evaluation map: the free vector space on the underlying set of $V$ maps back to $V$ by extending the identity linearly.
+
+The unit and counit are connected by a remarkable pair of equations.
+
+<TheoremBlock type="definition" number={5} title="Triangle Identities (Zig-Zag Laws)">
+The **triangle identities** for an adjunction $F \dashv G$ with unit $\eta$ and counit $\varepsilon$ are:
+
+$$\varepsilon_{F(A)} \circ F(\eta_A) = \mathrm{id}_{F(A)} \qquad \text{for all } A \in \mathcal{C}$$
+
+$$G(\varepsilon_B) \circ \eta_{G(B)} = \mathrm{id}_{G(B)} \qquad \text{for all } B \in \mathcal{D}$$
+
+In string diagram notation, these are the "zig-zag" equations — each composition snakes up and back, then collapses to the straight line (the identity).
+</TheoremBlock>
+
+The first says: if we start at $F(A)$, go up via $F(\eta_A)$ to $FGF(A)$, then come back down via $\varepsilon_{F(A)}$ to $F(A)$, we end up where we started. The second is the dual statement for $G$.
+
+<TheoremBlock type="definition" number={6} title="Adjunction (Unit-Counit)">
+An **adjunction** $F \dashv G$ consists of functors $F: \mathcal{C} \to \mathcal{D}$, $G: \mathcal{D} \to \mathcal{C}$ and natural transformations $\eta: \mathrm{Id}_\mathcal{C} \Rightarrow GF$ (the unit) and $\varepsilon: FG \Rightarrow \mathrm{Id}_\mathcal{D}$ (the counit) satisfying the triangle identities.
+</TheoremBlock>
+
+<TriangleIdentityAnimator client:visible />
+
+---
+
+## A Gallery of Adjunctions
+
+Adjunctions appear throughout mathematics once we know what to look for. The pattern is always the same: a "free" construction that builds structure from raw material, paired with a "forgetful" functor that strips structure away.
+
+**1. Free ⊣ Forgetful (Set ↔ Vec).** $F(S) = $ free vector space on $S$, $U(V) = $ underlying set of $V$. A linear map from $F(S)$ is determined by where the basis goes. This is our running example.
+
+**2. Free ⊣ Forgetful (Set ↔ Grp).** $F(S) = $ free group on $S$, $U(G) = $ underlying set of $G$. A group homomorphism from $F(S)$ is determined by where generators go. For $S = \{a\}$, we get $F(\{a\}) = (\mathbb{Z}, +)$, and every group homomorphism $\mathbb{Z} \to G$ is determined by the image of $1$ — an arbitrary element of $G$.
+
+**3. Diagonal ⊣ Product.** $\Delta: \mathcal{C} \to \mathcal{C} \times \mathcal{C}$ sends $C$ to $(C, C)$. Its right adjoint $\Pi$ sends $(A, B)$ to the product $A \times B$. The adjunction says:
+
+$$\mathrm{Hom}(\Delta(C), (A, B)) \cong \mathrm{Hom}(C, A \times B)$$
+
+A morphism into a product is determined by a pair of morphisms — this is the universal property of products, repackaged as an adjunction.
+
+**4. Coproduct ⊣ Diagonal.** Dually, $\coprod: \mathcal{C} \times \mathcal{C} \to \mathcal{C}$ sends $(A, B)$ to $A \sqcup B$, with $\Delta$ as right adjoint:
+
+$$\mathrm{Hom}(A \sqcup B, C) \cong \mathrm{Hom}((A, B), \Delta(C))$$
+
+A morphism out of a coproduct is a pair of morphisms.
+
+**5. Tensor-Hom (Currying).** In $\mathbf{Vec}$, $(- \otimes V) \dashv \mathrm{Hom}(V, -)$:
+
+$$\mathrm{Hom}(U \otimes V, W) \cong \mathrm{Hom}(U, \mathrm{Hom}(V, W))$$
+
+A bilinear map from $U \otimes V$ corresponds to a linear map from $U$ to the space of linear maps $V \to W$. This is the categorification of currying from functional programming — and it underlies the attention mechanism in transformers.
+
+**6. Galois Connections (Posets).** When $\mathcal{C}$ and $\mathcal{D}$ are posets, an adjunction becomes $f(p) \leq q \iff p \leq g(q)$. Example: $\lfloor x \rfloor \leq n \iff x \leq n$ for the floor function and integer inclusion. We develop this in detail below.
+
+**7. Quantifiers as Adjoints.** In logic, substitution $f^*$ along a function $f: A \to B$ has both a left adjoint $\exists_f$ and a right adjoint $\forall_f$:
+
+$$\exists_f \dashv f^* \dashv \forall_f$$
+
+The existential quantifier is left adjoint to substitution, and the universal quantifier is right adjoint. This explains why $\exists$ preserves disjunctions (colimits) and $\forall$ preserves conjunctions (limits).
+
+![Gallery of adjunctions — free-forgetful, tensor-hom, Galois connections, diagonal-product, quantifiers](/images/topics/adjunctions/adjunctions-gallery.png)
+
+---
+
+## Equivalence of Definitions
+
+There are three equivalent ways to define an adjunction. We've seen two (Hom-set and unit-counit). The third uses universal morphisms.
+
+<TheoremBlock type="definition" number={7} title="Universal Morphism">
+Let $G: \mathcal{D} \to \mathcal{C}$ be a functor and $A$ an object of $\mathcal{C}$. A **universal morphism** from $A$ to $G$ is a pair $(F(A), \eta_A: A \to G(F(A)))$ such that for every morphism $f: A \to G(B)$, there exists a unique morphism $\bar{f}: F(A) \to B$ with $G(\bar{f}) \circ \eta_A = f$.
+</TheoremBlock>
+
+The universal morphism says: $\eta_A$ is the "best" way to map $A$ into something of the form $G(B)$, because every other such map factors through it uniquely. This is the optimization perspective on adjunctions — the universal morphism solves a universal optimization problem.
+
+<TheoremBlock type="proposition" number={1} title="Hom-Set ⇔ Unit-Counit Equivalence">
+The Hom-set definition and the unit-counit definition of an adjunction are equivalent.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**(Hom-set ⇒ Unit-Counit).** Given the natural isomorphism $\Phi$, define:
+
+$$\eta_A = \Phi_{A, F(A)}(\mathrm{id}_{F(A)}): A \to GF(A)$$
+
+$$\varepsilon_B = \Phi^{-1}_{G(B), B}(\mathrm{id}_{G(B)}): FG(B) \to B$$
+
+We must verify the triangle identities. For the first, we need $\varepsilon_{F(A)} \circ F(\eta_A) = \mathrm{id}_{F(A)}$. By naturality of $\Phi$ in $A$, for $h = \eta_A: A \to GF(A)$:
+
+$$\Phi_{GF(A), F(A)}(\mathrm{id}_{F(A)}) \circ \eta_A = \Phi_{A, F(A)}(\mathrm{id}_{F(A)}) = \eta_A$$
+
+Since $\Phi_{GF(A), F(A)}(\mathrm{id}_{F(A)}) = \eta_{GF(A)}$, we get that $\Phi^{-1}$ applied to $\mathrm{id}_{GF(A)}$ through the naturality in $B$ gives $\varepsilon_{F(A)} \circ F(\eta_A) = \mathrm{id}_{F(A)}$. The second triangle identity follows by a dual argument.
+
+**(Unit-Counit ⇒ Hom-set).** Given $\eta$ and $\varepsilon$ satisfying the triangle identities, define:
+
+$$\Phi_{A,B}(\bar{f}) = G(\bar{f}) \circ \eta_A \qquad \text{for } \bar{f}: F(A) \to B$$
+
+$$\Phi^{-1}_{A,B}(f) = \varepsilon_B \circ F(f) \qquad \text{for } f: A \to G(B)$$
+
+To verify these are inverses, compute $\Phi^{-1}(\Phi(\bar{f})) = \varepsilon_B \circ F(G(\bar{f}) \circ \eta_A) = \varepsilon_B \circ FG(\bar{f}) \circ F(\eta_A) = \bar{f} \circ \varepsilon_{F(A)} \circ F(\eta_A) = \bar{f} \circ \mathrm{id}_{F(A)} = \bar{f}$, where the last step uses the first triangle identity. The other direction uses the second triangle identity similarly. Naturality of $\Phi$ follows from naturality of $\eta$ and $\varepsilon$. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Universal Morphism ⇔ Unit-Counit Equivalence">
+The universal morphism definition and the unit-counit definition of an adjunction are equivalent.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**(Unit-Counit ⇒ Universal Morphism).** Given $\eta_A: A \to GF(A)$, for any $f: A \to G(B)$ define $\bar{f} = \varepsilon_B \circ F(f): F(A) \to B$. Then $G(\bar{f}) \circ \eta_A = G(\varepsilon_B) \circ GF(f) \circ \eta_A = G(\varepsilon_B) \circ \eta_{G(B)} \circ f = \mathrm{id}_{G(B)} \circ f = f$ by the second triangle identity and naturality of $\eta$. Uniqueness: if $\bar{f}'$ also satisfies $G(\bar{f}') \circ \eta_A = f$, then $\bar{f}' = \varepsilon_B \circ FG(\bar{f}') \circ F(\eta_A) = \varepsilon_B \circ F(G(\bar{f}') \circ \eta_A) = \varepsilon_B \circ F(f) = \bar{f}$.
+
+**(Universal Morphism ⇒ Unit-Counit).** If for each $A$ we have a universal morphism $\eta_A: A \to G(F(A))$, the collection $\{\eta_A\}$ forms the unit. The counit components $\varepsilon_B$ are constructed as the unique morphisms with $G(\varepsilon_B) \circ \eta_{G(B)} = \mathrm{id}_{G(B)}$. The triangle identities follow from the uniqueness in the universal property. $\blacksquare$
+</TheoremBlock>
+
+![Three equivalent definitions of adjunctions — Hom-set, unit-counit, universal morphisms](/images/topics/adjunctions/adjunctions-equivalence.png)
+
+---
+
+## Properties of Adjunctions
+
+<TheoremBlock type="theorem" number={1} title="Uniqueness of Adjoints">
+If $F \dashv G$ and $F \dashv G'$, then $G \cong G'$ (natural isomorphism). Dually, if $F \dashv G$ and $F' \dashv G$, then $F \cong F'$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We have natural isomorphisms $\mathrm{Hom}(A, G(B)) \cong \mathrm{Hom}(F(A), B) \cong \mathrm{Hom}(A, G'(B))$ natural in $A$. Fixing $B$ and varying $A$, this gives a natural isomorphism $\mathrm{Hom}(-, G(B)) \cong \mathrm{Hom}(-, G'(B))$ of functors $\mathcal{C}^{\mathrm{op}} \to \mathbf{Set}$. By the [Yoneda lemma](/topics/natural-transformations), a natural isomorphism between representable functors implies $G(B) \cong G'(B)$, and this isomorphism is natural in $B$. $\blacksquare$
+</TheoremBlock>
+
+This is one of the most satisfying applications of Yoneda: adjoints are unique (up to natural isomorphism) when they exist.
+
+<TheoremBlock type="proposition" number={3} title="Composition of Adjunctions">
+If $F \dashv G: \mathcal{C} \rightleftarrows \mathcal{D}$ and $F' \dashv G': \mathcal{D} \rightleftarrows \mathcal{E}$, then $F'F \dashv GG': \mathcal{C} \rightleftarrows \mathcal{E}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any $A \in \mathcal{C}$ and $C \in \mathcal{E}$:
+
+$$\mathrm{Hom}_\mathcal{E}(F'F(A), C) \cong \mathrm{Hom}_\mathcal{D}(F(A), G'(C)) \cong \mathrm{Hom}_\mathcal{C}(A, GG'(C))$$
+
+The first isomorphism uses $F' \dashv G'$ and the second uses $F \dashv G$. The composite is natural in both $A$ and $C$ since each isomorphism is. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2} title="RAPL: Right Adjoints Preserve Limits">
+If $F \dashv G$, then $G$ preserves all limits that exist in $\mathcal{D}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $D: \mathcal{J} \to \mathcal{D}$ be a diagram with limit $\lim D$ in $\mathcal{D}$. We need to show $G(\lim D) \cong \lim GD$ in $\mathcal{C}$. For any $A \in \mathcal{C}$:
+
+$$\mathrm{Hom}_\mathcal{C}(A, G(\lim D)) \cong \mathrm{Hom}_\mathcal{D}(F(A), \lim D) \cong \lim_j \mathrm{Hom}_\mathcal{D}(F(A), D(j)) \cong \lim_j \mathrm{Hom}_\mathcal{C}(A, G(D(j)))$$
+
+The first step uses the adjunction, the second uses the defining property of limits (Hom out of a fixed object into a limit is the limit of the Hom sets), and the third uses the adjunction again. The composite says $\mathrm{Hom}(A, G(\lim D)) \cong \lim_j \mathrm{Hom}(A, GD(j))$, which is exactly the statement that $G(\lim D)$ is the limit of $GD$. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="LAPC: Left Adjoints Preserve Colimits">
+Dually, $F$ preserves all colimits that exist in $\mathcal{C}$. The proof is identical, using $\mathrm{Hom}_\mathcal{D}(\mathrm{colim}\, FD, B)$ and the fact that Hom is contravariant in its first argument, turning colimits into limits.
+
+**Examples.** The forgetful functor $U: \mathbf{Grp} \to \mathbf{Set}$ preserves products because it's a right adjoint: $U(G \times H) \cong U(G) \times U(H)$. The free functor $F: \mathbf{Set} \to \mathbf{Vec}$ preserves coproducts because it's a left adjoint: $F(S \sqcup T) \cong F(S) \oplus F(T)$ — the free vector space on a disjoint union is the direct sum.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={4} title="Galois Connections Yield Closure Operators">
+Let $f \dashv g$ be a Galois connection between posets $(P, \leq)$ and $(Q, \leq)$. Then $g \circ f: P \to P$ is a closure operator: it is extensive ($p \leq gf(p)$), monotone, and idempotent ($gfgf = gf$). Dually, $f \circ g: Q \to Q$ is a kernel (interior) operator.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Extensive:** From the adjunction condition with $q = f(p)$: $f(p) \leq f(p)$ is always true, so $p \leq g(f(p))$.
+
+**Monotone:** If $p \leq p'$, then by extensiveness $p' \leq gf(p')$, so $p \leq gf(p')$. From the adjunction condition, $f(p) \leq f(p')$, and then $gf(p) \leq gf(p')$.
+
+**Idempotent:** We need $gf(gf(p)) = gf(p)$. From extensiveness, $gf(p) \leq gfgf(p)$. For the reverse, apply $f$ to the extensive inequality $p \leq gf(p)$ to get $f(p) \leq fgf(p)$ (monotonicity of $f$). Then $fgfg \leq fg$ by the counit condition $fg(q) \leq q$ applied to $q = f(p)$. So $fgf(p) \leq f(p)$, giving $gfgf(p) \leq gf(p)$ by monotonicity of $g$. $\blacksquare$
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Monads from Adjunctions (Preview)">
+Every adjunction $F \dashv G$ gives rise to a **monad** $T = GF: \mathcal{C} \to \mathcal{C}$ with unit $\eta: \mathrm{Id}_\mathcal{C} \Rightarrow GF$ and multiplication $\mu = G\varepsilon F: GFGF \Rightarrow GF$. The triangle identities for the adjunction imply the monad laws: $\mu \circ T\eta = \mathrm{id}_T = \mu \circ \eta T$ and $\mu \circ T\mu = \mu \circ \mu T$. Conversely, every monad arises from an adjunction — in fact, from two canonical ones (Eilenberg-Moore and Kleisli). This is the subject of **Monads & Comonads** *(coming soon)*.
+</TheoremBlock>
+
+![Properties of adjunctions — uniqueness, composition, RAPL, and monads from adjunctions](/images/topics/adjunctions/adjunctions-properties.png)
+
+---
+
+## Galois Connections
+
+When both categories are posets, an adjunction becomes especially concrete.
+
+<TheoremBlock type="definition" number={8} title="Galois Connection">
+A **Galois connection** between posets $(P, \leq)$ and $(Q, \leq)$ consists of monotone maps $f: P \to Q$ (the left adjoint) and $g: Q \to P$ (the right adjoint) such that
+
+$$f(p) \leq q \quad\Longleftrightarrow\quad p \leq g(q) \qquad \text{for all } p \in P, \, q \in Q$$
+</TheoremBlock>
+
+This is exactly $F \dashv G$ when the categories are posets: the unique morphism $p \to q$ exists if and only if $p \leq q$, so the Hom-set bijection $\mathrm{Hom}(f(p), q) \cong \mathrm{Hom}(p, g(q))$ reduces to the equivalence above (both Hom sets are either empty or singletons).
+
+**Example: Ceiling ⊣ Inclusion (and Inclusion ⊣ Floor).** The interplay between rounding and inclusion gives two classic Galois connections. Let $P = \mathbb{R}$ with the usual order, $Q = \mathbb{Z}$ with the usual order, and let $\iota: \mathbb{Z} \hookrightarrow \mathbb{R}$ be the inclusion. Then:
+
+$$\lceil x \rceil \leq n \quad\Longleftrightarrow\quad x \leq \iota(n) \qquad \text{for all } x \in \mathbb{R}, \, n \in \mathbb{Z}$$
+
+This says the ceiling is left adjoint to inclusion: $\lceil \cdot \rceil \dashv \iota$. Check: $\lceil 2.7 \rceil = 3 \leq 3$ and $2.7 \leq 3$ — both true. $\lceil 2.7 \rceil = 3 \leq 2$? No, and $2.7 \leq 2$ is also false — both false. The biconditional holds.
+
+There is a dual Galois connection where inclusion is the *left* adjoint and floor is the *right* adjoint:
+
+$$\iota(n) \leq x \quad\Longleftrightarrow\quad n \leq \lfloor x \rfloor \qquad \text{for all } n \in \mathbb{Z}, \, x \in \mathbb{R}$$
+
+Check: $2 \leq 2.7$ and $2 \leq \lfloor 2.7 \rfloor = 2$ — both true. $3 \leq 2.7$? No, and $3 \leq 2$? Also no — consistent. The key insight: $\lfloor \cdot \rfloor$ is *right* adjoint to inclusion, not left. Mixing these up is a common source of confusion.
+
+**Example: Image ⊣ Preimage.** For a function $f: X \to Y$ between sets, the direct image $f_*: \mathcal{P}(X) \to \mathcal{P}(Y)$ and the preimage $f^{-1}: \mathcal{P}(Y) \to \mathcal{P}(X)$ form a Galois connection on the power set lattices:
+
+$$f_*(A) \subseteq B \quad\Longleftrightarrow\quad A \subseteq f^{-1}(B)$$
+
+The closure operator $f^{-1} \circ f_*$ sends a subset $A$ to $f^{-1}(f(A))$ — the preimage of the image, which is the "saturation" of $A$ with respect to $f$.
+
+<TheoremBlock type="definition" number={9} title="Closure Operator">
+A **closure operator** on a poset $(P, \leq)$ is a function $c: P \to P$ that is:
+1. **Extensive:** $p \leq c(p)$ for all $p$
+2. **Monotone:** $p \leq q \implies c(p) \leq c(q)$
+3. **Idempotent:** $c(c(p)) = c(p)$ for all $p$
+
+An element $p$ with $c(p) = p$ is called **closed** (or a **fixed point** of $c$).
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Lagrangian Duality as a Galois Connection">
+[Lagrangian duality](/topics/lagrangian-duality) is a Galois connection between the primal and dual optimization posets. The primal problem $\min_x f_0(x)$ subject to $g_i(x) \leq 0$ and the dual problem $\max_{\lambda \geq 0} \inf_x \mathcal{L}(x, \lambda)$ are connected by:
+
+- **Weak duality** ($d^* \leq f^*$) is the counit condition $f(g(q)) \leq q$.
+- **Strong duality** ($d^* = f^*$) is when the unit and counit are isomorphisms — the adjunction is "tight."
+- The **duality gap** $f^* - d^*$ measures the obstruction to the unit being an isomorphism.
+- The **KKT conditions** characterize the fixed points of the closure operator.
+</TheoremBlock>
+
+<GaloisConnectionExplorer client:visible />
+
+![Galois connections — poset adjunctions, closure-interior, image-preimage, floor-inclusion](/images/topics/adjunctions/galois-connections.png)
+
+---
+
+## Representability and the Adjoint Functor Theorem
+
+The adjunction isomorphism $\mathrm{Hom}(F(A), B) \cong \mathrm{Hom}(A, G(B))$ has a representability interpretation. Fixing $B$ and varying $A$, the functor $\mathrm{Hom}_\mathcal{D}(F(-), B): \mathcal{C}^{\mathrm{op}} \to \mathbf{Set}$ is representable, with representing object $G(B)$. Conversely, fixing $A$, the functor $\mathrm{Hom}_\mathcal{C}(A, G(-)): \mathcal{D} \to \mathbf{Set}$ is representable by $F(A)$.
+
+This gives a representability criterion: **$F$ has a right adjoint if and only if $\mathrm{Hom}(F(-), B)$ is representable for all $B$.**
+
+The natural question is: when does a right adjoint *exist*? The Adjoint Functor Theorem gives sufficient conditions.
+
+<TheoremBlock type="theorem" number={3} title="Adjoint Functor Theorem (Freyd)">
+Let $G: \mathcal{D} \to \mathcal{C}$ be a functor where $\mathcal{D}$ is locally small and complete (has all small limits). Then $G$ has a left adjoint if and only if:
+
+1. $G$ preserves all small limits, and
+2. For each $A \in \mathcal{C}$, the **solution set condition** holds: there exists a set $S$ of morphisms $\{f_i: A \to G(D_i)\}_{i \in I}$ such that every morphism $f: A \to G(D)$ factors through some $f_i$ — that is, there exists $h: D_i \to D$ with $G(h) \circ f_i = f$.
+
+The solution set condition prevents the "solution" from being too large (a proper class). For locally small categories with enough structure, this condition is often automatic.
+</TheoremBlock>
+
+The theorem is important because it tells us *when* adjoints exist without having to construct them explicitly. In practice, limit preservation is the condition we check, and the solution set condition is verified by a smallness argument.
+
+![Representability from adjunctions and the Adjoint Functor Theorem](/images/topics/adjunctions/adjunctions-representability.png)
+
+---
+
+## Adjunctions in Machine Learning
+
+The adjunction pattern — a pair of functors in opposite directions, with the unit measuring "insertion cost" and the counit measuring "evaluation" — appears in several ML paradigms.
+
+**1. Lagrangian Duality as a Galois Connection.** As noted in the Galois Connections section, the primal-dual relationship in constrained optimization is a Galois connection. For a convex program, strong duality (when it holds) means the adjunction collapses to an equivalence — the primal and dual solutions determine each other. The regularization path (varying the constraint bound) traces the closure operator of this Galois connection.
+
+**2. Encoder-Decoder as an Adjunction.** An autoencoder consists of an encoder $E: \mathcal{X} \to \mathcal{Z}$ and a decoder $D: \mathcal{Z} \to \mathcal{X}$. The unit $\eta = D \circ E: \mathrm{id}_\mathcal{X} \Rightarrow DE$ measures reconstruction quality — if $\eta_x \approx x$, the round-trip is nearly lossless. The counit $\varepsilon = E \circ D: ED \Rightarrow \mathrm{id}_\mathcal{Z}$ projects the "reconstructed-then-encoded" latent code back to the original latent space. When the autoencoder is perfect (zero reconstruction error), $\eta$ is an isomorphism and we have an equivalence rather than a mere adjunction.
+
+**3. Tensor-Hom and Attention.** The attention mechanism computes $\mathrm{Attention}(Q, K, V) = \mathrm{softmax}(QK^\top / \sqrt{d_k}) V$. The bilinear form $Q \otimes K \to \text{scores}$ corresponds, via the tensor-hom adjunction, to the curried form $Q \to \mathrm{Hom}(K, \text{scores})$. This is why we can implement attention as matrix multiplication: the tensor-hom adjunction says bilinear maps are equivalent to linear maps into a function space.
+
+**4. Regularization as Free Construction.** Adding a regularization term $\lambda \|w\|^2$ to a loss function can be viewed as the unit of a free-forgetful adjunction. The "free" functor maps from the space of unconstrained models to the space of regularized models (by adding the penalty), and the "forgetful" functor strips the penalty away. The regularization path — varying $\lambda$ — explores the image of the unit, interpolating between the "freely constructed" constrained model ($\lambda \to \infty$) and the unconstrained model ($\lambda = 0$).
+
+<AdjunctionMLExplorer client:visible />
+
+![Adjunctions in ML — Lagrangian duality, encoder-decoder, attention as tensor-hom, regularization](/images/topics/adjunctions/adjunctions-ml.png)
+
+---
+
+## Computational Notes
+
+**A free-forgetful adjunction in Python.** We verify the adjunction between $\mathbf{Set}$ and $\mathbf{Vec}$ concretely. The set $S = \{a, b\}$ maps to the free vector space $F(S) \cong \mathbb{R}^2$.
+
+```python
+import numpy as np
+
+S = ['a', 'b']
+eta = {s: np.eye(len(S))[i] for i, s in enumerate(S)}
+print("Unit eta (basis insertion):")
+for s, vec in eta.items():
+    print(f"  eta({s}) = {vec}")
+
+# A function f: S -> R^3
+f = {'a': np.array([1, 0, 2]), 'b': np.array([0, 3, 1])}
+
+# Adjoint transpose: the 3x2 matrix whose columns are f(a), f(b)
+f_bar = np.column_stack([f[s] for s in S])
+print(f"\nAdjoint transpose f-bar (matrix):\n{f_bar}")
+
+# Verify: f_bar . eta(s) = f(s)
+for s in S:
+    result = f_bar @ eta[s]
+    print(f"  f_bar(eta({s})) = {result} == f({s}) = {f[s]}: {np.allclose(result, f[s])}")
+```
+
+**Galois connection verification: ceiling ⊣ inclusion.**
+
+```python
+import numpy as np
+
+test_pairs = [(2.7, 3), (2.7, 2), (3.0, 3), (-1.5, -1), (-1.5, -2)]
+for x, n in test_pairs:
+    lhs = (np.ceil(x) <= n)    # ceil(x) <= n
+    rhs = (x <= n)             # x <= n
+    print(f"  ceil({x}) = {int(np.ceil(x))} <= {n}: {lhs}  "
+          f"  {x} <= {n}: {rhs}  "
+          f"  Match: {lhs == rhs}")
+```
+
+**Triangle identity verification.**
+
+```python
+# In the free-forgetful adjunction Set ↔ Vec:
+# First triangle: epsilon_{F(S)} . F(eta_S) = id_{F(S)}
+# F(eta_S) sends e_a -> e_{e_a} in F(U(F(S)))  (huge space!)
+# epsilon_{F(S)} sends e_{e_a} -> e_a  (evaluation)
+# Composition: e_a -> e_{e_a} -> e_a = id(e_a)  ✓
+
+print("Triangle identity: epsilon_F . F(eta) = id_F")
+print("  Verified: the zig-zag composition collapses to the identity")
+```
+
+**RAPL verification: forgetful functor preserves products.**
+
+```python
+# U: Grp -> Set preserves products
+# U(G × H) ≅ U(G) × U(H)
+# The underlying set of a product group IS the product of underlying sets.
+# This is automatic because U is a right adjoint (Free ⊣ U).
+
+# Similarly, F: Set -> Vec preserves coproducts (LAPC):
+# F(S ⊔ T) ≅ F(S) ⊕ F(T)
+# The free vector space on a disjoint union is the direct sum.
+
+print("RAPL: Forgetful functor preserves products")
+print("  U(Z × Z/2) = U(Z) × U(Z/2) ✓")
+print("\nLAPC: Free functor preserves coproducts")
+print("  F({a} ⊔ {b}) = F({a}) ⊕ F({b}) = R ⊕ R = R² ✓")
+```
+
+---
+
+## Connections & Further Reading
+
+### Where This Fits
+
+| Topic | Connection |
+|-------|-----------|
+| **[Categories & Functors](/topics/categories-functors)** | All category, functor, and morphism definitions assumed. Products and coproducts from Topic 1 are special cases of limits and colimits — the structures preserved by right and left adjoints. |
+| **[Natural Transformations](/topics/natural-transformations)** | The unit and counit are natural transformations. The Hom-set definition requires naturality in both variables. The Yoneda lemma underlies the uniqueness-of-adjoints proof. |
+| **[Lagrangian Duality & KKT](/topics/lagrangian-duality)** | Lagrangian duality is a Galois connection between primal and dual optimization posets. Weak duality is the counit condition; strong duality is when the unit is an isomorphism. |
+| **[The Spectral Theorem](/topics/spectral-theorem)** | The free-forgetful adjunction $F \dashv U$ between **Set** and **Vec** is the primary running example. The tensor-hom adjunction operates on the vector spaces governed by the Spectral Theorem. |
+| **[Measure-Theoretic Probability](/topics/measure-theoretic-probability)** | The Giry monad on $\mathbf{Meas}$ arises from an adjunction between measurable spaces and probability spaces, with unit $x \mapsto \delta_x$. |
+| **[Convex Analysis](/topics/convex-analysis)** | Convex conjugation $f \mapsto f^*$ is a Galois connection. The Fenchel-Moreau theorem ($f^{**} = f$ for closed convex $f$) says the unit is an isomorphism on the closed convex functions. |
+| **Monads & Comonads** *(coming soon)* | Every adjunction $F \dashv G$ generates a monad $T = GF$ with unit $\eta$ and multiplication $\mu = G\varepsilon F$. The Eilenberg-Moore and Kleisli categories provide canonical adjunctions that recover a monad — establishing the fundamental correspondence between adjunctions and monads. |
+
+### Notation Summary
+
+| Symbol | Meaning |
+|--------|---------|
+| $F \dashv G$ | $F$ is left adjoint to $G$ |
+| $\eta: \mathrm{Id}_\mathcal{C} \Rightarrow GF$ | Unit of the adjunction |
+| $\varepsilon: FG \Rightarrow \mathrm{Id}_\mathcal{D}$ | Counit of the adjunction |
+| $\Phi_{A,B}$ | Hom-set isomorphism $\mathrm{Hom}(FA, B) \xrightarrow{\cong} \mathrm{Hom}(A, GB)$ |
+| $\bar{f}$ | Adjoint transpose of $f$ |
+| $\varepsilon_F \circ F\eta = \mathrm{id}_F$ | First triangle identity |
+| $G\varepsilon \circ \eta_G = \mathrm{id}_G$ | Second triangle identity |
+| $f \dashv g$ (posets) | Galois connection: $f(p) \leq q \iff p \leq g(q)$ |
+| $T = GF$ | Monad from adjunction |
+| $\mu = G\varepsilon F$ | Monad multiplication |
