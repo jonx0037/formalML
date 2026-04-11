@@ -229,7 +229,7 @@ where $f_k$ is the number of $k$-simplices in $K$. Equivalently, $\chi = f_0 - f
 
 For a surface, this reduces to the familiar $V - E + F$ formula. For a convex polyhedron, Euler proved that $V - E + F = 2$ — regardless of whether the polyhedron is a cube, a dodecahedron, or any other convex shape. This is a topological invariant: it depends only on the shape's topology (homeomorphic to a sphere), not on the specific triangulation.
 
-<TheoremBlock type="theorem" number={2} title="Euler–Poincaré Formula">
+<TheoremBlock type="theorem" number={1} title="Euler–Poincaré Formula">
 For any finite simplicial complex $K$:
 
 $$\chi(K) = \sum_{k=0}^{\dim(K)} (-1)^k \beta_k$$
@@ -242,7 +242,7 @@ The proof uses the rank-nullity theorem applied to the chain complex. For each b
 
 $$\sum_{k=0}^{n} (-1)^k \beta_k = \sum_{k=0}^{n} (-1)^k \bigl[\dim(\ker(\partial_k)) - \text{rank}(\partial_{k+1})\bigr]$$
 
-Expanding $\dim(\ker(\partial_k)) = f_k - \text{rank}(\partial_k)$ and collecting terms, each $\text{rank}(\partial_k)$ appears once with sign $(-1)^{k-1}$ (from the $\beta_{k-1}$ term) and once with sign $(-1)^k$ (from the $f_k$ expansion), so the rank terms cancel pairwise, leaving $\sum(-1)^k f_k = \chi(K)$. $\square$
+Expanding $\dim(\ker(\partial_k)) = f_k - \text{rank}(\partial_k)$ and collecting terms, each $\text{rank}(\partial_k)$ appears once with sign $(-1)^{k-1}$ (from the $\beta_{k-1}$ term) and once with sign $(-1)^k$ (from the $f_k$ expansion), so the rank terms cancel pairwise, leaving $\sum(-1)^k f_k = \chi(K)$.
 </TheoremBlock>
 
 <TheoremBlock type="example" number={4}>
@@ -458,12 +458,37 @@ def boundary_matrix_2(edges, triangles):
                 D2[e_set[key], j] = 1
     return D2 % 2
 
+def gf2_rank(matrix):
+    """Compute matrix rank over Z₂ via Gaussian elimination (XOR)."""
+    A = np.array(matrix, dtype=np.uint8, copy=True) % 2
+    n_rows, n_cols = A.shape
+    rank = 0
+    pivot_row = 0
+    for col in range(n_cols):
+        found = None
+        for row in range(pivot_row, n_rows):
+            if A[row, col]:
+                found = row
+                break
+        if found is None:
+            continue
+        if found != pivot_row:
+            A[[pivot_row, found]] = A[[found, pivot_row]]
+        for row in range(pivot_row + 1, n_rows):
+            if A[row, col]:
+                A[row] ^= A[pivot_row]
+        rank += 1
+        pivot_row += 1
+        if pivot_row == n_rows:
+            break
+    return rank
+
 def betti_numbers(vertices, edges, triangles):
     """Compute β₀, β₁ over Z₂ via rank-nullity."""
     D1 = boundary_matrix_1(vertices, edges)
     D2 = boundary_matrix_2(edges, triangles)
-    rank_D1 = np.linalg.matrix_rank(D1 % 2)
-    rank_D2 = np.linalg.matrix_rank(D2 % 2)
+    rank_D1 = gf2_rank(D1)
+    rank_D2 = gf2_rank(D2)
     beta_0 = len(vertices) - rank_D1
     beta_1 = (len(edges) - rank_D1) - rank_D2
     return beta_0, beta_1
