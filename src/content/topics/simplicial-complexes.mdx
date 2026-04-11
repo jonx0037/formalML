@@ -10,13 +10,19 @@ videoId: null
 notebookPath: "notebooks/simplicial-complexes.ipynb"
 githubUrl: null
 datePublished: 2026-03-15
-estimatedReadTime: 18
-abstract: "Simplicial complexes are the bridge between raw point cloud data and topological invariants. We build them from scratch — starting with the geometric intuition of simplices as generalized triangles, then constructing the Vietoris-Rips complex that underlies most of modern topological data analysis."
+estimatedReadTime: 35
+abstract: "Simplicial complexes are the bridge between raw point cloud data and topological invariants. We build them from scratch — starting with the geometric intuition of simplices as generalized triangles, then constructing the Vietoris-Rips complex that underlies most of modern topological data analysis. Along the way, we develop the Euler characteristic and its relationship to Betti numbers, survey alternative complex constructions (alpha complexes, witness complexes), and connect the combinatorial theory to spectral graph theory, category theory, and sheaf theory."
 connections:
   - topic: "persistent-homology"
     relationship: "is prerequisite for"
   - topic: "smooth-manifolds"
     relationship: "Smooth manifolds can be triangulated into simplicial complexes, connecting combinatorial topology (homology, Betti numbers) with differential topology (tangent spaces, smooth maps)."
+  - topic: "graph-laplacians"
+    relationship: "The 1-skeleton of a simplicial complex is a graph; its Laplacian spectrum governs spectral clustering and connects combinatorial topology to spectral methods."
+  - topic: "categories-functors"
+    relationship: "Simplicial complexes form a category with simplicial maps as morphisms; homology is a functor from this category to the category of graded vector spaces, preserving topological structure algebraically."
+  - topic: "sheaf-theory"
+    relationship: "Cellular sheaves are defined on the face poset of a simplicial complex; the coboundary map in sheaf cohomology generalizes the boundary operator of simplicial homology."
 references:
   - type: "book"
     title: "Computational Topology: An Introduction"
@@ -46,6 +52,8 @@ references:
 
 import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import SimplicialComplex from '../../components/viz/SimplicialComplex.tsx';
+import EulerCharacteristicExplorer from '../../components/viz/EulerCharacteristicExplorer.tsx';
+import BettiNumberTracker from '../../components/viz/BettiNumberTracker.tsx';
 
 ## Overview & Motivation
 
@@ -158,6 +166,165 @@ This progression — vertices → edges → triangles appearing at increasing sc
 
 ---
 
+## Homology Preview
+
+A simplicial complex has well-defined *shape* — but how do we quantify that shape? The answer is **homology**: an algebraic machine that assigns integer invariants to a complex, counting its connected components, loops, voids, and higher-dimensional "holes."
+
+We give the key definitions here at an intuitive level. The full algebraic development — including the matrix computations that make homology practical — is developed on the [Persistent Homology](/topics/persistent-homology) page.
+
+<TheoremBlock type="definition" number={7}>
+The **$k$-chain group** $C_k(K; \mathbb{Z}_2)$ is the vector space over $\mathbb{Z}_2 = \{0, 1\}$ whose basis elements are the $k$-simplices of $K$. A $k$-chain is a formal sum $c = \sum_i a_i \sigma_i$ with $a_i \in \mathbb{Z}_2$.
+</TheoremBlock>
+
+Working over $\mathbb{Z}_2$ means we don't need to worry about orientations: coefficients are 0 or 1, and $1 + 1 = 0$. This is the standard choice in TDA software.
+
+<TheoremBlock type="definition" number={8}>
+The **boundary operator** $\partial_k : C_k(K) \to C_{k-1}(K)$ maps each $k$-simplex to the sum of its $(k-1)$-dimensional faces (over $\mathbb{Z}_2$):
+
+$$\partial_k [v_0, \ldots, v_k] = \sum_{i=0}^{k} [v_0, \ldots, \hat{v}_i, \ldots, v_k]$$
+
+where $\hat{v}_i$ denotes omission of the $i$-th vertex.
+</TheoremBlock>
+
+The boundary of an edge $[v_0, v_1]$ is $[v_0] + [v_1]$ — its two endpoints. The boundary of a triangle $[v_0, v_1, v_2]$ is $[v_0, v_1] + [v_0, v_2] + [v_1, v_2]$ — its three edges. The fundamental property is that **the boundary of a boundary is always zero**: $\partial_{k-1} \circ \partial_k = 0$ (proved on the [Persistent Homology](/topics/persistent-homology) page, Theorem 1).
+
+<TheoremBlock type="definition" number={9}>
+The **$k$-th Betti number** $\beta_k$ of a simplicial complex $K$ is:
+
+$$\beta_k = \dim\left(\ker(\partial_k) / \text{im}(\partial_{k+1})\right)$$
+
+Equivalently, $\beta_k$ counts the number of independent $k$-dimensional "holes" — $k$-cycles that are not the boundary of any $(k+1)$-chain.
+</TheoremBlock>
+
+In geometric terms:
+- $\beta_0$ = number of **connected components**
+- $\beta_1$ = number of independent **loops** (cycles not bounding a filled region)
+- $\beta_2$ = number of enclosed **voids** (cavities)
+
+<TheoremBlock type="example" number={3}>
+Consider the wireframe triangle $K_1 = \{[v_0,v_1], [v_0,v_2], [v_1,v_2], [v_0], [v_1], [v_2]\}$ (three edges, three vertices, no fill).
+
+The three edges form a 1-cycle: $\partial_1([v_0,v_1] + [v_0,v_2] + [v_1,v_2]) = 0$ (over $\mathbb{Z}_2$). But there is no 2-simplex whose boundary is this cycle, so $\beta_1 = 1$ — the wireframe triangle has **one hole**.
+
+Now add the filled face to get $K_2 = K_1 \cup \{[v_0,v_1,v_2]\}$. The boundary of the 2-simplex is exactly our 1-cycle: $\partial_2[v_0,v_1,v_2] = [v_0,v_1] + [v_0,v_2] + [v_1,v_2]$. The cycle is now a boundary, so $\beta_1 = 0$ — the filled triangle has **no holes**.
+
+Both complexes have $\beta_0 = 1$ (one connected component) and $\beta_2 = 0$ (no enclosed voids).
+</TheoremBlock>
+
+This is the core mechanism: the *same cycle* can be a hole or not, depending on whether something fills it in. Persistent homology tracks exactly when filling events happen as the scale parameter $\varepsilon$ increases.
+
+---
+
+## The Euler Characteristic
+
+The Euler characteristic is the oldest and simplest topological invariant — Euler discovered it for polyhedra in 1758, long before homology was invented. It turns out to be a shadow of the Betti numbers.
+
+<TheoremBlock type="definition" number={10}>
+The **Euler characteristic** of a simplicial complex $K$ is the alternating sum of simplex counts:
+
+$$\chi(K) = \sum_{k=0}^{\dim(K)} (-1)^k f_k$$
+
+where $f_k$ is the number of $k$-simplices in $K$. Equivalently, $\chi = f_0 - f_1 + f_2 - f_3 + \cdots$ (vertices minus edges plus triangles minus tetrahedra, and so on).
+</TheoremBlock>
+
+For a surface, this reduces to the familiar $V - E + F$ formula. For a convex polyhedron, Euler proved that $V - E + F = 2$ — regardless of whether the polyhedron is a cube, a dodecahedron, or any other convex shape. This is a topological invariant: it depends only on the shape's topology (homeomorphic to a sphere), not on the specific triangulation.
+
+<TheoremBlock type="theorem" number={1} title="Euler–Poincaré Formula">
+For any finite simplicial complex $K$:
+
+$$\chi(K) = \sum_{k=0}^{\dim(K)} (-1)^k \beta_k$$
+
+The Euler characteristic equals the alternating sum of Betti numbers.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof uses the rank-nullity theorem applied to the chain complex. For each boundary operator $\partial_k : C_k \to C_{k-1}$, rank-nullity gives $f_k = \dim(C_k) = \text{rank}(\partial_k) + \dim(\ker(\partial_k))$. Since $\beta_k = \dim(\ker(\partial_k)) - \text{rank}(\partial_{k+1})$, the alternating sum telescopes:
+
+$$\sum_{k=0}^{n} (-1)^k \beta_k = \sum_{k=0}^{n} (-1)^k \bigl[\dim(\ker(\partial_k)) - \text{rank}(\partial_{k+1})\bigr]$$
+
+Expanding $\dim(\ker(\partial_k)) = f_k - \text{rank}(\partial_k)$ and collecting terms, each $\text{rank}(\partial_k)$ appears once with sign $(-1)^{k-1}$ (from the $\beta_{k-1}$ term) and once with sign $(-1)^k$ (from the $f_k$ expansion), so the rank terms cancel pairwise, leaving $\sum(-1)^k f_k = \chi(K)$.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={4}>
+Three classical surfaces and their invariants:
+
+- **Sphere** $S^2$ (tetrahedron boundary: 4V, 6E, 4F): $\chi = 4 - 6 + 4 = 2$. Betti numbers $\beta_0 = 1, \beta_1 = 0, \beta_2 = 1$, giving $1 - 0 + 1 = 2$. ✓
+- **Torus** $T^2$ (standard triangulation: 9V, 27E, 18F): $\chi = 9 - 27 + 18 = 0$. Betti numbers $\beta_0 = 1, \beta_1 = 2, \beta_2 = 1$, giving $1 - 2 + 1 = 0$. ✓
+- **Real projective plane** $\mathbb{R}P^2$ (minimal triangulation: 6V, 15E, 10F): $\chi = 6 - 15 + 10 = 1$. Betti numbers $\beta_0 = 1, \beta_1 = 0, \beta_2 = 0$ (over $\mathbb{Z}_2$), giving $1 - 0 + 0 = 1$. ✓
+
+In every case, the simplex-counting formula agrees with the Betti number formula — as the Euler–Poincaré theorem guarantees.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The Euler characteristic connects combinatorial topology to differential geometry via the **Gauss–Bonnet theorem**: for a compact orientable surface $M$ with Gaussian curvature $K$,
+
+$$\int_M K \, dA = 2\pi \chi(M)$$
+
+The total curvature is a topological invariant. This remarkable bridge between geometry and topology is developed on the [Geodesics & Curvature](/topics/geodesics-curvature) page.
+</TheoremBlock>
+
+The explorer below lets you build a simplicial complex by adding and removing simplices, watching the Euler characteristic update in real time:
+
+<EulerCharacteristicExplorer client:visible />
+
+---
+
+## Other Complex Constructions
+
+The Vietoris-Rips complex is the workhorse of TDA, but it is not the only way to build topology from data. Two important alternatives trade off geometric fidelity against computational cost.
+
+<TheoremBlock type="definition" number={11}>
+The **alpha complex** $\text{Alpha}_\varepsilon(P)$ of a point cloud $P \subset \mathbb{R}^d$ is the subcomplex of the Delaunay triangulation $\text{Del}(P)$ consisting of all simplices $\sigma$ whose smallest enclosing ball (the **miniball** of $\sigma$) has radius at most $\varepsilon$:
+
+$$\text{Alpha}_\varepsilon(P) = \{\sigma \in \text{Del}(P) \mid \text{miniball}(\sigma) \leq \varepsilon\}$$
+
+Equivalently, $\text{Alpha}_\varepsilon(P) = \text{Del}(P) \cap \check{C}_\varepsilon(P)$ — it is the Delaunay-restricted Čech complex.
+</TheoremBlock>
+
+The alpha complex has a crucial advantage: its size is bounded by $O(n^{\lceil d/2 \rceil})$ regardless of $\varepsilon$, because the Delaunay triangulation has at most that many simplices. In low dimensions ($d = 2, 3$), this is nearly linear in $n$ — far smaller than the $\binom{n}{k+1}$ potential simplices of the VR complex. Moreover, the Nerve Theorem applies to the alpha complex (it is a subcomplex of the Čech complex), so its homology faithfully captures the topology of the union of balls.
+
+<TheoremBlock type="definition" number={12}>
+The **witness complex** $W_\varepsilon(L, P)$ is defined relative to a set of **landmark points** $L \subset P$ and the full data $P$. A simplex $\sigma = \{l_0, \ldots, l_k\} \subseteq L$ belongs to $W_\varepsilon$ if there exists a **witness** $w \in P$ such that:
+
+$$\max_{i} d(w, l_i) \leq d(w, L \setminus \sigma) + \varepsilon$$
+
+Intuitively, $w$ is a data point that is "closer to $\sigma$ than to any other landmark," up to tolerance $\varepsilon$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The witness complex is designed for large datasets where the VR complex is infeasible. By choosing a small set of landmarks, the witness complex has size independent of the full dataset. The trade-off: the witness complex may miss topological features that the VR complex would detect, because the landmark subsampling can distort the geometry.
+
+**Computational complexity comparison:**
+
+- **Vietoris-Rips**: Up to $2^n - 1$ simplices. Per-simplex check: pairwise distances only. Best for general-purpose TDA.
+- **Čech**: Same size bound as VR. Per-simplex check: ball intersection (expensive in high dimension). Best for theoretical exactness.
+- **Alpha**: Bounded by the Delaunay triangulation size, roughly $O(n)$ in $\mathbb{R}^2$ and $O(n^2)$ in $\mathbb{R}^3$. Best for low-dimensional data.
+- **Witness**: Size depends on the number of landmarks, not the full dataset. Best for large point clouds.
+</TheoremBlock>
+
+---
+
+## Computational Notes
+
+<TheoremBlock type="proposition" number={1} title="Simplex Count Bound">
+A Vietoris-Rips complex on $n$ points has at most $C(n, k+1)$ potential $k$-simplices, where $C(n,m)$ is the binomial coefficient. The full VR complex (at $\varepsilon = \infty$) has $2^n - 1$ simplices in total. For realistic datasets ($n$ in the thousands), this is astronomically large for $k \geq 3$.
+</TheoremBlock>
+
+This combinatorial explosion is why no one actually constructs the full VR complex. The state-of-the-art approach, implemented in **Ripser** (Bauer, 2021), avoids explicit construction entirely:
+
+1. **Implicit representation**: simplices are never stored — they are generated on-the-fly from the distance matrix during the matrix reduction algorithm.
+2. **Clearing optimization**: when a simplex $\sigma$ creates a birth event, the simplex that kills it (its "partner") can be identified without processing the remaining columns — roughly halving the work.
+3. **Cohomology**: Ripser computes *co*homology (the dual of homology) because the coboundary matrix is sparser than the boundary matrix for VR complexes, leading to faster column reduction.
+4. **Apparent pairs**: many birth-death pairs can be identified from the combinatorial structure of the filtration without any matrix reduction at all.
+
+These optimizations combine to make Ripser orders of magnitude faster than naive implementations. For 1000 points in $\mathbb{R}^{10}$, computing $H_0$ and $H_1$ persistence takes seconds, not hours.
+
+<TheoremBlock type="remark">
+The practical implication for data scientists: you almost never need to think about the combinatorial complexity of simplicial complexes. Libraries like `ripser`, `gudhi`, and `dionysus` handle the optimization transparently. What you *do* need to think about is the choice of complex (VR vs. alpha vs. witness), the maximum homology dimension (computing $H_2$ is much more expensive than $H_1$), and the scale range of interest.
+</TheoremBlock>
+
+---
+
 ## Visual Intuition
 
 The visualization below shows a Vietoris-Rips complex built from points sampled near a circle. Drag the $\varepsilon$ slider to watch the complex form:
@@ -188,9 +355,15 @@ The visualization below shows a Vietoris-Rips complex built from points sampled 
 
 **What to notice:** There's a "sweet spot" for $\varepsilon$ where the edges form a cycle around the circle but the interior hasn't filled in yet. At that scale, the complex has a one-dimensional *hole* — this is the $H_1$ feature that persistent homology will detect. Finding that sweet spot automatically, across all possible scales simultaneously, is exactly what persistent homology does.
 
+The Betti number tracker below shows $\beta_0$ and $\beta_1$ updating as the scale parameter changes — watch the loop appear and then get filled in:
+
+<BettiNumberTracker client:visible />
+
 ---
 
 ## Working Code
+
+### Building the Vietoris-Rips Complex
 
 Building the Vietoris-Rips complex from scratch in Python:
 
@@ -254,13 +427,174 @@ print(result['dgms'][0][:5])  # H₀ intervals (connected components)
 print(result['dgms'][1][:5])  # H₁ intervals (loops)
 ```
 
+### Betti Numbers from Boundary Matrices
+
+Computing Betti numbers directly from the boundary matrices, using the rank-nullity formula $\beta_k = \dim(\ker \partial_k) - \text{rank}(\partial_{k+1})$:
+
+```python
+import numpy as np
+
+def boundary_matrix_1(vertices, edges):
+    """Build the boundary operator ∂₁ over Z₂.
+    Rows = vertices, columns = edges. Entry (v, e) = 1 if v is an endpoint of e."""
+    n_v, n_e = len(vertices), len(edges)
+    D1 = np.zeros((n_v, n_e), dtype=int)
+    v_idx = {v: i for i, v in enumerate(vertices)}
+    for j, (a, b) in enumerate(edges):
+        D1[v_idx[a], j] = 1
+        D1[v_idx[b], j] = 1
+    return D1 % 2  # Z₂ coefficients
+
+def boundary_matrix_2(edges, triangles):
+    """Build the boundary operator ∂₂ over Z₂.
+    Rows = edges, columns = triangles. Entry (e, t) = 1 if e is a face of t."""
+    e_set = {tuple(sorted(e)): i for i, e in enumerate(edges)}
+    n_e, n_t = len(edges), len(triangles)
+    D2 = np.zeros((n_e, n_t), dtype=int)
+    for j, (a, b, c) in enumerate(triangles):
+        for face in [(a,b), (a,c), (b,c)]:
+            key = tuple(sorted(face))
+            if key in e_set:
+                D2[e_set[key], j] = 1
+    return D2 % 2
+
+def gf2_rank(matrix):
+    """Compute matrix rank over Z₂ via Gaussian elimination (XOR)."""
+    A = np.array(matrix, dtype=np.uint8, copy=True) % 2
+    n_rows, n_cols = A.shape
+    rank = 0
+    pivot_row = 0
+    for col in range(n_cols):
+        found = None
+        for row in range(pivot_row, n_rows):
+            if A[row, col]:
+                found = row
+                break
+        if found is None:
+            continue
+        if found != pivot_row:
+            A[[pivot_row, found]] = A[[found, pivot_row]]
+        for row in range(pivot_row + 1, n_rows):
+            if A[row, col]:
+                A[row] ^= A[pivot_row]
+        rank += 1
+        pivot_row += 1
+        if pivot_row == n_rows:
+            break
+    return rank
+
+def betti_numbers(vertices, edges, triangles):
+    """Compute β₀, β₁ over Z₂ via rank-nullity."""
+    D1 = boundary_matrix_1(vertices, edges)
+    D2 = boundary_matrix_2(edges, triangles)
+    rank_D1 = gf2_rank(D1)
+    rank_D2 = gf2_rank(D2)
+    beta_0 = len(vertices) - rank_D1
+    beta_1 = (len(edges) - rank_D1) - rank_D2
+    return beta_0, beta_1
+
+# Wireframe triangle (no fill): should give β₀=1, β₁=1
+verts = [0, 1, 2]
+edgs = [(0,1), (0,2), (1,2)]
+print(f"Wireframe triangle: β₀={betti_numbers(verts, edgs, [])[0]}, "
+      f"β₁={betti_numbers(verts, edgs, [])[1]}")
+
+# Filled triangle: should give β₀=1, β₁=0
+print(f"Filled triangle:    β₀={betti_numbers(verts, edgs, [(0,1,2)])[0]}, "
+      f"β₁={betti_numbers(verts, edgs, [(0,1,2)])[1]}")
+```
+
+```
+Wireframe triangle: β₀=1, β₁=1
+Filled triangle:    β₀=1, β₁=0
+```
+
+### Alpha Complexes with GUDHI
+
+For low-dimensional data, the alpha complex is dramatically more efficient than VR:
+
+```python
+import gudhi
+import numpy as np
+
+# 100 points on a noisy circle in R²
+theta = np.random.uniform(0, 2 * np.pi, 100)
+r = 1.0 + np.random.normal(0, 0.1, 100)
+circle_pts = np.column_stack([r * np.cos(theta), r * np.sin(theta)])
+
+# Alpha complex: size bounded by O(n) in R²
+alpha = gudhi.AlphaComplex(points=circle_pts)
+stree = alpha.create_simplex_tree()
+print(f"Alpha complex: {stree.num_simplices()} simplices")
+
+# Compare with VR complex at a similar scale
+vr = gudhi.RipsComplex(points=circle_pts, max_edge_length=0.8)
+stree_vr = vr.create_simplex_tree(max_dimension=2)
+print(f"VR complex:    {stree_vr.num_simplices()} simplices")
+
+# Compute persistence — both should detect the circle's H₁ feature
+stree.persistence()
+dgm_alpha = stree.persistence_intervals_in_dimension(1)
+print(f"Alpha H₁ features: {len(dgm_alpha)}, max persistence: "
+      f"{max(d-b for b, d in dgm_alpha if d < float('inf')):.3f}")
+```
+
+### Euler Characteristic Verification
+
+Verify the Euler–Poincaré formula on the VR complex at various scales:
+
+```python
+for eps in [0.3, 0.8, 1.2, 1.8]:
+    v, e, t = vr_complex(points, eps)
+    chi_simplex = len(v) - len(e) + len(t)
+    b0, b1 = betti_numbers(list(range(len(v))), e, t)
+    chi_betti = b0 - b1  # β₂ = 0 for dim ≤ 2
+    print(f"ε={eps:.1f}: χ(simplex)={chi_simplex}, χ(Betti)={chi_betti}, "
+          f"match={chi_simplex == chi_betti}")
+```
+
 ---
 
-## Connections & Applications
+## Connections & Cross-Track Bridges
 
-Simplicial complexes are the combinatorial substrate for nearly everything in topological data analysis:
+Simplicial complexes are the combinatorial substrate for nearly everything in topological data analysis and connect deeply to several other areas of mathematics on this site.
 
-- **Persistent homology** tracks how the topology of $\text{VR}(X, \varepsilon)$ changes as $\varepsilon$ increases — see [Persistent Homology](/topics/persistent-homology)
-- **[The Mapper Algorithm](/topics/mapper-algorithm)** (Singh, Mémoli, Carlsson 2007) constructs a 1-dimensional simplicial complex (a graph) that captures the data's topological skeleton via the nerve of a cover
-- **Witness complexes** offer a sparser alternative to VR when the point cloud is large: landmark points define the complex, and data points "witness" simplices
-- In **graph neural networks**, the message-passing framework can be generalized from graphs (1-complexes) to simplicial complexes, passing messages along triangles and higher simplices — this is the domain of **simplicial neural networks**
+**Within the Topology & TDA track:**
+
+- **[Persistent Homology](/topics/persistent-homology)** tracks how the homology of $\text{VR}(X, \varepsilon)$ changes as $\varepsilon$ increases. The filtration — the nested sequence of VR complexes at increasing scales — is the input to the persistence algorithm.
+- **[Čech Complexes & Nerve Theorem](/topics/cech-complexes)** develops the geometrically exact alternative to VR, where the Nerve Theorem guarantees that the complex faithfully captures the topology of the union of balls.
+- **[The Mapper Algorithm](/topics/mapper-algorithm)** constructs a 1-dimensional simplicial complex (a graph) that captures the data's topological skeleton via the nerve of a cover. The Mapper graph is the 1-skeleton of the nerve of a refined open cover.
+- **[Sheaf Theory](/topics/sheaf-theory)** defines cellular sheaves on the face poset of a simplicial complex — assigning vector spaces to simplices and linear maps to face inclusions. The coboundary map $\delta_0$ in sheaf cohomology is a generalization of the boundary operator $\partial_k$ developed here.
+
+**Across tracks:**
+
+- **[Graph Laplacians & Spectrum](/topics/graph-laplacians):** The 1-skeleton of a simplicial complex is a graph, and its Laplacian spectrum governs spectral clustering. The boundary operator $\partial_1$ and the graph Laplacian $L = \partial_1^T \partial_1$ (over $\mathbb{R}$) are directly related — the Laplacian measures how "boundary-like" a 0-chain is, and $\ker(L) = \ker(\partial_1^T)$ counts connected components.
+- **[Categories & Functors](/topics/categories-functors):** Simplicial complexes form a category $\textbf{SComp}$ with simplicial maps as morphisms. Homology $H_k(-; \mathbb{F})$ is a **functor** from $\textbf{SComp}$ to the category of vector spaces — a simplicial map $f: K \to L$ induces a linear map $f_*: H_k(K) \to H_k(L)$ that respects composition. This functoriality is what makes persistent homology well-defined: the inclusion maps $K_i \hookrightarrow K_j$ in a filtration induce the maps between homology groups that the persistence algorithm tracks.
+- **[Message Passing & GNNs](/topics/message-passing):** The message-passing framework on graphs generalizes naturally to simplicial complexes. Simplicial neural networks pass messages along triangles and higher simplices — not just edges — enabling them to capture higher-order interactions that graph neural networks miss.
+
+---
+
+## Exercises
+
+### Foundational
+
+**Exercise 1.** A 3-simplex (tetrahedron) $[v_0, v_1, v_2, v_3]$ has faces of dimensions 0, 1, 2, and 3. Count the number of faces of each dimension and verify that the total number of faces is $2^4 - 1 = 15$. *Hint:* A $j$-face corresponds to a choice of $j+1$ vertices from 4.
+
+**Exercise 2.** The octahedron can be triangulated as a simplicial complex with 6 vertices, 12 edges, and 8 triangular faces (it is homeomorphic to $S^2$). Verify the Euler–Poincaré formula: compute $\chi = V - E + F$ directly, then confirm that $\beta_0 = 1$, $\beta_1 = 0$, $\beta_2 = 1$ gives $\chi = 1 - 0 + 1 = 2$.
+
+### Intermediate
+
+**Exercise 3.** Prove that the Vietoris-Rips complex is a **flag complex** — that is, it is completely determined by its 1-skeleton (the graph of edges). Specifically, show that a subset $\sigma \subseteq X$ is a simplex of $\text{VR}(X, \varepsilon)$ if and only if every pair of vertices in $\sigma$ is connected by an edge. *Hint:* This follows immediately from Definition 6, but spell out why the face closure property is also satisfied.
+
+**Exercise 4.** Let $P$ be 6 points equally spaced on the unit circle in $\mathbb{R}^2$. For the Vietoris-Rips complex $\text{VR}(P, \varepsilon)$:
+- At what value of $\varepsilon$ do the first edges appear?
+- At what value of $\varepsilon$ does $\beta_1$ first become 1 (a loop appears)?
+- At what value of $\varepsilon$ does $\beta_1$ return to 0 (the loop gets filled)?
+
+Compute these thresholds analytically from the geometry, then verify with `ripser`.
+
+### Advanced
+
+**Exercise 5.** Implement the witness complex from scratch for a set of $n = 500$ points on a noisy torus in $\mathbb{R}^3$ with $|L| = 50$ landmarks chosen via farthest-point sampling. Compare the persistence diagram (up to $H_1$) with the VR diagram on the full dataset. How many landmarks are needed for the witness complex to detect both independent loops ($\beta_1 = 2$) of the torus?
+
+**Exercise 6.** The **Čech-to-VR interleaving inequality** states $\check{C}_\varepsilon(P) \subseteq \text{VR}_\varepsilon(P) \subseteq \check{C}_{2\varepsilon}(P)$. Construct a specific point configuration in $\mathbb{R}^2$ where the VR complex contains a 2-simplex (filled triangle) that the Čech complex does not, at the *same* scale parameter. Compute the Betti numbers of both complexes and show that they disagree on $\beta_1$. This is a concrete instance of the phantom cycle problem.

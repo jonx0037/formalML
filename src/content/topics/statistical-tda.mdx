@@ -32,6 +32,10 @@ connections:
     relationship: "Vietoris-Rips stability corollary uses Hausdorff distance between point clouds"
   - topic: "mapper-algorithm"
     relationship: "Mapper is a complementary TDA tool; statistical TDA quantifies confidence in topological features Mapper reveals"
+  - topic: "concentration-inequalities"
+    relationship: "The convergence rate of empirical persistence diagrams uses Hausdorff concentration bounds that parallel McDiarmid-type arguments for bounded-difference functions."
+  - topic: "measure-theoretic-probability"
+    relationship: "The CLT for persistence landscapes is a functional CLT in a Banach space, requiring Donsker-class theory; the bootstrap confidence band construction uses empirical process methods."
 references:
   - type: "paper"
     title: "Stability of Persistence Diagrams"
@@ -81,6 +85,7 @@ import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import StabilityExplorer from '../../components/viz/StabilityExplorer.tsx';
 import BootstrapExplorer from '../../components/viz/BootstrapExplorer.tsx';
 import LandscapeVisualizer from '../../components/viz/LandscapeVisualizer.tsx';
+import PersistenceKernelDemo from '../../components/viz/PersistenceKernelDemo.tsx';
 
 ## Overview & Motivation
 
@@ -161,6 +166,18 @@ with high probability. The rate depends on the ambient dimension $d$ — the **c
 
 This convergence result justifies treating persistence diagrams as statistical estimators. The empirical diagram is a *consistent estimator* of the population diagram, and the convergence rate tells us how many samples we need for a given accuracy.
 
+<TheoremBlock type="lemma" number={1} title="Hausdorff Convergence Rate">
+Let $\mu$ be a probability measure supported on a compact set $M \subset \mathbb{R}^d$ with reach $\tau > 0$ and let $X_n$ be an i.i.d. sample of size $n$ from $\mu$. Then there exists a constant $C$ depending on $\mu$ such that:
+
+$$\mathbb{P}\left[d_H(X_n, M) > t\right] \leq C \cdot n \cdot \exp\left(-c \cdot n \cdot t^d\right)$$
+
+In particular, $d_H(X_n, M) = O\left((\log n / n)^{1/d}\right)$ with high probability.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof combines a covering argument with the union bound. Cover $M$ with $N(\varepsilon)$ balls of radius $\varepsilon$, where $N(\varepsilon) \leq C / \varepsilon^d$ by compactness (the $\varepsilon$-covering number of a $d$-dimensional set). The probability that any ball in the cover fails to contain a sample point is at most $N(\varepsilon) \cdot (1 - c \varepsilon^d)^n \leq C \varepsilon^{-d} \exp(-cn\varepsilon^d)$. Setting $\varepsilon = (c' \log n / n)^{1/d}$ balances the exponential decay against the covering number growth, yielding the claimed rate. The persistence convergence (Theorem 2) then follows by combining this Hausdorff bound with the VR stability corollary: $d_B(\text{Dgm}(X_n), \text{Dgm}(M)) \leq 2 d_H(X_n, M)$.
+</TheoremBlock>
+
 ![Error bar plot showing bottleneck distance decreasing with sample size, matching the theoretical rate](/images/topics/statistical-tda/convergence_demo.png)
 
 The empirical convergence (blue points with error bars) closely tracks the theoretical rate $O((\log n / n)^{1/2})$ (dashed coral line) for data in $\mathbb{R}^2$. With 500 samples, the bottleneck distance to the ground truth drops below 0.05.
@@ -196,6 +213,26 @@ Points outside this band are **statistically significant** at level $\alpha$. Po
 </TheoremBlock>
 
 The intuition: the bootstrap samples $X_n^{*(b)}$ are perturbations of the original data. The distances $\delta_b$ measure how much the persistence diagram "wobbles" under resampling. Features whose persistence exceeds this wobble are stable — they would appear in most samples from the population.
+
+<TheoremBlock type="theorem" number={4} title="Bootstrap Validity (Fasy, Lecci, Rinaldo, Wasserman et al., 2014)">
+Under mild regularity conditions on the underlying distribution $\mu$, the bootstrap confidence band has asymptotically correct coverage:
+
+$$\lim_{n \to \infty} \mathbb{P}\left[d_B(\text{Dgm}(X_n), \text{Dgm}(\mu)) \leq c_\alpha\right] = 1 - \alpha$$
+
+where $c_\alpha$ is the $(1 - \alpha)$-quantile of the bootstrap bottleneck distances.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof uses the triangle inequality on the bottleneck distance. For a bootstrap sample $X_n^*$ drawn from the empirical distribution $\hat{\mu}_n$:
+
+$$d_B(\text{Dgm}(X_n), \text{Dgm}(X_n^*)) \approx d_B(\text{Dgm}(\hat{\mu}_n), \text{Dgm}(\hat{\mu}_n^*))$$
+
+The Hausdorff convergence (Lemma 1) ensures that $d_H(X_n, \text{supp}(\mu)) \to 0$, so the empirical distribution $\hat{\mu}_n$ concentrates on $\text{supp}(\mu)$. The bootstrap consistently estimates the distribution of $d_B(\text{Dgm}(X_n), \text{Dgm}(\mu))$ because the map from point clouds to persistence diagrams is Lipschitz (by the Stability Theorem), and the bootstrap consistently estimates the distribution of Lipschitz functionals of the empirical measure (by standard bootstrap consistency theory). The quantile $c_\alpha$ therefore converges to the true $(1-\alpha)$-quantile of $d_B(\text{Dgm}(X_n), \text{Dgm}(\mu))$.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The bootstrap is computationally expensive — each of the $B$ bootstrap samples requires recomputing persistent homology, which costs $O(n^2)$ to $O(n^3)$ depending on the algorithm. However, the bootstrap samples are independent, making the procedure embarrassingly parallel. With $B = 300$ and $n = 500$ on a modern multicore machine, the entire confidence band computation takes seconds.
+</TheoremBlock>
 
 ### Example: Circle with Noise
 
@@ -294,6 +331,32 @@ Persistence landscapes satisfy:
 </TheoremBlock>
 
 Properties (2) and (3) are what make landscapes a game-changer: we can compute means, variances, and confidence intervals using standard statistical tools — something impossible directly on persistence diagrams.
+
+<TheoremBlock type="proof">
+**(Stability, property 4.)** Let $D$ and $D'$ be persistence diagrams with $d_B(D, D') \leq \delta$. By the definition of bottleneck distance, there exists a matching $\gamma: D \to D'$ with $\|p - \gamma(p)\|_\infty \leq \delta$ for all $p \in D$. Each tent function shifts by at most $\delta$ under this matching: $|\Lambda_i(t) - \Lambda_{\gamma(i)}(t)| \leq \delta$ for all $t$, because the tent function peak shifts by at most $\delta$ in both birth and death. Since the $k$-th largest of a set of numbers is a 1-Lipschitz function of the inputs, $|\lambda_k^D(t) - \lambda_k^{D'}(t)| \leq \delta$ for all $t$ and $k$. Taking the supremum gives $\|\lambda^D - \lambda^{D'}\|_\infty \leq \delta = d_B(D, D')$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={5} title="Functional Central Limit Theorem for Landscapes">
+Let $D_1, D_2, \ldots, D_n$ be persistence diagrams of i.i.d. samples from a distribution $\mu$. Then the mean landscape $\bar{\lambda}_n = \frac{1}{n}\sum_{i=1}^n \lambda_{D_i}$ satisfies:
+
+$$\sqrt{n}(\bar{\lambda}_n - \lambda_\mu) \xrightarrow{d} G$$
+
+where $G$ is a Gaussian random element in $L^p$ with covariance structure inherited from the landscape space. This enables standard statistical tests: confidence bands, hypothesis tests, and regression on landscape features all follow from this CLT.
+</TheoremBlock>
+
+### Persistence Kernels
+
+An alternative to explicit vectorization is to define a **kernel** directly on persistence diagrams, enabling kernel methods (SVM, kernel PCA, Gaussian processes) without an intermediate vector representation.
+
+<TheoremBlock type="definition" number={5} title="Persistence Scale-Space Kernel">
+The **persistence scale-space kernel** between diagrams $D$ and $D'$ is:
+
+$$k_\sigma(D, D') = \frac{1}{8\pi\sigma} \sum_{p \in D} \sum_{q \in D'} \exp\left(-\frac{\|p - q\|^2}{8\sigma}\right) - \exp\left(-\frac{\|p - \bar{q}\|^2}{8\sigma}\right)$$
+
+where $\bar{q} = (d_q, b_q)$ is the reflection of $q$ across the diagonal. The subtraction ensures that points near the diagonal (noise) contribute little to the kernel value.
+</TheoremBlock>
+
+<PersistenceKernelDemo client:visible />
 
 ![Two panels: persistence diagram on the left, stacked landscape layers on the right](/images/topics/statistical-tda/persistence_landscapes.png)
 
@@ -455,6 +518,14 @@ To verify the test isn't trivially rejecting everything, we test two samples fro
 
 Now $T_\text{obs}$ falls well within the null distribution ($p \approx 0.58$), and we correctly fail to reject. The test has good power against genuinely different topologies while maintaining the correct size under the null.
 
+<TheoremBlock type="theorem" number={6} title="Permutation Test Validity">
+Under the null hypothesis $H_0: \lambda_X = \lambda_Y$ (both samples drawn from distributions with the same population landscape), the permutation distribution of $T$ converges to the null distribution of the test statistic. The permutation test has asymptotically correct size: $\mathbb{P}[\text{reject} \mid H_0] \to \alpha$ as the number of permutations $B \to \infty$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={2} title="Power of the Landscape Test">
+Under the alternative $H_1: \lambda_X \neq \lambda_Y$, the test rejects $H_0$ with probability approaching 1 as $m, n \to \infty$, provided $\|\lambda_X - \lambda_Y\|_2 > 0$. The convergence rate of the test power depends on the signal strength $\|\lambda_X - \lambda_Y\|_2$ relative to the landscape variance — stronger topological differences are detected with fewer samples.
+</TheoremBlock>
+
 ```python
 def landscape_permutation_test(X, Y, maxdim=1, k_max=3, n_perm=500,
                                 n_bootstrap=30, seed=42):
@@ -551,3 +622,138 @@ Point Cloud → Simplicial Filtration → Persistence Diagram → Vectorize → 
 ```
 
 At each stage, stability guarantees that the output is a well-behaved function of the input. The convergence theorem tells us that with enough data, the entire pipeline consistently estimates population-level topological features. And the vectorization step — landscapes or images — bridges the gap between the abstract metric space of diagrams and the concrete vector spaces where statistics lives.
+
+---
+
+## Working Code
+
+### Complete Bootstrap Confidence Band Pipeline
+
+The following end-to-end pipeline takes a point cloud and produces a classified persistence diagram with statistically significant features highlighted:
+
+```python
+import numpy as np
+from ripser import ripser
+from persim import bottleneck
+
+def statistical_tda_pipeline(X, maxdim=1, n_bootstrap=200, alpha=0.05, seed=42):
+    """
+    Full statistical TDA pipeline: point cloud → persistence → confidence → classification.
+
+    Returns
+    -------
+    dgms : list of ndarrays — persistence diagrams
+    significant : list of bool — True if feature is statistically significant
+    c_alpha : float — confidence threshold
+    """
+    rng = np.random.default_rng(seed)
+    n = len(X)
+
+    # Step 1: Compute persistence
+    result = ripser(X, maxdim=maxdim)
+    dgms = result['dgms']
+
+    # Step 2: Bootstrap confidence band
+    dgm_target = dgms[maxdim]
+    dgm_finite = dgm_target[np.isfinite(dgm_target[:, 1])]
+
+    boot_dists = np.zeros(n_bootstrap)
+    for boot_idx in range(n_bootstrap):
+        idx = rng.choice(n, size=n, replace=True)
+        dgm_boot = ripser(X[idx], maxdim=maxdim)['dgms'][maxdim]
+        dgm_boot = dgm_boot[np.isfinite(dgm_boot[:, 1])]
+        boot_dists[boot_idx] = bottleneck(dgm_finite, dgm_boot)
+
+    c_alpha = np.quantile(boot_dists, 1 - alpha)
+
+    # Step 3: Classify features
+    significant = []
+    for birth, death in dgm_finite:
+        pers = death - birth
+        significant.append(pers > 2 * c_alpha)
+
+    return dgms, significant, c_alpha
+
+# Usage
+theta = np.random.default_rng(42).uniform(0, 2 * np.pi, 300)
+r = 1.0 + np.random.default_rng(42).normal(0, 0.15, 300)
+circle = np.column_stack([r * np.cos(theta), r * np.sin(theta)])
+
+dgms, sig, c = statistical_tda_pipeline(circle)
+print(f"Confidence threshold: {2*c:.3f}")
+print(f"Significant H₁ features: {sum(sig)} of {len(sig)}")
+```
+
+### Persistence Image Classification Pipeline
+
+```python
+# Note: this block uses the persistence_image() function defined
+# in Section 3 (Persistence Landscapes & Images) above.
+from sklearn.svm import SVC
+from sklearn.model_selection import cross_val_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+
+def persistence_image_features(point_clouds, maxdim=1, pixel_size=20):
+    """Convert a list of point clouds to persistence image feature vectors."""
+    features = []
+    for pc in point_clouds:
+        dgm = ripser(pc, maxdim=maxdim)['dgms'][maxdim]
+        img = persistence_image(dgm, pixel_size=pixel_size)
+        features.append(img.ravel())
+    return np.array(features)
+
+# Generate labeled datasets
+rng = np.random.default_rng(42)
+circles, blobs = [], []
+for _ in range(50):
+    t = rng.uniform(0, 2 * np.pi, 100)
+    circles.append(np.column_stack([np.cos(t), np.sin(t)]) + 0.1 * rng.normal(size=(100, 2)))
+    blobs.append(rng.normal(size=(100, 2)))
+
+X = persistence_image_features(circles + blobs)
+y = np.array([1]*50 + [0]*50)
+
+clf = Pipeline([('scaler', StandardScaler()), ('svm', SVC(kernel='rbf'))])
+scores = cross_val_score(clf, X, y, cv=5)
+print(f"Circle vs Blob classification: {scores.mean():.3f} ± {scores.std():.3f}")
+```
+
+---
+
+## Connections & Cross-Track Bridges
+
+Statistical TDA sits at the intersection of topology, statistics, and machine learning, drawing on and contributing to several areas developed elsewhere on formalML.
+
+**Within the Topology & TDA track:**
+
+- **[Persistent Homology](/topics/persistent-homology)** provides the computational engine: the VR filtration and persistence algorithm produce the diagrams that statistical TDA analyzes. The Stability Theorem (proved on the [Barcodes & Bottleneck Distance](/topics/barcodes-bottleneck) page) is the theoretical bedrock — without it, the bootstrap and convergence results here would have no foundation.
+- **[The Mapper Algorithm](/topics/mapper-algorithm)** is a complementary tool: where persistence gives algebraic invariants, Mapper gives geometric summaries. Statistical TDA can quantify confidence in the topological features Mapper reveals — for example, bootstrap stability of the Mapper graph's Betti numbers.
+
+**Across tracks:**
+
+- **[Concentration Inequalities](/topics/concentration-inequalities):** The Hausdorff convergence rate (Lemma 1) is a concentration bound — it parallels McDiarmid's inequality for bounded-difference functions. The key observation is that the Hausdorff distance $d_H(X_n, M)$ satisfies a bounded-differences condition: changing one point moves $d_H$ by at most $O(1/n^{1/d})$. McDiarmid-type arguments then yield exponential concentration.
+- **[Measure-Theoretic Probability](/topics/measure-theoretic-probability):** The CLT for persistence landscapes (Theorem 5) is a functional CLT in a Banach space — specifically, in $L^p(\mathbb{R})$. The proof requires Donsker-class theory: the landscape functions viewed as a class of functions of the underlying random variable must have controlled complexity (measured by the Rademacher complexity or covering numbers of the function class). This connects TDA to the deep theory of empirical processes.
+- **[Graph Laplacians & Spectrum](/topics/graph-laplacians):** The 0th persistent homology at a fixed threshold $\varepsilon$ is equivalent to single-linkage clustering at distance $\varepsilon$. The number of connected components equals the number of zero eigenvalues of the graph Laplacian of the $\varepsilon$-neighborhood graph. Statistical tests on $H_0$ persistence are thus related to tests on the spectral gap of the graph Laplacian.
+
+---
+
+## Exercises
+
+### Foundational
+
+**Exercise 1.** Generate 200 points from a noisy circle (radius 1, noise $\sigma = 0.1$) and compute the bootstrap confidence band with $B = 100$ and $\alpha = 0.05$. How many $H_1$ features are classified as significant? Repeat with $\alpha = 0.01$. Does the number of significant features change?
+
+**Exercise 2.** Compute persistence landscapes (with $k = 1, 2, 3$ layers) for the same noisy circle. Verify empirically that the landscape is stable: add Gaussian noise with $\sigma = 0.05$ to each point and show that $\|\lambda_D - \lambda_{D'}\|_\infty$ is bounded by $d_B(D, D')$, as Theorem 3 property (4) guarantees.
+
+### Intermediate
+
+**Exercise 3.** Implement a two-sample test using **persistence images** instead of landscapes. Use the $L^2$ norm of the difference between mean persistence images as the test statistic. Apply this to the circle vs. figure-eight comparison from Section 4. Compare the $p$-value with the landscape-based test. *Hint:* The persistence image test may be more sensitive to distributed differences because it penalizes all mismatches, not just the largest.
+
+**Exercise 4.** Prove that the persistence scale-space kernel (Definition 5) is positive definite. *Hint:* Show that each term $\exp(-\|p - q\|^2 / 8\sigma)$ is a Gaussian kernel on $\mathbb{R}^2$, and that the subtraction of the reflected term preserves positive definiteness because it is equivalent to embedding diagrams in a reproducing kernel Hilbert space.
+
+### Advanced
+
+**Exercise 5.** The convergence rate $O((\log n / n)^{1/d})$ in Theorem 2 exhibits the curse of dimensionality. For high-dimensional data ($d = 50$), compute the sample size $n$ needed to achieve $d_B < 0.1$ with high probability. Compare this with the empirical convergence rate on data uniformly distributed on a flat torus in $\mathbb{R}^{50}$. Does the theoretical bound match empirical behavior?
+
+**Exercise 6.** Design a **conformal prediction** procedure for persistence diagrams: given $n$ calibration diagrams $D_1, \ldots, D_n$ and a new diagram $D_{n+1}$, construct a prediction set for the bottleneck neighborhood of $D_{n+1}$. Use the nonconformity score $\alpha_i = d_B(D_i, \bar{D})$ where $\bar{D}$ is the Frechet mean. Implement this and evaluate coverage on synthetic circle data with varying noise levels.

@@ -10,13 +10,21 @@ videoId: null
 notebookPath: "notebooks/persistent-homology.ipynb"
 githubUrl: null
 datePublished: 2026-03-15
-estimatedReadTime: 35
+estimatedReadTime: 45
 abstract: "Persistent homology solves the fundamental problem of topological data analysis: at what scale should we analyze shape? By tracking how topological features — connected components, loops, voids — are born and die across a filtration of simplicial complexes, it produces a multiscale signature that is both theoretically grounded (via the Stability Theorem) and practically useful as input to machine learning pipelines."
 connections:
   - topic: "simplicial-complexes"
     relationship: "builds on"
   - topic: "cech-complexes"
     relationship: "is closely related to"
+  - topic: "barcodes-bottleneck"
+    relationship: "The Structure Theorem for persistence modules gives barcodes their mathematical foundation; bottleneck and Wasserstein distances turn the space of persistence diagrams into a metric space."
+  - topic: "statistical-tda"
+    relationship: "Statistical TDA treats persistence diagrams as random objects — statistical estimators of the true homology of an underlying distribution."
+  - topic: "graph-laplacians"
+    relationship: "The 0th persistent homology of a VR filtration is equivalent to single-linkage clustering; the threshold at which two components merge equals the single-linkage distance, connecting persistence to the spectral gap of the graph Laplacian."
+  - topic: "measure-theoretic-probability"
+    relationship: "Convergence of empirical persistence diagrams relies on measure-theoretic concentration bounds; the convergence rate exhibits the curse of dimensionality."
 references:
   - type: "paper"
     title: "Topology and Data"
@@ -64,6 +72,8 @@ references:
 
 import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import LinkedVizDemo from '../../components/viz/LinkedVizDemo.tsx';
+import MatrixReductionAnimator from '../../components/viz/MatrixReductionAnimator.tsx';
+import ExtendedPersistenceDiagram from '../../components/viz/ExtendedPersistenceDiagram.tsx';
 
 ## Overview & Motivation
 
@@ -240,6 +250,59 @@ There is a deep algebraic structure here that we're glossing over: the inclusion
 
 ---
 
+## The Matrix Reduction Algorithm
+
+Persistent homology is *defined* algebraically, but it is *computed* via matrix reduction — a variant of Gaussian elimination applied to the boundary matrix. Understanding this algorithm demystifies what `ripser` and `gudhi` are actually doing.
+
+<TheoremBlock type="definition" number={9}>
+The **filtered boundary matrix** $D$ is the boundary matrix of the full complex $K$, with columns ordered by filtration time. Each column corresponds to a simplex $\sigma_j$, and the column entries encode the boundary $\partial(\sigma_j)$ over $\mathbb{Z}_2$. If $\sigma_j$ enters the filtration at time $t_j$, columns are ordered so that $t_1 \leq t_2 \leq \cdots \leq t_m$.
+</TheoremBlock>
+
+The key operation is **column reduction**: for each column $j$ (processed left to right), find the lowest nonzero entry (the "pivot" or "low" of column $j$). If another column $i < j$ has the same pivot row, add column $i$ to column $j$ (over $\mathbb{Z}_2$, addition is XOR). Repeat until no two columns share the same pivot.
+
+<TheoremBlock type="theorem" number={3} title="Persistence from Reduced Matrix">
+After column reduction of the filtered boundary matrix $D$ to its reduced form $R$:
+
+1. If column $j$ has pivot in row $i$ (i.e., $\text{low}(j) = i$), then the simplex $\sigma_i$ is a **creator** and $\sigma_j$ is a **destroyer**. The pair $(\sigma_i, \sigma_j)$ records a topological feature born at time $t_i$ and dying at time $t_j$.
+
+2. If column $j$ is entirely zero after reduction, the simplex $\sigma_j$ creates a feature that is **never destroyed** — an essential feature with birth time $t_j$ and death time $\infty$.
+
+3. If row $i$ is never a pivot (never appears as $\text{low}(j)$ for any $j$), then $\sigma_i$ does not participate in any birth-death pair as a creator — it is "invisible" to persistence.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={4}>
+Consider three points $v_0, v_1, v_2$ with distances $d(v_0, v_1) = 1$, $d(v_0, v_2) = 2$, $d(v_1, v_2) = 3$. The filtration adds simplices in order of birth time:
+
+1. $v_0, v_1, v_2$ at $\varepsilon = 0$ (three vertices)
+2. $[v_0, v_1]$ at $\varepsilon = 1$
+3. $[v_0, v_2]$ at $\varepsilon = 2$
+4. $[v_1, v_2]$ at $\varepsilon = 3$
+
+The boundary matrix $D$ (rows = vertices, columns = edges in filtration order):
+
+$$D = \begin{pmatrix} 1 & 1 & 0 \\ 1 & 0 & 1 \\ 0 & 1 & 1 \end{pmatrix}$$
+
+Reducing: Column 1 has low = row 1. Column 2 has low = row 2 (different from column 1, so no reduction needed). Column 3 has low = row 2, conflicting with column 2. Add column 2 to column 3: new column 3 = $(0, 1, 1)^T + (1, 0, 1)^T = (1, 1, 0)^T$, which has low = row 1, conflicting with column 1. Add column 1: $(1, 1, 0)^T + (1, 1, 0)^T = (0, 0, 0)^T$. Column 3 is now zero.
+
+**Reading the persistence pairs:**
+- Column 1 (edge $[v_0,v_1]$, born at $\varepsilon = 1$) has $\text{low} = $ row 1 ($v_1$, born at $\varepsilon = 0$): the edge merges $v_1$ into $v_0$'s component. This gives $H_0$ pair $(0, 1)$.
+- Column 2 (edge $[v_0,v_2]$, born at $\varepsilon = 2$) has $\text{low} = $ row 2 ($v_2$, born at $\varepsilon = 0$): the edge merges $v_2$. This gives $H_0$ pair $(0, 2)$.
+- Column 3 (edge $[v_1,v_2]$, born at $\varepsilon = 3$) is zero after reduction: this edge creates a 1-cycle that is never destroyed (no 2-simplices in our complex). This gives an essential $H_1$ feature born at $\varepsilon = 3$.
+- $v_0$ (row 0) is never a pivot target: it is the surviving $H_0$ component, essential with pair $(0, \infty)$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Uniqueness of Persistence Pairing">
+The persistence pairing produced by column reduction is unique: it does not depend on the order in which column operations are performed (as long as we only add earlier columns to later ones). This is because the set of pivot positions in the reduced matrix $R$ is an invariant of the persistence module, not of the particular reduction.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The standard algorithm has complexity $O(m^3)$ where $m$ is the number of simplices. **Ripser** achieves dramatic speedups via four key optimizations: (1) implicit matrix representation (never store the full boundary matrix — generate columns on demand from the distance matrix), (2) the clearing optimization (when a column $j$ creates a death, clear its partner column without processing it), (3) computing *co*homology instead of homology (the coboundary matrix is sparser for VR complexes), and (4) the apparent pairs shortcut (many birth-death pairs can be read off from the filtration structure without any matrix reduction). These reduce the practical running time to near-linear in the number of features detected.
+</TheoremBlock>
+
+<MatrixReductionAnimator client:visible />
+
+---
+
 ## Visual Intuition
 
 The visualization below is the core interactive experience. The top panel shows a Vietoris-Rips complex built from points sampled near a circle. The bottom panels show the persistence diagram and barcode.
@@ -291,6 +354,78 @@ $$d_B(\text{Dgm}(\text{VR}(X)), \text{Dgm}(\text{VR}(Y))) \leq 2\delta$$
 </TheoremBlock>
 
 In plain language: if you jiggle each point by at most $\delta$, the persistence diagram moves by at most $2\delta$. This is what makes persistent homology safe to use on noisy real-world data.
+
+---
+
+## Extended Persistence
+
+Ordinary persistent homology tracks features born and killed in a *sublevel set filtration*: as $\varepsilon$ increases from 0 to $\infty$, simplices enter and topological features appear and disappear. But some features are **essential** — they are born and never die. The most important essential feature is the single surviving connected component ($H_0$ with death $= \infty$), but for spaces with nontrivial higher homology, essential features carry real topological information that ordinary persistence cannot capture.
+
+**Extended persistence** (Cohen-Steiner, Edelsbrunner & Harer, 2009) solves this by appending a *superlevel set filtration* to the sublevel set filtration, creating a complete picture where every feature has a finite death time.
+
+<TheoremBlock type="definition" number={10}>
+Given a function $f: K \to \mathbb{R}$ on a simplicial complex $K$, the **extended filtration** consists of two phases:
+
+1. **Sublevel phase**: $K_t = f^{-1}(-\infty, t]$ for $t$ increasing from $-\infty$ to $+\infty$. Simplices enter as $t$ increases.
+2. **Superlevel phase**: $K^t = f^{-1}[t, +\infty)$ for $t$ decreasing from $+\infty$ to $-\infty$. The complex is "peeled back" from above.
+
+The two phases are concatenated to form a single filtration that begins with the empty set and ends with the empty set.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={11}>
+The birth-death pairs in extended persistence fall into three classes:
+
+- **Ordinary pairs** $(b, d)$: the feature is born and killed during the sublevel phase. These are the same as standard persistent homology.
+- **Relative pairs** $(b, d)$: the feature is born during the superlevel phase and killed later in the superlevel phase. These capture topology "from above."
+- **Extended pairs** $(b, d)$: the feature is born during the sublevel phase and killed during the superlevel phase. These are the features that are essential in ordinary persistence — extended persistence gives them finite death times.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={5}>
+Consider the height function $f(x, y, z) = z$ on a torus embedded in $\mathbb{R}^3$. The torus has $\beta_0 = 1$, $\beta_1 = 2$ (two independent loops — meridional and longitudinal), and $\beta_2 = 1$ (an enclosed void).
+
+**Sublevel phase:** As $z$ increases from the bottom of the torus, we see the following: one component is born at the minimum (essential $H_0$). Two $H_1$ features are born as the torus's handle forms — one is killed when the hole fills in at the saddle, the other is essential. The $H_2$ void is essential.
+
+**Extended persistence** kills all essential features during the superlevel phase: the surviving component, the surviving loop, and the void each receive a finite death time. The result is a complete set of finite birth-death pairs capturing the full topology of the torus.
+</TheoremBlock>
+
+<ExtendedPersistenceDiagram client:visible />
+
+<TheoremBlock type="remark">
+Extended persistence is particularly useful for **Morse-theoretic analysis** of functions on manifolds. The extended persistence diagram of a Morse function $f: M \to \mathbb{R}$ provides a complete topological summary of $f$ — every critical point of $f$ appears in exactly one persistence pair, and the persistence (death minus birth) measures the "importance" of that critical point.
+</TheoremBlock>
+
+---
+
+## Persistence Modules
+
+The algebraic structure underlying persistent homology is the **persistence module** — a one-parameter family of vector spaces connected by linear maps. Understanding this algebraic framework clarifies why barcodes exist, why stability holds, and why multi-parameter persistence is fundamentally harder.
+
+<TheoremBlock type="definition" number={12}>
+A **persistence module** over a field $\mathbb{F}$ is a functor from the poset $(\mathbb{R}, \leq)$ to the category of $\mathbb{F}$-vector spaces. Concretely, it consists of:
+
+- A family of vector spaces $\lbrace V_t \rbrace_{t \in \mathbb{R}}$
+- Linear maps $v_{s,t}: V_s \to V_t$ for all $s \leq t$
+
+satisfying $v_{t,t} = \text{id}$ and $v_{s,t} = v_{r,t} \circ v_{s,r}$ for $s \leq r \leq t$.
+</TheoremBlock>
+
+The persistence module arising from a filtration $K_0 \subseteq K_1 \subseteq \cdots$ is the family of homology groups $V_t = H_k(K_t)$, with the maps $v_{s,t}$ induced by the inclusions $K_s \hookrightarrow K_t$. The maps tell us which features at scale $s$ "survive to" scale $t$.
+
+<TheoremBlock type="theorem" number={4} title="Structure Theorem for Persistence Modules">
+Every pointwise finite-dimensional persistence module $\mathbb{V}$ over a field $\mathbb{F}$ decomposes uniquely (up to reordering) into a direct sum of **interval modules**:
+
+$$\mathbb{V} \cong \bigoplus_{i=1}^{n} \mathbb{I}[b_i, d_i)$$
+
+where $\mathbb{I}[b, d)$ is the module that is $\mathbb{F}$ for $t \in [b, d)$ and $0$ elsewhere. Each interval $[b_i, d_i)$ corresponds to one bar in the persistence barcode.
+</TheoremBlock>
+
+This is the theorem that makes barcodes well-defined. Without it, the barcode would be an arbitrary visualization choice; with it, the barcode is the *unique* decomposition of the persistence module into indecomposable summands. The proof relies on the classification of finitely generated modules over a principal ideal domain — the same algebraic machinery that gives the Jordan normal form for matrices.
+
+<TheoremBlock type="remark">
+The Structure Theorem **fails** for multi-parameter persistence. When the filtration is indexed by $\mathbb{R}^2$ (or any poset more complex than a total order), persistence modules do not decompose into interval summands. There is no barcode. This is the fundamental obstacle to multi-parameter persistence theory, and a major open area in applied algebraic topology. Partial invariants exist (rank invariants, persistence landscapes for multi-parameter data), but no complete discrete invariant comparable to the barcode.
+</TheoremBlock>
+
+For the metric structure on the space of persistence modules — including the interleaving distance, the Isometry Theorem, and the stability framework — see the [Barcodes & Bottleneck Distance](/topics/barcodes-bottleneck) page.
 
 ---
 
@@ -431,20 +566,144 @@ print(f"5-fold CV accuracy: {scores.mean():.3f} ± {scores.std():.3f}")
 
 This pipeline — time series → Takens embedding → persistent homology → feature vector → classifier — is one of the most successful applications of TDA in practice. It works because the persistence features are **invariant to reparameterization** of the time series (you can stretch or compress time and the topology doesn't change) and **stable under noise** (by the Stability Theorem).
 
+### Matrix Reduction from Scratch
+
+The standard algorithm for computing persistence, implemented directly from Theorem 3:
+
+```python
+import numpy as np
+
+def reduce_boundary_matrix(D):
+    """Column-reduce a boundary matrix over Z₂.
+
+    Parameters
+    ----------
+    D : ndarray of shape (m, m) — the filtered boundary matrix (Z₂ entries)
+
+    Returns
+    -------
+    R : ndarray — the reduced matrix
+    pairs : list of (creator_idx, destroyer_idx) or (creator_idx, None)
+    """
+    R = D.copy() % 2
+    m = R.shape[1]
+    low = {}     # row_index -> col_index of column that has this row as its pivot
+    pairs = []
+
+    for j in range(m):
+        # Find the lowest 1 in column j
+        nonzero = np.where(R[:, j] == 1)[0]
+        while len(nonzero) > 0 and nonzero[-1] in low:
+            # Another column i has the same low — add it (Z₂: XOR)
+            i = low[nonzero[-1]]
+            R[:, j] = (R[:, j] + R[:, i]) % 2
+            nonzero = np.where(R[:, j] == 1)[0]
+
+        if len(nonzero) > 0:
+            pivot = nonzero[-1]
+            low[pivot] = j
+            pairs.append((pivot, j))  # pivot creates, j destroys
+        # else: column j is zero — creates an essential feature
+
+    # Identify essential features (creators not paired as destroyers)
+    all_destroyers = set(j for _, j in pairs)
+    all_creators = set(i for i, _ in pairs)
+    for j in range(m):
+        if j not in all_destroyers and j not in all_creators:
+            pairs.append((j, None))  # essential feature
+
+    return R, pairs
+
+# Example: three points with edges at distances 1, 2, 3
+# Filtration order: v0, v1, v2, [v0,v1], [v0,v2], [v1,v2]
+D = np.array([
+    # v0 v1 v2 e01 e02 e12
+    [0, 0, 0, 1,  1,  0],  # v0
+    [0, 0, 0, 1,  0,  1],  # v1
+    [0, 0, 0, 0,  1,  1],  # v2
+    [0, 0, 0, 0,  0,  0],  # e01
+    [0, 0, 0, 0,  0,  0],  # e02
+    [0, 0, 0, 0,  0,  0],  # e12
+])
+R, pairs = reduce_boundary_matrix(D)
+print("Persistence pairs (creator_idx, destroyer_idx):")
+for c, d in pairs:
+    print(f"  σ_{c} paired with {'σ_' + str(d) if d is not None else '∞'}")
+```
+
+### Extended Persistence with GUDHI
+
+```python
+import gudhi
+import numpy as np
+
+# Height function on a sampled torus
+n = 500
+theta = np.random.uniform(0, 2 * np.pi, n)
+phi = np.random.uniform(0, 2 * np.pi, n)
+R, r = 2.0, 1.0
+torus = np.column_stack([
+    (R + r * np.cos(phi)) * np.cos(theta),
+    (R + r * np.cos(phi)) * np.sin(theta),
+    r * np.sin(phi)
+])
+
+# Build alpha complex and compute extended persistence
+alpha = gudhi.AlphaComplex(points=torus)
+stree = alpha.create_simplex_tree()
+
+# Extended persistence of the height function (z-coordinate)
+# gudhi computes this via the extended filtration
+stree.extend_filtration()
+dgms = stree.extended_persistence()
+
+print("Extended persistence pairs by type:")
+for i, (name, dgm) in enumerate(zip(
+    ['Ordinary', 'Relative', 'Extended+', 'Extended-'], dgms)):
+    print(f"  {name}: {len(dgm)} pairs")
+    for dim, (b, d) in dgm[:3]:
+        print(f"    H_{dim}: [{b:.2f}, {d:.2f})")
+```
+
 ---
 
-## Connections & Applications
+## Connections & Cross-Track Bridges
 
-Persistent homology sits at the center of a growing web of mathematical and applied techniques:
+Persistent homology sits at the center of a growing web of mathematical and applied techniques, connecting deeply to several other areas on formalML.
 
-- **Topological machine learning:** Persistence features have been used for protein classification (Cang & Wei, 2017), materials science (Hiraoka et al., 2016), cosmology (Xu et al., 2019), and neuroscience (Giusti et al., 2015). The common thread: data has shape, and shape carries information that statistics alone miss.
+**Within the Topology & TDA track:**
 
-- **Persistence landscapes** (Bubenik, 2015) and **persistence images** (Adams et al., 2017) transform diagrams into Banach space elements or fixed-size vectors, enabling statistical inference and ML integration.
+- **[Simplicial Complexes](/topics/simplicial-complexes)** provides the combinatorial substrate: the VR filtration is a nested sequence of simplicial complexes, and the boundary operator defined there is the algebraic engine of homology.
+- **[Barcodes & Bottleneck Distance](/topics/barcodes-bottleneck)** develops the metric structure on persistence diagrams. The Structure Theorem (Theorem 4 above) guarantees that barcodes are well-defined; the bottleneck and Wasserstein distances turn the space of diagrams into a metric space where stability makes sense.
+- **[Statistical TDA](/topics/statistical-tda)** treats persistence diagrams as random objects — statistical estimators of the true homology of an underlying distribution. Bootstrap confidence sets separate topological signal from sampling noise.
+- **[The Mapper Algorithm](/topics/mapper-algorithm)** provides a complementary geometric/visual summary. Where persistent homology produces algebraic invariants (barcodes), Mapper produces an interpretable graph. PH on the Mapper graph quantifies its topological features; multiscale Mapper uses PH to select optimal parameters.
 
-- **Extended persistence** and **zigzag persistence** generalize the one-parameter filtration to more complex parameter spaces, capturing richer topological information.
+**Across tracks:**
 
-- **The Stability Theorem** extends to other metrics: Wasserstein distances between diagrams, interleaving distances between persistence modules, and Gromov-Hausdorff distances between metric spaces. This creates a rich metric geometry on the space of shapes.
+- **[Graph Laplacians & Spectrum](/topics/graph-laplacians):** The 0th persistent homology of a VR filtration is equivalent to **single-linkage clustering** — the threshold $\varepsilon$ at which two points first become connected in $H_0$ equals the single-linkage distance. The number of connected components at scale $\varepsilon$ equals the number of zero eigenvalues of the graph Laplacian of the $\varepsilon$-neighborhood graph.
+- **[Measure-Theoretic Probability](/topics/measure-theoretic-probability):** The convergence of empirical persistence diagrams to the population diagram relies on measure-theoretic concentration bounds. The convergence rate $O((\log n / n)^{1/d})$ exhibits the curse of dimensionality — the same dimension-dependent rate that appears in density estimation and minimax theory.
+- **[Concentration Inequalities](/topics/concentration-inequalities):** The stability of persistence diagrams under noise is a Lipschitz condition, and the convergence rate of empirical diagrams involves Hausdorff concentration bounds that parallel McDiarmid-type arguments.
 
-- **[The Mapper Algorithm](/topics/mapper-algorithm)** uses persistent homology on its output graph to identify stable topological features across parameter choices — it provides a complementary geometric/visual summary where persistence diagrams provide algebraic summaries.
+**Applications:** Persistence features have been used for protein classification (Cang & Wei, 2017), materials science (Hiraoka et al., 2016), cosmology (Xu et al., 2019), neuroscience (Giusti et al., 2015), and financial market analysis. The Takens delay embedding connects persistent homology to time series classification — see the working code above for the full pipeline.
 
-- **Takens embedding** connects persistent homology to dynamical systems and time series analysis — see Perea & Harer (2015) for the theoretical foundation and the working code above for the practical pipeline.
+---
+
+## Exercises
+
+### Foundational
+
+**Exercise 1.** Consider four points at the corners of a unit square in $\mathbb{R}^2$: $(0,0)$, $(1,0)$, $(1,1)$, $(0,1)$. Write out the filtered boundary matrix for the VR filtration (vertices born at 0, four side-edges born at 1, two diagonal edges born at $\sqrt{2}$). Perform column reduction by hand and read off all birth-death pairs for $H_0$ and $H_1$.
+
+**Exercise 2.** Verify $\partial_1 \circ \partial_2 = 0$ for the boundary of a tetrahedron $[v_0, v_1, v_2, v_3]$ over $\mathbb{Z}_2$. Write out the $6 \times 4$ matrix $\partial_2$ (rows = edges, columns = triangular faces) and the $4 \times 6$ matrix $\partial_1$ (rows = vertices, columns = edges). Compute the product and verify every entry is 0 mod 2.
+
+### Intermediate
+
+**Exercise 3.** Prove that the longest $H_0$ bar in any VR persistence barcode always has death time $= \infty$. *Hint:* The last surviving connected component is never merged into anything.
+
+**Exercise 4.** The **total persistence** of a persistence diagram is $\sum_i (d_i - b_i)^p$ for some power $p > 0$. Show that for $H_0$ persistence of $n$ points, the total persistence (with $p = 1$) equals the total weight of the minimum spanning tree of the point cloud. *Hint:* Each $H_0$ death corresponds to an MST edge.
+
+### Advanced
+
+**Exercise 5.** Implement the full Takens embedding pipeline from the Working Code section on a real dataset: download daily closing prices for a stock index (e.g., S&P 500), compute the delay embedding, run persistent homology, and classify 60-day rolling windows into "high-volatility" vs "low-volatility" regimes using persistence features. Report cross-validation accuracy.
+
+**Exercise 6.** Prove that persistent homology is invariant under **bijective reparameterization** of the filtration. That is, if $\phi: \mathbb{R} \to \mathbb{R}$ is a monotonically increasing bijection and $K_t$ is a filtration, then the persistence diagram of $K_{\phi(t)}$ is related to that of $K_t$ by the coordinate change $(b, d) \mapsto (\phi^{-1}(b), \phi^{-1}(d))$. *Hint:* Reparameterization preserves the inclusion order of simplices, hence the matrix reduction is identical.
