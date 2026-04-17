@@ -70,6 +70,36 @@ Each topic in `src/content/topics/` is an MDX file with YAML frontmatter definin
 - Shared types in `viz/shared/types.ts`
 - Use `.style()` for CSS custom properties in D3 SVG elements (not `.attr("style", ...)`)
 
+### Images & figures
+
+Use the `<Figure>` component from `src/components/ui/Figure.astro` for any image that deserves a caption or is worth optimizing. Two patterns are supported:
+
+**Optimized path (preferred for new images):** place the file in `src/assets/topics/<topic>/` and import it. Astro generates srcset, WebP, and width/height automatically.
+
+```mdx
+---
+import galoisConnections from '../../assets/topics/adjunctions/galois-connections.png';
+---
+
+<Figure
+  src={galoisConnections}
+  alt="Galois connection between ordered sets, showing f ⊣ g"
+  caption="A Galois connection is an adjunction in the 2-category of posets."
+/>
+```
+
+**Legacy path (for images still in `public/`):** pass the string URL. Falls back to a plain `<img>` styled by global `.prose img` rules. No srcset, but responsive via CSS.
+
+```mdx
+<Figure
+  src="/images/topics/adjunctions/galois-connections.png"
+  alt="..."
+  caption="..."
+/>
+```
+
+Bare markdown `![alt](path)` images still render correctly (mobile-safe via global CSS), but prefer `<Figure>` when a caption adds value. Migrate legacy images into `src/assets/topics/` opportunistically as topics are revisited.
+
 ### Curriculum graph
 
 - Topic metadata and prerequisite DAG defined in `src/data/curriculum-graph.json`
