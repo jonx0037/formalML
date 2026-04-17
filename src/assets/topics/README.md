@@ -17,12 +17,16 @@ Images placed under `src/assets/topics/<topic>/` are processed by Astro's
 
 ## Usage pattern
 
-Import the asset in the MDX frontmatter, then pass it to `<Figure>`:
+Topic MDX files use YAML frontmatter (between `---` lines) for content-collection metadata. JS imports go **after** the YAML block, at the top of the MDX body. `Figure` must be imported explicitly — there is no global MDX components mapping configured.
 
 ```mdx
 ---
-import galoisConnections from '../../assets/topics/adjunctions/galois-connections.png';
+title: "Adjunctions"
+# ... other YAML frontmatter ...
 ---
+
+import Figure from '../../components/ui/Figure.astro';
+import galoisConnections from '../../assets/topics/adjunctions/galois-connections.png';
 
 <Figure
   src={galoisConnections}
@@ -34,6 +38,12 @@ import galoisConnections from '../../assets/topics/adjunctions/galois-connection
 For legacy `public/` images, pass the string path — `<Figure>` falls back to a plain `<img>`:
 
 ```mdx
+---
+title: "..."
+---
+
+import Figure from '../../components/ui/Figure.astro';
+
 <Figure
   src="/images/topics/adjunctions/galois-connections.png"
   alt="..."

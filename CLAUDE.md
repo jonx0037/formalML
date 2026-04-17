@@ -74,12 +74,18 @@ Each topic in `src/content/topics/` is an MDX file with YAML frontmatter definin
 
 Use the `<Figure>` component from `src/components/ui/Figure.astro` for any image that deserves a caption or is worth optimizing. Two patterns are supported:
 
+Topic MDX files use YAML frontmatter between `---` lines for content-collection metadata; JS imports go **after** the closing `---`, at the top of the MDX body. `Figure` must be imported explicitly — no global MDX components mapping is configured.
+
 **Optimized path (preferred for new images):** place the file in `src/assets/topics/<topic>/` and import it. Astro generates srcset, WebP, and width/height automatically.
 
 ```mdx
 ---
-import galoisConnections from '../../assets/topics/adjunctions/galois-connections.png';
+title: "Adjunctions"
+# ... other YAML frontmatter ...
 ---
+
+import Figure from '../../components/ui/Figure.astro';
+import galoisConnections from '../../assets/topics/adjunctions/galois-connections.png';
 
 <Figure
   src={galoisConnections}
@@ -91,6 +97,12 @@ import galoisConnections from '../../assets/topics/adjunctions/galois-connection
 **Legacy path (for images still in `public/`):** pass the string URL. Falls back to a plain `<img>` styled by global `.prose img` rules. No srcset, but responsive via CSS.
 
 ```mdx
+---
+title: "..."
+---
+
+import Figure from '../../components/ui/Figure.astro';
+
 <Figure
   src="/images/topics/adjunctions/galois-connections.png"
   alt="..."
