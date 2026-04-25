@@ -5,9 +5,18 @@ import TopicCard from '../components/ui/TopicCard.astro';
 import { getCollection } from 'astro:content';
 import { tracks } from '../data/curriculum';
 import graphData from '../data/curriculum-graph.json';
+import { synthesizeCrossSiteNodes } from '../lib/synthesizeCrossSiteNodes';
 
 const allTopics = await getCollection('topics');
 const publishedTopics = allTopics.filter((t) => t.data.status === 'published');
+
+// Build-time synthesis of cross-site prereq nodes from MDX frontmatter.
+// Internal-only edges live in curriculum-graph.json; cross-site edges are
+// derived from formalcalculusPrereqs / formalstatisticsPrereqs and merged
+// here without ever touching the JSON.
+const crossSite = synthesizeCrossSiteNodes(publishedTopics);
+const mergedNodes = [...graphData.nodes, ...crossSite.nodes];
+const mergedEdges = [...graphData.edges, ...crossSite.edges];
 
 // Group published topics by domain
 const publishedByDomain = publishedTopics.reduce<Record<string, typeof publishedTopics>>(
@@ -34,7 +43,7 @@ const difficultyOrder = { foundational: 0, intermediate: 1, advanced: 2 };
       <p class="text-sm text-[var(--color-text-secondary)] mb-4">
         Explore the full dependency graph, or browse by track below.
       </p>
-      <CurriculumGraph client:visible nodes={graphData.nodes} edges={graphData.edges} />
+      <CurriculumGraph client:visible nodes={mergedNodes} edges={mergedEdges} />
     </div>
 
     <div class="space-y-10">

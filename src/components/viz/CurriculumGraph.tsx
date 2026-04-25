@@ -140,19 +140,37 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
       .selectAll<SVGGElement, SimNode>('g')
       .data(simNodes)
       .join('g')
-      .style('cursor', (d) => (d.status === 'published' ? 'pointer' : 'default'));
+      .style('cursor', (d) => (d.status === 'published' || d.external ? 'pointer' : 'default'));
 
-    // Node circles
+    // Node circles — three states: published (solid), planned (dashed transparent),
+    // external/cross-site (dashed gray fill at 0.6 opacity). external is more
+    // present than planned because the target topic is shipped on a sister site.
     node
       .append('circle')
       .attr('r', 8)
-      .attr('fill', (d) =>
-        d.status === 'published' ? domainColorScale(d.domain) : 'transparent'
-      )
+      .attr('fill', (d) => {
+        if (d.external) return domainColorScale(d.domain);
+        return d.status === 'published' ? domainColorScale(d.domain) : 'transparent';
+      })
       .attr('stroke', (d) => domainColorScale(d.domain))
       .attr('stroke-width', 2)
-      .attr('stroke-dasharray', (d) => (d.status === 'published' ? 'none' : '4,2'))
-      .attr('opacity', (d) => (d.status === 'published' ? 1 : 0.5));
+      .attr('stroke-dasharray', (d) =>
+        d.external || d.status !== 'published' ? '4,2' : 'none'
+      )
+      .attr('opacity', (d) => {
+        if (d.external) return 0.6;
+        return d.status === 'published' ? 1 : 0.5;
+      });
+
+    // Native browser tooltip (also serves keyboard-focus accessibility).
+    // Cross-site nodes get a `(formalstatistics)` / `(formalcalculus)` suffix.
+    node
+      .append('title')
+      .text((d) =>
+        d.external ? `${d.label} (${d.domain})` :
+        d.status === 'published' ? d.label :
+        `${d.label} — Coming soon`
+      );
 
     // Node labels
     node
@@ -163,7 +181,10 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
       .style('font-size', '10px')
       .style('font-family', 'var(--font-sans)')
       .style('fill', textColor)
-      .style('opacity', (d) => (d.status === 'published' ? 1 : 0.5))
+      .style('opacity', (d) => {
+        if (d.external) return 0.6;
+        return d.status === 'published' ? 1 : 0.5;
+      })
       .style('pointer-events', 'none');
 
     // Hover highlighting
@@ -186,19 +207,24 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
         link.attr('opacity', 1);
       });
 
-    // Click behavior
+    // Click behavior — external opens in a new tab; published navigates;
+    // planned-internal shows a transient "coming soon" tooltip.
     node.on('click', (event, d) => {
+      if (d.external && d.url) {
+        window.open(d.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
       if (d.status === 'published' && d.url) {
         window.location.href = d.url;
-      } else {
-        const rect = svgRef.current!.getBoundingClientRect();
-        setTooltip({
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top - 30,
-          label: d.label,
-        });
-        setTimeout(() => setTooltip(null), 2000);
+        return;
       }
+      const rect = svgRef.current!.getBoundingClientRect();
+      setTooltip({
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top - 30,
+        label: d.label,
+      });
+      setTimeout(() => setTooltip(null), 2000);
     });
 
     // Drag behavior (stops zoom propagation)
@@ -233,8 +259,12 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
     return () => simulation.stop();
   }, [nodes, edges]);
 
-  // Domain legend data
-  const domains = [...new Set(nodes.map((n) => n.domain))];
+  // Domain legend data — exclude site domains from the per-track legend; they
+  // get their own "Cross-site" entry below.
+  const domains = [...new Set(nodes.map((n) => n.domain))].filter(
+    (d) => d !== 'formalcalculus' && d !== 'formalstatistics'
+  );
+  const hasExternal = nodes.some((n) => n.external);
 
   return (
     <div ref={containerRef} className="relative">
@@ -287,6 +317,15 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
             />
             Planned
           </span>
+          {hasExternal && (
+            <span className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: '#9ca3af', opacity: 0.6 }}
+              />
+              Cross-site
+            </span>
+          )}
         </span>
       </div>
     </div>
