@@ -282,3 +282,21 @@ The two-sided bound says coverage concentrates in a strip of width $\frac{1}{n_{
 The bound is **tight**, not just a one-sided guarantee — and that tightness is doing real work. A naive reading of "$\ge 1 - \alpha$" might suggest the procedure could over-cover wildly with no statistical penalty, but Theorem 1's upper bound rules that out: split conformal does not waste coverage. As long as the score distribution is continuous and exchangeability holds, the procedure delivers within $\tfrac{1}{n_{\text{cal}} + 1}$ of nominal — no looser, no tighter.
 
 What the bound does *not* say is anything about *conditional* coverage at a specific $X = x$. The marginal probability averages over the distribution of $X$, so a procedure that under-covers in one region and over-covers in another can still satisfy Theorem 1. We return to this in §8 with the Foygel-Barber 2021 impossibility theorem.
+
+<NamedSection id="cross-validation" title="Cross-Validation in Conformal: CV+">
+
+Split conformal pays a **calibration tax**. The data partition $(m,\ n_{\text{cal}})$ has to allocate enough mass to the calibration set for the threshold to be stable — typically $n_{\text{cal}} \approx n/2$ — which means the predictor $\hat\mu$ trains on only half the available data. For a fixed total budget $n$ this is genuinely wasteful: a better $\hat\mu$ would mean tighter prediction intervals (recall, the *width* depends on predictor quality even though *validity* doesn't).
+
+**Cross-validation** offers a way out. Partition $\{1, \ldots, n\}$ into $K$ folds of roughly equal size, and for each fold $k$ fit a predictor $\hat\mu_{-k}$ on the data with fold $k$ removed. The leave-one-fold-out residual at observation $i$ is
+
+$$
+R_i \;=\; \bigl| Y_i - \hat\mu_{-\text{fold}(i)}(X_i) \bigr|,
+$$
+
+and the **CV+** prediction interval uses these residuals — combined with per-fold predictions at the test point — through the same quantile construction we will introduce for jackknife+ in §5. Every observation contributes to both the fit and the residual scoring; no calibration tax.
+
+The trade-off is computational. Jackknife+ ($K = n$) requires $n$ predictor fits; $K$-fold CV+ requires only $K$ fits, typically $K = 5$ or $K = 10$. For expensive base predictors — random forests, neural networks, anything that costs minutes per fit — CV+ is the only practical route. The coverage guarantee is identical: Theorem 2 in §5 establishes the lower bound $\mathbb{P}(Y_{n+1} \in \hat C_\alpha^{\text{CV+}}) \ge 1 - 2\alpha$ for *both* jackknife+ ($K = n$) and $K$-fold CV+ verbatim. The factor of $2$ is worst-case over base predictors; in practice, both procedures achieve coverage very close to nominal $1 - \alpha$.
+
+The full procedural definition, the BCRT 2021 tournament/comparison-graph proof, and the empirical comparison to split conformal all live in §5. The anchor here exists so that any sister-site reference to "cross-validation in machine learning" can deep-link to a coherent treatment without minting a separate topic.
+
+</NamedSection>
