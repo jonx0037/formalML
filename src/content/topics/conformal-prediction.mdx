@@ -128,3 +128,59 @@ Exchangeability is strictly weaker than iid. Every iid sample is exchangeable �
 The bet conformal prediction makes is that exchangeability holds for the augmented sequence $(X_1, Y_1), \ldots, (X_{n+1}, Y_{n+1})$ — training, calibration, and test points all drawn from the same source. This is genuinely weaker than iid: it accommodates dependence within the dataset (the urn case, time-series with stationary increments, certain sampling-without-replacement designs) provided that no observation has a privileged position. What it does *not* accommodate is **distribution shift** — a test distribution that differs from the training distribution. We return to this in §8, where we visualize how naive conformal prediction degrades under covariate shift and see how the importance-weighted variant of <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" />'s sister technique (Tibshirani et al. 2019) restores marginal coverage when the shift is known.
 
 The asymptotic alternative to conformal prediction is the empirical-processes route: Topic 32 of formalstatistics develops uniform-convergence bounds (DKW, VC dimension, Glivenko–Cantelli) that imply distribution-free coverage in the large-$n$ limit. Conformal prediction sidesteps the uniform-convergence rate entirely — it gives an *exact* finite-sample statement — at the price that the coverage is *marginal* rather than *conditional* (a distinction that becomes the impossibility theorem of §8). Both routes lead to distribution-free prediction; they pay different prices.
+
+## Split (Inductive) Conformal Prediction
+
+The simplest realization of the marginal-coverage promise — and the one used in essentially every modern application — is **split conformal prediction**, sometimes called inductive conformal prediction. The construction is mechanical: split the data into a training set and a calibration set, fit a predictor on the former, score residuals on the latter, take an empirical quantile, declare the prediction interval. Three short paragraphs and a definition cover everything; the depth is in the proof, which lands in §3.
+
+Partition the $n$ available observations into a training set of size $m$ and a calibration set of size $n_{\text{cal}}$:
+
+$$
+\underbrace{(X_1, Y_1), \ldots, (X_m, Y_m)}_{\text{training}}
+\quad\text{and}\quad
+\underbrace{(X_{m+1}, Y_{m+1}), \ldots, (X_{m+n_{\text{cal}}}, Y_{m+n_{\text{cal}}})}_{\text{calibration}}.
+$$
+
+Then run four steps.
+
+**Step 1 — Fit.** Train a base predictor $\hat\mu$ using only the training set. The base predictor can be anything — ridge regression, a random forest, a neural network — and the coverage guarantee will not depend on what it is. The quality of $\hat\mu$ controls the *width* of the prediction interval, not its validity.
+
+**Step 2 — Score.** Compute a *nonconformity score* $S_i = s(X_i, Y_i)$ at each calibration point. For regression, the standard choice is the absolute residual $S_i = |Y_i - \hat\mu(X_i)|$; for classification we will use a different score in §7. The score is "large when $(X, Y)$ looks anomalous given the fitted model."
+
+**Step 3 — Threshold.** Take the $\hat k = \lceil (1 - \alpha)(n_{\text{cal}} + 1) \rceil$-th smallest calibration score and call this value $\hat q_{1-\alpha}$. (When $\hat k > n_{\text{cal}}$ — which happens for very small calibration sets — cap at $n_{\text{cal}}$, equivalently set $\hat q_{1-\alpha} = +\infty$ and the interval becomes all of $\mathbb{R}$.)
+
+**Step 4 — Predict.** For a new test point $X_{n+1}$, the prediction set is the level-$\hat q_{1-\alpha}$ sublevel set of the score:
+
+$$
+\hat C_\alpha(X_{n+1}) \;=\; \bigl\{ y \in \mathcal{Y} \,:\, s(X_{n+1}, y) \le \hat q_{1-\alpha} \bigr\}.
+$$
+
+For the absolute-residual score this resolves to a symmetric interval centered on the prediction, $[\hat\mu(X_{n+1}) - \hat q_{1-\alpha},\ \hat\mu(X_{n+1}) + \hat q_{1-\alpha}]$. The interval has the same half-width $\hat q_{1-\alpha}$ at every test point, regardless of $X_{n+1}$ — split conformal with this score is *not* locally adaptive. We address that in §6 (CQR).
+
+<TheoremBlock type="definition" number={2} title="Split Conformal Prediction Set">
+
+With training-fitted predictor $\hat\mu$, calibration set of size $n_{\text{cal}}$, nonconformity score $s$, and miscoverage level $\alpha \in (0, 1)$, the **split conformal prediction set** at input $x$ is
+
+$$
+\hat C_\alpha(x) \;=\; \bigl\{ y \in \mathcal{Y} \,:\, s(x, y) \le \hat q_{1-\alpha} \bigr\},
+$$
+
+where $\hat q_{1-\alpha}$ is the
+
+$$
+\hat k \;=\; \bigl\lceil (1 - \alpha)(n_{\text{cal}} + 1) \bigr\rceil
+$$
+
+smallest of the calibration scores $(S_i)_{i=1}^{n_{\text{cal}}}$.
+
+</TheoremBlock>
+
+The "$+1$" inside the ceiling deserves a moment. It looks fussy — and it is, in the sense that for moderate $n_{\text{cal}}$ it changes $\hat q_{1-\alpha}$ by at most one rank — but it is also load-bearing. Under exchangeability, the (unobserved) test-point score $S_{n+1}$ will be inserted into the augmented sequence $(S_1, \ldots, S_{n_{\text{cal}}+1})$ at a *uniformly random rank* in $\{1, \ldots, n_{\text{cal}} + 1\}$. The ceiling-and-plus-one converts that rank uniformity directly into the marginal-coverage probability. Drop the $+1$ and the bound is no longer tight; replace the ceiling with a floor and the bound flips to a strict inequality in the wrong direction. We reconstruct this argument in §3.
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_split_construction.png"
+  alt="Three-panel figure showing one run of split conformal: histogram of calibration scores with the threshold line, prediction band overlaid on training and calibration data, and a test set colored by whether each observation falls inside the band"
+  caption="One run of split conformal on heteroscedastic regression data. Left: calibration scores $S_i = |Y_i - \hat\mu(X_i)|$ with the $\hat k = \lceil 0.9 \cdot 201 \rceil = 181$-th rank threshold. Middle: the symmetric prediction band $\hat\mu(x) \pm \hat q_{1-\alpha}$ — note the constant width independent of $x$. Right: empirical coverage on a held-out test set (90.0% here, against a target of 90%). The width insensitivity to $x$ is what CQR (§6) fixes."
+/>
+
+The construction is so spare that it raises an immediate question: why does this work? Nothing in steps 1–4 used the joint distribution of $(X, Y)$, the smoothness of $\hat\mu$, or any property of the base predictor beyond its having been fit *before* the calibration scores were computed. The next section gives the answer — Theorem 1 (marginal coverage), proved entirely from rank symmetry under exchangeability.
