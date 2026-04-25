@@ -3,7 +3,7 @@
 **Status:** strategic planning document (Claude Chat architectural artifact; upstream of per-topic handoff briefs)
 **Scope:** 32 forward-identified formalML.com topics originating from formalstatistics.com forward-pointers across Topics 22–32, consolidated into an extended track scaffold and first-wave sequencing plan
 **Audience:** Jonathan as decision-holder; secondary audience is Claude Code implementation sessions that will reference this document when composing per-topic handoff briefs
-**Version:** v1 (April 24, 2026 — drafted after formalstatistics.com Topic 32 shipped and the curriculum closed)
+**Version:** v1.1 (April 24, 2026 — drafted after formalstatistics.com Topic 32 shipped and the curriculum closed; revised April 25, 2026 against the cross-site audit infrastructure shipped in formalML PR #52, see §1.3 / §5.2 / §5.5 / §5.6 / §12.4 / §18)
 **Relationship to prior briefs:** consolidates and extends `formalML-five-forward-topics-planning-brief.md` (the Topic 29 brief, covering 5 topics) and `formalML-satellite-topics-planning-brief.md` (the Topic 30 brief, covering 5 topics). Both remain valid at the content level; this document layers architectural decisions and adds the 22 newly-identified topics from Topics 22/23/24/25/26/27/28/31/32.
 
 ---
@@ -32,8 +32,8 @@ This document also does not include per-topic content plans for the 22 newly ide
 
 - **Tech stack inherited:** Astro 6 + React 19 + MDX + KaTeX + Tailwind CSS 4 + D3.js 7 + pnpm + Vercel (per existing `CLAUDE.md` and `formalML-handoff-reference.md`).
 - **Editorial voice inherited:** Geometric-first exposition, full-proof tolerance, collaborative "we," the tone patterns in current `CLAUDE.md` §Editorial Voice.
-- **Cross-site citation schema:** full-URL hyperlinks for live pointers, `(forthcoming)` plain-text markers for not-yet-shipped pointers, flipping to live `<ExternalLink>` components in formalstatistics when each formalML topic ships.
 - **Slug discipline:** short, filename-style slugs matching `formalML-handoff-reference.md` §8 precedent (`svd` not `singular-value-decomposition`; `pac-learning` not `pac-learning-framework`).
+- **Cross-site reference infrastructure (revised, 2026-04-25):** This document was composed in Claude Chat at the same time as — but architecturally upstream of — the cross-site reciprocity audit infrastructure that shipped via formalML PR #52 (`scripts/audit-cross-site-links.mjs`, `pnpm audit:cross-site`). At publication time the formalstatistics and formalcalculus repos already had this infrastructure 100% adopted (32/32 topics each carry the new frontmatter schema), while formalML still had it 0% adopted (0/35 topics). §5 below has been revised to reference the actual six-field schema in production, the audit-script workflow, and the [deferred-reciprocals.md](deferred-reciprocals.md) ledger as the canonical "what to add when X ships" log. The original Claude Chat draft used a single-array `crossSitePrereqs` proposal and a manual `<ExternalLink>`-flipping PR-sweep protocol; both are obsolete.
 
 ---
 
@@ -260,28 +260,45 @@ Cross-site pointers in each of the 32 new formalML topics will flow in three dir
 - **Backward to formalcalculus** — Jacobians, gradients, convex optimization, variational calculus, ODEs. Full-URL hyperlinks: `[Jacobians](https://formalcalculus.com/topics/jacobians)`.
 - **Internal to formalML** — cross-references among the 32 new topics and the existing 35. Relative paths: `[PAC Learning](/topics/pac-learning)`.
 
-### §5.2 Cross-site prerequisite schema in curriculum-graph.json
+### §5.2 Cross-site reference schema (revised against PR #52 production state)
 
-The current `curriculum-graph.json` schema handles internal edges only. For the 32 new topics, many prerequisites will sit on other sites. Proposed schema extension:
+The original Claude Chat draft of this section proposed adding a single `crossSitePrereqs` array to nodes in `curriculum-graph.json`. **That proposal is superseded.** The actual schema, shipped via formalML PR #52 and 100% adopted on formalstatistics + formalcalculus, lives in MDX frontmatter (not in the curriculum graph) and uses **six separate fields** parameterized by target-site × direction:
 
-```json
-{
-  "id": "variational-inference",
-  "label": "Variational Inference",
-  "domain": "bayesian-ml",
-  "status": "planned",
-  "url": "/topics/variational-inference",
-  "crossSitePrereqs": [
-    { "site": "formalstatistics", "slug": "bayesian-foundations-and-prior-selection", "url": "https://formalstatistics.com/topics/bayesian-foundations-and-prior-selection" },
-    { "site": "formalstatistics", "slug": "bayesian-computation-and-mcmc", "url": "https://formalstatistics.com/topics/bayesian-computation-and-mcmc" },
-    { "site": "formalcalculus", "slug": "functional-derivatives", "url": "https://formalcalculus.com/topics/functional-derivatives" }
-  ]
-}
+| Field | Direction | Use on formalML topics |
+|---|---|---|
+| `formalcalculusPrereqs` | backward | Calculus topics this ML topic requires |
+| `formalstatisticsPrereqs` | backward | Statistics topics this ML topic requires |
+| `formalcalculusConnections` | forward | Calculus topics this ML topic informs (rare) |
+| `formalstatisticsConnections` | forward | Statistics topics this ML topic informs (rare) |
+| `formalmlPrereqs` / `formalmlConnections` | self | Do **not** use on formalML topics — flagged as `self-site` by the audit |
+
+Per-entry shape (mirrors the formalstatistics convention):
+
+```yaml
+formalstatisticsPrereqs:
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "Topic 25's conjugate-prior framework is the substrate for VI's
+                   variational family choice; see §25.4 Thm 3 for the exponential-
+                   family conjugacy that this topic specializes in §3."
+  - topic: "bayesian-computation-and-mcmc"
+    site: "formalstatistics"
+    relationship: "Topic 26 §26.5 establishes the NUTS sampler used as the
+                   reference-implementation comparison for amortized VI in §6."
+formalcalculusPrereqs:
+  - topic: "lebesgue-integral"
+    site: "formalcalculus"
+    relationship: "The ELBO integral over q(z) requires Lebesgue integration over
+                   the latent space; see §4 derivation."
 ```
 
-The `/paths` page prerequisite graph renders `crossSitePrereqs` as faded nodes with a site-icon badge, visually distinct from internal prereq nodes. Clicking navigates to a cross-site location; hovering shows the relationship string.
+**Validation.** `pnpm audit:cross-site` (script: `scripts/audit-cross-site-links.mjs`) walks every `.mdx` in all three sibling repos, extracts these fields, and checks that every `A.x → B.y` edge has a reciprocal `B.y → A.x` with the opposite direction (`Prereqs ↔ Connections`). Outputs:
 
-**Implementation note:** The `/paths` page graph currently only knows about internal edges. Adding cross-site prereq rendering is a one-session UI change to `/paths`, not a per-topic decision. Should ship before the first new topic goes live.
+- [docs/plans/cross-site-audit-report.md](cross-site-audit-report.md) — consolidated reciprocity report (slug drift, missing reciprocals, deferred targets, frontmatter quality flags)
+- [docs/plans/deferred-reciprocals.md](deferred-reciprocals.md) — log of edges pointing at slugs that don't yet exist on the target repo, organized by "When `<repo>/<slug>` ships" with source-side prose stubs
+- `docs/plans/audit-output/<site>-references.json` — per-site edge dumps
+
+**Curriculum-graph note.** `src/data/curriculum-graph.json` continues to encode internal-only edges; cross-site relationships do **not** belong there. The `/paths` page can choose to surface cross-site prereqs by reading the MDX frontmatter at build time — that's a future UI decision (see §18). Shipping cross-site rendering on `/paths` is **not** a prerequisite for the first new topic, since cross-site infrastructure is already in place at the data layer.
 
 ### §5.3 Forward-pointer convention (internal forthcoming)
 
@@ -302,16 +319,46 @@ Per §2.4, two formalstatistics forward-pointers to formalML do NOT get their ow
 
 **Action item for Jonathan:** Note these two redirects as pending formalstatistics PR work. Not urgent — the plain-text `(forthcoming)` markers remain valid indefinitely. Worth a short PR when `high-dimensional-regression` ships and the full redirect story becomes resolvable in one pass.
 
-### §5.5 formalstatistics PR sweep protocol
+### §5.5 Reciprocity workflow at ship time (revised against PR #52 production state)
 
-Each time a formalML topic ships, the corresponding formalstatistics plain-text `(forthcoming)` marker(s) should flip to live `<ExternalLink>` components. Appendix A lists every pointer explicitly; the mechanical PR sweep is a few lines of edits per topic.
+The original Claude Chat draft of this section described a manual protocol of flipping formalstatistics plain-text `(forthcoming)` markers into live `<ExternalLink>` components and adding `url` fields to `formalMLConnections` entries. **That protocol is superseded** by the audit-script workflow that shipped in PR #52.
 
-Recommended workflow when a formalML topic ships:
-1. Confirm topic live at `https://formalML.com/topics/<slug>` and the cross-site URL works.
-2. Open a short PR on formalstatistics that edits each `(forthcoming on formalML)` marker for that slug into a live `<ExternalLink href="https://formalML.com/topics/<slug>" site="formalML" topic="<display title>" />` component.
-3. Also edit the corresponding frontmatter `formalMLConnections` entry's implicit `site: "formalML"` to add an explicit `url` field if not already present.
+Reality at publication time:
 
-A single formalML topic may require edits to 1–4 formalstatistics MDX files depending on how many predecessor topics named it. Appendix A maps this out.
+- formalstatistics already declares **`formalmlConnections`** entries (with `topic`, `site`, `relationship`) for every forward-pointer. There are no `formalMLConnections` (capital ML) fields and never were — the canonical name is lowercase `formalml`.
+- formalstatistics also embeds inline `<ExternalLink site="formalml" ...>` components in MDX prose for in-flow mentions; these do **not** require flipping at ship time and may render as 404s today (see §5.6 for the slug-drift cleanup).
+- The `pnpm audit:cross-site` script catches every formalML slug that any sister site points at and lacks a reciprocal — that list lives in [docs/plans/deferred-reciprocals.md](deferred-reciprocals.md), regenerated on every audit run.
+
+**Workflow when a new formalML topic ships:**
+
+1. **Frontmatter, formalML side.** The new topic's MDX includes `formalcalculusPrereqs` and/or `formalstatisticsPrereqs` arrays for every cross-site prereq, each entry with `topic`, `site`, `relationship` (≥40 chars).
+2. **Pull the deferred-reciprocal entries.** Search [deferred-reciprocals.md](deferred-reciprocals.md) for the `When formalml/<slug> ships` heading. Every bullet under that heading is a sister-site topic that needs a reciprocal entry.
+3. **Sister-site PR.** Open a PR on formalstatistics (and/or formalcalculus) that adds a `formalstatisticsConnections` (or `formalcalculusConnections`) entry to each source topic listed in step 2, copying the source-side prose stub from `deferred-reciprocals.md` and rewriting from the new topic's vantage. Confirm `relationship` is ≥40 chars.
+4. **Re-audit.** Run `pnpm audit:cross-site` (from any of the three repos with sibling paths configured). The deferred-reciprocal entry should disappear; the audit's `Reciprocated` count should increment by the number of source topics; no new `Missing reciprocals` should appear.
+5. **Inline body links (optional).** If the new formalML topic mentions a sister-site topic in prose, port the formalstatistics `<ExternalLink>` component to formalML (`src/components/ui/ExternalLink.astro`) and use it. Build is one-time; reuse for all subsequent topics.
+
+A single formalML topic may discharge anywhere from 1 to 9+ deferred-reciprocal entries on the sister sites, depending on how many sister-site topics named it as a forward pointer. The numbers are visible in [deferred-reciprocals.md](deferred-reciprocals.md) at the moment of ship.
+
+Appendix A retains the original Claude Chat per-pointer map for historical reference and as a sanity check against the audit's deferred-reciprocal list, but `pnpm audit:cross-site` is the canonical source of truth.
+
+### §5.6 Inventory reconciliation against deferred-reciprocals.md (new — 2026-04-25)
+
+When `pnpm audit:cross-site` was run after PR #52, [deferred-reciprocals.md](deferred-reciprocals.md) listed **~90 unique `formalml/<slug>` targets** that the sister sites already point at. The 32-topic inventory in §2.2 of this document is a strict subset of that surface. The remaining ~58 deferred-reciprocal slugs fall into one of four buckets:
+
+| Bucket | Count | What to do | Examples |
+|---|---:|---|---|
+| **A. In strategic doc inventory (will discharge when topic ships)** | 18 | None — covered by §4 sequencing. Audit will retire these as topics ship. | `bayesian-neural-networks`, `causal-inference-methods`, `gaussian-processes`, `generalization-bounds`, `high-dimensional-regression`, `meta-learning`, `mixed-effects`, `normalizing-flows`, `probabilistic-programming`, `quantile-regression`, `reversible-jump-mcmc`, `riemann-manifold-hmc`, `sequential-monte-carlo`, `sparse-bayesian-priors`, `stochastic-gradient-mcmc`, `variational-inference`, `conformal-prediction`, `prediction-intervals` |
+| **B. Already-published formalML topics (sister-site reciprocal needed now)** | ~6 | Open a sister-site PR adding the reciprocal entry now — no formalML work needed. | `bayesian-nonparametrics`, `information-geometry`, `pac-learning`, `measure-theoretic-probability`, `shannon-entropy`, `minimum-description-length` |
+| **C. Slug drift / wrong-name pointers from sister sites** | ~6 | Sister-site PR to fix the slug. Formalstatistics points at `principal-component-analysis` (formalML has `pca-low-rank`); `variational-methods` (formalML inventory: `variational-inference`); `stochastic-gradient-descent` (formalML has `gradient-descent`). The audit's "Slug drift" section names each. | `principal-component-analysis` → `pca-low-rank`; `variational-methods` → `variational-inference`; `stochastic-gradient-descent` → `gradient-descent` |
+| **D. Out-of-inventory slugs pointed at but unplanned** | ~28 | Decision per slug: (a) fold into an inventory topic as a named section; (b) redirect the sister-site pointer per §5.4 / §7.3; (c) add to a future inventory expansion. None of these block first-wave authoring. | `ab-testing`, `ab-testing-platforms`, `always-valid-inference`, `bayesian-inference`, `bayesian-model-averaging`, `bias-variance-tradeoff`, `cross-entropy-loss`, `cross-fitting`, `cross-validation`, `differential-privacy`, `diffusion-models`, `dimensionality-reduction`, `embedding-spaces`, `empirical-risk-minimization`, `ensemble-methods`, `expectation-maximization`, `feature-engineering`, `feature-selection-and-multiplicity`, `fourier-neural-operators`, `generalized-method-of-moments`, `generative-modeling`, `graphical-models`, `high-dimensional-testing-knockoffs`, `importance-sampling`, `information-bottleneck`, `kernel-methods`, `metric-learning`, `model-comparison`, `monte-carlo-methods`, `naive-bayes`, `online-fdr`, `optimization-theory`, `post-selection-inference`, `probability-spaces`, `regression`, `regularization`, `reinforcement-learning`, `representation-learning`, `robust-statistics`, `score-matching`, `spectral-methods`, `statistical-learning-theory`, `structural-risk-minimization`, `wasserstein-distances`, `weight-decay` |
+
+**Bucket-specific notes:**
+
+- **Bucket B — already-published reciprocals.** These are zero-cost edits and should ship in the next sister-site PR sweep, regardless of formalML topic cadence. Confirm the formalML topics are live, then add the reciprocal `formalstatisticsConnections` / `formalcalculusConnections` entry to each source topic listed in `deferred-reciprocals.md` for that slug.
+- **Bucket C — slug drift.** The audit's "Slug drift" section in [cross-site-audit-report.md](cross-site-audit-report.md) suggests the right target slug for each. These should be fixed on the sister-site repos in a single sweep PR.
+- **Bucket D — unplanned slugs.** Several of these correspond to §7.3 named-section redirects (`cross-validation`, `ab-testing`, `weight-decay`). Several others (`monte-carlo-methods`, `bayesian-inference`, `regularization`, `optimization-theory`) are concepts that probably live within an inventory topic as a named section. A handful (`reinforcement-learning`, `diffusion-models`, `fourier-neural-operators`, `generative-modeling`, `wasserstein-distances`) are large enough to justify their own future topics — candidates for an inventory expansion in a v2 of this document. None are urgent.
+
+**Action item.** A separate session should triage Bucket D — for each slug, pick (a) named-section redirect, (b) inventory addition, or (c) sister-site pointer removal. That triage is out of scope for v1 of this document but should precede the second-wave sequencing in §4.3.
 
 ---
 
@@ -712,6 +759,8 @@ Realistic near-term target: **first 8 topics by mid-2027; first 16 by mid-2028; 
 
 The 32 topics are mostly independent; order can shift based on emerging ML trends, reader interest, or external milestones. The first-wave recommendation in §4.2 is a default; overrides at any point are fine. What this document locks in is not the *schedule* but the *architecture* — the slugs, the track placement, the cross-site schema, the shared-module plan.
 
+**Timeline note (revised, 2026-04-25).** The §12.3 estimate ("first 8 by mid-2027; full buildout by 2030") was framed assuming formalstatistics and formalcalculus authoring continued to compete for working time. Both sister sites are now feature-complete (32 topics each). With that competing demand removed, the formalML cadence may compress meaningfully — possibly halving the elapsed-time estimate, depending on how much of the freed bandwidth flows back into formalML versus other commitments. The architectural decisions in this document are unaffected; the timeline is.
+
 ---
 
 ## § 13 Open Questions Deferred to Per-Topic Briefs
@@ -873,13 +922,14 @@ Further, 2 T6 topics extend with their own primitives.
 
 ## § 18 Open Architectural Questions for Future Review
 
-Three questions this document intentionally does not settle. Revisit as conditions warrant.
+Two questions this document intentionally does not settle. Revisit as conditions warrant.
 
 1. **T5 split (§3.6).** Defer to T5's 6th published topic; revisit then based on usage-pattern data.
-2. **Cross-site /paths graph rendering details.** UI decision — separate node styling for cross-site prereqs? Clickable cross-site navigation? Breadcrumb-style three-site nav? Best resolved during the /paths revision in §14.3.
-3. **formalML-specific shared header component.** Does formalML want an `<ExternalLink>` component analogous to formalstatistics's, with `site="formalstatistics"` and `site="formalcalculus"` variants? Almost certainly yes. Build during the /paths revision or during the first cross-site-prereq-heavy topic ship (whichever comes first).
+2. **Cross-site /paths graph rendering details.** UI decision — separate node styling for cross-site prereqs? Clickable cross-site navigation? Breadcrumb-style three-site nav? Best resolved during the /paths revision in §14.3. Note that cross-site relationships now live in MDX frontmatter (per §5.2), not in `curriculum-graph.json`, so a `/paths` graph that wants to surface them must read frontmatter at build time.
 
-None of these blocks the first wave.
+**Resolved (2026-04-25):** The original §18 question of whether formalML wants its own `<ExternalLink>` component is settled — yes, port the formalstatistics implementation (interface `{ href, site, topic }`) to `src/components/ui/ExternalLink.astro` and extend the `site` enum to `'formalstatistics' | 'formalcalculus'`. Build during the first ship that introduces an in-prose cross-site link (likely `conformal-prediction` or `variational-inference`). The component is one small Astro file; not blocking.
+
+None of the open questions blocks the first wave.
 
 ---
 
