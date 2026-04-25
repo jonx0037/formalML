@@ -492,3 +492,57 @@ CQR does not achieve *exact* conditional coverage — that is impossible for any
 </TheoremBlock>
 
 CQR is the practical default whenever the data is visibly heteroscedastic and computational budget allows fitting two quantile regressions. It is also the construction that points furthest in the direction of *conditional* coverage — a property that motivates the impossibility theorem of §8 and the importance-weighted extensions for known covariate shift. Before that, §7 takes the conformal envelope into a different setting entirely: classification, where the response is discrete and "interval" gets replaced by *prediction set*.
+
+## Adaptive Prediction Sets (APS) for Classification
+
+Everything so far has been regression. Conformal prediction adapts to classification with a single change: replace the absolute-residual nonconformity score with one built on top of the classifier's softmax probabilities. The output is no longer an interval — it is a **set of predicted classes**, sized to match the model's uncertainty at the test input. **Adaptive Prediction Sets (APS)**, due to Romano, Sesia & Candès (2020), is the canonical construction. Like CQR, it is split conformal applied to a different score, so Theorem 1 delivers the marginal coverage guarantee for free.
+
+Setup. Let $\mathcal{Y} = \{1, \ldots, K\}$ be the discrete response space. A classifier produces softmax probabilities $\hat\pi(c \mid x) \in [0, 1]$ with $\sum_c \hat\pi(c \mid x) = 1$. Order the classes at input $x$ from highest to lowest probability:
+
+$$
+c_{(1)}(x),\ c_{(2)}(x),\ \ldots,\ c_{(K)}(x), \quad \hat\pi(c_{(1)} \mid x) \geq \hat\pi(c_{(2)} \mid x) \geq \cdots \geq \hat\pi(c_{(K)} \mid x).
+$$
+
+For any class $y$, write $\rho(y; x)$ for its **rank** in this descending ordering — so the most-probable class has rank 1, the second-most has rank 2, and so on.
+
+<TheoremBlock type="definition" number={5} title="APS Score and Prediction Set, Deterministic Variant">
+
+The **APS nonconformity score** at a labeled point $(x, y)$ is the cumulative mass of all classes ranked *strictly above* $y$:
+
+$$
+s(x, y) \;=\; \sum_{j=1}^{\rho(y; x) - 1} \hat\pi\bigl( c_{(j)}(x) \mid x \bigr).
+$$
+
+The top-predicted class has score $0$ (no classes above it); the second has score $\hat\pi(c_{(1)} \mid x)$; and so on through the ordering. Given calibration scores $S_i = s(X_i, Y_i)$ for $i = 1, \ldots, n_{\text{cal}}$, let $\hat q_{1-\alpha}$ denote the $\lceil (1 - \alpha)(n_{\text{cal}} + 1) \rceil$-th smallest. The **deterministic APS prediction set** at a new test input $x$ is
+
+$$
+\hat C_\alpha^{\text{APS}}(x) \;=\; \bigl\{\, c \in \mathcal{Y} \,:\, s(x, c) \le \hat q_{1-\alpha} \,\bigr\}.
+$$
+
+Equivalently: include classes from highest probability downward until the cumulative mass of the strictly-higher classes exceeds the threshold.
+
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_aps.png"
+  alt="Three-panel APS visualization on a 2D 3-class classification problem: classifier softmax shown as alpha-modulated colored regions on the left, APS region map colored by set size (1/2/3) in the middle, and a bar chart of empirical set-size distribution alongside per-set-size coverage on the right"
+  caption="APS on a 3-class 2D Gaussian-blob classification, α = 0.10. Left: classifier softmax — argmax color, alpha modulated by max probability. Middle: APS region map colored by set size (green = 1, amber = 2, red = 3). Set sizes grow at the decision boundaries where the classifier is genuinely uncertain. Right: empirical set-size distribution on a held-out test set, plus per-set-size coverage. Marginal coverage matches the 0.90 target; conditional coverage given set size is also close to nominal — APS adapts where adaptation is needed."
+/>
+
+The deterministic APS variant always includes the top-predicted class (its score is $0 \le \hat q_{1-\alpha}$ for any non-trivial threshold), so $\hat C_\alpha^{\text{APS}}$ is never empty. Romano-Sesia-Candès also describe a *randomized* variant that achieves exactly $1 - \alpha$ coverage by allowing the borderline class to be included with a probability tuned to the calibration set; the deterministic version overcovers by at most $\frac{1}{n_{\text{cal}} + 1}$ — the same discretization slack we saw in Theorem 1's upper bound — and is the version implemented in libraries like `mapie`.
+
+**Coverage.** APS is split conformal with the score above. The score depends only on the training-fitted classifier (and therefore not on the calibration or test data), so Theorem 1 applies verbatim and gives
+
+$$
+\mathbb{P}\bigl( Y_{n_{\text{cal}}+1} \in \hat C_\alpha^{\text{APS}}(X_{n_{\text{cal}}+1}) \bigr) \;\geq\; 1 - \alpha,
+$$
+
+with the same two-sided refinement $\le 1 - \alpha + 1/(n_{\text{cal}}+1)$ when scores are continuous. (For APS the score is discrete by construction — it takes at most $K$ distinct values per input — so the upper bound holds with the discrete analog: ties between calibration scores can be broken with the deterministic-rule convention with no impact on the lower bound.)
+
+**Why APS, not top-K?** A naive alternative is "include the smallest set of classes whose cumulative softmax mass exceeds $1 - \alpha$." This is the **top-$K$** procedure where $K$ varies per input. It works when the classifier's softmax is well-calibrated — meaning the predicted probabilities match the true conditional probabilities $\mathbb{P}(Y = c \mid X = x)$ — but degrades sharply when softmax is miscalibrated, which is the typical case for modern neural networks. APS is the calibrated alternative: the threshold $\hat q_{1-\alpha}$ is determined empirically from the calibration set rather than implicitly through the softmax magnitudes, so coverage is decoupled from softmax-calibration assumptions. Whatever the classifier's calibration quality, APS recovers the marginal-coverage guarantee.
+
+**Adaptivity.** The set size at any test input is exactly the number of classes $c$ with $s(x, c) \le \hat q_{1-\alpha}$ — equivalently, the smallest $K^\ast$ such that $\sum_{j=1}^{K^\ast - 1} \hat\pi(c_{(j)} \mid x) > \hat q_{1-\alpha}$. Where the classifier is confident ($\hat\pi(c_{(1)}) \approx 1$), the second class already has score $\approx 1 > \hat q_{1-\alpha}$ (typically), so the set is a singleton. Where the classifier is genuinely uncertain across multiple classes, the top score grows slowly and several classes pass the threshold, producing a multi-class set. Romano-Sesia-Candès 2020 prove that APS achieves *approximate* conditional coverage when softmax is well-calibrated — the average gap $|\mathbb{P}(Y \in \hat C(X) \mid X = x) - (1 - \alpha)|$ is small — though, as with CQR, exact conditional coverage is impossible by the result we turn to next.
+
+The figure above is worth pausing on. The middle panel — the region map colored by set size — is the most direct visualization of what APS is doing. Inside each class blob the set is a singleton (green); along the decision boundaries between blobs, where two classes are competitive, the set grows to two (amber); in the central region where all three classes are roughly equally probable, the set grows to three (red, when present). The bar chart on the right confirms the marginal coverage and shows that per-set-size coverage is also close to $1 - \alpha$ — the procedure is not gaming the average by extracting all its coverage from one set-size bucket.
+
+APS extends to multi-label classification, ordinal classification, and hierarchical class structures — each by appropriate redesign of the nonconformity score. The pattern from §6 holds: the score does the work, and Theorem 1 delivers the guarantee. Where the difficulty really lies is the *conditional* coverage problem: APS approximates it, but it cannot be achieved exactly without distributional assumptions. The next section makes that precise.
