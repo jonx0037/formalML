@@ -63,6 +63,75 @@ export const tracks = [
     planned: [],
     calculusDependent: false,
   },
+  {
+    domain: 'supervised-learning',
+    label: 'Supervised Learning',
+    description:
+      'Nonparametric and high-dimensional supervised learning \u2014 kernel and local-polynomial regression, lasso and debiased lasso, p \u226b n asymptotics.',
+    planned: ['kernel-regression', 'local-regression', 'high-dimensional-regression'],
+    calculusDependent: false,
+  },
+  {
+    domain: 'unsupervised',
+    label: 'Unsupervised & Generative',
+    description:
+      'Density estimation, dimensionality reduction, clustering, and generative modeling from a statistical perspective \u2014 mean-shift, density-ratio estimation, normalizing flows.',
+    planned: ['clustering', 'density-ratio-estimation', 'normalizing-flows'],
+    calculusDependent: false,
+  },
+  {
+    domain: 'nonparametric-ml',
+    label: 'Nonparametric & Distribution-Free',
+    description:
+      'Distribution-free prediction sets, rank-based testing, quantile regression, and statistical depth \u2014 methods that work under minimal distributional assumptions.',
+    planned: [
+      'conformal-prediction',
+      'quantile-regression',
+      'rank-tests',
+      'prediction-intervals',
+      'extreme-value-theory',
+      'statistical-depth',
+    ],
+    calculusDependent: false,
+  },
+  {
+    domain: 'bayesian-ml',
+    label: 'Bayesian & Probabilistic ML',
+    description:
+      'The Bayesian toolkit at modern ML scale \u2014 variational methods, neural-network posteriors, Gaussian processes, probabilistic programming, specialized MCMC.',
+    planned: [
+      'variational-inference',
+      'gaussian-processes',
+      'probabilistic-programming',
+      'mixed-effects',
+      'stacking-and-predictive-ensembles',
+      'bayesian-neural-networks',
+      'variational-bayes-for-model-selection',
+      'sparse-bayesian-priors',
+      'meta-learning',
+      'stochastic-gradient-mcmc',
+      'sequential-monte-carlo',
+      'reversible-jump-mcmc',
+      'riemann-manifold-hmc',
+    ],
+    calculusDependent: false,
+  },
+  {
+    domain: 'learning-theory',
+    label: 'Learning Theory & Methodology',
+    description:
+      'Generalization theory, semiparametric efficiency, causal inference, and uncertainty quantification \u2014 methodology that cuts across model families.',
+    planned: [
+      'generalization-bounds',
+      'vc-dimension',
+      'uncertainty-quantification',
+      'pac-bayes-bounds',
+      'semiparametric-inference',
+      'causal-inference-methods',
+      'double-descent',
+    ],
+    calculusDependent: false,
+  },
 ] as const;
 
 export type Domain = (typeof tracks)[number]['domain'];
