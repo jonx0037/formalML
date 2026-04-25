@@ -2,6 +2,12 @@ import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 
+const crossSiteRef = z.object({
+  topic: z.string(),
+  site: z.enum(['formalcalculus', 'formalstatistics']),
+  relationship: z.string().min(40),
+});
+
 const topics = defineCollection({
   loader: glob({ pattern: '**/*.mdx', base: './src/content/topics' }),
   schema: z.object({
@@ -20,6 +26,11 @@ const topics = defineCollection({
       'information-theory',
       'graph-theory',
       'category-theory',
+      'supervised-learning',
+      'unsupervised',
+      'nonparametric-ml',
+      'bayesian-ml',
+      'learning-theory',
     ]),
     videoId: z.string().nullable().default(null),
     notebookPath: z.string().nullable().default(null),
@@ -48,6 +59,10 @@ const topics = defineCollection({
         }),
       )
       .default([]),
+    formalcalculusPrereqs: z.array(crossSiteRef).optional(),
+    formalstatisticsPrereqs: z.array(crossSiteRef).optional(),
+    formalcalculusConnections: z.array(crossSiteRef).optional(),
+    formalstatisticsConnections: z.array(crossSiteRef).optional(),
   }),
 });
 

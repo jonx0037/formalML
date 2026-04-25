@@ -5,9 +5,18 @@ import TopicCard from '../components/ui/TopicCard.astro';
 import { getCollection } from 'astro:content';
 import { tracks } from '../data/curriculum';
 import graphData from '../data/curriculum-graph.json';
+import { synthesizeCrossSiteNodes } from '../lib/synthesizeCrossSiteNodes';
 
 const allTopics = await getCollection('topics');
 const publishedTopics = allTopics.filter((t) => t.data.status === 'published');
+
+// Build-time synthesis of cross-site prereq nodes from MDX frontmatter.
+// Internal-only edges live in curriculum-graph.json; cross-site edges are
+// derived from formalcalculusPrereqs / formalstatisticsPrereqs and merged
+// here without ever touching the JSON.
+const crossSite = synthesizeCrossSiteNodes(publishedTopics);
+const mergedNodes = [...graphData.nodes, ...crossSite.nodes];
+const mergedEdges = [...graphData.edges, ...crossSite.edges];
 
 // Group published topics by domain
 const publishedByDomain = publishedTopics.reduce<Record<string, typeof publishedTopics>>(
@@ -34,29 +43,52 @@ const difficultyOrder = { foundational: 0, intermediate: 1, advanced: 2 };
       <p class="text-sm text-[var(--color-text-secondary)] mb-4">
         Explore the full dependency graph, or browse by track below.
       </p>
-      <CurriculumGraph client:visible nodes={graphData.nodes} edges={graphData.edges} />
+      <CurriculumGraph client:visible nodes={mergedNodes} edges={mergedEdges} />
     </div>
 
     <div class="space-y-10">
-      {tracks.map(({ domain, label, description, planned, calculusDependent }) => {
+      {tracks.map((track, idx) => {
+        const { domain, label, description, planned, calculusDependent, layer } = track;
         const live = (publishedByDomain[domain] ?? []).sort(
           (a, b) => difficultyOrder[a.data.difficulty] - difficultyOrder[b.data.difficulty]
         );
         const isTrackComplete = planned.length === 0 && live.length > 0;
+        // Inject a layer header at every layer transition (and before the very
+        // first track). Source of truth for the layer is curriculum.ts, so
+        // reordering tracks there auto-relocates the header.
+        const isLayerStart = idx === 0 || tracks[idx - 1].layer !== layer;
+        const layerAnchor = layer.toLowerCase().replace(/\s+/g, '-');
 
         return (
-          <div id={domain} class="border-t border-[var(--color-border)] pt-8 scroll-mt-24">
+          <Fragment>
+            {isLayerStart && (
+              <h2
+                id={layerAnchor}
+                class="text-2xl font-bold font-[family-name:var(--font-sans)] tracking-tight pt-4 scroll-mt-24"
+              >
+                {layer}
+              </h2>
+            )}
+            <div id={domain} class="border-t border-[var(--color-border)] pt-8 scroll-mt-24">
             <div class="flex items-baseline gap-3 mb-1">
-              <h2 class="text-lg font-semibold font-[family-name:var(--font-sans)]">{label}</h2>
+              <h3 class="text-lg font-semibold font-[family-name:var(--font-sans)]">{label}</h3>
               {isTrackComplete ? (
                 <span class="text-xs font-medium font-[family-name:var(--font-sans)] px-2 py-0.5 rounded-full bg-[var(--color-badge-green-bg)] text-[var(--color-badge-green-text)]">
                   Track complete
                 </span>
-              ) : live.length > 0 && (
+              ) : live.length > 0 && planned.length > 0 ? (
+                <span class="text-xs font-[family-name:var(--font-sans)] text-[var(--color-accent)]">
+                  {live.length} published / {planned.length} planned
+                </span>
+              ) : live.length > 0 ? (
                 <span class="text-xs font-[family-name:var(--font-sans)] text-[var(--color-accent)]">
                   {live.length} published
                 </span>
-              )}
+              ) : planned.length > 0 ? (
+                <span class="text-xs font-[family-name:var(--font-sans)] text-[var(--color-text-secondary)]">
+                  {planned.length} planned
+                </span>
+              ) : null}
             </div>
             <p class="text-sm text-[var(--color-text-secondary)] mb-4 leading-relaxed">{description}</p>
 
@@ -103,6 +135,7 @@ const difficultyOrder = { foundational: 0, intermediate: 1, advanced: 2 };
               </ul>
             )}
           </div>
+          </Fragment>
         );
       })}
     </div>
@@ -110,8 +143,9 @@ const difficultyOrder = { foundational: 0, intermediate: 1, advanced: 2 };
     <div class="mt-16 border-t border-[var(--color-border)] pt-8">
       <h2 class="text-lg font-semibold font-[family-name:var(--font-sans)] mb-2">Building your foundations?</h2>
       <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed max-w-xl">
-        Many topics here assume fluency with multivariable calculus, limits, and series.
-        If you want to build or refresh those prerequisites,{' '}
+        Many topics here assume fluency with multivariable calculus, limits, and series, plus a
+        working command of probability and statistical inference. If you want to build or refresh
+        those prerequisites,{' '}
         <a
           href="https://formalcalculus.com"
           class="text-[var(--color-accent)] hover:underline"
@@ -120,7 +154,16 @@ const difficultyOrder = { foundational: 0, intermediate: 1, advanced: 2 };
         >
           formalcalculus.com
         </a>{' '}
-        covers the calculus foundations with the same geometric-first approach.
+        covers the calculus foundations and{' '}
+        <a
+          href="https://formalstatistics.com"
+          class="text-[var(--color-accent)] hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          formalstatistics.com
+        </a>{' '}
+        covers the probabilistic and inferential ones — both with the same geometric-first approach.
       </p>
     </div>
   </section>
