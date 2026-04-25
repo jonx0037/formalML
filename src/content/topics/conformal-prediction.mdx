@@ -424,3 +424,71 @@ The factor of $2$ in $1 - 2\alpha$ is worst-case over base predictors. BCRT 2021
 The empirical takeaway visible in the figure: at $n = 60$ — small enough that the calibration tax matters — jackknife+ and CV+ produce tighter intervals than split conformal at the same $\alpha$, and the BCRT $1 - 2\alpha$ bound is loose by a wide margin. The choice between the three procedures is essentially a budget question. With abundant data and an expensive base predictor, split conformal is the workhorse. With a moderate $n$ and a cheap-to-refit predictor, jackknife+ extracts more from each observation. With expensive predictors but enough data to support fold-level fits, CV+ is the practical compromise.
 
 What none of the three procedures achieve — and what §6 addresses — is *locally adaptive width*. Every procedure in §2–§5 produces a band whose half-width is a single global threshold; the band is wide where it doesn't need to be (low-noise regions) and narrow where it shouldn't be (high-noise regions). **Conformalized quantile regression (CQR)** fixes this by replacing the mean-residual nonconformity score with one built from quantile-regression endpoints.
+
+## Conformalized Quantile Regression (CQR)
+
+The split-conformal interval $[\hat\mu(X_{n+1}) - \hat q_{1-\alpha},\ \hat\mu(X_{n+1}) + \hat q_{1-\alpha}]$ has the same half-width $\hat q_{1-\alpha}$ everywhere. On homoscedastic data this is fine — the conditional spread of $Y \mid X$ is constant by hypothesis. On heteroscedastic data it is wasteful where the noise is small and over-confident where the noise is large: the band over-covers in low-noise regions and under-covers in high-noise regions. The marginal coverage guarantee from Theorem 1 still holds — it is an average over the input distribution — but the *conditional* coverage at any specific $x$ can drift far from $1 - \alpha$ in either direction.
+
+**Conformalized quantile regression** (Romano, Patterson & Candès 2019) keeps the conformal envelope but swaps the base learner. Instead of fitting a single mean predictor $\hat\mu$, fit two *quantile* regressions — one estimating the lower conditional quantile $\hat q_{\alpha/2}(x)$ of $Y \mid X = x$, the other estimating the upper conditional quantile $\hat q_{1-\alpha/2}(x)$. The conditional QR endpoints already capture heteroscedasticity by design (they are wider where $Y \mid X$ is more dispersed); the conformal layer wraps them with a calibration step that preserves marginal coverage exactly. CQR thus inherits the distribution-free guarantee of split conformal *and* the locally adaptive width of quantile regression — the best of both worlds, with the only assumption still exchangeability.
+
+Quantile regression itself is a topic for another day. For our purposes, treat $\hat q_{\alpha/2}(x)$ and $\hat q_{1-\alpha/2}(x)$ as black-box functions that take training data and return estimated conditional quantiles — fitted by check-loss minimization, possibly with regularization. **Quantile Regression** *(coming soon)* will cover the estimation theory, asymptotic distribution, and broader applications.
+
+<TheoremBlock type="definition" number={4} title="CQR Prediction Set">
+
+Let $\hat q_{\alpha/2}(x)$ and $\hat q_{1-\alpha/2}(x)$ be quantile-regression estimates of the conditional $\alpha/2$ and $1 - \alpha/2$ quantiles of $Y \mid X = x$, fit on the training set. For each calibration point $i$, define the **CQR nonconformity score**
+
+$$
+E_i \;=\; \max\bigl\{\, \hat q_{\alpha/2}(X_i) - Y_i,\ Y_i - \hat q_{1-\alpha/2}(X_i) \,\bigr\}.
+$$
+
+The score $E_i$ is **positive** when $Y_i$ lies outside the QR interval $[\hat q_{\alpha/2}(X_i),\ \hat q_{1-\alpha/2}(X_i)]$ — measuring how far outside, in the direction of the violation — and **negative** when $Y_i$ lies inside. Let $\hat Q_{1-\alpha}$ denote the $\lceil (1-\alpha)(n_{\text{cal}} + 1) \rceil$-th smallest of $(E_i)_{i=1}^{n_{\text{cal}}}$. The **CQR prediction set** at test input $x$ is
+
+$$
+\hat C_\alpha^{\text{CQR}}(x) \;=\; \bigl[\, \hat q_{\alpha/2}(x) - \hat Q_{1-\alpha},\ \hat q_{1-\alpha/2}(x) + \hat Q_{1-\alpha} \,\bigr].
+$$
+
+</TheoremBlock>
+
+The construction is mechanically simple: shift the lower QR endpoint *down* by $\hat Q_{1-\alpha}$, shift the upper *up* by the same amount. If the QR fits are well-calibrated and most $Y_i$ already fall inside their intervals, then $E_i$ is negative for most $i$, the empirical quantile $\hat Q_{1-\alpha}$ is small or even negative, and CQR produces an interval *narrower* than the QR interval itself (a tighter band, achievable because the calibration step "credits back" the QR's natural slack). If the QR fits are systematically narrow or wrong, $E_i$ is positive for many $i$, $\hat Q_{1-\alpha}$ is large and positive, and the CQR interval *inflates* the QR endpoints to recover the marginal-coverage guarantee. Either way, the band width is allowed to *vary with $x$* — which is the locally adaptive property naive split conformal lacks.
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_cqr.png"
+  alt="Two-panel figure: left shows heteroscedastic regression data with naive split-conformal band (constant width, blue) and CQR band (locally adaptive, green) overlaid; right shows binned conditional coverage as a function of x for both methods with the nominal target line"
+  caption="CQR vs naive split conformal on heteroscedastic data, α = 0.10. Left: both bands achieve nominal marginal coverage, but the CQR band tracks the local noise envelope while the naive band carries a constant width. Right: binned conditional coverage as a function of x. Naive split conformal under-covers in the high-noise tails and over-covers near the low-noise center; CQR's curve is visibly flatter, achieving approximate conditional coverage as a side benefit of the locally adaptive width."
+/>
+
+<TheoremBlock type="theorem" number={3} title="CQR Coverage Inheritance — Romano, Patterson & Candès 2019">
+
+Under exchangeability of $(X_i, Y_i)_{i=1}^{n_{\text{cal}}+1}$,
+
+$$
+\mathbb{P}\bigl( Y_{n_{\text{cal}}+1} \in \hat C_\alpha^{\text{CQR}}(X_{n_{\text{cal}}+1}) \bigr) \;\geq\; 1 - \alpha.
+$$
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+CQR is split conformal applied to the nonconformity score
+
+$$
+s(x, y) \;=\; \max\bigl\{\, \hat q_{\alpha/2}(x) - y,\ y - \hat q_{1-\alpha/2}(x) \,\bigr\}.
+$$
+
+This score depends on the training set (through the fitted quantile regressions $\hat q_{\alpha/2}$ and $\hat q_{1-\alpha/2}$) but not on the calibration or test data — exactly the hypothesis of Theorem 1. The marginal-coverage statement therefore applies verbatim, giving $\mathbb{P}(Y_{n_{\text{cal}}+1} \in \hat C_\alpha^{\text{CQR}}) \ge 1 - \alpha$. The two-sided refinement from Theorem 1 also extends: if the score distribution is continuous, coverage is bounded above by $1 - \alpha + 1/(n_{\text{cal}}+1)$.
+
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="CQR's Novelty Is the Score, Not the Theorem">
+
+The proof of Theorem 3 is one paragraph because CQR is a special case of Theorem 1. The novelty of CQR is *not* a new probabilistic argument — it is the choice of score function. Naive split conformal with $s(x, y) = |y - \hat\mu(x)|$ produces an interval of constant half-width $\hat q_{1-\alpha}$ centered on $\hat\mu(x)$. CQR replaces this with an interval whose endpoints are themselves regressed on $x$: the lower endpoint is $\hat q_{\alpha/2}(x)$ shifted down by $\hat Q_{1-\alpha}$, the upper is $\hat q_{1-\alpha/2}(x)$ shifted up. Because the QR estimates capture heteroscedasticity at the *base-learner* level, the conformal envelope inherits a locally adaptive width without any additional machinery. The lesson generalizes: any time you want a different shape of prediction interval, design the nonconformity score to extract that shape, and let Theorem 1 deliver the coverage guarantee for free.
+
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Approximate Conditional Coverage">
+
+CQR does not achieve *exact* conditional coverage — that is impossible for any distribution-free procedure with finite, informative prediction sets, as we will show in §8. It does achieve an empirically much flatter conditional-coverage curve than naive split conformal, in the sense that the gap $|\mathbb{P}(Y \in \hat C(X) \mid X = x) - (1 - \alpha)|$ is small on average over $x$ when the QR base learner is well-specified. The visualization above makes this precise on a heteroscedastic example: naive split conformal under-covers in the high-noise tails by 5–10 percentage points, while CQR holds within 2–3 percentage points across the input range. The improvement is empirical, not theoretical, and it depends on the QR fits being good enough to capture the conditional spread — which is itself a hard estimation problem for high-dimensional or low-data settings.
+
+</TheoremBlock>
+
+CQR is the practical default whenever the data is visibly heteroscedastic and computational budget allows fitting two quantile regressions. It is also the construction that points furthest in the direction of *conditional* coverage — a property that motivates the impossibility theorem of §8 and the importance-weighted extensions for known covariate shift. Before that, §7 takes the conformal envelope into a different setting entirely: classification, where the response is discrete and "interval" gets replaced by *prediction set*.
