@@ -1,0 +1,130 @@
+---
+title: "Conformal Prediction"
+subtitle: "Distribution-free prediction sets with finite-sample coverage from exchangeability alone"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "concentration-inequalities"
+  - "pca-low-rank"
+formalstatisticsPrereqs:
+  - topic: "order-statistics-and-quantiles"
+    site: "formalstatistics"
+    relationship: "Topic 29 §29.7's distribution-free CI for the population quantile $\\xi_p$ via paired order statistics relies on the same exchangeability + rank-symmetry argument that drives Theorem 1 here; conformal prediction extends rank symmetry from a fixed parameter to a random variable. §29.10 Rem 21 explicitly motivates Vovk-Gammerman-Shafer's distribution-free prediction as that generalization."
+  - topic: "empirical-processes"
+    site: "formalstatistics"
+    relationship: "Topic 32's uniform-convergence theory (DKW inequality, VC dimension, Glivenko-Cantelli) is the asymptotic alternative to conformal's exact finite-sample coverage. The two routes meet at distribution-free prediction: empirical-processes pays a uniform-convergence rate; conformal pays only marginal validity. §1 here frames the trade-off."
+formalcalculusPrereqs: []
+tags:
+  - "nonparametric-ml"
+  - "conformal-prediction"
+  - "uncertainty-quantification"
+  - "distribution-free"
+  - "exchangeability"
+  - "machine-learning"
+domain: "nonparametric-ml"
+videoId: null
+notebookPath: "notebooks/conformal-prediction/01_conformal_prediction.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/conformal-prediction.mdx"
+datePublished: 2026-04-25
+estimatedReadTime: 50
+abstract: "Conformal prediction wraps any black-box predictor in a procedure that produces valid prediction intervals from a single nonparametric assumption: that the training and test data are exchangeable. The marginal coverage guarantee is exact in finite samples — no asymptotics, no distributional assumptions, no bounded-noise hypotheses. We develop the theory progressively: split conformal with a full proof of marginal coverage via rank symmetry; jackknife+ and CV+ for the leave-one-out regime with the BCRT 2021 coverage bound; conformalized quantile regression (CQR) for locally adaptive width; adaptive prediction sets (APS) for classification; and the Foygel-Barber 2021 impossibility theorem for distribution-free conditional coverage."
+connections:
+  - topic: "concentration-inequalities"
+    relationship: "Concentration is the standard tool for bounding empirical-quantile fluctuation; conformal uses rank symmetry instead, which delivers an exact (not asymptotic) finite-sample statement. The contrast is instructive — concentration gives uniform asymptotic bounds, conformal gives marginal exact bounds."
+  - topic: "pca-low-rank"
+    relationship: "Calibration scores function as low-dimensional summaries of prediction error; the leave-one-out updates underlying jackknife+ are formally analogous to LOO covariance updates in low-rank settings."
+  - topic: "measure-theoretic-probability"
+    relationship: "Exchangeability — the only assumption conformal prediction requires — is a measure-theoretic invariance under coordinate permutation, strictly weaker than iid sampling. de Finetti's representation theorem describes the structure of exchangeable sequences."
+  - topic: "pac-learning"
+    relationship: "PAC bounds give *learning* guarantees (low expected loss) under iid assumptions; conformal gives *coverage* guarantees under exchangeability. The two operate on orthogonal axes — predictability versus uncertainty — and the choice of which to use depends on whether the downstream task cares about average error or per-prediction reliability."
+references:
+  - type: "book"
+    title: "Algorithmic Learning in a Random World"
+    authors: "Vovk, Gammerman & Shafer"
+    year: 2005
+    note: "The book that systematized conformal prediction. Definitive reference for the full / transductive variant."
+  - type: "paper"
+    title: "Distribution-free predictive inference for regression"
+    authors: "Lei, G'Sell, Rinaldo, Tibshirani & Wasserman"
+    year: 2018
+    url: "https://doi.org/10.1080/01621459.2017.1307116"
+    note: "The marginal-coverage theorem (Theorem 1) and split conformal as the modern default."
+  - type: "paper"
+    title: "Conformalized quantile regression"
+    authors: "Romano, Patterson & Candès"
+    year: 2019
+    note: "CQR — locally adaptive prediction intervals via a quantile-regression base learner (NeurIPS 2019)."
+  - type: "paper"
+    title: "Classification with valid and adaptive coverage"
+    authors: "Romano, Sesia & Candès"
+    year: 2020
+    note: "APS for classification with approximate conditional coverage (NeurIPS 2020)."
+  - type: "paper"
+    title: "Predictive inference with the jackknife+"
+    authors: "Barber, Candès, Ramdas & Tibshirani"
+    year: 2021
+    url: "https://doi.org/10.1214/20-AOS1965"
+    note: "Jackknife+ and CV+ — leave-one-out conformal with the $1 - 2\\alpha$ coverage bound (Theorem 2)."
+  - type: "paper"
+    title: "The limits of distribution-free conditional predictive inference"
+    authors: "Foygel Barber, Candès, Ramdas & Tibshirani"
+    year: 2021
+    url: "https://doi.org/10.1093/imaiai/iaaa017"
+    note: "Conditional-coverage impossibility (Theorem 4)."
+  - type: "paper"
+    title: "Conformal prediction under covariate shift"
+    authors: "Tibshirani, Foygel Barber, Candès & Ramdas"
+    year: 2019
+    note: "Importance-weighted conformal for known covariate shift (NeurIPS 2019) — the extension powering the ExchangeabilityBreakdown viz."
+  - type: "paper"
+    title: "Conditional validity of inductive conformal predictors"
+    authors: "Vovk"
+    year: 2012
+    note: "Original conditional-coverage impossibility statement; Theorem 4 here generalizes it."
+  - type: "paper"
+    title: "Distributional conformal prediction"
+    authors: "Chernozhukov, Wüthrich & Zhu"
+    year: 2021
+    note: "Conformal prediction extended to full conditional CDF inference (PNAS 2021)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import NamedSection from '../../components/ui/NamedSection.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+
+## Distribution-Free Prediction and the Exchangeability Setup
+
+We observe $n$ feature–response pairs $(X_1, Y_1), \ldots, (X_n, Y_n)$ and want to say something useful about the next pair $(X_{n+1}, Y_{n+1})$. A point estimate $\hat\mu(X_{n+1})$ answers "what's the most likely value of $Y_{n+1}$" but leaves "how much should we trust this answer" untouched. A *prediction set* $\hat C_\alpha(X_{n+1}) \subseteq \mathcal{Y}$ is a data-dependent subset of the response space chosen so that
+
+$$
+\mathbb{P}\bigl( Y_{n+1} \in \hat C_\alpha(X_{n+1}) \bigr) \;\geq\; 1 - \alpha,
+$$
+
+where $\alpha \in (0, 1)$ is the *miscoverage level* and the probability is over the joint distribution of training, calibration, and test data. Conformal prediction is the construction that makes $\hat C_\alpha$ valid in this sense — without distributional assumptions on $(X, Y)$, without bounded-noise hypotheses, and without asymptotics. The only assumption is **exchangeability**.
+
+Two structural points distinguish a prediction set from a confidence interval. First, a confidence interval covers a *fixed parameter* (a population mean, a quantile $\xi_p$); a prediction set covers a *random variable* — the unobserved $Y_{n+1}$. Second, the confidence interval shrinks at rate $1/\sqrt{n}$ as the sample size grows, whereas the prediction set has an *irreducible width* set by the noise distribution: even with infinite training data, a prediction set for $Y_{n+1} \mid X_{n+1}$ can never be tighter than the conditional spread of $Y$ at that input.
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_ci_vs_prediction_set.png"
+  alt="Side-by-side panels showing a confidence band for the conditional mean (narrow, shrinks with n) and a prediction set for the next observation (wider, set by noise scale)"
+  caption="Confidence intervals shrink at $1/\sqrt{n}$ and cover the regression function $\mathbb{E}[Y \mid X = x]$. Prediction sets accommodate the irreducible noise of $Y \mid X$ and have a width floor independent of $n$. The two objects answer different questions."
+/>
+
+This contrast — CI for a parameter, prediction set for a random variable — is the same one that <ExternalLink href="https://formalstatistics.com/topics/order-statistics-and-quantiles" site="formalstatistics" topic="Order Statistics & Quantiles" /> draws when introducing distribution-free CIs for the population quantile $\xi_p$ via paired order statistics. The argument used there relies on rank symmetry under exchangeability, and Topic 29 §29.10 Remark 21 explicitly motivates Vovk–Gammerman–Shafer's distribution-free prediction as the natural generalization from a fixed parameter to a random variable. We will see this same rank-symmetry machinery in §3's proof of marginal coverage.
+
+<TheoremBlock type="definition" number={1} title="Exchangeability">
+
+A finite sequence of random variables $Z_1, \ldots, Z_N$ is **exchangeable** if its joint distribution is invariant under coordinate permutation: for every permutation $\pi$ of $\{1, \ldots, N\}$,
+
+$$
+(Z_1, \ldots, Z_N) \;\stackrel{d}{=}\; (Z_{\pi(1)}, \ldots, Z_{\pi(N)}).
+$$
+
+</TheoremBlock>
+
+Exchangeability is strictly weaker than iid. Every iid sample is exchangeable — permuting independent draws from a common distribution leaves the joint law unchanged — but the converse fails: an urn drawn *without* replacement is exchangeable (any permutation of the draws is equally likely as a sequence) yet not iid (later draws depend on earlier ones). The structure of exchangeable sequences is described by de Finetti's representation theorem: an infinite exchangeable sequence is a *mixture* of iid sequences, with the mixing measure capturing whatever shared latent structure links the observations. For finite-sample purposes, that subtlety doesn't bite — what we need is the symmetry property itself.
+
+The bet conformal prediction makes is that exchangeability holds for the augmented sequence $(X_1, Y_1), \ldots, (X_{n+1}, Y_{n+1})$ — training, calibration, and test points all drawn from the same source. This is genuinely weaker than iid: it accommodates dependence within the dataset (the urn case, time-series with stationary increments, certain sampling-without-replacement designs) provided that no observation has a privileged position. What it does *not* accommodate is **distribution shift** — a test distribution that differs from the training distribution. We return to this in §8, where we visualize how naive conformal prediction degrades under covariate shift and see how the importance-weighted variant of <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" />'s sister technique (Tibshirani et al. 2019) restores marginal coverage when the shift is known.
+
+The asymptotic alternative to conformal prediction is the empirical-processes route: Topic 32 of formalstatistics develops uniform-convergence bounds (DKW, VC dimension, Glivenko–Cantelli) that imply distribution-free coverage in the large-$n$ limit. Conformal prediction sidesteps the uniform-convergence rate entirely — it gives an *exact* finite-sample statement — at the price that the coverage is *marginal* rather than *conditional* (a distinction that becomes the impossibility theorem of §8). Both routes lead to distribution-free prediction; they pay different prices.
