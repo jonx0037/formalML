@@ -5,6 +5,24 @@
 formalML is a static site of long-form mathematical explainers for ML practitioners, grad students, and researchers. Every topic gets three pillars: rigorous math, interactive visualization, and working code.
 
 Live site: https://formalml.com
+Predecessor sites: https://formalcalculus.com, https://formalstatistics.com
+
+## Curriculum Architecture
+
+formalML has two layers:
+
+**Foundations layer (8 tracks, 35 topics — feature-complete):**
+- Topology & TDA, Linear Algebra, Probability & Statistics, Optimization,
+  Differential Geometry, Information Theory, Graph Theory, Category Theory
+
+**ML Methodology layer (5 tracks, 32 topics planned):**
+- T2 Supervised Learning (3 topics)
+- T3 Unsupervised & Generative (3 topics)
+- T4 Nonparametric & Distribution-Free (6 topics)
+- T5 Bayesian & Probabilistic ML (13 topics)
+- T6 Learning Theory & Methodology (7 topics)
+
+The 32 ML Methodology topics discharge forward-pointers from formalstatistics.com Topics 22–32. See [docs/plans/formalml-consolidated-strategic-planning-document.md](docs/plans/formalml-consolidated-strategic-planning-document.md) for the full inventory, track rationale, and first-wave sequencing recommendation.
 
 ## Tech Stack
 
@@ -59,7 +77,27 @@ public/images/          # Static images organized by topic
 
 Each topic in `src/content/topics/` is an MDX file with YAML frontmatter defining:
 - title, description, domain, difficulty, prerequisites, references
+- `formalcalculusPrereqs` — array of formalcalculus.com topic slugs this topic requires (backward edge)
+- `formalstatisticsPrereqs` — array of formalstatistics.com topic slugs this topic requires (backward edge)
 - Interactive viz components are imported and embedded inline
+
+### Cross-site references
+
+formalML is the third site in the triad: **formalcalculus → formalstatistics → formalML**. Cross-site relationships are declared in MDX frontmatter using six fields, all auto-validated by `pnpm audit:cross-site` for reciprocity:
+
+| Field | Direction | Use on formalML topics |
+|---|---|---|
+| `formalcalculusPrereqs` | backward | Calculus topics this ML topic requires |
+| `formalstatisticsPrereqs` | backward | Statistics topics this ML topic requires |
+| `formalcalculusConnections` | forward | Calculus topics this ML topic informs (rare) |
+| `formalstatisticsConnections` | forward | Statistics topics this ML topic informs (rare) |
+| `formalmlPrereqs` / `formalmlConnections` | self | Do **not** use — flagged as `self-site` by the audit |
+
+Each entry is an object with `topic` (slug, no extension), `site` (`formalcalculus` \| `formalstatistics`), and `relationship` (≥40 chars of explanatory prose). Reciprocal entries on the target side are required — when target topic doesn't exist yet, the audit logs it in [docs/plans/deferred-reciprocals.md](docs/plans/deferred-reciprocals.md) for retrieval at ship time.
+
+For inline body references to sister-site topics, port formalstatistics's `<ExternalLink>` component (interface `{ href, site, topic }`) to `src/components/ui/ExternalLink.astro` when the first cross-site-prereq topic ships. For planned-but-not-yet-published *internal* formalML topics, use plain text: `**Variational Inference** *(coming soon)*`.
+
+The cross-site infrastructure is documented in detail in [docs/plans/cross-site-audit-report.md](docs/plans/cross-site-audit-report.md) and the strategic planning doc §5.
 
 ### Visualization components
 
@@ -126,6 +164,15 @@ Bare markdown `![alt](path)` images still render correctly (mobile-safe via glob
 - Prefer named exports
 - D3 selections scoped to component refs — no global DOM manipulation
 
+### Code-example language policy
+
+Default for all topics: Python + NumPy / SciPy / scikit-learn / pandas / matplotlib.
+
+PyTorch / JAX allowed only for these seven planned topics (per strategic planning doc §8.2):
+`normalizing-flows`, `bayesian-neural-networks`, `meta-learning`, `stochastic-gradient-mcmc`, `variational-inference`, `density-ratio-estimation` (neural DRE section only), `probabilistic-programming` (Stan / PyMC / NumPyro is the subject matter).
+
+All other topics stay in the NumPy/SciPy default. Notebook cells must run CPU-only in under 60 seconds on a 2020-era laptop — no GPU requirements.
+
 ## Do NOT
 
 - Use npm or generate package-lock.json
@@ -133,6 +180,10 @@ Bare markdown `![alt](path)` images still render correctly (mobile-safe via glob
 - Create draft files outside src/content/topics/ — drafts live as unpublished MDX
 - Add algebra to foundational-level topics
 - Write one-line proof sketches — expand or omit
+- Create formalML topics for engineering duplicates of formalstatistics coverage (`logistic-regression`, `generalized-linear-models` engineering flavors) — redirect per strategic planning doc §5.4
+- Create standalone topics for `cross-validation`, `ab-testing`, `weight-decay` — these are named sections within host topics per strategic planning doc §7.3
+- Place Gaussian processes in T2 Supervised Learning — they belong in T5 Bayesian ML per strategic planning doc §3.5
+- Use `formalmlPrereqs` or `formalmlConnections` on a formalML topic — those are reserved for sister sites pointing inward; the audit flags self-pointing as `self-site`
 
 ## Editorial Voice
 
