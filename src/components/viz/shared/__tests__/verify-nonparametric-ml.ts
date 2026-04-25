@@ -287,11 +287,18 @@ function test_5_5_uniform_weighted_equals_split(): void {
   const lowersAgree = approxEqArrays(split.lower, weighted.lower, 1e-9);
   const uppersAgree = approxEqArrays(split.upper, weighted.upper, 1e-9);
   ok(
-    '5.5 weighted (uniform) ⇔ split conformal',
+    '5.5a weighted (uniform) ⇔ split conformal arrays',
     lowersAgree && uppersAgree,
     lowersAgree && uppersAgree
       ? 'lower and upper arrays match within 1e-9'
       : 'arrays differ — see split.qHat vs weighted threshold logic',
+  );
+  // Regression guard for PR #55 review feedback: weightedSplitConformal must
+  // surface a finite qHat (last test point's threshold), not NaN.
+  ok(
+    '5.5b weighted qHat is finite',
+    Number.isFinite(weighted.qHat),
+    `weighted.qHat = ${weighted.qHat} (must be a finite number — see PR #55 review)`,
   );
 }
 
