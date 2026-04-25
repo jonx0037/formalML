@@ -349,17 +349,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Mean-shift clustering uses gradient ascent on $\hat f_h$ to find local modes — the KDE's stationary points *are* the cluster centers. §30.9 Rem 18 pointer; forthcoming on formalml._
 
-## When `formalml/conformal-prediction` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/empirical-processes** declares `formalmlConnections` → `conformal-prediction` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Conformal prediction constructs distribution-free CIs via exchangeability rather than empirical-process asymptotics; the two meet at Topic 29 §29.5's DKW inequality and Topic 32's uniform bands._
-- **formalStatistics/order-statistics-and-quantiles** declares `formalmlConnections` → `conformal-prediction` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Vovk–Gammerman–Shafer distribution-free prediction. §29.10 Rem 21 motivates via §29.7's quantile-CI perspective; forthcoming on formalml._
-
 ## When `formalml/cross-entropy-loss` ships
 
 Add the reciprocal pointer back to:
