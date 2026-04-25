@@ -38,7 +38,11 @@ const N_TRAIN = 600;
 const N_CAL = 399;
 const N_TEST = 600;
 const K = 3;
-const GRID_RESOLUTION = 100;
+// 60 keeps the heatmap visually crisp (cell ≈ 4–6 px wide on the typical reading
+// width) while keeping per-render DOM mutations to ~7K rects across both panels
+// — within smooth slider-drag budget on mid-range mobile. Bumping this back to
+// 100 produces 20K rects per render and visibly janks. (PR #56 review feedback.)
+const GRID_RESOLUTION = 60;
 const ALPHA_MIN = 0.05;
 const ALPHA_MAX = 0.30;
 const ALPHA_STEP = 0.01;
