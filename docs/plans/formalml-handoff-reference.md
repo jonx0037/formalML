@@ -62,8 +62,18 @@ references:                                 # Required. Array of citation object
     year: 2011
     url: "https://doi.org/..."              #   Papers should include DOI/URL.
     note: "Brief relevance note"
+formalcalculusPrereqs:                      # Optional. Cross-site backward edges to formalcalculus.com.
+  - topic: "jacobian"                       #   `topic` is the slug on formalcalculus (no extension).
+    site: "formalcalculus"
+    relationship: "≥40 chars of explanatory prose tying this topic's section/theorem to the calculus prereq."
+formalstatisticsPrereqs:                    # Optional. Cross-site backward edges to formalstatistics.com.
+  - topic: "kernel-density-estimation"      #   `topic` is the slug on formalstatistics.
+    site: "formalstatistics"
+    relationship: "≥40 chars of explanatory prose."
 ---
 ```
+
+**Cross-site fields** are validated end-to-end by `pnpm audit:cross-site` (`scripts/audit-cross-site-links.mjs`). See §10 for the full schema, the deferred-reciprocals workflow, and the `<ExternalLink>` body-component port.
 
 ### Common slug mistakes to avoid
 
@@ -273,6 +283,10 @@ export const results = computeExpensiveData();
 
 ## 5. Published Topics (current state)
 
+The Foundations layer (8 tracks, 35 topics) is feature-complete. The ML Methodology layer (5 tracks, 32 topics) is planned per the strategic planning document — track sub-tables below are seeded empty and grow as topics ship.
+
+### Foundations layer
+
 | Slug | Title | Domain | Difficulty |
 |------|-------|--------|------------|
 | `simplicial-complexes` | Simplicial Complexes | topology | foundational |
@@ -286,7 +300,68 @@ export const results = computeExpensiveData();
 | `svd` | Singular Value Decomposition | linear-algebra | intermediate |
 | `pca-low-rank` | PCA & Low-Rank Approximation | linear-algebra | intermediate |
 
-When writing a new brief, check this table to use the correct slugs for prerequisites and connections.
+(Plus 25 more topics across probability, optimization, geometry, information-theory, graph-theory, category-theory — all 35 are live and inspectable in `src/content/topics/`.)
+
+### ML Methodology layer (planned, no rows yet)
+
+#### Supervised Learning (3 topics planned — strategic doc §3.2)
+
+| Slug | Title | Difficulty |
+|------|-------|------------|
+| `kernel-regression` | _planned_ | intermediate |
+| `local-regression` | _planned_ | intermediate |
+| `high-dimensional-regression` | _planned_ | advanced |
+
+#### Unsupervised & Generative (3 topics planned — strategic doc §3.3)
+
+| Slug | Title | Difficulty |
+|------|-------|------------|
+| `clustering` | _planned_ | intermediate |
+| `density-ratio-estimation` | _planned_ | advanced |
+| `normalizing-flows` | _planned_ | advanced |
+
+#### Nonparametric & Distribution-Free (6 topics planned — strategic doc §3.4)
+
+| Slug | Title | Difficulty |
+|------|-------|------------|
+| `conformal-prediction` | _planned_ | intermediate |
+| `quantile-regression` | _planned_ | intermediate |
+| `rank-tests` | _planned_ | intermediate |
+| `extreme-value-theory` | _planned_ | advanced |
+| `statistical-depth` | _planned_ | advanced |
+| `prediction-intervals` | _planned_ | intermediate |
+
+#### Bayesian & Probabilistic ML (13 topics planned — strategic doc §3.5)
+
+| Slug | Title | Difficulty |
+|------|-------|------------|
+| `variational-inference` | _planned_ | intermediate |
+| `gaussian-processes` | _planned_ | intermediate |
+| `probabilistic-programming` | _planned_ | intermediate |
+| `mixed-effects` | _planned_ | intermediate |
+| `stacking-and-predictive-ensembles` | _planned_ | intermediate |
+| `bayesian-neural-networks` | _planned_ | advanced |
+| `variational-bayes-for-model-selection` | _planned_ | advanced |
+| `sparse-bayesian-priors` | _planned_ | advanced |
+| `meta-learning` | _planned_ | advanced |
+| `stochastic-gradient-mcmc` | _planned_ | advanced |
+| `sequential-monte-carlo` | _planned_ | advanced |
+| `reversible-jump-mcmc` | _planned_ | advanced |
+| `riemann-manifold-hmc` | _planned_ | advanced |
+
+#### Learning Theory & Methodology (7 topics planned — strategic doc §3.7)
+
+| Slug | Title | Difficulty |
+|------|-------|------------|
+| `generalization-bounds` | _planned_ | intermediate |
+| `vc-dimension` | _planned_ | intermediate |
+| `uncertainty-quantification` | _planned_ | intermediate |
+| `pac-bayes-bounds` | _planned_ | advanced |
+| `semiparametric-inference` | _planned_ | advanced |
+| `causal-inference-methods` | _planned_ | advanced |
+| `double-descent` | _planned_ | advanced |
+
+When writing a new brief, check the appropriate table for the correct slug. As topics ship, replace `_planned_` with the actual title.
 
 ---
 
@@ -312,7 +387,11 @@ Remove the topic title from the `planned` array of its domain track. Do **not** 
 
 ### Domain keys (exhaustive list)
 
-`topology`, `linear-algebra`, `probability`, `optimization`, `geometry`, `information-theory`, `graph-theory`, `category-theory`
+**Foundations layer (8 keys):** `topology`, `linear-algebra`, `probability`, `optimization`, `geometry`, `information-theory`, `graph-theory`, `category-theory`
+
+**ML Methodology layer (5 new keys, added as tracks open):** `supervised-learning`, `unsupervised`, `nonparametric-ml`, `bayesian-ml`, `learning-theory`
+
+These match the proposed shared-module names from strategic planning doc §6.2 and §7.4.
 
 ---
 
@@ -341,6 +420,9 @@ These are real discrepancies found during implementation. Each one wasted time o
 | Dead code | Computed `nnzTarget` but never used it | Remove or use | TypeScript `noUnusedLocals` failure |
 | Click handler | Empty `.on('click')` then re-bound via `.each()` | Single `.each()` handler | Dead code, confusing to read |
 | Disabled UI option | `polynomial` kernel type shown but disabled | Remove until implemented | Type mismatch risk, confusing UX |
+| Cross-site frontmatter | Missing `formalcalculusPrereqs` / `formalstatisticsPrereqs` | Required for all ML Methodology topics; auto-validated by `pnpm audit:cross-site` | Missing reciprocals on sister sites — breaks the audit |
+| Track placement | Brief proposes `gaussian-processes` in T2 Supervised | Strategic doc §3.5 places it in T5 Bayesian ML | Wrong navigation grouping |
+| Standalone slug for cross-cutting concept | Brief proposes `cross-validation` as own topic | Strategic doc §7.3 names-section policy: lives inside `conformal-prediction` / `high-dimensional-regression` | Duplicate content, slug never minted |
 
 ### How to prevent these in future briefs
 
@@ -367,7 +449,64 @@ These rules come from `CLAUDE.md` and should be reflected in the brief's content
 
 ---
 
-## 10. Brief Template Skeleton
+## 10. Cross-Site References
+
+formalML is the third site in the triad: **formalcalculus → formalstatistics → formalML**. Every ML Methodology topic should declare its sister-site prerequisites explicitly.
+
+### Frontmatter schema (six fields, auto-audited)
+
+| Field | Direction | Use on formalML topics |
+|---|---|---|
+| `formalcalculusPrereqs` | backward | Calculus topics this ML topic requires |
+| `formalstatisticsPrereqs` | backward | Statistics topics this ML topic requires |
+| `formalcalculusConnections` | forward | Calculus topics this ML topic informs (rare) |
+| `formalstatisticsConnections` | forward | Statistics topics this ML topic informs (rare) |
+| `formalmlPrereqs` / `formalmlConnections` | self | Do **not** use — flagged as `self-site` by the audit |
+
+Per-entry shape:
+
+```yaml
+formalstatisticsPrereqs:
+  - topic: "kernel-density-estimation"      # slug, no extension
+    site: "formalstatistics"                # explicit, even though field implies it
+    relationship: "≥40 chars of explanatory prose tying this topic's
+                   section/theorem to the prereq. Audit warns if <40 chars."
+```
+
+### Audit and reciprocity
+
+`pnpm audit:cross-site` runs `scripts/audit-cross-site-links.mjs` against all three sibling repos (paths configurable via `FORMAL_CALCULUS_PATH` / `FORMAL_STATISTICS_PATH`). It walks every `.mdx`, extracts the six fields, and verifies that every `A.x → B.y` edge has a reciprocal `B.y → A.x` with the opposite direction (`Prereqs ↔ Connections`).
+
+Outputs:
+
+- [docs/plans/cross-site-audit-report.md](cross-site-audit-report.md) — consolidated reciprocity report (slug drift, missing reciprocals, deferred targets)
+- [docs/plans/deferred-reciprocals.md](deferred-reciprocals.md) — log of edges pointing at slugs that don't yet exist on the target repo, organized by "When `<repo>/<slug>` ships" sections with the source-side prose stub
+- `docs/plans/audit-output/<site>-references.json` — per-site edge dumps (machine-readable)
+
+### Workflow at ship time
+
+When a new ML Methodology topic ships on formalML:
+
+1. Confirm the topic's frontmatter includes `formalcalculusPrereqs` / `formalstatisticsPrereqs` for every cross-site prereq, with `relationship` ≥ 40 chars.
+2. Search [deferred-reciprocals.md](deferred-reciprocals.md) for the new topic's slug under "When `formalml/<slug>` ships" headings — those entries are the canonical PR sweep targets on formalstatistics and/or formalcalculus.
+3. On the sister-site repo(s), add the reciprocal field (`formalstatisticsConnections` / `formalcalculusConnections`) to each source topic, copying the source-side prose stub from `deferred-reciprocals.md` and rewriting from the new topic's vantage.
+4. Re-run `pnpm audit:cross-site` (from any of the three repos with the sibling paths configured) to confirm the deferred entry disappears and reciprocity holds.
+
+### Inline body links to sister-site topics
+
+For specific in-prose mentions of sister-site topics, port the formalstatistics `<ExternalLink>` component (interface `{ href, site, topic }`) to `src/components/ui/ExternalLink.astro`. Build it during the first-wave topic that introduces a cross-site body link — typically the same PR that introduces the first `formalcalculusPrereqs` / `formalstatisticsPrereqs` frontmatter.
+
+For planned-but-not-yet-published *internal* formalML topics, use plain text:
+
+```mdx
+**Tensor Decompositions** *(coming soon)* generalize PCA to multi-way arrays.
+```
+
+No link, no 404 risk. Subsequent authors convert plain-text references to Markdown links when the referenced topic ships.
+
+---
+
+## 11. Brief Template Skeleton
 
 When composing a new handoff brief, use this structure:
 
@@ -431,7 +570,7 @@ When composing a new handoff brief, use this structure:
 
 ---
 
-## 11. Shared Infrastructure API Reference
+## 12. Shared Infrastructure API Reference
 
 ### `useD3<T>(renderFn, deps)` — `src/components/viz/shared/useD3.ts`
 
