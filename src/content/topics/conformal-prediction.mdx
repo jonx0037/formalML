@@ -108,7 +108,7 @@ Two structural points distinguish a prediction set from a confidence interval. F
 <Figure
   src="/images/topics/conformal-prediction/conformal_ci_vs_prediction_set.png"
   alt="Side-by-side panels showing a confidence band for the conditional mean (narrow, shrinks with n) and a prediction set for the next observation (wider, set by noise scale)"
-  caption="Confidence intervals shrink at $1/\sqrt{n}$ and cover the regression function $\mathbb{E}[Y \mid X = x]$. Prediction sets accommodate the irreducible noise of $Y \mid X$ and have a width floor independent of $n$. The two objects answer different questions."
+  caption="Confidence intervals shrink at rate 1/√n and cover the regression function E[Y | X = x]. Prediction sets accommodate the irreducible noise of Y | X and have a width floor independent of n. The two objects answer different questions."
 />
 
 This contrast — CI for a parameter, prediction set for a random variable — is the same one that <ExternalLink href="https://formalstatistics.com/topics/order-statistics-and-quantiles" site="formalstatistics" topic="Order Statistics & Quantiles" /> draws when introducing distribution-free CIs for the population quantile $\xi_p$ via paired order statistics. The argument used there relies on rank symmetry under exchangeability, and Topic 29 §29.10 Remark 21 explicitly motivates Vovk–Gammerman–Shafer's distribution-free prediction as the natural generalization from a fixed parameter to a random variable. We will see this same rank-symmetry machinery in §3's proof of marginal coverage.
@@ -180,7 +180,105 @@ The "$+1$" inside the ceiling deserves a moment. It looks fussy — and it is, i
 <Figure
   src="/images/topics/conformal-prediction/conformal_split_construction.png"
   alt="Three-panel figure showing one run of split conformal: histogram of calibration scores with the threshold line, prediction band overlaid on training and calibration data, and a test set colored by whether each observation falls inside the band"
-  caption="One run of split conformal on heteroscedastic regression data. Left: calibration scores $S_i = |Y_i - \hat\mu(X_i)|$ with the $\hat k = \lceil 0.9 \cdot 201 \rceil = 181$-th rank threshold. Middle: the symmetric prediction band $\hat\mu(x) \pm \hat q_{1-\alpha}$ — note the constant width independent of $x$. Right: empirical coverage on a held-out test set (90.0% here, against a target of 90%). The width insensitivity to $x$ is what CQR (§6) fixes."
+  caption="One run of split conformal on heteroscedastic regression data. Left: calibration scores (absolute residuals between observed and predicted y) with the rank-181 threshold at α = 0.10, n_cal = 200. Middle: the symmetric prediction band (predictor ± threshold) — note the constant width independent of x. Right: empirical coverage on a held-out test set (90.0% here, against a target of 90%). The width insensitivity to x is what CQR (§6) fixes."
 />
 
 The construction is so spare that it raises an immediate question: why does this work? Nothing in steps 1–4 used the joint distribution of $(X, Y)$, the smoothness of $\hat\mu$, or any property of the base predictor beyond its having been fit *before* the calibration scores were computed. The next section gives the answer — Theorem 1 (marginal coverage), proved entirely from rank symmetry under exchangeability.
+
+## Marginal Coverage: The Central Theorem
+
+Theorem 1 is the reason split conformal works. It is also the reason the construction is so insensitive to the choice of base predictor and nonconformity score — the proof never opens those black boxes. Everything follows from a single combinatorial fact: under exchangeability, the test-point score is equally likely to land at any rank within the augmented sequence of calibration-plus-test scores. Convert that rank uniformity to a coverage probability, and the bound is finite-sample, two-sided, and tight.
+
+<TheoremBlock type="theorem" number={1} title="Marginal Coverage — Lei, G'Sell, Rinaldo, Tibshirani & Wasserman 2018">
+
+Let $(X_i, Y_i)_{i=1}^{n_{\text{cal}} + 1}$ be exchangeable, where the first $n_{\text{cal}}$ pairs constitute the calibration set and $(X_{n_{\text{cal}}+1}, Y_{n_{\text{cal}}+1})$ is a test point. Suppose the nonconformity score $s$ does not depend on the calibration or test set — for example, it depends only on a separately-trained predictor. Then the split conformal prediction set $\hat C_\alpha$ at level $\alpha \in (0, 1)$ satisfies
+
+$$
+\mathbb{P}\bigl( Y_{n_{\text{cal}}+1} \in \hat C_\alpha(X_{n_{\text{cal}}+1}) \bigr) \;\geq\; 1 - \alpha.
+$$
+
+Moreover, if the score distribution is continuous (no ties almost surely),
+
+$$
+\mathbb{P}\bigl( Y_{n_{\text{cal}}+1} \in \hat C_\alpha(X_{n_{\text{cal}}+1}) \bigr) \;\leq\; 1 - \alpha + \frac{1}{n_{\text{cal}} + 1}.
+$$
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+Let $S_i = s(X_i, Y_i)$ for $i = 1, \ldots, n_{\text{cal}} + 1$. Because $s$ is a fixed function — the training set has been consumed already, and $s$ does not depend on the remaining $n_{\text{cal}} + 1$ points — exchangeability of the underlying pairs lifts to exchangeability of the scores: the joint distribution of $(S_1, \ldots, S_{n_{\text{cal}}+1})$ is invariant under any permutation of indices.
+
+Let $R$ denote the **rank** of the test-point score $S_{n_{\text{cal}}+1}$ in the augmented vector $(S_1, \ldots, S_{n_{\text{cal}}+1})$, that is,
+
+$$
+R \;=\; \#\bigl\{ i \in \{1, \ldots, n_{\text{cal}} + 1\} \,:\, S_i \le S_{n_{\text{cal}}+1} \bigr\}.
+$$
+
+Continuity of the score distribution ensures no ties almost surely, so $R$ is well-defined as an integer in $\{1, \ldots, n_{\text{cal}} + 1\}$. Exchangeability means each of the $n_{\text{cal}} + 1$ positions is equally likely to be the test point's, so
+
+$$
+\mathbb{P}(R = j) \;=\; \frac{1}{n_{\text{cal}} + 1} \quad \text{for each } j \in \{1, \ldots, n_{\text{cal}} + 1\}. \tag{$\ast$}
+$$
+
+In words: $R$ is uniformly distributed on $\{1, \ldots, n_{\text{cal}} + 1\}$. This is the only probabilistic fact the proof needs.
+
+Set $\hat k = \lceil (1 - \alpha)(n_{\text{cal}} + 1) \rceil$. The prediction set covers $Y_{n_{\text{cal}}+1}$ iff the test score lies at or below the threshold:
+
+$$
+\begin{aligned}
+Y_{n_{\text{cal}}+1} \in \hat C_\alpha
+\;&\iff\; S_{n_{\text{cal}}+1} \le \hat q_{1-\alpha} \\
+\;&\iff\; S_{n_{\text{cal}}+1} \text{ ranks at most } \hat k \text{ among } (S_1, \ldots, S_{n_{\text{cal}}}).
+\end{aligned}
+$$
+
+A short combinatorial step converts the calibration-set rank to the augmented-set rank. If $S_{n_{\text{cal}}+1}$ occupies augmented rank $R$, exactly $R - 1$ of the augmented scores are strictly smaller than it; each of those $R - 1$ smaller scores must lie in the calibration set (the test set contributes only $S_{n_{\text{cal}}+1}$ itself). So $S_{n_{\text{cal}}+1}$ ranks at most $\hat k$ among the calibration scores precisely when $R \le \hat k$:
+
+$$
+S_{n_{\text{cal}}+1} \text{ ranks at most } \hat k \text{ among calibration scores} \;\iff\; R \le \hat k.
+$$
+
+Combining with ($\ast$):
+
+$$
+\mathbb{P}\bigl( Y_{n_{\text{cal}}+1} \in \hat C_\alpha \bigr) \;=\; \mathbb{P}(R \le \hat k) \;=\; \frac{\hat k}{n_{\text{cal}} + 1}.
+$$
+
+The lower bound is immediate from the definition of $\hat k$:
+
+$$
+\hat k \;=\; \lceil (1 - \alpha)(n_{\text{cal}} + 1) \rceil \;\geq\; (1 - \alpha)(n_{\text{cal}} + 1),
+$$
+
+so $\mathbb{P}(Y_{n_{\text{cal}}+1} \in \hat C_\alpha) \ge 1 - \alpha$. For the upper bound, use $\lceil z \rceil \le z + 1$:
+
+$$
+\hat k \;\leq\; (1 - \alpha)(n_{\text{cal}} + 1) + 1,
+$$
+
+so
+
+$$
+\mathbb{P}\bigl( Y_{n_{\text{cal}}+1} \in \hat C_\alpha \bigr) \;\leq\; (1 - \alpha) + \frac{1}{n_{\text{cal}} + 1}.
+$$
+
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Marginal Coverage Proof Independence">
+
+The proof never opens the black box of $\hat\mu$ or invokes a property of the data beyond exchangeability. It does not assume that $Y$ has finite moments, that $X$ lies in a bounded set, or that the marginal distribution is continuous — only that the *score* distribution is continuous (which holds almost surely whenever $Y \mid X$ has a continuous conditional density, the typical regression setting). The score function $s$ is chosen by the analyst; the only restriction is that $s$ not depend on the calibration or test data, equivalent to fitting any tunable parts of $s$ — including the predictor $\hat\mu$ and its hyperparameters — using only the training set.
+
+</TheoremBlock>
+
+The two-sided bound says coverage concentrates in a strip of width $\frac{1}{n_{\text{cal}} + 1}$ above $1 - \alpha$. At $n_{\text{cal}} = 200$ and $\alpha = 0.10$ the strip is $[0.90,\ 0.9050]$ — only $0.5$ percentage points wide. The next visualization runs $T = 500$ Monte Carlo trials at user-controlled $(\alpha, n_{\text{cal}})$ and shows the empirical coverage histogram concentrating inside the predicted band. Drag the calibration-size slider to see the strip narrow as $n_{\text{cal}}$ grows — and notice that even the $n_{\text{cal}} = 20$ regime (where the upper bound is fully $5$ percentage points above $1 - \alpha$) preserves marginal validity in expectation.
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_marginal_coverage.png"
+  alt="Four-panel verification: running coverage convergence over T trials, coverage stability across calibration-set sizes, coverage as a function of alpha, and distribution of batched coverage values relative to the theoretical bounds"
+  caption="Empirical confirmation across configurations: split conformal coverage stays inside the [1−α, 1−α + 1/(n_cal + 1)] band predicted by Theorem 1. The bottom-right panel chunks T = 4000 trials into batches of 100 and plots the per-batch coverage against the lower-bound (red dashed) and upper-bound (amber dotted) lines — the bounds are demonstrably tight, not loose."
+/>
+
+The bound is **tight**, not just a one-sided guarantee — and that tightness is doing real work. A naive reading of "$\ge 1 - \alpha$" might suggest the procedure could over-cover wildly with no statistical penalty, but Theorem 1's upper bound rules that out: split conformal does not waste coverage. As long as the score distribution is continuous and exchangeability holds, the procedure delivers within $\tfrac{1}{n_{\text{cal}} + 1}$ of nominal — no looser, no tighter.
+
+What the bound does *not* say is anything about *conditional* coverage at a specific $X = x$. The marginal probability averages over the distribution of $X$, so a procedure that under-covers in one region and over-covers in another can still satisfy Theorem 1. We return to this in §8 with the Foygel-Barber 2021 impossibility theorem.
