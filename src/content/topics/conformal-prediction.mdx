@@ -664,3 +664,33 @@ The impossibility motivates an extension that has become the standard fix when t
      directly illustrating Remark 3 (Covariate Shift Connection). */}
 
 The takeaway from §8 is paired. *Negative*: distribution-free conditional coverage is impossible at full generality; any procedure claiming it must restrict to a smaller distribution class. *Positive*: marginal coverage under shift is recoverable when the shift is known, via importance-weighted variants of the procedures we've already developed. Conditional coverage in practice is achieved approximately by adaptive base learners (CQR, APS) and assessed empirically — an honest report of the per-region coverage gap, not a theoretical guarantee. With these limits drawn, §9 returns to the practical question that motivated the topic: how do we wrap conformal prediction around any black-box ML model?
+
+## Wrapping Black-Box ML Models
+
+The whole point of conformal prediction's distribution-free guarantee is that the base predictor can be *anything* — ridge regression, gradient boosting, random forest, neural network, transformer, anything that maps inputs to predictions. Theorem 1 doesn't care what's inside; it only cares that the score function is held fixed across calibration and test. This means the entire topic up to here applies, unchanged, to any model you already have.
+
+The skeleton in five steps:
+
+**Step 1 — Split.** Partition your data into training, calibration, and test (typically 50/50 between the first two; test is whatever you want to evaluate on later).
+
+**Step 2 — Fit.** Train your favorite black-box model $\hat\mu$ on the training set. Hyperparameter tuning, early stopping, ensembling — all fine, as long as none of it touches the calibration set.
+
+**Step 3 — Score.** Compute calibration scores $S_i = |Y_i - \hat\mu(X_i)|$ on the calibration set (or the CQR/APS variants from §6/§7 if you want adaptivity).
+
+**Step 4 — Threshold.** Set $\hat q_{1-\alpha}$ to the $\lceil (1-\alpha)(n_{\text{cal}} + 1) \rceil$-th smallest calibration score.
+
+**Step 5 — Predict.** For each new test point $X_{n+1}$, return $\hat C_\alpha(X_{n+1}) = [\hat\mu(X_{n+1}) - \hat q_{1-\alpha},\ \hat\mu(X_{n+1}) + \hat q_{1-\alpha}]$ (or the appropriate analog for your score function).
+
+That is the entire procedure. There are no model-class-specific tweaks; ridge and a 100-million-parameter transformer use the same five steps. The cost of conformal wrapping is one calibration pass and one threshold lookup — additive overhead measured in milliseconds for any non-trivial base predictor.
+
+The empirical demonstration in Figure 9 below applies these five steps to three base predictors on the same heteroscedastic regression dataset: a degree-3 polynomial ridge (the predictor we have used throughout), a small MLP with two hidden layers, and a random forest. All three target $\alpha = 0.10$ and all three achieve empirical marginal coverage near 0.90 — the conformal layer enforces the guarantee regardless of the base predictor's particulars. What *does* vary across predictors is the **width** of the prediction interval: the better-fit predictor produces tighter intervals because its residuals on the calibration set are smaller, so $\hat q_{1-\alpha}$ shrinks. *Width depends on accuracy, coverage does not* — a one-line summary of what conformal prediction buys you.
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_blackbox_applications.png"
+  alt="Four-panel figure: top row shows three predictor-specific prediction bands (ridge, MLP, random forest) on the same heteroscedastic data with each panel reporting empirical coverage and mean width; bottom panel overlays all three bands for direct visual comparison"
+  caption="Three base predictors, one conformal envelope, α = 0.10. Top row: ridge (blue), MLP (green), random forest (amber) — each panel reports empirical coverage and mean band width. All three land at ~0.90 coverage on the held-out test set. Bottom: direct overlay. The widths differ because the residuals do; the coverage doesn't differ because the conformal calibration step doesn't care which predictor produced the residuals."
+/>
+
+For production deployments, the **`mapie`** library implements split conformal, jackknife+, CQR, and APS (deterministic and randomized) for arbitrary scikit-learn estimators with a few-line API. The Python reference implementation in this topic's notebook uses `mapie` for the §9 black-box demonstration — the same pattern carries to PyTorch and JAX models with minimal adaptation. Conformal prediction is one of the rare statistical guarantees that scales from $n = 50$ toy datasets to $n = 10^9$ industrial pipelines without changing its assumptions or its math.
+
+The wrapping pattern also extends in directions we have only sketched. **Online conformal prediction** (Vovk-Gammerman-Shafer 2005, Gibbs-Candès 2021) updates the threshold as new data arrives, retaining marginal coverage even when the data stream has slow distribution drift. **Conformal prediction for time series** handles non-exchangeable streams via blocked or weighted variants. **Conformal classification with structured output spaces** (multi-label, hierarchical, set-valued) generalizes APS by redesigning the score for each setting. None of these change the five-step skeleton above; they swap the score, the calibration step, or the data assumption — and let the marginal-coverage theorem do its work.
