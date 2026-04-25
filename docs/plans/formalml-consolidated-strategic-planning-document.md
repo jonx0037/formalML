@@ -314,8 +314,8 @@ No link, no 404 risk. When the referenced topic ships, subsequent authors conver
 
 Per §2.4, two formalstatistics forward-pointers to formalML do NOT get their own formalML topic: `logistic-regression` (engineering flavor) and `generalized-linear-models` (engineering flavor).
 
-- **`logistic-regression` redirects to `high-dimensional-regression`.** When Topic 22 is eventually revised, its `formalMLConnections` entry for `logistic-regression` should be replaced with an entry pointing to `high-dimensional-regression` (with slightly softened relationship prose). The cross-site link becomes live when `high-dimensional-regression` ships. Until then, the pointer can stay as `(forthcoming)` plain text with no change.
-- **`generalized-linear-models` redirects to an external reference.** When Topic 22 is eventually revised, its `formalMLConnections` entry for `generalized-linear-models` should be removed, and the relevant Topic 22 §22.10 remark should be rewritten to cite Hastie–Tibshirani–Friedman 2009 Ch. 4 (or Agresti 2015 Ch. 6–7 for multinomial / ordinal / Tweedie extensions) as the external reference.
+- **`logistic-regression` redirects to `high-dimensional-regression`.** When Topic 22 is eventually revised, its `formalmlConnections` entry for `logistic-regression` should be replaced with an entry pointing to `high-dimensional-regression` (with slightly softened relationship prose). The cross-site link becomes live when `high-dimensional-regression` ships. Until then, the pointer can stay as `(forthcoming)` plain text with no change.
+- **`generalized-linear-models` redirects to an external reference.** When Topic 22 is eventually revised, its `formalmlConnections` entry for `generalized-linear-models` should be removed, and the relevant Topic 22 §22.10 remark should be rewritten to cite Hastie–Tibshirani–Friedman 2009 Ch. 4 (or Agresti 2015 Ch. 6–7 for multinomial / ordinal / Tweedie extensions) as the external reference.
 
 **Action item for Jonathan:** Note these two redirects as pending formalstatistics PR work. Not urgent — the plain-text `(forthcoming)` markers remain valid indefinitely. Worth a short PR when `high-dimensional-regression` ships and the full redirect story becomes resolvable in one pass.
 
@@ -544,8 +544,9 @@ Cross-site pointers appear in three directions:
 For planned-but-not-yet-published formalML topics, use plain text:
 `**Variational Inference** *(coming soon)*`.
 
-Cross-site prerequisites live in `curriculum-graph.json`'s `crossSitePrereqs` array
-per the schema in the strategic planning document §5.2.
+Cross-site prerequisites live in MDX frontmatter using the six-field schema
+(`formalcalculusPrereqs`, `formalstatisticsPrereqs`, etc.), per the schema
+in the strategic planning document §5.2. Validated by `pnpm audit:cross-site`.
 ```
 
 ### §9.3 Code-example language policy
@@ -635,24 +636,25 @@ Prerequisites" subsection. Use full URLs.
 ### Prerequisite schema in MDX frontmatter
 
 ```yaml
-crossSitePrereqs:
-  - site: "formalstatistics"
-    slug: "bayesian-foundations-and-prior-selection"
-    url: "https://formalstatistics.com/topics/bayesian-foundations-and-prior-selection"
+formalstatisticsPrereqs:
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
     relationship: "Topic 25's conjugate-prior framework is the substrate for VI's
                    variational family choice."
-  - site: "formalcalculus"
-    slug: "functional-derivatives"
-    url: "https://formalcalculus.com/topics/functional-derivatives"
+formalcalculusPrereqs:
+  - topic: "functional-derivatives"
+    site: "formalcalculus"
     relationship: "The ELBO gradient in §4 is a functional derivative in q."
 ```
 
-### formalstatistics PR sweep at ship time
+### Reciprocity workflow at ship time
 
-When a formalML topic ships, the corresponding formalstatistics plain-text
-`(forthcoming on formalML)` markers should flip to live `<ExternalLink>`
-components. See the strategic planning document §5.5 Appendix A for the exact
-per-topic edit list.
+When a formalML topic ships, search [`docs/plans/deferred-reciprocals.md`](deferred-reciprocals.md)
+for the new topic's slug under "When `formalml/<slug>` ships" headings. Each entry
+is a sister-site topic that needs a reciprocal `formalstatisticsConnections` /
+`formalcalculusConnections` entry added (with prose stub provided in the deferred
+log). Re-run `pnpm audit:cross-site` to confirm the deferred entry retires.
+See strategic planning document §5.5 for the full workflow.
 ```
 
 ### §10.4 Error-log additions
@@ -662,7 +664,7 @@ Add to Section 8 ("Lessons from Past Briefs"):
 ```markdown
 | Brief Section | What the brief said | What the codebase needed | Impact |
 |--------------|-------------------|------------------------|--------|
-| Cross-site prereq | Missing from frontmatter | `crossSitePrereqs` array per strategic plan §5.2 | Missing backward link on topic page |
+| Cross-site prereq | Missing from frontmatter | `formalcalculusPrereqs` / `formalstatisticsPrereqs` (six-field schema) per strategic plan §5.2 | Missing backward link; audit flags as missing reciprocal |
 | Track placement | `gaussian-processes` in T2 Supervised | T5 Bayesian per strategic plan §3.5 | Wrong navigation grouping |
 | Standalone slug | `cross-validation` as own topic | Named section per strategic plan §7.3 | Duplicate content |
 ```
@@ -689,22 +691,31 @@ After the existing "Prerequisites" section (which lists internal formalML prereq
 
 This section must be filled in for every topic. Empty = explicit acknowledgment that no cross-site prereqs exist (rare but possible for T6's `uncertainty-quantification`, which could be self-contained on formalML).
 
-### §11.2 Add "formalstatistics PR Sweep" section
+### §11.2 Add "Reciprocity Sweep at Ship Time" section
 
 Toward the end of the handoff brief, before "Open Questions":
 
 ```markdown
-## formalstatistics PR Sweep at Ship Time
+## Reciprocity Sweep at Ship Time
 
-When this topic ships, the following formalstatistics MDX files need edits to
-flip `(forthcoming)` markers to live `<ExternalLink>` components:
+When this topic ships, the following sister-site MDX files need a reciprocal
+`formalstatisticsConnections` / `formalcalculusConnections` entry added (see
+[`docs/plans/deferred-reciprocals.md`](deferred-reciprocals.md) under the
+"When `formalml/<slug>` ships" heading for the canonical list and source-side
+prose stubs):
 
-- `src/content/topics/<slug>.mdx` at §X.Y Rem Z (the `formalMLConnections` entry
-  This slug also needs a `url` field added or confirmed.
-- ... (enumerate all locations per Appendix A of the strategic document)
+- `formalstatistics/src/content/topics/<source-slug>.mdx` — add reciprocal entry
+  to its `formalmlConnections` field's predecessor counterpart on the source
+  side: i.e., the source topic gains a `formalstatisticsConnections` reciprocal
+  on the new formalML topic side, and the new topic's `formalstatisticsPrereqs`
+  closes the reciprocal pair.
+- ... (enumerate all source topics per `deferred-reciprocals.md` for this slug)
 
-PR pattern: one-line edits per location, typically 3–6 edits per formalML topic
-ship.
+After edits: re-run `pnpm audit:cross-site` from any of the three repos with the
+sibling paths configured (`FORMAL_CALCULUS_PATH`, `FORMAL_STATISTICS_PATH`).
+The deferred entries for this slug should disappear, and `Reciprocated` count
+should increment by the number of source topics. Typical sweep: 1–9 source
+topics per formalML topic ship.
 ```
 
 ### §11.3 Decision-reference callbacks
@@ -819,10 +830,10 @@ Every formalstatistics pointer to a formalML slug, with PR-sweep target location
 | Topic 23 | §23.10 Rem 30 | `double-descent` | Plain text → `<ExternalLink>` |
 | Topic 24 (Model Selection) | §24.10 Rem 30 | `vc-dimension` | Plain text → `<ExternalLink>` |
 | Topic 24 | §24.10 Rem 30 | `generalization-bounds` | Plain text → `<ExternalLink>` |
-| Topic 25 (Bayes Foundations) | §25.10 formalMLConnections | `bayesian-neural-networks` | Plain text → `<ExternalLink>`; url field confirmation |
-| Topic 25 | §25.10 formalMLConnections | `variational-inference` | Plain text → `<ExternalLink>`; url field confirmation |
-| Topic 25 | §25.10 formalMLConnections | `gaussian-processes` | Plain text → `<ExternalLink>`; url field confirmation |
-| Topic 25 | §25.10 formalMLConnections | `probabilistic-programming` | Plain text → `<ExternalLink>`; url field confirmation |
+| Topic 25 (Bayes Foundations) | §25.10 formalmlConnections | `bayesian-neural-networks` | Plain text → `<ExternalLink>`; url field confirmation |
+| Topic 25 | §25.10 formalmlConnections | `variational-inference` | Plain text → `<ExternalLink>`; url field confirmation |
+| Topic 25 | §25.10 formalmlConnections | `gaussian-processes` | Plain text → `<ExternalLink>`; url field confirmation |
+| Topic 25 | §25.10 formalmlConnections | `probabilistic-programming` | Plain text → `<ExternalLink>`; url field confirmation |
 | Topic 26 (MCMC) | §26.10 Rem 26 | `variational-inference` | Plain text → `<ExternalLink>` (same as Topic 25) |
 | Topic 26 | §26.10 Rem 28 | `reversible-jump-mcmc` | Plain text → `<ExternalLink>` |
 | Topic 26 | §26.10 Rem 29 | `riemann-manifold-hmc` | Plain text → `<ExternalLink>` |
@@ -847,18 +858,18 @@ Every formalstatistics pointer to a formalML slug, with PR-sweep target location
 | Topic 30 | §30.10 Rem 20 (flows pointer) | `normalizing-flows` | Plain text → `<ExternalLink>` |
 | Topic 30 | §30.10 local-regression pointer | `local-regression` | Plain text → `<ExternalLink>` |
 | Topic 30 | §30.10 DRE pointer | `density-ratio-estimation` | Plain text → `<ExternalLink>` |
-| Topic 31 (Bootstrap) | §31.10 formalMLConnections | `prediction-intervals` | Plain text → `<ExternalLink>` |
-| Topic 31 | §31.10 formalMLConnections | `uncertainty-quantification` | Plain text → `<ExternalLink>` |
-| Topic 31 | §31.10 formalMLConnections | `cross-validation` | REDIRECT: section within `conformal-prediction` or `high-dimensional-regression` per §7.3 |
-| Topic 31 | §31.10 formalMLConnections | `ab-testing` | REDIRECT: section within `rank-tests` per §7.3 |
-| Topic 32 (Empirical Processes) | §32.10 formalMLConnections | `generalization-bounds` | Plain text → `<ExternalLink>` |
-| Topic 32 | §32.10 formalMLConnections | `pac-bayes-bounds` | Plain text → `<ExternalLink>` |
-| Topic 32 | §32.10 formalMLConnections | `conformal-prediction` | Plain text → `<ExternalLink>` (same as Topic 29) |
-| Topic 32 | §32.10 formalMLConnections | `semiparametric-inference` | Plain text → `<ExternalLink>` |
-| Topic 32 | §32.10 formalMLConnections | `causal-inference-methods` | Plain text → `<ExternalLink>` (same as Topic 22) |
-| Topic 32 | §32.10 formalMLConnections | `extreme-value-theory` | Plain text → `<ExternalLink>` (same as Topic 29) |
+| Topic 31 (Bootstrap) | §31.10 formalmlConnections | `prediction-intervals` | Plain text → `<ExternalLink>` |
+| Topic 31 | §31.10 formalmlConnections | `uncertainty-quantification` | Plain text → `<ExternalLink>` |
+| Topic 31 | §31.10 formalmlConnections | `cross-validation` | REDIRECT: section within `conformal-prediction` or `high-dimensional-regression` per §7.3 |
+| Topic 31 | §31.10 formalmlConnections | `ab-testing` | REDIRECT: section within `rank-tests` per §7.3 |
+| Topic 32 (Empirical Processes) | §32.10 formalmlConnections | `generalization-bounds` | Plain text → `<ExternalLink>` |
+| Topic 32 | §32.10 formalmlConnections | `pac-bayes-bounds` | Plain text → `<ExternalLink>` |
+| Topic 32 | §32.10 formalmlConnections | `conformal-prediction` | Plain text → `<ExternalLink>` (same as Topic 29) |
+| Topic 32 | §32.10 formalmlConnections | `semiparametric-inference` | Plain text → `<ExternalLink>` |
+| Topic 32 | §32.10 formalmlConnections | `causal-inference-methods` | Plain text → `<ExternalLink>` (same as Topic 22) |
+| Topic 32 | §32.10 formalmlConnections | `extreme-value-theory` | Plain text → `<ExternalLink>` (same as Topic 29) |
 
-**Total edits per formalML topic ship:** 1–4 formalstatistics MDX files, ~1–6 remark edits, plus 1 frontmatter `formalMLConnections` confirmation per pointing file.
+**Total edits per formalML topic ship:** 1–4 formalstatistics MDX files, ~1–6 remark edits, plus 1 frontmatter `formalmlConnections` confirmation per pointing file.
 
 ---
 

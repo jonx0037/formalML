@@ -77,8 +77,8 @@ public/images/          # Static images organized by topic
 
 Each topic in `src/content/topics/` is an MDX file with YAML frontmatter defining:
 - title, description, domain, difficulty, prerequisites, references
-- `formalcalculusPrereqs` — array of formalcalculus.com topic slugs this topic requires (backward edge)
-- `formalstatisticsPrereqs` — array of formalstatistics.com topic slugs this topic requires (backward edge)
+- `formalcalculusPrereqs` — array of objects (each with `topic`, `site`, `relationship`) declaring formalcalculus.com prerequisites; full schema in the "Cross-site references" subsection below
+- `formalstatisticsPrereqs` — array of objects (same shape) declaring formalstatistics.com prerequisites
 - Interactive viz components are imported and embedded inline
 
 ### Cross-site references
