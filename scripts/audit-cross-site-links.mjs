@@ -8,11 +8,11 @@
  * Connections) on the target side.
  *
  * Inputs (read-only):
- *   $HOME/Developer/Sites/formalCalculus/src/content/topics/*.mdx
- *   $HOME/Developer/Sites/formalStatistics/src/content/topics/*.mdx
- *   $HOME/Developer/Sites/formalML/src/content/topics/*.mdx
+ *   $REPO_ROOT/src/content/topics/*.mdx                  — formalml (script's own checkout)
+ *   $FORMAL_CALCULUS_PATH or ../formalCalculus/...       — formalcalculus
+ *   $FORMAL_STATISTICS_PATH or ../formalStatistics/...   — formalstatistics
  *
- * Outputs (written under formalML's docs/plans/):
+ * Outputs (written under the script's own checkout):
  *   docs/plans/audit-output/<site>-references.json     — per-site edge dump
  *   docs/plans/cross-site-audit-report.md              — consolidated report
  *   docs/plans/deferred-reciprocals.md                 — target-doesn't-exist log
@@ -24,17 +24,17 @@ import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
 import matter from 'gray-matter';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = dirname(SCRIPT_DIR);
-const HOME = process.env.HOME ?? homedir();
 
 const REPOS = {
-  formalcalculus: join(HOME, 'Developer/Sites/formalCalculus'),
-  formalstatistics: join(HOME, 'Developer/Sites/formalStatistics'),
-  formalml: join(HOME, 'Developer/Sites/formalML'),
+  formalcalculus:
+    process.env.FORMAL_CALCULUS_PATH ?? join(REPO_ROOT, '../formalCalculus'),
+  formalstatistics:
+    process.env.FORMAL_STATISTICS_PATH ?? join(REPO_ROOT, '../formalStatistics'),
+  formalml: REPO_ROOT,
 };
 
 const SITE_LABELS = {
@@ -73,6 +73,7 @@ async function loadRepo(site) {
   const root = REPOS[site];
   const topicsDir = join(root, 'src/content/topics');
   if (!existsSync(topicsDir)) {
+    console.warn(`[warning] ${site} topics dir not found at ${topicsDir} — skipping ${site}.`);
     return { slugs: new Set(), frontmatter: new Map() };
   }
   const files = (await readdir(topicsDir)).filter((f) => f.endsWith('.mdx')).sort();
