@@ -300,3 +300,31 @@ The trade-off is computational. Jackknife+ ($K = n$) requires $n$ predictor fits
 The full procedural definition, the BCRT 2021 tournament/comparison-graph proof, and the empirical comparison to split conformal all live in §5. The anchor here exists so that any sister-site reference to "cross-validation in machine learning" can deep-link to a coherent treatment without minting a separate topic.
 
 </NamedSection>
+
+## Full (Transductive) Conformal Prediction
+
+CV+ avoids the calibration tax by recycling fits across folds. **Full conformal** — the original Vovk-Gammerman-Shafer construction — avoids it differently: by treating the candidate response itself as the variable and refitting the predictor once per candidate. Every observation is used for both fitting and calibration; the price is a per-candidate refit at test time.
+
+**The procedure.** To form the prediction set $\hat C_\alpha(X_{n+1})$ at a new test input $X_{n+1}$, iterate over candidate values $y \in \mathcal{Y}$ and for each one run four steps.
+
+**Step 1 — Augment.** Form the augmented dataset $\mathcal{D}_y = \{(X_i, Y_i)\}_{i=1}^{n} \cup \{(X_{n+1}, y)\}$ — the original $n$ observations plus the test input paired with the candidate $y$.
+
+**Step 2 — Fit.** Fit a predictor $\hat\mu_y$ on $\mathcal{D}_y$, or equivalently define a score function $s_y$ from $\mathcal{D}_y$.
+
+**Step 3 — Score.** Compute calibration scores $S_i^{(y)} = s_y(X_i, Y_i)$ for $i = 1, \ldots, n+1$ — every observation, including the augmented test pair.
+
+**Step 4 — Include.** Include $y$ in $\hat C_\alpha(X_{n+1})$ iff the rank of $S_{n+1}^{(y)}$ among $(S_1^{(y)}, \ldots, S_{n+1}^{(y)})$ is at most $\lceil (1 - \alpha)(n + 1) \rceil$.
+
+The marginal-coverage guarantee extends from §3 with no change. When the candidate $y$ equals the true (unobserved) $Y_{n+1}$, the augmented dataset is exchangeable, and Theorem 1's argument — uniformity of the test-score rank in $\{1, \ldots, n+1\}$ — applies verbatim. Therefore $\mathbb{P}(Y_{n+1} \in \hat C_\alpha(X_{n+1})) \ge 1 - \alpha$.
+
+**Why study it.** Full conformal is rarely the practical default but it earns its keep on two counts. First, *statistical efficiency*: every observation contributes to both the fit and the rank computation, so for small $n$ — say $n \le 100$ — the prediction interval is meaningfully tighter than split conformal at the same $\alpha$. Second, *theoretical cleanliness*: many extensions of conformal (online conformal under streaming data, conformal under model misspecification, conformal for transductive learning) are easier to state and analyze in the full-conformal framework, then specialized to split.
+
+**Computational cost.** Naively, full conformal requires one predictor fit per candidate $y$. For finite response spaces — classification with $K$ classes — this is $O(K)$ fits per test point, eminently tractable. For continuous regression, the candidate space must be discretized to a grid, giving $O(\text{grid size})$ fits, which gets expensive but is embarrassingly parallel. For specific predictors the per-candidate refit collapses: ridge regression admits closed-form leave-one-out updates that turn full conformal into a single $O(n)$ pass, and recent work has produced similar closed-form recipes for kernel ridge, lasso, and certain neural network families.
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_split_vs_full.png"
+  alt="Line plot showing mean prediction interval width at a fixed test point as total dataset size n varies on a log scale, with split conformal (blue) consistently wider than full conformal (green), the gap closing as n grows"
+  caption="Statistical efficiency comparison at a fixed test location, averaged over 60 replicates. Split conformal (blue) splits 50/50 between train and calibration; full conformal (green) uses all n observations for both. The width gap is meaningful at small n (full is ~25% tighter at n = 40) and shrinks to noise as n → ∞. Split's calibration tax is real, but it's a tax on the small-data regime."
+/>
+
+For most practical purposes — modern ML with $n$ in the thousands and base predictors that take seconds to fit — split conformal is the right default and the rest of this topic uses it. Full conformal sits in the toolkit for the small-$n$ regime, the closed-form-update predictors, and the theoretical extensions that are easier to derive there. **Jackknife+** and **CV+** in §5 carve out a middle ground: leave-one-out residuals through a small number of refits, with the same exchangeability machinery delivering a (slightly weaker) coverage bound.
