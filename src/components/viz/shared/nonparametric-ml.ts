@@ -633,11 +633,16 @@ export function weightedSplitConformal(
   const order = new Int32Array(nCal);
   for (let i = 0; i < nCal; i++) order[i] = i;
   order.sort((a, b) => calScores[a] - calScores[b]);
+  // qHat is genuinely per-test-point under covariate shift (the test point's own
+  // importance weight enters the denominator). We surface only the LAST test
+  // point's threshold for diagnostic parity with splitConformalInterval; callers
+  // needing every per-point threshold should pass single-element xTest arrays.
+  let qHat = Number.NaN;
   for (let t = 0; t < m; t++) {
     const wTest = weightFn(xTest[t]);
     const denom = wSumCal + wTest;
     let cum = 0;
-    let qHat = Number.POSITIVE_INFINITY;
+    qHat = Number.POSITIVE_INFINITY;
     const target = 1 - alpha;
     for (let j = 0; j < nCal; j++) {
       cum += wCal[order[j]] / denom;
@@ -649,10 +654,7 @@ export function weightedSplitConformal(
     lower[t] = yTestPred[t] - qHat;
     upper[t] = yTestPred[t] + qHat;
   }
-  // Report the qHat / calScores from the last test point for diagnostic parity
-  // with splitConformalInterval (these are per-test-point under shift; the last
-  // value is documented as a representative).
-  return { lower, upper, qHat: NaN, calScores };
+  return { lower, upper, qHat, calScores };
 }
 
 // -----------------------------------------------------------------------------
