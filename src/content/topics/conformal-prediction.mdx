@@ -328,3 +328,99 @@ The marginal-coverage guarantee extends from §3 with no change. When the candid
 />
 
 For most practical purposes — modern ML with $n$ in the thousands and base predictors that take seconds to fit — split conformal is the right default and the rest of this topic uses it. Full conformal sits in the toolkit for the small-$n$ regime, the closed-form-update predictors, and the theoretical extensions that are easier to derive there. **Jackknife+** and **CV+** in §5 carve out a middle ground: leave-one-out residuals through a small number of refits, with the same exchangeability machinery delivering a (slightly weaker) coverage bound.
+
+## Jackknife+ and CV+
+
+Split conformal pays a calibration tax; full conformal pays a per-candidate refit tax. **Jackknife+** (Barber, Candès, Ramdas & Tibshirani 2021) charts a third route: use every observation for both fitting and residual scoring through *leave-one-out* refitting. Each calibration residual is computed against a predictor that did *not* see that observation, restoring statistical efficiency without the per-candidate explosion of full conformal. The price is mild — $n$ predictor fits per training (one for each leave-one-out), parallelizable — and the coverage guarantee weakens by a factor of two.
+
+For each $i \in \{1, \ldots, n\}$, let $\hat\mu_{-i}$ denote the predictor fit on the dataset with the $i$-th observation removed, and define the **leave-one-out residual**
+
+$$
+R_i \;=\; \bigl| Y_i - \hat\mu_{-i}(X_i) \bigr|.
+$$
+
+This $R_i$ is an honest residual in the sense that it never used $(X_i, Y_i)$ in its training — exactly the property split conformal extracted by partitioning the data, but achieved here without sacrificing any sample.
+
+<TheoremBlock type="definition" number={3} title="Jackknife+ Prediction Interval">
+
+The **jackknife+ prediction interval** at test point $X_{n+1}$, miscoverage level $\alpha \in (0, 1)$, is
+
+$$
+\hat C_\alpha^{\text{J+}}(X_{n+1}) \;=\; \Bigl[\, \hat Q_\alpha^{-}\bigl\{ \hat\mu_{-i}(X_{n+1}) - R_i \bigr\},\ \hat Q_{1-\alpha}^{+}\bigl\{ \hat\mu_{-i}(X_{n+1}) + R_i \bigr\} \,\Bigr],
+$$
+
+where $\hat Q_\alpha^{-}$ is the $\lfloor \alpha (n+1) \rfloor$-th smallest of a collection of $n$ values (with $\hat Q_0^{-} = -\infty$) and $\hat Q_{1-\alpha}^{+}$ is the $\lceil (1-\alpha)(n+1) \rceil$-th smallest (with $\hat Q_1^{+} = +\infty$).
+
+</TheoremBlock>
+
+The endpoints look more elaborate than the symmetric split-conformal interval, but each is just an empirical quantile of $n$ leave-one-out predictions adjusted by their respective residuals. The lower endpoint asks "across all leave-one-out fits, what's the small-quantile of $\hat\mu_{-i}(X_{n+1}) - R_i$" — a low-side estimate that accommodates predictor variability across LOO fits *and* the residual magnitudes. The upper endpoint is symmetric. Crucially, the $i$-th LOO predictor's variability and its residual move *together*: a fold whose held-out point is hard to predict produces both a wild $\hat\mu_{-i}(X_{n+1})$ and a large $R_i$, and the construction lets these self-correct.
+
+<TheoremBlock type="theorem" number={2} title="Jackknife+ Coverage Bound — Barber, Candès, Ramdas & Tibshirani 2021">
+
+Under exchangeability of $(X_i, Y_i)_{i=1}^{n+1}$,
+
+$$
+\mathbb{P}\bigl( Y_{n+1} \in \hat C_\alpha^{\text{J+}}(X_{n+1}) \bigr) \;\geq\; 1 - 2\alpha.
+$$
+
+The constant $2$ cannot be improved without further structural assumptions on the predictor: BCRT 2021 exhibit a degenerate base predictor under which jackknife+ achieves coverage arbitrarily close to $1 - 2\alpha$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+The proof follows BCRT 2021 §3.2; we reconstruct the key combinatorial moves and direct the reader to the original for the formalization of the tournament step.
+
+For each $i \in \{1, \ldots, n\}$, define the **leave-one-out swap residual**
+
+$$
+R_i^{\ast} \;=\; \bigl| Y_{n+1} - \hat\mu_{-i}(X_{n+1}) \bigr|,
+$$
+
+the absolute residual we *would have* observed if the test point $(X_{n+1}, Y_{n+1})$ had taken the role of training point $i$ and $(X_i, Y_i)$ had taken the role of the test point. By exchangeability of the $n+1$ observations together with the fact that the predictor $\hat\mu_{-i}$ is a *symmetric* function of its inputs (the order of the training observations does not matter), the joint distribution of the residuals is invariant under any swap of indices $(i, n+1)$. In particular, $R_i$ and $R_i^{\ast}$ have the same marginal distribution for each $i$.
+
+Consider the **comparison graph** $G$ on vertex set $\{1, \ldots, n+1\}$ defined by placing a directed edge $i \to j$ whenever the leave-$\{i,j\}$-out residual at $i$ exceeds the leave-$\{i,j\}$-out residual at $j$ (BCRT 2021 §3.2). For the swap-symmetry argument, what matters is the pairwise comparison between each training index $i \in \{1, \ldots, n\}$ and the test index $n+1$. The exchangeability swap above shows the comparison is symmetric in $i \leftrightarrow n+1$, so the directed in-degree of vertex $n+1$ in this graph is *uniformly distributed* among $\{0, 1, \ldots, n\}$.
+
+The "bad event" for jackknife+ — the test point falling outside the prediction interval — splits into two failure modes:
+
+$$
+\bigl\{ Y_{n+1} < \text{lower endpoint} \bigr\} \quad\text{and}\quad \bigl\{ Y_{n+1} > \text{upper endpoint} \bigr\}.
+$$
+
+BCRT 2021 Lemma 1 establishes that **each** of these failure modes corresponds to at most an $\alpha$ fraction of comparison-graph configurations. Concretely: the lower endpoint is the $\lfloor \alpha(n+1) \rfloor$-th smallest of $\{\hat\mu_{-i}(X_{n+1}) - R_i\}$, and a counting argument over the comparison graph shows
+
+$$
+\mathbb{P}\bigl( Y_{n+1} < \text{lower endpoint} \bigr) \;\leq\; \alpha,
+$$
+
+with the symmetric statement for the upper endpoint. The argument is non-trivial because the residuals $R_i$ are not independent under the swap — they share the LOO predictor structure — but the tournament-style counting in BCRT 2021 Lemma 1 handles this dependence by showing the bad events at indices $i$ and $j$ cannot both occur for too many pairs simultaneously.
+
+Combining the two bounds via a union bound:
+
+$$
+\mathbb{P}\bigl( Y_{n+1} \notin \hat C_\alpha^{\text{J+}}(X_{n+1}) \bigr) \;\leq\; \alpha + \alpha \;=\; 2\alpha,
+$$
+
+equivalently $\mathbb{P}(Y_{n+1} \in \hat C_\alpha^{\text{J+}}) \ge 1 - 2\alpha$.
+
+Two ingredients carry the argument: (a) **rank symmetry under exchangeability** combined with the symmetry of $\hat\mu$ in its inputs, and (b) the **union bound** over the two endpoint-failure modes. The full formalization of step (a) — the comparison-graph counting that resolves the dependence between $R_i$ and $R_j$ — is BCRT 2021 Theorem 1, which we have not reproduced here.
+
+</TheoremBlock>
+
+<TheoremBlock type="remark" title="Jackknife+ Worst-Case Tightness">
+
+The factor of $2$ in $1 - 2\alpha$ is worst-case over base predictors. BCRT 2021 §4 constructs an adversarial base predictor — essentially a constant function on most of the input space with a single sharp anomaly — that drives jackknife+ to coverage arbitrarily close to $1 - 2\alpha$ from above. For *reasonable* base predictors (ridge, random forest, neural networks with standard regularization) the empirical coverage of jackknife+ is typically within a percentage point or two of the nominal $1 - \alpha$ — much closer to split conformal's tight $1 - \alpha + 1/(n_{\text{cal}}+1)$ than the worst-case $1 - 2\alpha$ would suggest. The factor-of-two penalty is the *theoretical* price for refusing the calibration-set partition; the *empirical* price is usually negligible.
+
+</TheoremBlock>
+
+**CV+** (the $K$-fold extension introduced in §3.8) inherits Theorem 2 verbatim: $\mathbb{P}(Y_{n+1} \in \hat C_\alpha^{\text{CV+}}) \ge 1 - 2\alpha$ for any $K \ge 2$. The proof is identical — the swap-symmetry and union-bound moves work for any leave-fold-out predictor structure, not just leave-one-out. The trade-off is the one we already saw: $K$ fits instead of $n$, with the empirical coverage typically a hair worse than jackknife+ at small $K$ (more residual variance) and effectively identical at $K = n$ (which recovers jackknife+).
+
+<Figure
+  src="/images/topics/conformal-prediction/conformal_jackknife_cv_plus.png"
+  alt="Three-panel figure: leave-one-out residual visualization on a small dataset showing fitted-vs-LOO segments at three highlighted points; bar chart comparing empirical coverage across split conformal, jackknife+, and CV+ with the nominal target and worst-case bound; box plot of interval widths across trials for the three methods"
+  caption="Three procedures, n = 60, α = 0.10, T = 300 trials. Left: leave-one-out residuals R_i shown as red segments at three highlighted observations — each is the gap between the fully-fit prediction and the LOO-fit prediction at that point. Middle: empirical coverage. Split conformal lands at the marginal target; jackknife+ and CV+ land essentially at target too — well above the worst-case bound 1 − 2α = 0.80. Right: interval-width distributions. Jackknife+ and CV+ produce slightly tighter intervals than split conformal at small n by avoiding the calibration tax."
+/>
+
+The empirical takeaway visible in the figure: at $n = 60$ — small enough that the calibration tax matters — jackknife+ and CV+ produce tighter intervals than split conformal at the same $\alpha$, and the BCRT $1 - 2\alpha$ bound is loose by a wide margin. The choice between the three procedures is essentially a budget question. With abundant data and an expensive base predictor, split conformal is the workhorse. With a moderate $n$ and a cheap-to-refit predictor, jackknife+ extracts more from each observation. With expensive predictors but enough data to support fold-level fits, CV+ is the practical compromise.
+
+What none of the three procedures achieve — and what §6 addresses — is *locally adaptive width*. Every procedure in §2–§5 produces a band whose half-width is a single global threshold; the band is wide where it doesn't need to be (low-noise regions) and narrow where it shouldn't be (high-noise regions). **Conformalized quantile regression (CQR)** fixes this by replacing the mean-residual nonconformity score with one built from quantile-regression endpoints.
