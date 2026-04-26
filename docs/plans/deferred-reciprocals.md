@@ -836,17 +836,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _A probability space (Ω, F, P) is a measure space with P(Ω) = 1. Sigma-algebras formalize observable events; filtrations model information flow._
 
-## When `formalml/quantile-regression` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/method-of-moments** declares `formalmlConnections` → `quantile-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Quantile regression minimizes the check loss ρ_τ(u) = u(τ − 𝟙(u < 0)); its ψ is non-smooth but falls within the general M-estimation framework (modulo regularity). The scalar-intercept case is Top…_
-- **formalStatistics/order-statistics-and-quantiles** declares `formalmlConnections` → `quantile-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Koenker–Bassett check-loss regression. Topic 29 handles the scalar-intercept case via §29.4/§29.6; quantile regression is the covariate-conditional extension. §29.10 Rem 19 pointer; forthcoming on …_
-
 ## When `formalml/rank-tests` ships
 
 Add the reciprocal pointer back to:
@@ -854,17 +843,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/order-statistics-and-quantiles** declares `formalmlConnections` → `rank-tests` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Wilcoxon signed-rank, Mann–Whitney U, Kruskal–Wallis. Permutation-distribution machinery is orthogonal to Bahadur asymptotics and deferred. §29.10 Rem 20 pointer; forthcoming on formalml._
-
-## When `formalml/regression` ships
-
-Add the reciprocal pointer back to:
-
-- **formalCalculus/lp-spaces** declares `formalmlConnections` → `regression` (connections)
-  - Reciprocal field on the new topic: `formalcalculusPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Least-squares regression minimizes ||y - Xβ||₂², which is an L² norm. The existence and uniqueness of the minimizer follows from L² projection onto a closed subspace — the projection theorem previe…_
-- **formalCalculus/radon-nikodym** declares `formalmlConnections` → `regression` (connections)
-  - Reciprocal field on the new topic: `formalcalculusPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Conditional expectation E[Y|X] is the best L² predictor — the R-N derivative of a restricted measure. Least-squares regression computes it._
 
 ## When `formalml/regularization` ships
 

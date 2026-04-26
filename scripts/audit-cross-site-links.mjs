@@ -161,6 +161,21 @@ function checkEdge(edge, repos) {
     return { issues, reciprocal: { found: true, field: expectedField }, targetExists: true };
   }
 
+  // Connections ↔ Connections is also valid reciprocity: mutual relevance with
+  // neither side strictly a prerequisite. Path (b) of the deferred-reciprocal
+  // workflow — see e.g. formalml/quantile-regression ↔ formalstatistics/method-
+  // of-moments. Only apply this for Connections-on-source; a Prereqs-on-both-
+  // sides edge would mean each topic claims the other is a prerequisite, which
+  // is a contradiction.
+  if (edge.direction === 'Connections') {
+    const mutualField = `${edge.sourceSite}Connections`;
+    const mutualEntries = Array.isArray(targetFm[mutualField]) ? targetFm[mutualField] : [];
+    const mutualMatch = mutualEntries.find((e) => e && typeof e === 'object' && e.topic === edge.sourceSlug);
+    if (mutualMatch) {
+      return { issues, reciprocal: { found: true, field: mutualField }, targetExists: true };
+    }
+  }
+
   const wrongField = `${edge.sourceSite}${edge.direction}`;
   const wrongEntries = Array.isArray(targetFm[wrongField]) ? targetFm[wrongField] : [];
   const wrongMatch = wrongEntries.find((e) => e && typeof e === 'object' && e.topic === edge.sourceSlug);
