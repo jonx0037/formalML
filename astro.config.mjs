@@ -17,6 +17,9 @@ export default defineConfig({
       rehypeKatex,
       [rehypeExternalLinks, { target: '_blank', rel: ['noopener', 'noreferrer'] }],
     ],
+    shikiConfig: {
+      themes: { light: 'github-light', dark: 'github-dark' },
+    },
   },
   vite: {
     plugins: [tailwindcss()],

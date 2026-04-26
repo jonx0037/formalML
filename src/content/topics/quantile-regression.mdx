@@ -1,0 +1,656 @@
+---
+title: "Quantile Regression"
+subtitle: "The Koenker–Bassett 1978 estimator: pinball-loss minimization, LP reformulation, asymptotic normality, multi-quantile rearrangement, and the base learner of CQR"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "conformal-prediction"
+  - "convex-analysis"
+  - "gradient-descent"
+formalstatisticsPrereqs:
+  - topic: "linear-regression"
+    site: "formalstatistics"
+    relationship: "The OLS analog. Theorem 3's asymptotic normality of $\\sqrt{n}(\\hat\\beta(\\tau) - \\beta(\\tau)) \\Rightarrow N(0, \\tau(1-\\tau)\\, D^{-1} \\Omega D^{-1})$ is the QR replacement of OLS's $\\sqrt{n}(\\hat\\beta_{OLS} - \\beta) \\Rightarrow N(0, \\sigma^2 (X'X)^{-1})$. The Bernoulli factor $\\tau(1-\\tau)$ plays the role of $\\sigma^2$; the density-weighted Gram matrix $D(\\tau)$ sandwich-replaces $(X'X)^{-1}$. Reading linear-regression first makes the structural parallel transparent."
+  - topic: "order-statistics-and-quantiles"
+    site: "formalstatistics"
+    relationship: "The no-covariate special case. With a single intercept feature, the KB78 estimator reduces to the empirical $\\tau$-quantile of $\\{Y_i\\}$; Theorem 1 reduces to the classical pinball-loss minimization characterization (Topic 29 §29.4); Theorem 3 reduces to the standard Bahadur–Ghosh asymptotics (Topic 29 §29.6). Topic 29 §29.10 Remark 19 explicitly motivates QR as the covariate-conditional extension."
+  - topic: "empirical-processes"
+    site: "formalstatistics"
+    relationship: "Theorem 3's full proof runs through Knight 1998's algebraic identity plus an empirical-process limit of the rescaled QR objective; the argmin lemma is the continuous-mapping step. Theorem 4's restricted-eigenvalue argument and oracle inequality both use empirical-process tools (covering numbers, self-normalized concentration). Topic 32 §32.5 covers the full scaffold."
+formalcalculusPrereqs: []
+formalstatisticsConnections:
+  - topic: "method-of-moments"
+    site: "formalstatistics"
+    relationship: "Quantile regression minimises the check loss $\\rho_\\tau(u) = u(\\tau - \\mathbb{1}\\{u < 0\\})$; its $\\psi$ is non-smooth but falls within the general M-estimation framework (modulo regularity). The scalar-intercept case is Topic 29 §29.4 / §29.6; quantile regression is the covariate-conditional extension. The mutual-relevance link is M-estimation framing — neither side is a strict prerequisite for the other."
+tags:
+  - "nonparametric-ml"
+  - "quantile-regression"
+  - "regression"
+  - "linear-programming"
+  - "asymptotic-theory"
+  - "machine-learning"
+domain: "nonparametric-ml"
+videoId: null
+notebookPath: "notebooks/quantile-regression/01_quantile_regression.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/quantile-regression.mdx"
+datePublished: 2026-04-25
+estimatedReadTime: 45
+abstract: "Quantile regression replaces OLS's squared-error loss with the asymmetric pinball loss, recovering the conditional tau-quantile of Y given X rather than the conditional mean. We develop the theory progressively: pinball-loss minimization recovers the population quantile; the Koenker-Bassett 1978 estimator is the empirical sample analog; the LP reformulation makes QR exact rather than iterative; conditional quantiles are equivariant under monotone transformations of Y, a clean robustness gain over OLS; Knight 1998's asymptotic normality has the Bernoulli factor tau(1-tau) replacing the noise variance and a density-weighted Gram matrix sandwich-replacing the standard one; Chernozhukov-Fernandez-Val-Galichon 2010 rearrangement fixes multi-quantile crossing; Belloni-Chernozhukov 2011 establishes oracle rates for L1-penalized QR. The topic closes with QR as the base learner inside Conformalized Quantile Regression, the bridge back into the conformal-prediction topic."
+connections:
+  - topic: "conformal-prediction"
+    relationship: "T4's first topic. The CQR callback in §8 builds directly on conformal-prediction §6 Definition 4; reading conformal-prediction first frames QR as the base learner that supplies the band SHAPE while conformal calibration supplies the band WIDTH."
+  - topic: "convex-analysis"
+    relationship: "The pinball loss is a piecewise-linear convex function. The LP reformulation in §3 is exactly the standard reduction of piecewise-linear convex optimization to a linear program; the slack-variable trick (u = u⁺ − u⁻ with u⁺, u⁻ ≥ 0) is the canonical convex-analysis device."
+  - topic: "gradient-descent"
+    relationship: "The smoothed-check-loss accelerated-gradient solver underlying the in-browser visualization components is a direct adaptation of the smoothed-objective + Nesterov-acceleration construction — applied to a non-smooth piecewise-linear loss via Moreau-envelope smoothing."
+references:
+  - type: "paper"
+    title: "Regression quantiles"
+    authors: "Koenker & Bassett"
+    year: 1978
+    url: "https://doi.org/10.2307/1913643"
+    note: "The foundational paper. Definition 2 (linear QR estimator) and the structural form of Theorem 3 originate here."
+  - type: "paper"
+    title: "Limiting distributions for L₁ regression estimators under general conditions"
+    authors: "Knight"
+    year: 1998
+    url: "https://doi.org/10.1214/aos/1028144858"
+    note: "The clean modern proof of Theorem 3 via the Knight-identity decomposition used in §5's proof sketch."
+  - type: "book"
+    title: "Quantile Regression"
+    authors: "Koenker"
+    year: 2005
+    note: "The canonical book-length reference. Comprehensive coverage of LP reformulation, asymptotic theory, and the rearrangement / crossing literature."
+  - type: "paper"
+    title: "Quantile and probability curves without crossing"
+    authors: "Chernozhukov, Fernández-Val & Galichon"
+    year: 2010
+    url: "https://doi.org/10.3982/ECTA7880"
+    note: "The rearrangement procedure (Definition 4 and Remark 11). Establishes that rearrangement weakly improves Lᵖ approximation."
+  - type: "paper"
+    title: "ℓ₁-penalized quantile regression in high-dimensional sparse models"
+    authors: "Belloni & Chernozhukov"
+    year: 2011
+    url: "https://doi.org/10.1214/10-AOS827"
+    note: "Theorem 4's oracle-rate result and the BC plug-in choice of λ (Remark 13). Restricted-eigenvalue conditions for QR-lasso."
+  - type: "paper"
+    title: "Noncrossing quantile regression curve estimation"
+    authors: "Bondell, Reich & Wang"
+    year: 2010
+    url: "https://doi.org/10.1093/biomet/asq048"
+    note: "The constrained-LP alternative to rearrangement (Remark 10). Joint estimation of multiple quantile levels with monotonicity constraints."
+  - type: "paper"
+    title: "A note on quantiles in large samples"
+    authors: "Bahadur"
+    year: 1966
+    url: "https://doi.org/10.1214/aoms/1177699450"
+    note: "The original Bahadur representation in the no-covariate case. Remark 9 references the QR generalization."
+  - type: "paper"
+    title: "Conformalized quantile regression"
+    authors: "Romano, Patterson & Candès"
+    year: 2019
+    note: "The CQR procedure used in §8 (callback to T4 Topic 1). Same reference appears in conformal-prediction.mdx; intentional duplication for self-containment."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import PinballLossExplorer from '../../components/viz/PinballLossExplorer.tsx';
+import QRFitExplorer from '../../components/viz/QRFitExplorer.tsx';
+import BootstrapQuantileCI from '../../components/viz/BootstrapQuantileCI.tsx';
+
+## The Pinball Loss and the Population Quantile
+
+Quantile regression rests on a single asymmetric loss function, the *check* or *pinball* loss. Where squared loss penalises positive and negative residuals symmetrically and recovers the conditional **mean** at its minimum, the pinball loss penalises them asymmetrically and recovers the conditional **quantile**. The next two results make this statement precise.
+
+<TheoremBlock type="definition" number={1} title="Pinball loss">
+For $\tau \in (0, 1)$ and any real residual $u$, the **pinball loss** at level $\tau$ is
+
+$$
+\rho_\tau(u) \;=\; u\,\bigl(\tau - \mathbb{1}\{u < 0\}\bigr) \;=\; \max\bigl\{\tau u,\ (\tau - 1) u\bigr\}.
+$$
+
+Equivalently, $\rho_\tau(u)$ is a piecewise-linear V with slope $\tau$ on the right half-line and slope $\tau - 1$ on the left. At $\tau = 0.5$, $\rho_{0.5}(u) = \tfrac{1}{2}|u|$ is half the absolute loss; for $\tau \neq 0.5$ the V is asymmetric, with the steeper side on whichever direction we pay more for getting wrong.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={1} title="Pinball minimization recovers the population quantile">
+Let $Y$ be a real random variable with cumulative distribution function $F$ and finite mean. For each $\tau \in (0, 1)$, the (any) $\tau$-quantile
+
+$$
+\xi_\tau \;=\; \inf\bigl\{q \in \mathbb{R} : F(q) \geq \tau\bigr\}
+$$
+
+minimises the expected pinball loss:
+
+$$
+\xi_\tau \;\in\; \arg\min_{q \in \mathbb{R}} \, \mathbb{E}\bigl[\rho_\tau(Y - q)\bigr].
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write the expected loss as a function of $q$:
+
+$$
+L(q) \;=\; \mathbb{E}\bigl[\rho_\tau(Y - q)\bigr] \;=\; \tau \int_q^\infty (y - q)\, dF(y) \;+\; (1 - \tau) \int_{-\infty}^q (q - y)\, dF(y).
+$$
+
+The first term penalises $Y > q$ at rate $\tau$ (the "right side"); the second penalises $Y < q$ at rate $1 - \tau$ (the "left side"). Differentiate $L(q)$ under the integral. The derivative of the first term with respect to $q$ is $-\tau (1 - F(q))$ — the Leibniz contribution from the lower limit, plus the constant $-\tau$ under the integrand. The derivative of the second term is $(1 - \tau) F(q)$ — matching contribution from the upper limit and integrand. Adding:
+
+$$
+L'(q) \;=\; -\tau\,(1 - F(q)) \;+\; (1 - \tau)\, F(q) \;=\; F(q) - \tau.
+$$
+
+Setting $L'(q) = 0$ gives $F(q) = \tau$, i.e., $q = \xi_\tau$. The second derivative, wherever $F$ is differentiable, is $L''(q) = f(q) \geq 0$, so $L$ is convex; whenever the conditional density $f$ at $\xi_\tau$ is strictly positive, the minimiser is unique. (When $F$ is flat at $\xi_\tau$, the argmin set is an interval; we take the smallest minimiser by convention.) $\square$
+</TheoremBlock>
+
+Numerical verification: sample $Y \sim \mathcal{N}(0, 1)$ and minimize the empirical pinball loss over a fine grid of $q$ for several $\tau$ — the empirical argmin should track $\Phi^{-1}(\tau)$ as $n$ grows.
+
+```python
+import numpy as np
+from scipy.stats import norm
+
+np.random.seed(0)
+y_sample = norm.rvs(size=20_000, random_state=1)
+q_grid = np.linspace(-3, 3, 601)
+
+print('Empirical vs theoretical quantile at n = 20,000:')
+print(f'{"tau":>6} | {"Phi^-1(tau)":>12} | {"argmin emp loss":>16} | {"diff":>8}')
+for tau in [0.10, 0.25, 0.50, 0.75, 0.90]:
+    L_grid = np.array([
+        np.mean(np.where(y_sample >= q,
+                         tau * (y_sample - q),
+                         (tau - 1) * (y_sample - q)))
+        for q in q_grid
+    ])
+    q_hat = q_grid[L_grid.argmin()]
+    q_true = norm.ppf(tau)
+    print(f'{tau:>6.2f} | {q_true:>12.4f} | {q_hat:>16.4f} | {q_hat - q_true:>+8.4f}')
+```
+
+<PinballLossExplorer client:visible />
+
+<noscript>
+<Figure
+  src="/images/topics/quantile-regression/qr_pinball_loss.png"
+  alt="Pinball loss family for tau in {0.10, 0.25, 0.50, 0.75, 0.90}; expected pinball loss as function of candidate q for Y ~ N(0,1) with minimisers at Phi-inverse of tau; sample minimiser convergence to the population quantile at rate n^(-1/2)."
+  caption="Three views of Theorem 1. Left: the pinball-loss family — symmetric V at τ = 0.5, asymmetric otherwise. Centre: expected pinball loss for Y ~ N(0, 1) as a function of q at five τ levels; minimisers (dashed) line up at Φ⁻¹(τ). Right: empirical convergence of the sample argmin to the population quantile at the standard n⁻¹ᐟ² rate."
+/>
+</noscript>
+
+<TheoremBlock type="remark" number={1} title="Pinball-loss derivative requires no smoothness on Y">
+The proof opens no black boxes — it does not require $Y$ to have a density, finite variance, or bounded support. The piecewise-linear structure of $\rho_\tau$ is doing all of the work: differentiating it produces the indicator $\mathbb{1}\{u < 0\}$, and the indicator's expectation is exactly $F$.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={2} title="Conditional version: argmin over functions = conditional τ-quantile">
+The same calculation, conditioned on $X = x$, gives the conditional quantile $\xi_\tau(Y \mid X = x)$. This is what quantile regression estimates: the argmin over functions $q(x)$ of $\mathbb{E}[\rho_\tau(Y - q(X))]$ is the conditional $\tau$-quantile function of $Y$ given $X$, almost surely. The QR estimator replaces the population expectation with the empirical mean and the function class with a parametric one (the linear span of the features).
+</TheoremBlock>
+
+## Linear Quantile Regression
+
+Theorem 1 says the population $\tau$-quantile of $Y$ is recovered by minimising the expected pinball loss. The Koenker–Bassett 1978 quantile regression estimator is the empirical-version twin of that statement: minimise the **sample** pinball loss over a parametric family of conditional-quantile candidates.
+
+<TheoremBlock type="definition" number={2} title="Linear quantile regression estimator (Koenker–Bassett 1978)">
+Given features $X_i \in \mathbb{R}^p$ and responses $Y_i \in \mathbb{R}$ for $i = 1, \ldots, n$, the **linear quantile regression estimator** at level $\tau \in (0, 1)$ is
+
+$$
+\hat\beta(\tau) \;=\; \arg\min_{\beta \in \mathbb{R}^p} \, \sum_{i=1}^n \rho_\tau\bigl(Y_i - X_i^\top \beta\bigr).
+$$
+
+The fitted conditional quantile at a new point $x$ is $\hat q_\tau(x) = x^\top \hat\beta(\tau)$. When the feature vector includes a constant (intercept), the model is
+
+$$
+Y_i \;=\; X_i^\top \beta(\tau) \;+\; e_i, \qquad \xi_\tau(e_i \mid X_i) = 0.
+$$
+</TheoremBlock>
+
+The workhorse fit-and-predict helper used throughout this topic — a thin wrapper around scikit-learn's `QuantileRegressor` (which calls HiGHS) on degree-3 polynomial features:
+
+```python
+from sklearn.linear_model import QuantileRegressor
+from sklearn.preprocessing import PolynomialFeatures
+
+def fit_predict_quantile(x_train, y_train, x_eval, tau, alpha_l2=0.01, degree=3):
+    """Quantile regression at level τ on degree-`degree` polynomial features.
+
+    alpha_l2: small L2 penalty for numerical stability (kept tiny so KB78
+              asymptotics are not distorted).
+    """
+    poly = PolynomialFeatures(degree=degree, include_bias=False)
+    Phi_train = poly.fit_transform(np.asarray(x_train).reshape(-1, 1))
+    Phi_eval = poly.transform(np.asarray(x_eval).reshape(-1, 1))
+    qr = QuantileRegressor(quantile=tau, alpha=alpha_l2, solver='highs')
+    qr.fit(Phi_train, y_train)
+    return qr.predict(Phi_eval)
+```
+
+The KKT condition $L'(q) = F(q) - \tau = 0$ has a clean empirical analog: at the QR optimum, fraction $\tau$ of training residuals are negative.
+
+```python
+# At each τ, fraction of training residuals < 0 should ≈ τ.
+for tau in [0.10, 0.50, 0.90]:
+    fit_at_train = fit_predict_quantile(x_demo, y_demo, x_demo, tau)
+    print(f'τ = {tau}:  P(Y < q̂(X)) = {(y_demo < fit_at_train).mean():.3f}')
+```
+
+<QRFitExplorer client:visible />
+
+<noscript>
+<Figure
+  src="/images/topics/quantile-regression/qr_linear_fit.png"
+  alt="Heteroscedastic regression data with three QR fits at tau = 0.10, 0.50, 0.90 plus OLS; residual histograms showing fraction of negative residuals matches tau."
+  caption="Linear QR on heteroscedastic data (n = 500, degree-3 polynomial features). Left: three τ-fits and an OLS fit for contrast — note the τ = 0.10 and τ = 0.90 lines fan apart where σ(x) is large. Right: residual histograms at the QR optimum — the fraction of negative residuals at each τ matches τ, the sample analog of the first-order condition F(q) − τ = 0."
+/>
+</noscript>
+
+<TheoremBlock type="remark" number={3} title="When does linear QR target the right thing?">
+If $Y = X^\top \beta_0 + \varepsilon$ with $\varepsilon$ independent of $X$ and $\xi_\tau(\varepsilon) = c_\tau$, then $\xi_\tau(Y \mid X = x) = x^\top \beta_0 + c_\tau$. Linear QR with an intercept recovers $(\beta_0, c_\tau)$ exactly in the population. Under heteroscedastic noise — say $Y = X^\top \beta_0 + \sigma(X)\,\varepsilon$ — the conditional quantile
+
+$$
+\xi_\tau(Y \mid X = x) \;=\; x^\top \beta_0 \;+\; \sigma(x)\, c_\tau
+$$
+
+is **not** linear in $x$ unless $\sigma$ is. The fix is to enrich the feature map (polynomial, spline, RBF) so the linear span includes the conditional quantile function. That is the path we take throughout this topic: degree-3 polynomial features applied to a univariate covariate.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={4} title="Why an intercept matters">
+Without an intercept, the line is forced through the origin, and the QR estimator can pick up bias to compensate; with an intercept, the estimator decomposes cleanly into a slope (the location) and an intercept that absorbs the noise quantile $c_\tau$. Standard practice — and what every implementation we use here does — is to include an intercept either as a separate feature column or as the bias term of an LP solver.
+</TheoremBlock>
+
+## The LP Reformulation
+
+The pinball loss is piecewise-linear, so the QR optimisation is a **linear program**. This is more than a curiosity: it explains why sklearn's `QuantileRegressor` uses HiGHS (a state-of-the-art LP solver), why QR is exact rather than iterative, and why the "interpolation" structure of the fit is combinatorial — exactly $p$ data points sit on the fitted line in the non-degenerate case.
+
+The trick is to split each residual $r_i = Y_i - X_i^\top \beta$ into its positive and negative parts:
+
+$$
+r_i \;=\; u_i^+ - u_i^-, \qquad u_i^+ = \max(r_i, 0), \quad u_i^- = \max(-r_i, 0).
+$$
+
+Then $\rho_\tau(r_i) = \tau\, u_i^+ + (1 - \tau)\, u_i^-$, which is **linear** in the slack variables. Stacking the $n$ constraints:
+
+<TheoremBlock type="definition" number={3} title="LP reformulation of QR">
+Quantile regression at level $\tau$ is equivalent to the linear program
+
+$$
+\begin{aligned}
+\min_{\beta,\, u^+,\, u^-}\; & \tau\, \mathbf{1}^\top u^+ \;+\; (1 - \tau)\, \mathbf{1}^\top u^- \\
+\text{subject to}\; & y - X\beta \;=\; u^+ - u^-, \\
+& u^+ \geq 0,\quad u^- \geq 0, \\
+& \beta \in \mathbb{R}^p \;\text{(free)}.
+\end{aligned}
+$$
+
+Stacking all variables into $z = (\beta, u^+, u^-) \in \mathbb{R}^{p + 2n}$, this is a standard-form LP with cost $c = (0_p,\ \tau \mathbf{1}_n,\ (1 - \tau)\mathbf{1}_n)$, equality constraint $A_{\text{eq}}\, z = b_{\text{eq}}$ with $A_{\text{eq}} = [X,\ -I,\ I]$ and $b_{\text{eq}} = y$, and nonnegativity bounds on the slacks ($\beta$ is unbounded).
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={5} title="Combinatorial structure of the LP optimum">
+A basic feasible solution of an LP has at most as many nonzero variables as constraints — $n$ here — so the optimal $(\beta, u^+, u^-)$ has at most $n$ nonzeros among the $2n$ slacks. But each row $i$ has exactly **one** of $u_i^+$, $u_i^-$ positive (both being positive would violate optimality: a quick swap reduces cost). So each observation contributes one slack. The remaining slack-degrees go to $\beta$ (which is $p$-dimensional). Hence: at exactly $p$ observations, $u_i^+ = u_i^- = 0$, i.e., the QR fit **interpolates** $p$ of the $n$ data points. This is unique to QR — OLS interpolates none in general, ridge interpolates all only in the limit.
+</TheoremBlock>
+
+Solving this LP directly with `scipy.optimize.linprog` makes Definition 3 concrete; the result agrees with `QuantileRegressor` to machine precision since both call HiGHS.
+
+```python
+from scipy.optimize import linprog
+
+def solve_qr_linprog(X, y, tau):
+    """Solve QR via the LP reformulation using scipy.optimize.linprog (HiGHS).
+
+    X: (n, p) design matrix (include constant column for intercept).
+    y: (n,) responses.
+    tau: quantile level in (0, 1).
+    Returns: (beta, residuals, slack_pos, slack_neg).
+    """
+    n, p = X.shape
+    # z = [β (p), u⁺ (n), u⁻ (n)],  total p + 2n variables.
+    c = np.concatenate([np.zeros(p), tau * np.ones(n), (1 - tau) * np.ones(n)])
+    # Equality constraint: X β + u⁺ - u⁻ = y    (slacks split residual sign)
+    A_eq = np.hstack([X, np.eye(n), -np.eye(n)])
+    b_eq = y
+    # β unbounded; slacks ≥ 0
+    bounds = [(None, None)] * p + [(0, None)] * (2 * n)
+    res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    z = res.x
+    beta = z[:p]
+    return beta, y - X @ beta, z[p:p + n], z[p + n:]
+```
+
+<Figure
+  src="/images/topics/quantile-regression/qr_lp_reformulation.png"
+  alt="QR residuals at tau = 0.50 colored by sign with interpolated points marked; coefficient comparison between scipy linprog and sklearn QuantileRegressor."
+  caption="The LP reformulation made concrete. Left: residuals at the τ = 0.5 optimum (n = 40, p = 4) — exactly p = 4 points sit on the fitted line (Remark 5), with the remaining n − p split between u⁺ > 0 (above) and u⁻ > 0 (below). Right: solving the same LP via scipy.linprog and via sklearn.QuantileRegressor agrees to machine precision (max |Δβ| ~ 1e-14)."
+/>
+
+## Equivariance Under Monotone Transformations
+
+Conditional quantiles have a property the conditional mean lacks: they commute with monotone transformations of $Y$. If $Y$ is income and we want the median of $\log(Y)$, the answer is $\log$ of the median of $Y$ — no Jensen correction required. This makes quantile regression unusually robust to the scale on which the response is modelled.
+
+<TheoremBlock type="theorem" number={2} title="Equivariance of conditional quantiles">
+Let $Y$ be a random variable with conditional distribution $F_{Y \mid X}$, and let $h : \mathbb{R} \to \mathbb{R}$ be a non-decreasing function. Then for every $\tau \in (0, 1)$ and every $x \in \mathrm{supp}(X)$,
+
+$$
+\xi_\tau\bigl(h(Y) \mid X = x\bigr) \;=\; h\bigl(\xi_\tau(Y \mid X = x)\bigr).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Recall $\xi_\tau(Y \mid X = x) = \inf\{q : F_{Y \mid X}(q \mid x) \geq \tau\}$. We need to express $F_{h(Y) \mid X}$ in terms of $F_{Y \mid X}$. Because $h$ is non-decreasing, for any $v \in \mathbb{R}$,
+
+$$
+\{h(Y) \leq v\} \;=\; \{Y \leq h^{-1}_{+}(v)\},
+$$
+
+where $h^{-1}_{+}(v) := \sup\{y : h(y) \leq v\}$ is the right-continuous inverse (when $h$ is invertible the two coincide; the right-continuous inverse handles $h$ with flat regions, and the proof goes through unchanged). Taking conditional probabilities,
+
+$$
+F_{h(Y) \mid X}(v \mid x) \;=\; F_{Y \mid X}\bigl(h^{-1}_{+}(v) \mid x\bigr).
+$$
+
+Now compute the conditional $\tau$-quantile of $h(Y)$:
+
+$$
+\begin{aligned}
+\xi_\tau(h(Y) \mid X = x)
+&= \inf\bigl\{v : F_{h(Y) \mid X}(v \mid x) \geq \tau\bigr\} \\
+&= \inf\bigl\{v : F_{Y \mid X}(h^{-1}_{+}(v) \mid x) \geq \tau\bigr\} \\
+&= \inf\bigl\{v : h^{-1}_{+}(v) \geq \xi_\tau(Y \mid X = x)\bigr\} \quad \text{(definition of } \xi_\tau\text{)} \\
+&= h\bigl(\xi_\tau(Y \mid X = x)\bigr).
+\end{aligned}
+$$
+
+The last step uses non-decreasingness of $h$: $\{v : h^{-1}_{+}(v) \geq q^*\}$ is a right half-line in $v$ with infimum $h(q^*)$. Strict monotonicity is not needed. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={6} title="Equivariance is about the conditional quantile, not the linear estimator">
+Theorem 2 is a statement about conditional **quantiles**, not about the linear-QR **estimator**. If we fit linear QR to $Y$ on features $\Phi(X)$ and obtain $\hat\beta(\tau)$, there is no general guarantee that fitting linear QR to $h(Y)$ on $\Phi(X)$ returns $h$ applied to the original fit at every test point. Two reasons the equality fails in finite samples and finite-dimensional feature classes: (i) the linear span of $\Phi(X)$ is closed under linear combinations but not under composition with $h$, so the function class capable of representing $\xi_\tau(h(Y) \mid X)$ may differ from the one representing $\xi_\tau(Y \mid X)$; (ii) even if the function class is the same, the empirical pinball-loss minimiser need not commute with $h$ beyond a constant shift. What **does** hold: the underlying conditional quantile *function* is equivariant, and well-specified quantile regression captures that equivariance to the extent the linear class can represent both functions.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={7} title="Contrast with the conditional mean (Jensen)">
+$\mathbb{E}[h(Y) \mid X]$ equals $h(\mathbb{E}[Y \mid X])$ only when $h$ is affine, by Jensen's inequality. So OLS on $\log Y$ has no clean relationship to OLS on $Y$; the log-transformation changes both the mean function **and** the implied error structure. QR's equivariance is therefore a strict robustness gain for tasks where the response scale is a modelling choice (income, durations, prices, counts).
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/quantile-regression/qr_equivariance.png"
+  alt="Four panels demonstrating equivariance: original-scale QR, transformed-scale QR, comparison of direct h-scale fit to h applied to original-scale fit, and the residual gap at three tau levels."
+  caption="Equivariance in four panels. Top: QR fits on Y (left) vs. on h(Y) = log(Y − Yₘᵢₙ + 1) (right). Bottom-left: direct h-scale fit (solid) vs. h applied to the Y-scale fit (dashed); they agree closely but not exactly. Bottom-right: the linear-estimator gap (Remark 6) — small but nonzero, a finite-sample / linear-class artefact, not a violation of Theorem 2."
+/>
+
+## Asymptotic Theory: Koenker–Bassett 1978, Knight 1998
+
+We just saw that QR returns the conditional $\tau$-quantile in expectation. The next question is: at what **rate** does the estimator converge, and what is the limit distribution? The answer, established by Koenker–Bassett 1978 with the clean modern proof due to Knight 1998, is the same root-$n$ / Gaussian shape we know from OLS, with two structural differences. The "noise variance" is replaced by $\tau(1 - \tau)$ — the Bernoulli variance of the indicator $\mathbb{1}\{Y < \hat q(X)\}$ — and the design Gram matrix is sandwich-replaced by a **density-weighted** Gram matrix evaluated at the conditional quantile.
+
+<TheoremBlock type="theorem" number={3} title="Asymptotic normality of QR (Koenker–Bassett 1978, Knight 1998)">
+Suppose $(X_i, Y_i)$ are i.i.d. with finite second moments $\mathbb{E}[\lVert X \rVert^2] < \infty$, the conditional density $f_{Y \mid X}(y \mid x)$ is continuous and strictly positive at $y = \xi_\tau(Y \mid X = x)$ for almost every $x$, and the matrices
+
+$$
+\Omega \;=\; \mathbb{E}[X X^\top], \qquad D(\tau) \;=\; \mathbb{E}\bigl[f_{Y \mid X}(\xi_\tau(Y \mid X) \mid X)\, X X^\top\bigr]
+$$
+
+are positive definite. Then
+
+$$
+\sqrt{n}\,\bigl(\hat\beta(\tau) - \beta(\tau)\bigr) \;\Rightarrow\; \mathcal{N}\Bigl(0,\ \tau(1 - \tau)\, D(\tau)^{-1}\, \Omega\, D(\tau)^{-1}\Bigr).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Sketch.** Set $u_i = Y_i - X_i^\top \beta(\tau)$ and write the perturbed objective $Z_n(\delta) = \sum_i [\rho_\tau(u_i - X_i^\top \delta / \sqrt{n}) - \rho_\tau(u_i)]$. Knight's identity gives the algebraic decomposition
+
+$$
+\rho_\tau(u - v) - \rho_\tau(u) \;=\; -v\,(\tau - \mathbb{1}\{u < 0\}) \;+\; \int_0^v \bigl(\mathbb{1}\{u \leq s\} - \mathbb{1}\{u \leq 0\}\bigr)\, ds.
+$$
+
+Apply this with $v = X_i^\top \delta / \sqrt{n}$. The first piece is a sum of mean-zero random variables (because $\mathbb{E}[\tau - \mathbb{1}\{u_i < 0\} \mid X_i] = 0$ at the population $\tau$-quantile); by the standard CLT it converges to a Gaussian linear in $\delta$ with covariance $\tau(1 - \tau)\, \Omega$. The second piece is an empirical-process integral that, after rescaling, converges to a deterministic quadratic $\tfrac{1}{2}\delta^\top D(\tau)\, \delta$ — the density-weighted matrix arising from a first-order expansion of $F_{Y \mid X}$ at the conditional quantile. Adding the two limits, the rescaled objective $Z_n$ converges to a quadratic + linear function of $\delta$ whose argmin is $\delta_* = D(\tau)^{-1}\, W$ with $W \sim \mathcal{N}(0,\, \tau(1 - \tau)\, \Omega)$. Continuous mapping (the argmin lemma for stochastic processes) transfers convergence to $\hat\delta = \sqrt{n}\,(\hat\beta(\tau) - \beta(\tau))$, giving $\hat\delta \Rightarrow \mathcal{N}(0,\, \tau(1 - \tau)\, D(\tau)^{-1}\, \Omega\, D(\tau)^{-1})$. For full regularity conditions and the empirical-process step, see <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" />, Topic 32 §32.5. $\square$
+</TheoremBlock>
+
+The bootstrap is the most direct way to *see* Theorem 3 — resample $(X, Y)$ pairs $B$ times, refit QR, and read off the empirical distribution of any coefficient.
+
+```python
+def fit_qr_coefs(x_train, y_train, tau, degree=3):
+    """Return all polynomial coefficients (intercept + slopes) of QR at level τ."""
+    poly = PolynomialFeatures(degree=degree, include_bias=False)
+    Phi = poly.fit_transform(np.asarray(x_train).reshape(-1, 1))
+    qr = QuantileRegressor(quantile=tau, alpha=0.0, solver='highs')
+    qr.fit(Phi, y_train)
+    return np.concatenate([[qr.intercept_], qr.coef_])  # [a₀, a₁, a₂, a₃]
+
+
+def bootstrap_qr_coefs(x, y, tau, B, rng, degree=3):
+    """B (X, Y)-bootstrap resamples; returns (B, p+1) coefficient matrix."""
+    n = len(x)
+    out = np.empty((B, degree + 1))
+    for b in range(B):
+        idx = rng.integers(0, n, n)
+        out[b] = fit_qr_coefs(x[idx], y[idx], tau, degree=degree)
+    return out
+```
+
+At fixed $\tau$, the empirical std of the slope coefficient $\hat\beta_1(\tau)$ across bootstrap replicates should scale as $1/\sqrt{n}$ (so $\hat\sigma \cdot \sqrt{n}$ stabilises). Across $\tau$, the constant inflates as $\tau \to 0$ or $\tau \to 1$ — Remark 8.
+
+<BootstrapQuantileCI client:visible />
+
+<noscript>
+<Figure
+  src="/images/topics/quantile-regression/qr_asymptotic_normality.png"
+  alt="Four bootstrap histograms of the QR slope coefficient at (n, tau) in {(100, 0.5), (100, 0.9), (500, 0.5), (500, 0.9)}, with overlaid Gaussian fit per Theorem 3."
+  caption="Bootstrap distributions of the QR slope coefficient β̂₁(τ) at four (n, τ) settings. The Gaussian overlay at each panel is N(μ̂, σ̂²) with the empirical bootstrap mean and variance. The empirical std multiplied by √n stabilises across n at fixed τ (the n⁻¹ᐟ² rate); across τ, the τ = 0.9 panels show inflated variance (Remark 8's tail-inflation effect)."
+/>
+</noscript>
+
+<TheoremBlock type="remark" number={8} title="The Bernoulli variance factor τ(1−τ) and tail inflation">
+The asymptotic variance scales with $\tau(1 - \tau)$, peaking at $0.5$ (median) and vanishing at the extremes $0$ and $1$. Geometrically: at the median, the indicator $\mathbb{1}\{Y < \hat q(X)\}$ is a fair coin, contributing maximal variance to the estimating equation. At extreme $\tau$, the indicator is nearly constant, but $D(\tau)$ — the density at the quantile — also goes to zero in the tail, which generally pushes the variance **up**. The two effects together are why extreme-quantile QR estimates have notoriously wide CIs even at moderate $n$, and motivate **Extreme Value Theory** *(coming soon)* as a separate framework for the tail regime.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={9} title="Bahadur representation at covariate values">
+A finer statement, due to Bahadur 1966 in the no-covariate case and extended to QR in Koenker–Bassett 1978, gives the linearised expansion at any fixed $x_0$:
+
+$$
+\sqrt{n}\,\bigl(\hat q_\tau(x_0) - q_\tau(x_0)\bigr) \;=\; x_0^\top D(\tau)^{-1} \cdot n^{-1/2} \sum_i X_i\, \bigl(\tau - \mathbb{1}\{Y_i \leq X_i^\top \beta(\tau)\}\bigr) \;+\; o_P(1).
+$$
+
+This identifies the asymptotic variance of the conditional-quantile estimator at any specific test point $x_0$ as $x_0^\top V x_0$ where $V$ is the variance from Theorem 3. The bootstrap distributions in the figure above are exactly the empirical version: for a fixed $x_0$ they should approach the asymptotic Gaussian as $n \to \infty$.
+</TheoremBlock>
+
+## Multi-Quantile Estimation, Crossing, and Rearrangement
+
+A natural use of QR is to fit **multiple** quantile levels simultaneously and read the resulting bands as a non-parametric estimate of the conditional distribution of $Y$ given $X$. Three or five evenly-spaced quantiles already give a usable picture; for high-resolution density estimation, fit at a fine grid in $(0, 1)$.
+
+But there is a problem. The population conditional quantiles are weakly increasing in $\tau$ by definition: $\xi_{\tau_1}(Y \mid X = x) \leq \xi_{\tau_2}(Y \mid X = x)$ whenever $\tau_1 \leq \tau_2$. The marginal QR estimates do not enforce this. Each $\tau$-fit is a separate optimisation, and at finite $n$ in finite-dimensional function classes, the resulting curves can — and frequently do — **cross**: the $\tau = 0.7$ fit can dip below the $\tau = 0.6$ fit at some $x$.
+
+<TheoremBlock type="remark" number={10} title="Quantile crossing as a coherence violation; constrained-LP fix">
+Crossing is not just an aesthetic flaw. It produces probabilistic nonsense: $\mathbb{P}(Y < q_{0.6}(x)) > 0.6$ and $\mathbb{P}(Y < q_{0.7}(x)) < 0.7$ cannot both hold if $q_{0.7}(x) < q_{0.6}(x)$. Any downstream procedure that treats the bands as CDF estimates (CQR uses them as prediction-interval endpoints; quantile forests use them for distribution prediction) inherits the incoherence. Two structural fixes exist:
+
+1. **Joint estimation with monotonicity constraints (Bondell–Reich–Wang 2010).** Augment the LP with linear inequalities $q_{\tau_k}(x_l) \leq q_{\tau_{k+1}}(x_l)$ at a grid of evaluation points; solve a single bigger LP. Pros: exact monotonicity by construction. Cons: scales poorly in $n \times K \times |\text{grid}|$; loses the per-$\tau$ decoupling that makes QR fast and parallelisable.
+2. **Marginal estimation followed by REARRANGEMENT (Chernozhukov–Fernández-Val–Galichon 2010).** Fit each $\tau$ independently as before, then at every evaluation point sort the $K$ predicted values along the $\tau$-axis. The rearranged curves are monotone by construction, equal to the originals when no crossing is present, and never worse in $L^p$ for any $p \geq 1$ (CFV-G 2010 Theorem 1). This is the path we take.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={4} title="Rearrangement of conditional-quantile estimates">
+Given a vector of marginal quantile estimates $\hat q_{\tau_1}(x), \ldots, \hat q_{\tau_K}(x)$ at a fixed test point $x$ and increasing $\tau$-grid $\tau_1 < \cdots < \tau_K$, the **rearranged estimates** at $x$ are the sorted values
+
+$$
+\tilde q_{\tau_1}(x) \;\leq\; \tilde q_{\tau_2}(x) \;\leq\; \cdots \;\leq\; \tilde q_{\tau_K}(x),
+$$
+
+i.e., the rearranged estimate at level $\tau_k$ equals the $k$-th order statistic of $\{\hat q_{\tau_j}(x)\}$. The function $\tau \mapsto \tilde q_\tau(x)$ is monotone non-decreasing by construction.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={11} title="Rearrangement weakly improves Lᵖ approximation">
+If the true conditional quantile function $\tau \mapsto q_\tau(x)$ is monotone (which it is, by definition), then for any $p \geq 1$ the $L^p$ distance from the rearranged estimates to the truth is no larger than the $L^p$ distance from the original marginal estimates. The proof is rearrangement-inequality combinatorics: matching a monotone target with a monotone candidate is always at least as good as matching a monotone target with a non-monotone one. Strict improvement happens whenever crossing is present in the original estimates. So rearrangement is a **free lunch** as a post-processing step, never harmful.
+</TheoremBlock>
+
+Two helpers — fit a $K$-quantile bundle independently and then sort along the $\tau$-axis at every evaluation point:
+
+```python
+def fit_multiple_quantiles(x_train, y_train, x_eval, taus, alpha_l2=0.01, degree=3):
+    """Fit QR at each τ in `taus` on degree-`degree` polynomial features.
+
+    Returns a (K, |x_eval|) array Q where Q[k, j] = q̂_{taus[k]}(x_eval[j]).
+    """
+    poly = PolynomialFeatures(degree=degree, include_bias=False)
+    Phi_train = poly.fit_transform(np.asarray(x_train).reshape(-1, 1))
+    Phi_eval = poly.transform(np.asarray(x_eval).reshape(-1, 1))
+    out = np.empty((len(taus), len(x_eval)))
+    for k, tau in enumerate(taus):
+        qr = QuantileRegressor(quantile=tau, alpha=alpha_l2, solver='highs')
+        qr.fit(Phi_train, y_train)
+        out[k] = qr.predict(Phi_eval)
+    return out
+
+
+def rearrange_quantile_estimates(Q):
+    """CFV-G 2010 rearrangement: sort along the τ-axis at each evaluation point."""
+    return np.sort(Q, axis=0)
+```
+
+<QRFitExplorer client:visible defaultMode="multi" />
+
+<noscript>
+<Figure
+  src="/images/topics/quantile-regression/qr_crossing_rearrangement.png"
+  alt="Eleven marginal QR fits at tau in {0.05, 0.10, ..., 0.95} on heteroscedastic data, before and after rearrangement; crossings visible in the marginal fits, monotone after rearrangement."
+  caption="Eleven QR fits at τ ∈ {0.05, 0.10, …, 0.95} on heteroscedastic data (n = 120). Left: marginal fits show crossings at multiple evaluation points — visible where adjacent τ-curves dip past one another. Right: rearrangement (CFV-G 2010) sorts each evaluation point along the τ-axis, producing monotone fits with weakly smaller L² error to the true conditional quantile (Remark 11)."
+/>
+</noscript>
+
+## Penalized Quantile Regression
+
+Two settings push QR away from its plain Koenker–Bassett 1978 form. First, when $p > n$ or $p \sim n$ the unregularised QR LP is under-determined and badly behaved. Second, even at moderate $p$ with $n$ large enough for asymptotics, an $L^1$ penalty drives variable selection that simple shrinkage cannot match. Both settings use the same trick: add a penalty term to the pinball-loss objective.
+
+The $L^2$ penalty (already familiar from sklearn's `alpha` parameter):
+
+$$
+\min_\beta \; \sum_i \rho_\tau(Y_i - X_i^\top \beta) \;+\; \lambda\, \lVert \beta \rVert_2^2.
+$$
+
+This has a closed-form Hessian (modulo the non-smoothness of $\rho_\tau$) and can be solved either by augmenting the LP with linear-quadratic structure or via the smoothed-check-loss accelerated-gradient solver we use in the in-browser viz components.
+
+The $L^1$ penalty (the focus of this section, "QR-lasso" or "L1-QR"):
+
+$$
+\min_\beta \; \sum_i \rho_\tau(Y_i - X_i^\top \beta) \;+\; \lambda\, \lVert \beta \rVert_1.
+$$
+
+This stays a linear program, since $\lVert \beta \rVert_1 = \mathbf{1}^\top \beta^+ + \mathbf{1}^\top \beta^-$ splits cleanly with $\beta = \beta^+ - \beta^-$. Augment the QR LP with these auxiliary variables and solve for the full path of $\lambda$ values.
+
+<TheoremBlock type="remark" number={12} title="Why L1-QR is the natural high-dim QR">
+At the population level, suppose the true conditional $\tau$-quantile is linear with sparse slope vector $\beta_0(\tau)$ — only $s$ out of $p$ coordinates are nonzero. The LP-lasso-QR estimator targets that sparse $\beta_0(\tau)$ directly. By contrast, ridge-QR ($L^2$-penalised) shrinks all coordinates uniformly and never sets any to exactly zero, so it cannot recover the sparsity pattern; its high-dim rate is correspondingly slower.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={4} title="Belloni–Chernozhukov 2011 oracle rate for L1-QR">
+Suppose $(X_i, Y_i)$ are i.i.d. with $X_i$ bounded, the true conditional $\tau$-quantile is $q_\tau(x) = x^\top \beta_0(\tau)$ with $\lVert \beta_0(\tau) \rVert_0 = s$, and the design satisfies suitable **restricted eigenvalue** conditions on the active subspace. Choose
+
+$$
+\lambda \;\asymp\; c\, \sqrt{\tau(1 - \tau)}\, \sqrt{\log p / n}
+$$
+
+for a sufficiently large constant $c$. Then with high probability,
+
+$$
+\lVert \hat\beta(\tau) - \beta_0(\tau) \rVert_2 \;=\; O_P\!\left(\sqrt{s \log p / n}\right),
+$$
+
+matching the **oracle rate** one would obtain with knowledge of the support of $\beta_0(\tau)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Sketch.** The argument has three pieces, each of which uses tools developed in <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" /> (Topic 32).
+
+1. **Gradient-domination condition.** The estimating function for QR has bounded influence (the pinball-loss subgradient is bounded by 1 in absolute value), so a self-normalised concentration inequality gives $\lVert (1/n) \sum_i X_i\, (\tau - \mathbb{1}\{Y_i \leq X_i^\top \beta_0\}) \rVert_\infty \leq \lambda / 2$ with high probability when $\lambda$ is chosen as above. This is the *score* condition that ensures the lasso doesn't over-shrink.
+2. **Restricted-eigenvalue excursion control.** The pinball loss is convex but not strongly convex; restricting to the active cone restores a strong-convexity-like inequality on the design Gram matrix. Combine with the score condition to bound the $L^1$ deviation in the active subspace.
+3. **Oracle inequality.** The combined argument yields a high-probability bound of the form $\lVert \hat\beta - \beta_0 \rVert_2^2 \leq C\, s \log(p) / n$ where $C$ absorbs the restricted-eigenvalue constant and the $\tau(1 - \tau)$ factor. Square-rooting gives the stated rate.
+
+Full details in BC2011 §4; the general empirical-process scaffold is Topic 32 §32.5. $\square$
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={13} title="Choice of λ (CV vs BC plug-in)">
+The asymptotic rate fixes $\lambda$ only up to a constant. In practice, two routes pick the constant: (a) the BC2011 self-normalised plug-in, which uses a pivotal quantity to set $\lambda$ from data without cross-validation; (b) cross-validation on the pinball-loss objective itself. The figure below uses (b). CV-based $\lambda$ is more familiar and tends to be more aggressive than the BC plug-in, which is intentionally conservative for inference.
+</TheoremBlock>
+
+The L1-QR LP splits $\beta = \beta^+ - \beta^-$ with $\beta^+, \beta^- \geq 0$, then adds the slack pair $u^+, u^-$ from §3. Four nonnegative variable groups give a standard-form LP that scipy / HiGHS solves directly:
+
+```python
+def solve_lasso_qr_linprog(X, y, tau, lam, no_penalty_mask=None):
+    """L1-penalised QR via the standard LP reformulation.
+
+    Variables z = [β⁺ (p), β⁻ (p), u⁺ (n), u⁻ (n)].
+    Objective:   λ·(1ᵀβ⁺ + 1ᵀβ⁻) + τ·1ᵀu⁺ + (1−τ)·1ᵀu⁻,
+    with the λ coefficients zeroed out at indices in no_penalty_mask
+    (typically the intercept column).
+    Constraints: X(β⁺ − β⁻) + u⁺ − u⁻ = y, all variables ≥ 0.
+    """
+    n, p = X.shape
+    if no_penalty_mask is None:
+        no_penalty_mask = np.zeros(p, dtype=bool)
+    pen_costs = np.where(no_penalty_mask, 0.0, lam)
+    c = np.concatenate([
+        pen_costs,                  # cost on β⁺
+        pen_costs,                  # cost on β⁻
+        tau * np.ones(n),           # cost on u⁺
+        (1 - tau) * np.ones(n),     # cost on u⁻
+    ])
+    A_eq = np.hstack([X, -X, np.eye(n), -np.eye(n)])
+    bounds = [(0, None)] * (2 * p + 2 * n)
+    res = linprog(c, A_eq=A_eq, b_eq=y, bounds=bounds, method='highs')
+    z = res.x
+    return z[:p] - z[p:2 * p]      # β = β⁺ − β⁻
+```
+
+<Figure
+  src="/images/topics/quantile-regression/qr_penalized_path.png"
+  alt="L1-penalized QR coefficient path over thirty lambda values plus the 5-fold cross-validation pinball-loss curve identifying the CV-selected lambda."
+  caption="L1-QR (lasso-QR) on a 30-feature design with 4 truly active features (n = 200, τ = 0.5). Left: coefficient path along log₁₀(λ); colored lines are the truly active coefficients, grey lines are the 25 noise features, vanishing as λ grows. Right: 5-fold cross-validation pinball loss; the dashed line marks the CV-min λ, which selects all 4 true active features (with a few false positives — Theorem 4 governs the rate, not exact recovery)."
+/>
+
+## Quantile Regression as the Base Learner of Conformalized QR
+
+We close the loop with the use that motivated this topic in the T4 track: quantile regression as the base learner inside [Conformalized Quantile Regression](/topics/conformal-prediction) (Topic 1, §6). CQR uses two QR fits — at levels $\alpha/2$ and $1 - \alpha/2$ — to produce a heteroscedastic prediction band, and then applies conformal calibration on top to guarantee finite-sample marginal coverage at level $1 - \alpha$. Conformal's coverage theorem holds for **any** base learner ([Conformal Prediction](/topics/conformal-prediction), Theorem 1); the role of QR specifically is to give the band the right **shape**.
+
+This is the division of labour:
+
+- **QR base fits provide the band SHAPE** — wide where conditional variance is large, narrow where it is small. A symmetric residual-conformal interval does not have this property; it produces constant-width bands.
+- **Conformal calibration provides the band WIDTH** — adjust the QR fits by an additive constant so that the empirical miscoverage rate on a held-out calibration set matches the target $\alpha$.
+
+[Conformal Prediction](/topics/conformal-prediction)'s Theorem 1 (split-conformal validity) gives marginal coverage $1 - \alpha$ regardless of how badly QR is misspecified — even constant fits. What QR contributes is conditional approximate validity: when the linear class spans the true conditional quantile function, the conformal correction is a small constant and the resulting band tracks the true conditional coverage rate uniformly. When QR is misspecified, the conformal correction absorbs the misspecification globally; the resulting band still has marginal coverage $1 - \alpha$ but conditional coverage will be uneven. The full treatment of prediction-interval procedures — comparing CQR with locally adaptive variants (CQR-r, CQR-m), conditional-coverage methods, and base learners beyond linear QR — lives in **Prediction Intervals** *(coming soon)*.
+
+Recall (callback to [Conformal Prediction](/topics/conformal-prediction) §6, Definition 4) the CQR prediction set at level $1 - \alpha$ based on QR fits $\hat q_{\alpha/2}$ and $\hat q_{1 - \alpha/2}$:
+
+$$
+\hat C_\alpha(x) \;=\; \bigl[\,\hat q_{\alpha/2}(x) - \hat Q_\alpha,\quad \hat q_{1 - \alpha/2}(x) + \hat Q_\alpha\,\bigr],
+$$
+
+where $\hat Q_\alpha$ is the $(1 - \alpha)$ empirical quantile (with the standard $1/n_{\text{cal}}$ correction) of the calibration nonconformity scores
+
+$$
+E_i \;=\; \max\bigl\{\,\hat q_{\alpha/2}(X_i) - Y_i,\ \ Y_i - \hat q_{1 - \alpha/2}(X_i)\,\bigr\}.
+$$
+
+The two QR fits define the band shape; $\hat Q_\alpha$ is a single scalar that inflates or deflates the band uniformly to hit the target coverage.
+
+<Figure
+  src="/images/topics/quantile-regression/qr_cqr_callback.png"
+  alt="Two-panel comparison: uncalibrated QR band (test coverage below target) vs. CQR-corrected band (test coverage at target), with underlying QR fit and true conditional quantile band overlaid."
+  caption="QR + conformal decomposition. Left: uncalibrated QR band at τ ∈ {0.05, 0.95} (n = 1000 train); the band shape tracks the heteroscedasticity but its empirical coverage on a held-out test set undershoots the 0.90 target (~0.87) because of misspecification + finite-sample noise. Right: CQR-corrected band — same shape, calibrated width, with test coverage hitting the target."
+/>
+
+## Connections and Further Reading
+
+**Within formalML, this topic feeds into:**
+
+- [Conformal Prediction](/topics/conformal-prediction) (T4 #1). The two-sided QR fits at $\alpha/2$ and $1 - \alpha/2$ are the base learner inside Conformalized Quantile Regression. Theorem 1 of conformal-prediction guarantees marginal coverage of the CQR band regardless of QR's specification; the role of QR is to give the band the right *shape* — heteroscedastic where the data are heteroscedastic. See §8 above.
+
+- **Prediction Intervals** *(coming soon)*. A unifying treatment of frequentist prediction intervals — fixed-width residual-based, conformal, and quantile-regression-based — and their coverage guarantees under various assumptions (i.i.d., exchangeable, group-conditional). Quantile regression is one of three "spokes" feeding into that umbrella topic.
+
+- **Extreme Value Theory** *(coming soon)*. Theorem 3's variance formula tells us QR's asymptotic variance inflates as $\tau \to 0$ or $\tau \to 1$, because the density-weighted matrix $D(\tau)$ shrinks in the tail. Beyond moderate quantile levels — typically $\tau$ outside roughly $[0.05, 0.95]$ for a Gaussian-tailed $Y$ — direct QR is not the right framework. EVT replaces it with the generalised Pareto / generalised extreme-value families and a peaks-over-threshold estimator that targets the tail directly.
+
+**Cross-site prerequisites:**
+
+- <ExternalLink href="https://formalstatistics.com/topics/linear-regression" site="formalstatistics" topic="Linear Regression" /> — the OLS analog. The KB78 estimator is the pinball-loss replacement of squared loss; the LP reformulation is the QR replacement of the normal equations; Theorem 3's asymptotic Gaussian is the QR replacement of OLS's $\hat\beta_{OLS} \sim \mathcal{N}(\beta, \sigma^2 (X^\top X)^{-1})$.
+
+- <ExternalLink href="https://formalstatistics.com/topics/order-statistics-and-quantiles" site="formalstatistics" topic="Order Statistics and Quantiles" /> — the no-covariate special case. With a single intercept feature, KB78 reduces to the empirical $\tau$-quantile of $\{Y_i\}$; Theorem 3 reduces to the classical Bahadur–Ghosh asymptotics.
+
+- <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" /> — the toolkit behind Theorem 3's proof sketch (Knight's identity, the empirical-process limit of the rescaled objective, the argmin lemma) and behind Theorem 4's restricted-eigenvalue / oracle-inequality argument.
+
+**Internal prerequisites:**
+
+- [Convex Analysis](/topics/convex-analysis) — the pinball loss is convex but non-smooth; the LP reformulation exploits its piecewise-linear structure.
+
+- [Gradient Descent](/topics/gradient-descent) — the smoothed-check-loss accelerated-gradient solver is what powers the in-browser visualisation widgets, where running an LP solver in the user's browser is impractical.
