@@ -262,39 +262,87 @@ export function fitPredictRidge(
  * normalized by its sample std), then unscales before returning. Without
  * scaling, x^degree dominates the gradient and convergence is slow.
  */
-function _solveQuantileBetaUnscaled(
+/**
+ * Build degree-d polynomial features and standardise each non-bias column by
+ * its sample std. Returns a row-major Float64Array of size (n × p) plus the
+ * column-std vector and the row-major max-row-norm². Computing this matrix is
+ * ~25% of a single solve; multi-τ workflows reuse the same `xTrain` across all
+ * τ levels, so we factor this out so the caller can amortise it once across K
+ * solves (PR #57 review feedback, comment 3142933354).
+ */
+function _buildScaledFeatures(
   xTrain: Float64Array,
-  yTrain: Float64Array,
-  tau: number,
   degree: number,
-  lambda: number,
-  hFactor: number = 0.005,
-  maxIter: number = 2000,
-): Float64Array {
-  const p = degree + 1; // bias + x + x^2 + ... + x^degree
+): {
+  PhiScaled: Float64Array; // shape (n, p) row-major
+  colStd: Float64Array; // length p; colStd[0] = 1 (bias unchanged)
+  n: number;
+  p: number;
+  maxRowSq: number; // max ||row||² over all rows; used in the Lipschitz estimate
+} {
+  const p = degree + 1;
   const n = xTrain.length;
-  // Build feature matrix and standardise its columns to similar magnitudes.
-  const Phi: number[][] = new Array(n);
-  for (let i = 0; i < n; i++) Phi[i] = polyFeatures(xTrain[i], degree, true);
-  const colStd: number[] = new Array(p).fill(1);
+  const PhiRaw = new Float64Array(n * p);
+  for (let i = 0; i < n; i++) {
+    PhiRaw[i * p] = 1;
+    let xk = xTrain[i];
+    for (let c = 1; c < p; c++) {
+      PhiRaw[i * p + c] = xk;
+      xk *= xTrain[i];
+    }
+  }
+  const colStd = new Float64Array(p);
+  colStd[0] = 1;
   for (let c = 1; c < p; c++) {
     let mean = 0;
-    for (let i = 0; i < n; i++) mean += Phi[i][c];
+    for (let i = 0; i < n; i++) mean += PhiRaw[i * p + c];
     mean /= n;
     let varSum = 0;
     for (let i = 0; i < n; i++) {
-      const d = Phi[i][c] - mean;
+      const d = PhiRaw[i * p + c] - mean;
       varSum += d * d;
     }
     const sd = Math.sqrt(varSum / Math.max(n - 1, 1));
     colStd[c] = sd > 1e-12 ? sd : 1;
   }
-  const PhiScaled: number[][] = new Array(n);
+  const PhiScaled = new Float64Array(n * p);
+  let maxRowSq = 0;
   for (let i = 0; i < n; i++) {
-    PhiScaled[i] = new Array(p);
-    PhiScaled[i][0] = Phi[i][0];
-    for (let c = 1; c < p; c++) PhiScaled[i][c] = Phi[i][c] / colStd[c];
+    let rowSq = 1; // bias contributes 1²
+    PhiScaled[i * p] = 1;
+    for (let c = 1; c < p; c++) {
+      const v = PhiRaw[i * p + c] / colStd[c];
+      PhiScaled[i * p + c] = v;
+      rowSq += v * v;
+    }
+    if (rowSq > maxRowSq) maxRowSq = rowSq;
   }
+  return { PhiScaled, colStd, n, p, maxRowSq };
+}
+
+/**
+ * Run the smoothed-check-loss + Nesterov AGD on pre-scaled features. Returns
+ * the *scaled* β as a Float64Array(p); caller is responsible for unscaling.
+ *
+ * Performance details (PR #57 review feedback, comment 3142933356):
+ *  - All buffers (`grad`, `momentum`, `prevBeta`, `newBeta`) are
+ *    `Float64Array(p)` allocated *once* outside the iter loop and reused.
+ *  - The 1/n factor is hoisted out of the per-sample gradient accumulator;
+ *    instead we accumulate `Σ_i x_i · grad_pred_i` and divide by n once per
+ *    iteration.
+ *  - Row offsets into `PhiScaled` are pre-computed (`baseI = i*p`).
+ */
+function _solveQuantileScaled(
+  PhiScaled: Float64Array, // shape (n, p) row-major
+  yTrain: Float64Array,
+  tau: number,
+  n: number,
+  p: number,
+  maxRowSq: number,
+  lambda: number,
+  hFactor: number,
+  maxIter: number,
+): Float64Array {
   // Smoothing parameter from y-scale.
   let yMean = 0;
   for (let i = 0; i < n; i++) yMean += yTrain[i];
@@ -306,56 +354,97 @@ function _solveQuantileBetaUnscaled(
   }
   const yStd = Math.sqrt(yVar / Math.max(n - 1, 1));
   const h = Math.max(hFactor * yStd, 1e-3);
-  const beta = new Array(p).fill(0);
+
+  // Pre-allocated buffers (all reused across iterations).
+  const beta = new Float64Array(p);
+  const momentum = new Float64Array(p);
+  const prevBeta = new Float64Array(p);
+  const newBeta = new Float64Array(p);
+  const grad = new Float64Array(p);
   // Initialise bias to median of y for stability.
-  const ySorted = Array.from(yTrain).sort((a, b) => a - b);
+  const ySorted = Float64Array.from(yTrain).sort();
   beta[0] = ySorted[Math.floor(n / 2)];
-  let momentum = beta.slice();
-  let maxRowSq = 0;
-  for (let i = 0; i < n; i++) {
-    let s = 0;
-    for (let c = 0; c < p; c++) s += PhiScaled[i][c] * PhiScaled[i][c];
-    if (s > maxRowSq) maxRowSq = s;
+  for (let c = 0; c < p; c++) {
+    momentum[c] = beta[c];
+    prevBeta[c] = beta[c];
   }
+
   const L = maxRowSq / (4 * h * n) + lambda + 1e-6;
   const stepSize = 1 / L;
+  const invH = 1 / h;
+  const invN = 1 / n;
   let tPrev = 1;
-  let prevBeta = beta.slice();
+
   for (let iter = 0; iter < maxIter; iter++) {
-    const grad = new Array(p).fill(0);
+    // Zero gradient.
+    for (let c = 0; c < p; c++) grad[c] = 0;
+
+    // Accumulate per-sample contributions (without the 1/n factor; applied below).
     for (let i = 0; i < n; i++) {
+      const baseI = i * p;
       let pred = 0;
-      for (let c = 0; c < p; c++) pred += PhiScaled[i][c] * momentum[c];
-      const r = yTrain[i] - pred;
-      const z = r / h;
-      const sigmoidZ = z >= 0
-        ? 1 / (1 + Math.exp(-z))
-        : Math.exp(z) / (1 + Math.exp(z));
-      const grad_r = tau - (1 - sigmoidZ);
-      const grad_pred = -grad_r;
-      for (let c = 0; c < p; c++) grad[c] += (PhiScaled[i][c] * grad_pred) / n;
+      for (let c = 0; c < p; c++) pred += PhiScaled[baseI + c] * momentum[c];
+      const z = (yTrain[i] - pred) * invH;
+      const sigmoidZ =
+        z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z));
+      // grad_pred = -(τ − (1 − sigmoid(z))) = (1 − τ) − sigmoid(z)
+      const grad_pred = 1 - tau - sigmoidZ;
+      for (let c = 0; c < p; c++) grad[c] += PhiScaled[baseI + c] * grad_pred;
     }
-    for (let c = 1; c < p; c++) grad[c] += lambda * momentum[c];
-    const newBeta = new Array(p);
-    for (let c = 0; c < p; c++) newBeta[c] = momentum[c] - stepSize * grad[c];
+    // Apply 1/n + L2 ridge in one pass.
+    grad[0] *= invN;
+    for (let c = 1; c < p; c++) grad[c] = grad[c] * invN + lambda * momentum[c];
+
+    // Gradient step + Nesterov momentum + convergence check (single pass).
     const tCurr = (1 + Math.sqrt(1 + 4 * tPrev * tPrev)) / 2;
     const w = (tPrev - 1) / tCurr;
-    for (let c = 0; c < p; c++) momentum[c] = newBeta[c] + w * (newBeta[c] - prevBeta[c]);
     let maxDelta = 0;
     for (let c = 0; c < p; c++) {
-      const d = Math.abs(newBeta[c] - prevBeta[c]);
-      if (d > maxDelta) maxDelta = d;
+      const nb = momentum[c] - stepSize * grad[c];
+      newBeta[c] = nb;
+      const delta = nb - prevBeta[c];
+      momentum[c] = nb + w * delta;
+      const ad = delta < 0 ? -delta : delta;
+      if (ad > maxDelta) maxDelta = ad;
     }
-    prevBeta = newBeta;
+    for (let c = 0; c < p; c++) prevBeta[c] = newBeta[c];
     tPrev = tCurr;
     if (maxDelta < 1e-7 && iter > 10) break;
   }
-  // Unscale β before returning. β_unscaled[0] = β_scaled[0] (bias unchanged);
-  // β_unscaled[c] = β_scaled[c] / colStd[c] for c ≥ 1.
-  const betaUnscaled = new Float64Array(p);
-  betaUnscaled[0] = prevBeta[0];
-  for (let c = 1; c < p; c++) betaUnscaled[c] = prevBeta[c] / colStd[c];
-  return betaUnscaled;
+  // Return a copy so subsequent solves on the same buffers don't clobber it.
+  return Float64Array.from(prevBeta);
+}
+
+/** Unscale β returned by `_solveQuantileScaled` to the original feature basis. */
+function _unscaleBeta(betaScaled: Float64Array, colStd: Float64Array, p: number): Float64Array {
+  const out = new Float64Array(p);
+  out[0] = betaScaled[0];
+  for (let c = 1; c < p; c++) out[c] = betaScaled[c] / colStd[c];
+  return out;
+}
+
+function _solveQuantileBetaUnscaled(
+  xTrain: Float64Array,
+  yTrain: Float64Array,
+  tau: number,
+  degree: number,
+  lambda: number,
+  hFactor: number = 0.005,
+  maxIter: number = 2000,
+): Float64Array {
+  const { PhiScaled, colStd, n, p, maxRowSq } = _buildScaledFeatures(xTrain, degree);
+  const betaScaled = _solveQuantileScaled(
+    PhiScaled,
+    yTrain,
+    tau,
+    n,
+    p,
+    maxRowSq,
+    lambda,
+    hFactor,
+    maxIter,
+  );
+  return _unscaleBeta(betaScaled, colStd, p);
 }
 
 /** Evaluate degree-d polynomial pred(x) = β[0] + β[1]·x + β[2]·x² + ... at xEval. */
@@ -405,6 +494,35 @@ export function fitPredictQuantile(
  *
  * Used by the BootstrapQuantileCI viz component and by §5 of the topic page.
  */
+/**
+ * Single bootstrap iteration: resample (X, Y) with replacement, refit the
+ * smoothed-check QR, return the chosen coefficient. Exported so callers (e.g.
+ * the BootstrapQuantileCI viz component) can drive the bootstrap manually —
+ * yielding to the main thread between draws — instead of paying the full
+ * `bootstrapQuantileCI` synchronous cost in one shot. PR #57 review feedback
+ * (comment 3142933355).
+ */
+export function bootstrapQuantileSample(
+  xData: Float64Array,
+  yData: Float64Array,
+  tau: number,
+  rng: () => number,
+  coefIndex: number = 1,
+  degree: number = 3,
+  lambda: number = 0.01,
+): number {
+  const n = xData.length;
+  const xb = new Float64Array(n);
+  const yb = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor(rng() * n);
+    xb[i] = xData[idx];
+    yb[i] = yData[idx];
+  }
+  const beta = _solveQuantileBetaUnscaled(xb, yb, tau, degree, lambda);
+  return beta[coefIndex];
+}
+
 export function bootstrapQuantileCI(
   x: Float64Array,
   y: Float64Array,
@@ -422,18 +540,9 @@ export function bootstrapQuantileCI(
   empiricalMean: number;
   empiricalStd: number;
 } {
-  const n = x.length;
   const coefDraws = new Float64Array(B);
-  const xb = new Float64Array(n);
-  const yb = new Float64Array(n);
   for (let b = 0; b < B; b++) {
-    for (let i = 0; i < n; i++) {
-      const idx = Math.floor(rng() * n);
-      xb[i] = x[idx];
-      yb[i] = y[idx];
-    }
-    const beta = _solveQuantileBetaUnscaled(xb, yb, tau, degree, lambda);
-    coefDraws[b] = beta[coefIndex];
+    coefDraws[b] = bootstrapQuantileSample(x, y, tau, rng, coefIndex, degree, lambda);
   }
   let mean = 0;
   for (let b = 0; b < B; b++) mean += coefDraws[b];
@@ -474,8 +583,23 @@ export function fitPredictMultipleQuantiles(
   const K = taus.length;
   const nEval = xEval.length;
   const Q = new Float64Array(K * nEval);
+  // Build features ONCE: training data and degree are constant across τ levels.
+  // PR #57 review feedback (comment 3142933354): previously this rebuilt the
+  // (n × p) feature matrix and the column-std vector for every τ — pure waste.
+  const { PhiScaled, colStd, n, p, maxRowSq } = _buildScaledFeatures(xTrain, degree);
   for (let k = 0; k < K; k++) {
-    const beta = _solveQuantileBetaUnscaled(xTrain, yTrain, taus[k], degree, lambda);
+    const betaScaled = _solveQuantileScaled(
+      PhiScaled,
+      yTrain,
+      taus[k],
+      n,
+      p,
+      maxRowSq,
+      lambda,
+      0.005,
+      2000,
+    );
+    const beta = _unscaleBeta(betaScaled, colStd, p);
     const preds = _polyPredict(beta, xEval, degree);
     for (let j = 0; j < nEval; j++) Q[k * nEval + j] = preds[j];
   }

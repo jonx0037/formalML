@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   bootstrapQuantileCI,
+  bootstrapQuantileSample,
   mulberry32,
   synthHeteroscedastic,
 } from './shared/nonparametric-ml';
@@ -28,6 +29,12 @@ import {
 // The convergence-plot grid is precomputed once on mount (deferred 80 ms after
 // render so the histogram appears first) — each (n, τ) cell uses B = 30 to
 // keep total precompute under ~2 s.
+//
+// PR #57 review feedback (comment 3142933355): the histogram bootstrap is
+// driven by a chunked setTimeout loop (CHUNK_SIZE draws per task) instead of a
+// single synchronous `useMemo`, so the main thread can repaint between chunks
+// at large B / large n. Pending timer IDs live in a `useRef` and are cleared
+// in the `useEffect` cleanup to prevent leaks across slider-driven re-runs.
 // =============================================================================
 
 const PANEL_HEIGHT = 270;
@@ -43,6 +50,10 @@ const CONV_SEEDS = 3;
 const CONV_B = 30; // total fits per cell, split across CONV_SEEDS data seeds
 const QUICK_B = 50;
 const PRECISE_B = 200;
+// Bootstrap chunk size: number of single fits per setTimeout task. 20 keeps
+// each chunk under ~300ms even at n=1000 (single fit ~15ms), so the main
+// thread repaints comfortably between chunks.
+const BOOTSTRAP_CHUNK = 20;
 
 const BLUE = '#2563EB';
 const RED = '#DC2626';
@@ -60,6 +71,39 @@ interface ConvergenceData {
   nGrid: number[];
   taus: number[];
   stdSqrtN: number[][]; // shape (taus.length, nGrid.length)
+}
+
+interface HistogramResult {
+  coefDraws: Float64Array;
+  empiricalMean: number;
+  empiricalStd: number;
+  ciLower: number;
+  ciUpper: number;
+  B: number; // actual number of completed draws (matches precisionB at completion)
+}
+
+function summariseDraws(draws: Float64Array, alpha: number): HistogramResult {
+  const B = draws.length;
+  let mean = 0;
+  for (let i = 0; i < B; i++) mean += draws[i];
+  mean /= B;
+  let varSum = 0;
+  for (let i = 0; i < B; i++) {
+    const d = draws[i] - mean;
+    varSum += d * d;
+  }
+  const std = Math.sqrt(varSum / Math.max(B - 1, 1));
+  const sorted = Float64Array.from(draws).sort();
+  const lowerIdx = Math.max(0, Math.floor((alpha / 2) * B));
+  const upperIdx = Math.min(B - 1, Math.ceil((1 - alpha / 2) * B) - 1);
+  return {
+    coefDraws: draws,
+    empiricalMean: mean,
+    empiricalStd: std,
+    ciLower: sorted[lowerIdx],
+    ciUpper: sorted[upperIdx],
+    B,
+  };
 }
 
 function computeConvergenceData(): ConvergenceData {
@@ -93,10 +137,11 @@ export default function BootstrapQuantileCI() {
   // precisionB resets to QUICK_B whenever (n, τ) changes; user clicks "Run" to
   // upgrade to PRECISE_B for the current setting.
   const [precisionB, setPrecisionB] = useState<number>(QUICK_B);
-  const [running, setRunning] = useState(false);
   // computeKey: increments to force recomputation when sliders change OR
   // when "Run B = 200" is clicked. Lets us avoid a useEffect race.
   const [computeKey, setComputeKey] = useState(0);
+  const [histogram, setHistogram] = useState<HistogramResult | null>(null);
+  const [running, setRunning] = useState(false);
 
   const n = N_OPTIONS[nIdx];
 
@@ -106,14 +151,44 @@ export default function BootstrapQuantileCI() {
     setComputeKey((k) => k + 1);
   }, [nIdx, tau]);
 
-  // Heavy compute: bootstrap histogram at (n, τ, precisionB).
-  const histogram = useMemo(() => {
+  // Pending timer IDs from the chunked bootstrap loop. Cleared on dep change
+  // and on unmount via the useEffect cleanup so we never leak timers or have
+  // overlapping bootstrap runs.
+  const bootstrapTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  // Drive the bootstrap in chunks of BOOTSTRAP_CHUNK draws per setTimeout
+  // task; the main thread can repaint between chunks. PR #57 review feedback.
+  useEffect(() => {
+    setRunning(true);
+    setHistogram(null);
+
     const dataRng = mulberry32(2026 + Math.round(tau * 100) + n);
     const { x, y } = synthHeteroscedastic(n, dataRng);
     const bootRng = mulberry32(7777 + Math.round(tau * 100) + n);
-    const result = bootstrapQuantileCI(x, y, tau, precisionB, 0.1, bootRng);
-    return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const B = precisionB;
+    const draws = new Float64Array(B);
+    let drawIdx = 0;
+
+    const runChunk = () => {
+      const end = Math.min(drawIdx + BOOTSTRAP_CHUNK, B);
+      for (; drawIdx < end; drawIdx++) {
+        draws[drawIdx] = bootstrapQuantileSample(x, y, tau, bootRng);
+      }
+      if (drawIdx < B) {
+        const id = setTimeout(runChunk, 0);
+        bootstrapTimers.current.push(id);
+      } else {
+        setHistogram(summariseDraws(draws, 0.1));
+        setRunning(false);
+      }
+    };
+
+    runChunk();
+
+    return () => {
+      for (const id of bootstrapTimers.current) clearTimeout(id);
+      bootstrapTimers.current = [];
+    };
   }, [n, tau, precisionB, computeKey]);
 
   // Defer-once convergence grid (precomputed via setTimeout to let the
@@ -131,13 +206,8 @@ export default function BootstrapQuantileCI() {
     : Math.floor((containerWidth || 720) / 2) - 4;
 
   const onRunPrecise = () => {
-    setRunning(true);
-    // Defer state update to next tick so the "Computing…" message paints first.
-    setTimeout(() => {
-      setPrecisionB(PRECISE_B);
-      setComputeKey((k) => k + 1);
-      setRunning(false);
-    }, 30);
+    setPrecisionB(PRECISE_B);
+    setComputeKey((k) => k + 1);
   };
 
   // ── Left/top panel: histogram + Gaussian overlay ────────────────────────
@@ -148,6 +218,30 @@ export default function BootstrapQuantileCI() {
       const margin = { top: 36, right: 14, bottom: 36, left: 44 };
       const w = panelWidth - margin.left - margin.right;
       const h = PANEL_HEIGHT - margin.top - margin.bottom;
+
+      // While the chunked bootstrap is in flight (histogram === null), show a
+      // placeholder so the panel is never blank.
+      if (histogram === null) {
+        svg
+          .append('text')
+          .attr('x', margin.left + w / 2)
+          .attr('y', margin.top + h / 2)
+          .attr('text-anchor', 'middle')
+          .style('fill', 'var(--color-text-secondary)')
+          .style('font-family', 'var(--font-sans)')
+          .style('font-size', '11.5px')
+          .text(`Running B = ${precisionB} bootstraps…`);
+        svg
+          .append('text')
+          .attr('x', margin.left + w / 2)
+          .attr('y', margin.top + h / 2 + 18)
+          .attr('text-anchor', 'middle')
+          .style('fill', 'var(--color-text-secondary)')
+          .style('font-family', 'var(--font-sans)')
+          .style('font-size', '10px')
+          .text(`(n = ${n}, τ = ${fmt(tau, 2)})`);
+        return;
+      }
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
       const draws = Array.from(histogram.coefDraws);
@@ -350,24 +444,28 @@ export default function BootstrapQuantileCI() {
           .text(`τ = ${tauVal}`);
       }
 
-      // Marker for user's current (n, τ): closest precomputed line + interpolated y
-      const closestTauIdx = Math.abs(tau - 0.5) < Math.abs(tau - 0.9) ? 0 : 1;
-      const userStdSqrtN = histogram.empiricalStd * Math.sqrt(n);
-      g.append('circle')
-        .attr('cx', xScale(n))
-        .attr('cy', yScale(userStdSqrtN))
-        .attr('r', 5)
-        .style('fill', 'none')
-        .style('stroke', tauColor(closestTauIdx))
-        .style('stroke-width', 2);
-      g.append('text')
-        .attr('x', xScale(n))
-        .attr('y', yScale(userStdSqrtN) - 10)
-        .attr('text-anchor', 'middle')
-        .style('fill', tauColor(closestTauIdx))
-        .style('font-family', 'var(--font-sans)')
-        .style('font-size', '9.5px')
-        .text(`current  σ̂·√n = ${fmt(userStdSqrtN, 2)}`);
+      // Marker for user's current (n, τ): closest precomputed line + interpolated y.
+      // Drawn only after the histogram bootstrap completes — otherwise we'd
+      // render a stale value during the in-flight chunked recompute.
+      if (histogram !== null) {
+        const closestTauIdx = Math.abs(tau - 0.5) < Math.abs(tau - 0.9) ? 0 : 1;
+        const userStdSqrtN = histogram.empiricalStd * Math.sqrt(n);
+        g.append('circle')
+          .attr('cx', xScale(n))
+          .attr('cy', yScale(userStdSqrtN))
+          .attr('r', 5)
+          .style('fill', 'none')
+          .style('stroke', tauColor(closestTauIdx))
+          .style('stroke-width', 2);
+        g.append('text')
+          .attr('x', xScale(n))
+          .attr('y', yScale(userStdSqrtN) - 10)
+          .attr('text-anchor', 'middle')
+          .style('fill', tauColor(closestTauIdx))
+          .style('font-family', 'var(--font-sans)')
+          .style('font-size', '9.5px')
+          .text(`current  σ̂·√n = ${fmt(userStdSqrtN, 2)}`);
+      }
 
       // Title
       svg
