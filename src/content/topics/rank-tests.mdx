@@ -206,6 +206,10 @@ $$
 with equality whenever $\alpha$ is a multiple of $1/|\mathcal{G}|$. $\square$
 </TheoremBlock>
 
+<TheoremBlock type="remark" number={1} title="Permutation vs Randomization Inference">
+The permutation principle is sometimes called the *randomization* principle, and the two terms are routinely conflated. There is a real distinction. In the **population-sampling** context (data drawn from an infinite population), Theorem 3's invariance assumption is exchangeability of the sample under $H_0$ — a property of the joint *distribution*. In the **finite-population or experimental** context (Theorem 12 below; §8), the invariance is assured by the experimenter's random treatment assignment — a property of the *physical* randomization mechanism. The two are mathematically identical (both are instances of Theorem 3 with different choices of $\mathcal{G}$), but their justifications differ. In observational studies, exchangeability is often a much stronger assumption than experimenters realise; in randomized experiments, it is guaranteed by design. We pick this back up explicitly in §8.
+</TheoremBlock>
+
 ## Wilcoxon Rank-Sum and Mann-Whitney $U$
 
 <TheoremBlock type="definition" number={4} title="Wilcoxon Rank-Sum Statistic">
@@ -279,6 +283,10 @@ giving $\mathrm{Cov}(U_{ij}, U_{ij'}) = 1/3 - 1/4 = 1/12$.
 $$
 \mathrm{Var}(U) \;=\; \frac{n_1 n_2}{4} \;+\; \frac{n_1 n_2 (n_2 - 1)}{12} \;+\; \frac{n_1 n_2 (n_1 - 1)}{12} \;=\; \frac{n_1 n_2}{12}\bigl[3 + (n_2 - 1) + (n_1 - 1)\bigr] \;=\; \frac{n_1 n_2 (N + 1)}{12}. \;\square
 $$
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={2} title="scipy's Convention for $U$">
+`scipy.stats.mannwhitneyu(X, Y)` returns $U$ for the *first* argument, counting $\#\{(i, j) : Y_j < X_i\}$ — the **complement** of our Definition 5. The two conventions satisfy $U_{XY} + U_{YX} = n_1 n_2$, encode the same information, and produce identical two-sided $p$-values; only the reported statistic differs. Practitioners who run `mannwhitneyu(X, Y)` and then look up "expected $U = n_1 n_2 / 2$" sometimes lose an hour to this. The fix is to pass the arguments in the order matching whichever convention you have in mind.
 </TheoremBlock>
 
 ## Kruskal-Wallis: The $k$-Sample Extension
@@ -430,6 +438,14 @@ $$
 $$
 </TheoremBlock>
 
+<TheoremBlock type="remark" number={3} title="The Hodges-Lehmann 0.864 Floor">
+A celebrated result of Hodges & Lehmann (1956) establishes that for any density $f$ symmetric with finite variance and a bounded twice-differentiable form,
+$$
+\mathrm{ARE}(W, T) \;\geq\; \frac{108}{125} \;=\; 0.864.
+$$
+Wilcoxon never loses more than ~14% asymptotic efficiency relative to the $t$-test, regardless of the underlying density, and can gain unboundedly under heavy tails. The minimum is achieved at the parabolic density $f^*(x) = \tfrac{3}{4\sqrt{5}}(1 - x^2/5)$ on $|x| \leq \sqrt{5}$. The proof is a calculus-of-variations problem — minimise $12 \sigma^2 (\int f^2)^2$ subject to symmetry and unit variance — and is reproduced in Hodges & Lehmann (1956) and Lehmann (1975, §4.2). The bound is the rare statistical bargain: distribution-freeness with a worst-case efficiency cost smaller than most practitioners' rounding error in sample-size calculations.
+</TheoremBlock>
+
 ## The Hodges-Lehmann Estimator
 
 <TheoremBlock type="definition" number={7} title="Walsh Averages and One-Sample Hodges-Lehmann Estimator">
@@ -513,9 +529,29 @@ $$
 $$
 </TheoremBlock>
 
+<TheoremBlock type="remark" number={4} title="When the Sample Median Beats HL (Laplace = MLE)">
+The Hodges-Lehmann estimator is not a universal optimum — it loses to the sample median when the data are Laplace-distributed. Under the Laplace density $f(x) = \tfrac{1}{2}e^{-|x|}$, the maximum-likelihood estimator of the location parameter is the sample median (because the Laplace log-likelihood is the negative $L_1$ loss). Plugging in the Laplace values $f(0) = 1/2$, $\int f^2 = 1/4$:
+$$
+\mathrm{ARE}(\hat\theta_{\mathrm{HL}},\, \mathrm{median}) \;=\; \frac{3 \cdot (1/4)^2}{(1/2)^2} \;=\; 3/4 \;=\; 0.75.
+$$
+The median achieves asymptotic variance $1/(4 f(0)^2 n) = 1/n$, while HL achieves $1/(12 I(f)^2 n) = 4/(3n)$ — a 33% inflation. So *under Laplace, use the median, not HL*. The general moral: HL is a robust compromise across density shapes, not the best estimator at any single one. When the parametric form is known, the MLE is what beats it.
+</TheoremBlock>
+
 ## Permutation Tests with Non-Rank Statistics
 
-*[§7 content — Remark 5 (raw vs ranks — power trade-off, not validity trade-off); PermutationDistributionExplorer (defaultStatistic="welchT") — to be added in Tasks 2–5 and 7b call site.]*
+<TheoremBlock type="remark" number={5} title="Raw vs Ranks — A Power Trade-Off, Not a Validity Trade-Off">
+Both the permutation $t$-test and Mann-Whitney are exact under exchangeability — they differ only in the choice of statistic. The choice is a power decision, not a validity one:
+
+- **Raw permutation** (mean difference, Welch $t$, etc.) is more powerful when the parametric model is roughly right. Asymptotically, the permutation $t$ and the classical $t$ share the same drift coefficient $c_T = 1/\sigma$.
+- **Rank permutation** (Wilcoxon rank-sum, Mann-Whitney $U$) is more powerful when tails are heavy or outliers are present. Drift coefficient $c_W = \sqrt{12}\, I(f)$, which dominates $1/\sigma$ exactly when $\mathrm{ARE}(W, T) > 1$.
+- **Random permutation** (sampled rather than enumerated): when $\binom{N}{n_1}$ is too large for full enumeration, sample $B$ random permutations. The Phipson-Smyth $p$-value
+$$
+\hat p \;=\; \frac{1 + \#\{T_\pi \geq T_{\mathrm{obs}}\}}{1 + B}
+$$
+is conservative; the "+1"s adjust for the observed value being one realisation, and the construction guarantees $\hat p > 0$ regardless of $B$.
+
+The key point: the permutation framework is the umbrella, and rank tests are just one corner of it. When you encounter a clever test statistic in a paper, the question to ask is not "does it have a known asymptotic distribution?" — it's "is the null exchangeable?" If the answer is yes, you have a finite-sample exact test for free.
+</TheoremBlock>
 
 <NamedSection id="ab-testing" title="A/B Testing as Randomization Inference">
 
@@ -541,11 +577,52 @@ Under $H_0^{\mathrm{sharp}}$, $Y$ is fixed (not random — every unit's outcome 
 The conceptual difference from §2's permutation-test framing is what gives Theorem 12 its operational power. Validity comes from the **experimenter's coin flip**, not from any assumption about the population. The data-generating process for the $Y_i$'s can be arbitrary — heteroscedastic, heavy-tailed, autocorrelated across users — and the randomization inference is still exact.
 </TheoremBlock>
 
+<TheoremBlock type="remark" number={6} title="CUPED — Variance Reduction Without Breaking Randomization">
+CUPED (Deng, Xu, Kohavi & Walker 2013, "Controlled-experiment Using Pre-Experiment Data") replaces the metric $Y$ with
+$$
+Y_{\mathrm{cuped},\, i} \;=\; Y_i \;-\; \beta\, (X_i - \bar X), \qquad \beta \;=\; \frac{\mathrm{Cov}(X, Y)}{\mathrm{Var}(X)},
+$$
+where $X$ is a pre-experiment covariate per user (e.g., the user's revenue in the prior month) and $\bar X$ is the pooled sample mean. The adjusted variable has the same expected mean as $Y$ — the term $(X_i - \bar X)$ has expectation zero — but variance $\mathrm{Var}(Y) - \mathrm{Cov}(X, Y)^2 / \mathrm{Var}(X) = \mathrm{Var}(Y)\,(1 - \rho_{X, Y}^2)$, strictly smaller whenever $X$ and $Y$ are correlated.
+
+Crucially, the adjustment is **symmetric in the labels** — the same $\beta$ and the same $\bar X$ are used for both groups — so under $H_0^{\mathrm{sharp}}$ the $Y_{\mathrm{cuped}}$ values remain fixed under label permutations. Theorem 12's randomization-inference exactness carries through unchanged. Variance reduction translates directly to power gain. Typical pre-period correlations of $\rho_{X, Y} \approx 0.7$ deliver power gains equivalent to a $\sim$50% reduction in sample size — for free, from data the experimenter already had.
+</TheoremBlock>
+
 </NamedSection>
 
 ## Limitations: Ties, Power, and the Covariate Problem
 
-*[§9 content — Remark 7 (tie correction — naive variance under-rejects), Remark 8 (discreteness at very small n), Remark 9 (forward connections to quantile regression and conformal prediction); figure-only embed (no viz component) — to be added in Tasks 2–5.]*
+<TheoremBlock type="remark" number={7} title="Tie Correction — Naive Variance Under-Rejects">
+The clean null distributions of §1, §3, §4 assume continuous data with no ties. Real data ties — especially on Likert scales (5- or 7-point ratings), integer counts, or coarsely-binned measurements. The standard fix replaces tied values with their **midrank** (the average of the ranks they would have occupied) and corrects the null variance.
+
+For Mann-Whitney $U$ with tie-group sizes $t_1, \ldots, t_g$,
+$$
+\mathrm{Var}(U)_{\mathrm{corrected}} \;=\; \frac{n_1 n_2}{12} \left( N + 1 - \frac{\sum_k (t_k^3 - t_k)}{N(N-1)} \right) \;=\; \mathrm{Var}(U)_{\text{no ties}} \cdot \left( 1 - \frac{\sum_k (t_k^3 - t_k)}{N^3 - N} \right).
+$$
+For Wilcoxon signed-rank with tied $|D_i|$'s,
+$$
+\mathrm{Var}(W^+)_{\mathrm{corrected}} \;=\; \frac{n(n+1)(2n+1)}{24} \;-\; \frac{1}{48} \sum_k (t_k^3 - t_k).
+$$
+`scipy.stats.mannwhitneyu` and `scipy.stats.wilcoxon` apply these corrections automatically. Skipping them produces tests with wrong size — and the direction is worth getting right. The corrected variance is **smaller** than the uncorrected one (the bracketed factor $1 - \sum(t_k^3 - t_k)/(N^3 - N)$ is strictly less than $1$ when ties exist). Using the larger uncorrected variance in the $z$-denominator inflates the denominator, shrinks $|z|$, and inflates $p$-values — making the uncorrected test conservative (under-rejecting), sacrificing power for no Type I error protection.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={8} title="Discreteness at Very Small $n$">
+The Hodges-Lehmann lower bound (Remark 3) says rank tests lose at most $\sim$14% asymptotic efficiency vs the $t$-test even under normality, and gain unboundedly under heavy tails. But asymptotic efficiency is not the same as finite-sample dominance.
+
+At $n_1 = n_2 = 4$ (so 70 possible rank assignments), the achievable significance levels for an exact Mann-Whitney test are restricted to $0/70, 1/70, 2/70, \ldots$ — and the smallest two-sided level above zero is $2/70 = 0.029$. To get a level-0.05 test, we accept the next-larger achievable level $4/70 \approx 0.057$, which is effectively a level-0.057 test. The CLT-based $t$-test, by contrast, can hit any nominal level on the continuum.
+
+This discreteness pinch shows up most exactly where rank tests should otherwise win — at very small $n$ with heavy-tailed data — and it can erase the asymptotic Wilcoxon advantage. The fix is to keep using the exact null distribution (rather than its normal approximation) but to acknowledge that the achievable $\alpha$ values are restricted, and report the actual achieved level rather than the nominal one. `scipy.stats.mannwhitneyu(method='exact')` returns the exact discrete $p$-value.
+</TheoremBlock>
+
+<TheoremBlock type="remark" number={9} title="Forward Connections — Quantile Regression and Conformal Prediction">
+The real limitation of rank tests is the **covariate problem**. Rank tests don't extend cleanly to "test whether the treatment effect is non-zero, controlling for age, sex, and baseline severity." The mean-rank framework lacks the regression structure that lets you partial out covariates without sacrificing exactness. Stratified rank tests like van Elteren (1960) exist but apply only to discrete strata (age bins, sex); for continuous covariates, they don't help.
+
+Two clean answers come from elsewhere in the T4 track:
+
+- **[Quantile Regression](/topics/quantile-regression).** Replaces the squared-error loss of OLS with the asymmetric pinball loss to recover *conditional* quantiles given covariates. Carries the robust-to-tails ethos of Wilcoxon into a regression framework — the conditional median is the $L_1$-loss minimiser, and conditional quantiles handle heavy-tailed outcomes natively.
+- **[Conformal Prediction](/topics/conformal-prediction).** Turns finite-sample exchangeability arguments — exactly the assumption underwriting permutation inference here — into prediction intervals with marginal coverage guaranteed for any black-box predictor. The exchangeability that powers Theorems 3 and 12 in this topic is the same exchangeability that powers conformal's Theorem 1.
+
+The shared mathematical primitive — exchangeability as a finite-sample statistical engine — ties the T4 track together. This topic deploys it for testing; quantile regression and conformal prediction deploy it for conditional estimation and prediction respectively.
+</TheoremBlock>
 
 ## Notation Reference
 
