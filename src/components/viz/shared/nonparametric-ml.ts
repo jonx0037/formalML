@@ -1123,3 +1123,459 @@ export function fitPredictLogisticRegression2D(
   }
   return probsOut;
 }
+
+// ============================================================================
+// PREDICTION-INTERVALS TOPIC HELPERS
+// Source: notebooks/prediction-intervals/01_prediction_intervals.ipynb (cells 4, 6, 8, 10, 12, 14)
+// Added: 2026-04-27
+// ============================================================================
+
+/** Color palette matching the notebook's matplotlib theme (also used by formalML site theme). */
+export const palettePI = {
+  blue: '#2563EB',
+  red: '#DC2626',
+  green: '#059669',
+  amber: '#D97706',
+  purple: '#7C3AED',
+  slate: '#475569',
+  teal: '#0F6E56',
+  lightBlue: '#DBEAFE',
+  lightRed: '#FEE2E2',
+  lightGreen: '#D1FAE5',
+  lightAmber: '#FEF3C7',
+  lightPurple: '#EDE9FE',
+  lightSlate: '#F1F5F9',
+} as const;
+
+// ─── Data generators ─────────────────────────────────────────────────────────
+
+/**
+ * Running Example 1 — heteroscedastic Gaussian.
+ * Y | X = x ~ N(sin(x), σ(x)²) with σ(x) = 0.2 + slope·|x|/3, X ~ Uniform(-3, 3).
+ * Default slope = 0.6 reproduces the canonical RE1; slope = 0 is homoscedastic
+ * (used in §5's Theorem 5.2 sweep). Notebook source: generate_heteroscedastic
+ * in cell 4 and generate_heteroscedastic_strength in cell 12.
+ */
+export function generateHeteroscedastic(
+  n: number,
+  rng: () => number,
+  opts: { slope?: number } = {},
+): { X: Float64Array; Y: Float64Array; sigma: Float64Array } {
+  const slope = opts.slope ?? 0.6;
+  const gauss = gaussianSampler(rng);
+  const X = new Float64Array(n);
+  const Y = new Float64Array(n);
+  const sigma = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = -3 + 6 * rng();
+    const s = 0.2 + (slope * Math.abs(x)) / 3;
+    X[i] = x;
+    sigma[i] = s;
+    Y[i] = Math.sin(x) + s * gauss();
+  }
+  return { X, Y, sigma };
+}
+
+/** Sum of k independent Z² draws — chi-squared with df k. */
+function _chiSquared(k: number, gauss: () => number): number {
+  let s = 0;
+  for (let i = 0; i < k; i++) {
+    const z = gauss();
+    s += z * z;
+  }
+  return s;
+}
+
+/**
+ * Running Example 2 — heavy-tailed location-shift.
+ * Y | X = x ~ μ(x) + sigmaScale·t₃ with μ(x) = 0.4·cos(πx), sigmaScale = 0.6, X ~ Uniform(-2, 2).
+ * t₃ simulated as Z / √(W/3) with Z ~ N(0,1) and W ~ χ²₃ (sum of three Z²).
+ * Notebook source: generate_heavy_tailed_location in cell 10.
+ */
+export function generateHeavyTailedLocation(
+  n: number,
+  rng: () => number,
+  sigmaScale: number = 0.6,
+): { X: Float64Array; Y: Float64Array; eps: Float64Array } {
+  const gauss = gaussianSampler(rng);
+  const X = new Float64Array(n);
+  const Y = new Float64Array(n);
+  const eps = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = -2 + 4 * rng();
+    const z = gauss();
+    const w = _chiSquared(3, gauss);
+    const e = sigmaScale * (z / Math.sqrt(w / 3));
+    X[i] = x;
+    eps[i] = e;
+    Y[i] = 0.4 * Math.cos(Math.PI * x) + e;
+  }
+  return { X, Y, eps };
+}
+
+/**
+ * Skewed location-shift — symmetry-violation diagnostic for §4.5.
+ * ε = sigmaScale · (χ²₃ - 3) / √6  → mean zero, right-skewed, F ≠ -F.
+ * Notebook source: generate_skewed_location in cell 10.
+ */
+export function generateSkewedLocation(
+  n: number,
+  rng: () => number,
+  sigmaScale: number = 0.6,
+): { X: Float64Array; Y: Float64Array; eps: Float64Array } {
+  const gauss = gaussianSampler(rng);
+  const X = new Float64Array(n);
+  const Y = new Float64Array(n);
+  const eps = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = -2 + 4 * rng();
+    const c = _chiSquared(3, gauss);
+    const e = (sigmaScale * (c - 3)) / Math.sqrt(6);
+    X[i] = x;
+    eps[i] = e;
+    Y[i] = 0.4 * Math.cos(Math.PI * x) + e;
+  }
+  return { X, Y, eps };
+}
+
+// ─── Core construction primitives ───────────────────────────────────────────
+
+/**
+ * Conformal (1-α)-quantile per Definition 7.
+ * Returns the ⌈(1-α)(n+1)⌉-th order statistic of `scores`. +∞ if that index exceeds n
+ * (vacuous interval — the honest finite-sample answer when α is too small for n).
+ * Notebook source: conformal_quantile in cell 6.
+ */
+export function conformalQuantile(scores: ArrayLike<number>, alpha: number): number {
+  const n = scores.length;
+  const k = Math.ceil((1 - alpha) * (n + 1));
+  if (k > n) return Infinity;
+  const sorted = Array.from(scores).sort((a, b) => a - b);
+  return sorted[k - 1];
+}
+
+/**
+ * Walsh averages (rᵢ + rⱼ)/2 for i ≤ j (includes i = j diagonal).
+ * Returns a flat unsorted Float64Array of length M = n(n+1)/2.
+ * Notebook source: walsh_averages in cell 10. Conceptually identical to walshSorted
+ * inside WalshAveragesExplorer.tsx but unsorted (callers sort when needed).
+ */
+export function walshAveragesPI(r: ArrayLike<number>): Float64Array {
+  const n = r.length;
+  const M = (n * (n + 1)) / 2;
+  const out = new Float64Array(M);
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    const ri = r[i];
+    for (let j = i; j < n; j++) {
+      out[k++] = (ri + r[j]) / 2;
+    }
+  }
+  return out;
+}
+
+/**
+ * Hodges-Lehmann critical index for prediction-interval test inversion (Definition 11).
+ * Notebook closed form: w = ⌊M·α/2⌋ where M = n(n+1)/2 with n = nCal + 1.
+ * The resulting interval [A_(w+1), A_(M-w)] in sorted Walsh-average order statistics
+ * has coverage (M - 2w)/M ≥ 1 - α for the centre of symmetry.
+ * Notebook source: hl_critical_index in cell 10.
+ */
+export function hlCriticalIndexPI(
+  nCal: number,
+  alpha: number,
+): { w: number; M: number } {
+  const n = nCal + 1;
+  const M = (n * (n + 1)) / 2;
+  let w = Math.floor((M * alpha) / 2);
+  if (2 * w >= M) w = Math.floor((M - 1) / 2);
+  return { w, M };
+}
+
+// ─── Construction wrappers (match notebook signatures) ─────────────────────
+
+export interface PIConstructionResult {
+  /** Lower endpoints on Xte, length |Xte|. */
+  lo: Float64Array;
+  /** Upper endpoints on Xte, length |Xte|. */
+  hi: Float64Array;
+  /** Wall-clock fit + predict time in milliseconds. */
+  fitTimeMs: number;
+}
+
+export interface SplitConformalResultPI extends PIConstructionResult {
+  /** Conformal threshold q̂_{1-α}. */
+  qHat: number;
+  /** Base predictor μ̂ evaluated on Xte. */
+  muTest: Float64Array;
+  /** Calibration scores |Y_cal − μ̂(X_cal)|. */
+  calScores: Float64Array;
+}
+
+/**
+ * Split-conformal prediction interval with degree-3 polynomial-ridge base predictor.
+ * Reproduces split_conformal_interval (notebook cell 6).
+ * Verification (notebook): RE1, n_train = n_cal = 500, n_test = 5000, α = 0.1
+ *   → q̂ ≈ 0.970, marginal coverage ≈ 0.921, conditional range ≈ 0.205.
+ */
+export function splitConformalIntervalPI(
+  Xtr: ArrayLike<number>,
+  Ytr: ArrayLike<number>,
+  Xcal: ArrayLike<number>,
+  Ycal: ArrayLike<number>,
+  Xte: ArrayLike<number>,
+  alpha: number,
+  ridgeLambda: number = 0.1,
+): SplitConformalResultPI {
+  const t0 = performance.now();
+  const xTr = Float64Array.from(Xtr);
+  const yTr = Float64Array.from(Ytr);
+  const nCal = Xcal.length;
+  const nTe = Xte.length;
+  const xEval = new Float64Array(nCal + nTe);
+  for (let i = 0; i < nCal; i++) xEval[i] = Xcal[i];
+  for (let i = 0; i < nTe; i++) xEval[nCal + i] = Xte[i];
+  const muEval = fitPredictRidge(xTr, yTr, xEval, ridgeLambda);
+  const muCal = muEval.subarray(0, nCal);
+  const muTest = Float64Array.from(muEval.subarray(nCal));
+  const calScores = new Float64Array(nCal);
+  for (let i = 0; i < nCal; i++) calScores[i] = Math.abs(Ycal[i] - muCal[i]);
+  const qHat = conformalQuantile(calScores, alpha);
+  const lo = new Float64Array(nTe);
+  const hi = new Float64Array(nTe);
+  for (let i = 0; i < nTe; i++) {
+    lo[i] = muTest[i] - qHat;
+    hi[i] = muTest[i] + qHat;
+  }
+  return {
+    lo,
+    hi,
+    qHat,
+    muTest,
+    calScores,
+    fitTimeMs: performance.now() - t0,
+  };
+}
+
+export interface PureQrResultPI extends PIConstructionResult {
+  qLoTest: Float64Array;
+  qHiTest: Float64Array;
+}
+
+/**
+ * Pure-QR prediction interval (Definition 8). No calibration step.
+ * Reproduces pure_qr_interval (notebook cell 8).
+ * Verification (notebook): RE1, n_train = 1000, n_test = 5000, α = 0.1
+ *   → marginal ≈ 0.904, mean width ≈ 1.662, conditional range ≈ 0.150.
+ */
+export function pureQrIntervalPI(
+  Xtr: ArrayLike<number>,
+  Ytr: ArrayLike<number>,
+  Xte: ArrayLike<number>,
+  alpha: number,
+  qrLambda: number = 0.001,
+): PureQrResultPI {
+  const t0 = performance.now();
+  const xTr = Float64Array.from(Xtr);
+  const yTr = Float64Array.from(Ytr);
+  const xTe = Float64Array.from(Xte);
+  const qLo = fitPredictQuantile(xTr, yTr, xTe, alpha / 2, qrLambda);
+  const qHi = fitPredictQuantile(xTr, yTr, xTe, 1 - alpha / 2, qrLambda);
+  return {
+    lo: Float64Array.from(qLo),
+    hi: Float64Array.from(qHi),
+    qLoTest: qLo,
+    qHiTest: qHi,
+    fitTimeMs: performance.now() - t0,
+  };
+}
+
+export interface CqrResultPI extends PIConstructionResult {
+  /** Conformal CQR threshold Q̂_{1-α}. */
+  Q: number;
+  /** Lower QR curve τ = α/2 evaluated on Xte. */
+  qLoTest: Float64Array;
+  /** Upper QR curve τ = 1 − α/2 evaluated on Xte. */
+  qHiTest: Float64Array;
+  /** CQR scores E_i = max(q̂_lo(X_i) − Y_i, Y_i − q̂_hi(X_i)). */
+  calScores: Float64Array;
+}
+
+/**
+ * CQR (Conformalized Quantile Regression) prediction interval (Definition 12).
+ * Reproduces cqr_interval (notebook cell 12).
+ * Verification (notebook): RE1, n_train = n_cal = 500, n_test = 5000, α = 0.1
+ *   → CQR marginal ≈ 0.888, mean width ≈ 1.669, Q̂ ≈ -0.039, width ratio CQR/SC ≈ 0.964.
+ *   Theorem 5.2 prediction at slope=0.6: E[σ(X)]/σ_+ = 0.5/0.8 = 0.625 (asymptotic limit).
+ */
+export function cqrIntervalPI(
+  Xtr: ArrayLike<number>,
+  Ytr: ArrayLike<number>,
+  Xcal: ArrayLike<number>,
+  Ycal: ArrayLike<number>,
+  Xte: ArrayLike<number>,
+  alpha: number,
+  qrLambda: number = 0.001,
+): CqrResultPI {
+  const t0 = performance.now();
+  const xTr = Float64Array.from(Xtr);
+  const yTr = Float64Array.from(Ytr);
+  const nCal = Xcal.length;
+  const nTe = Xte.length;
+  const xEval = new Float64Array(nCal + nTe);
+  for (let i = 0; i < nCal; i++) xEval[i] = Xcal[i];
+  for (let i = 0; i < nTe; i++) xEval[nCal + i] = Xte[i];
+  const qLoEval = fitPredictQuantile(xTr, yTr, xEval, alpha / 2, qrLambda);
+  const qHiEval = fitPredictQuantile(xTr, yTr, xEval, 1 - alpha / 2, qrLambda);
+  const calScores = new Float64Array(nCal);
+  for (let i = 0; i < nCal; i++) {
+    const a = qLoEval[i] - Ycal[i];
+    const b = Ycal[i] - qHiEval[i];
+    calScores[i] = a > b ? a : b;
+  }
+  const Q = conformalQuantile(calScores, alpha);
+  const qLoTest = Float64Array.from(qLoEval.subarray(nCal));
+  const qHiTest = Float64Array.from(qHiEval.subarray(nCal));
+  const lo = new Float64Array(nTe);
+  const hi = new Float64Array(nTe);
+  for (let i = 0; i < nTe; i++) {
+    lo[i] = qLoTest[i] - Q;
+    hi[i] = qHiTest[i] + Q;
+  }
+  return {
+    lo,
+    hi,
+    Q,
+    qLoTest,
+    qHiTest,
+    calScores,
+    fitTimeMs: performance.now() - t0,
+  };
+}
+
+export interface HlResultPI extends PIConstructionResult {
+  /** Lower Walsh-average order statistic A_(w+1). */
+  ALo: number;
+  /** Upper Walsh-average order statistic A_(M−w). */
+  AHi: number;
+  /** Base predictor μ̂ evaluated on Xte. */
+  muTest: Float64Array;
+  /** All Walsh averages of calibration residuals, sorted ascending. Length M = n_cal(n_cal+1)/2. */
+  walshSorted: Float64Array;
+  /** Critical index w from hlCriticalIndexPI. */
+  w: number;
+  /** Number of Walsh averages M. */
+  M: number;
+}
+
+/**
+ * Hodges-Lehmann test-inversion prediction interval (Definition 11).
+ * Reproduces hl_interval (notebook cell 10).
+ * Verification (notebook): RE2, n_train = n_cal = 500, n_test = 5000, α = 0.1
+ *   → A pair ≈ (-1.139, 1.433), HL band half-width ≈ 1.286, marginal ≈ 0.862, width ≈ 2.572.
+ *
+ * NOTE: HL coverage on RE2 single-draw is 0.862, well below 0.9. The §6 batch comparison
+ * shows HL undercovering across all four scenarios (≈ 0.76-0.83). The Theorem 3 finite-
+ * sample guarantee is conditional-on-test-point; the per-test-point batch average over
+ * a fixed calibration set is a different statistic. See §6 narrative for the discussion.
+ */
+export function hlIntervalPI(
+  Xtr: ArrayLike<number>,
+  Ytr: ArrayLike<number>,
+  Xcal: ArrayLike<number>,
+  Ycal: ArrayLike<number>,
+  Xte: ArrayLike<number>,
+  alpha: number,
+  ridgeLambda: number = 0.1,
+): HlResultPI {
+  const t0 = performance.now();
+  const xTr = Float64Array.from(Xtr);
+  const yTr = Float64Array.from(Ytr);
+  const nCal = Xcal.length;
+  const nTe = Xte.length;
+  const xEval = new Float64Array(nCal + nTe);
+  for (let i = 0; i < nCal; i++) xEval[i] = Xcal[i];
+  for (let i = 0; i < nTe; i++) xEval[nCal + i] = Xte[i];
+  const muEval = fitPredictRidge(xTr, yTr, xEval, ridgeLambda);
+  const muCal = muEval.subarray(0, nCal);
+  const muTest = Float64Array.from(muEval.subarray(nCal));
+  const rCal = new Float64Array(nCal);
+  for (let i = 0; i < nCal; i++) rCal[i] = Ycal[i] - muCal[i];
+  const A = walshAveragesPI(rCal);
+  A.sort();
+  const { w, M } = hlCriticalIndexPI(nCal, alpha);
+  const ALo = A[w];
+  const AHi = A[M - 1 - w];
+  const lo = new Float64Array(nTe);
+  const hi = new Float64Array(nTe);
+  for (let i = 0; i < nTe; i++) {
+    lo[i] = muTest[i] + ALo;
+    hi[i] = muTest[i] + AHi;
+  }
+  return {
+    lo,
+    hi,
+    ALo,
+    AHi,
+    muTest,
+    walshSorted: A,
+    w,
+    M,
+    fitTimeMs: performance.now() - t0,
+  };
+}
+
+// ─── §6 four scenarios ─────────────────────────────────────────────────────
+
+/** Scenario A — homoscedastic Gaussian. Y | X = x ~ N(sin(x), 0.5²), X ~ Uniform(-3, 3). */
+export function scenarioAPI(
+  n: number,
+  rng: () => number,
+): { X: Float64Array; Y: Float64Array } {
+  const gauss = gaussianSampler(rng);
+  const X = new Float64Array(n);
+  const Y = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = -3 + 6 * rng();
+    X[i] = x;
+    Y[i] = Math.sin(x) + 0.5 * gauss();
+  }
+  return { X, Y };
+}
+
+/** Scenario B = Running Example 1 — heteroscedastic Gaussian. */
+export function scenarioBPI(
+  n: number,
+  rng: () => number,
+): { X: Float64Array; Y: Float64Array } {
+  const { X, Y } = generateHeteroscedastic(n, rng);
+  return { X, Y };
+}
+
+/** Scenario C = Running Example 2 — heavy-tailed location-shift. */
+export function scenarioCPI(
+  n: number,
+  rng: () => number,
+): { X: Float64Array; Y: Float64Array } {
+  const { X, Y } = generateHeavyTailedLocation(n, rng);
+  return { X, Y };
+}
+
+/** Scenario D — contaminated noise (95/5 mixture of N(·, 0.3²) and N(·, 2²)). */
+export function scenarioDPI(
+  n: number,
+  rng: () => number,
+): { X: Float64Array; Y: Float64Array } {
+  const gauss = gaussianSampler(rng);
+  const X = new Float64Array(n);
+  const Y = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = -3 + 6 * rng();
+    const sigma = rng() < 0.05 ? 2.0 : 0.3;
+    X[i] = x;
+    Y[i] = Math.sin(x) + sigma * gauss();
+  }
+  return { X, Y };
+}
+
+// ─── End prediction-intervals helpers ──────────────────────────────────────

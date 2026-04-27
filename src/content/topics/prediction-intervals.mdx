@@ -1,0 +1,831 @@
+---
+title: "Prediction Intervals"
+subtitle: "Constructing finite-sample-valid prediction intervals under exchangeability, iid, or location-shift symmetry — split conformal, pure QR, CQR, and Hodges-Lehmann test-inversion compared on coverage, width, conditional behavior, and cost"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "conformal-prediction"
+  - "quantile-regression"
+  - "rank-tests"
+formalstatisticsPrereqs:
+  - topic: "confidence-intervals-and-duality"
+    site: "formalstatistics"
+    relationship: "The formal foundation for both HL-style test-inversion (§4) and the conformal-quantile threshold (§2.3). The duality between a level-$\\alpha$ test and a $(1-\\alpha)$ confidence region is the abstract machinery behind every interval construction in this topic."
+  - topic: "order-statistics-and-quantiles"
+    site: "formalstatistics"
+    relationship: "Split-conformal's quantile of conformity scores (Definition 7), QR's empirical conditional-quantile estimator (§3), and HL's Walsh-average ordering (§4) all rest on order-statistic theory. The asymptotic theory of empirical quantiles underlies the stability argument in Theorem 5.1 and the HL/conformal equivalence in Theorem 5.3."
+  - topic: "empirical-processes"
+    site: "formalstatistics"
+    relationship: "The asymptotic alternative to finite-sample exchangeability arguments. Underlies the QR asymptotics cited in §3.3, Theorem 5.1's empirical-process stability argument for the conformal threshold, and Theorem 5.3's HL/conformal equivalence proof on location-shift models."
+  - topic: "bootstrap"
+    site: "formalstatistics"
+    relationship: "The third resampling-based interval-construction method (alongside conformal and permutation-from-rank-tests). §7.1 of this topic contrasts bootstrap-percentile prediction intervals with the three featured constructions on resampling principle, coverage guarantee, computational cost, and validity scope."
+formalcalculusPrereqs: []
+tags:
+  - "nonparametric-ml"
+  - "prediction-intervals"
+  - "conformal-prediction"
+  - "quantile-regression"
+  - "hodges-lehmann"
+  - "distribution-free"
+  - "machine-learning"
+domain: "nonparametric-ml"
+videoId: null
+notebookPath: "notebooks/prediction-intervals/01_prediction_intervals.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/prediction-intervals.mdx"
+datePublished: 2026-04-27
+estimatedReadTime: 50
+abstract: "How to construct a finite-sample-valid prediction interval around a black-box predictor's output, and how the three featured constructions compare on coverage, width, conditional behavior, and cost. Three constructions are developed in order of weakest assumption first: split conformal under exchangeability (Theorem 1, finite-sample marginal); pure quantile-regression intervals under iid plus smoothness (Theorem 2, asymptotic conditional); Hodges-Lehmann test-inversion under iid plus symmetric residuals (Theorem 3, finite-sample conditional). CQR appears as the bridge between the first two — split conformal under the QR score — and earns its own analysis through three bridge theorems (Theorem 5.1: CQR's conditional-coverage gap is bounded by twice the QR base learner's pointwise error; Theorem 5.2: CQR's expected width is bounded above by split conformal's under heteroscedasticity; Theorem 5.3: HL and split conformal converge to the same band on location-shift symmetric problems). A four-scenario empirical comparison consolidates the practical recommendations: use CQR under heteroscedasticity, default to split conformal otherwise, avoid pure QR alone."
+connections:
+  - topic: "conformal-prediction"
+    relationship: "Direct prereq. Provides Theorem 1 (split-conformal marginal coverage), cited verbatim in §2 and §5.1, and the score-function frame extended in §2.1. Every construction in this topic is a $(s, q)$ pair in the score-function abstraction introduced there."
+  - topic: "quantile-regression"
+    relationship: "Direct prereq. Provides Theorem 3 from QR §5 (cited as Theorem 2 here in §3.3) and the QR base learner used by pure QR (§3) and CQR (§5.1). The $\\tau$-quantile fitting machinery is reused as-is."
+  - topic: "rank-tests"
+    relationship: "Direct prereq. Theorem 10 from rank-tests §6 (Hodges-Lehmann distribution-free CI) is cited in the proof of Theorem 3 here in §4.3. The Walsh-average construction and signed-rank null distribution are both reused in §4."
+references:
+  - type: "book"
+    title: "Algorithmic Learning in a Random World"
+    authors: "Vovk, Gammerman & Shafer"
+    year: 2005
+    note: "The book that systematized conformal prediction, including the rank-symmetry argument behind Theorem 1."
+  - type: "paper"
+    title: "Estimates of Location Based on Rank Tests"
+    authors: "Hodges & Lehmann"
+    year: 1963
+    note: "The HL estimator and the test-inversion construction that §4 generalizes (Annals of Mathematical Statistics)."
+  - type: "paper"
+    title: "Regression Quantiles"
+    authors: "Koenker & Bassett"
+    year: 1978
+    note: "The pinball-loss minimization framework that pure QR (§3) and CQR (§5.1) build on (Econometrica)."
+  - type: "paper"
+    title: "Individual Comparisons by Ranking Methods"
+    authors: "Wilcoxon"
+    year: 1945
+    note: "The original signed-rank test whose inversion gives the HL CI used in §4 (Biometrics Bulletin)."
+  - type: "paper"
+    title: "Distribution-Free Predictive Inference for Regression"
+    authors: "Lei, G'Sell, Rinaldo, Tibshirani & Wasserman"
+    year: 2018
+    url: "https://doi.org/10.1080/01621459.2017.1307116"
+    note: "Split conformal as the modern default; the marginal-coverage theorem in its tightest form (JASA)."
+  - type: "paper"
+    title: "Conformalized Quantile Regression"
+    authors: "Romano, Patterson & Candès"
+    year: 2019
+    note: "The CQR construction (Definition 12) and the original coverage-inheritance proof (NeurIPS 32)."
+  - type: "paper"
+    title: "Predictive Inference with the Jackknife+"
+    authors: "Foygel Barber, Candès, Ramdas & Tibshirani"
+    year: 2021
+    url: "https://doi.org/10.1214/20-AOS1965"
+    note: "Jackknife+ and CV+ — alternatives to split conformal that make better use of training data; closest cousins of the constructions here (Annals of Statistics)."
+  - type: "paper"
+    title: "The Limits of Distribution-Free Conditional Predictive Inference"
+    authors: "Foygel Barber, Candès, Ramdas & Tibshirani"
+    year: 2021
+    url: "https://doi.org/10.1093/imaiai/iaaa017"
+    note: "The conditional-coverage impossibility theorem that explains why CQR offers conditional adaptivity but not validity (Information and Inference)."
+  - type: "paper"
+    title: "Limiting Distributions for L₁ Regression Estimators under General Conditions"
+    authors: "Knight"
+    year: 1998
+    note: "The clean modern proof of QR's asymptotic normality, cited in Theorem 2 (Annals of Statistics)."
+  - type: "book"
+    title: "Asymptotic Statistics"
+    authors: "van der Vaart"
+    year: 1998
+    note: "Standard reference for the empirical-process arguments behind Theorems 5.1 and 5.3 (Cambridge University Press)."
+  - type: "book"
+    title: "The Bootstrap and Edgeworth Expansion"
+    authors: "Hall"
+    year: 1992
+    note: "The asymptotic theory of bootstrap-percentile intervals referenced in §7.1 (Springer)."
+  - type: "paper"
+    title: "Conformal Prediction: A Gentle Introduction"
+    authors: "Angelopoulos & Bates"
+    year: 2023
+    url: "https://doi.org/10.1561/2200000101"
+    note: "The most readable practitioner-oriented survey; covers split conformal, CQR, APS, and recent extensions with worked examples (FnT in ML)."
+  - type: "paper"
+    title: "Conformal Prediction Under Covariate Shift"
+    authors: "Tibshirani, Foygel Barber, Candès & Ramdas"
+    year: 2019
+    note: "The forward-connection paper for §7.3's covariate-shift discussion (NeurIPS 32)."
+  - type: "paper"
+    title: "Adaptive Conformal Inference Under Distribution Shift"
+    authors: "Gibbs & Candès"
+    year: 2021
+    note: "The forward-connection paper for §7.3's online conformal discussion (NeurIPS 34)."
+  - type: "paper"
+    title: "On-Line Confidence Machines Are Well-Calibrated"
+    authors: "Vovk"
+    year: 2002
+    note: "The original online-conformal construction (Proceedings of the 43rd Annual IEEE FOCS)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import NamedSection from '../../components/ui/NamedSection.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import CoverageCalibrationExplorer from '../../components/viz/CoverageCalibrationExplorer';
+import AssumptionFailureExplorer from '../../components/viz/AssumptionFailureExplorer';
+import BridgeTheoremsExplorer from '../../components/viz/BridgeTheoremsExplorer';
+import ConstructionComparisonExplorer from '../../components/viz/ConstructionComparisonExplorer';
+
+## The Prediction-Interval Problem
+
+This section sets the scaffolding the rest of the topic hangs on: the distinction between confidence intervals and prediction intervals, the marginal-vs-conditional coverage spectrum, and the strict assumption hierarchy under which the three featured constructions work. The mathematics here is light — definitions and named distinctions, no theorems with proofs. The work begins in §2.
+
+**Confidence intervals vs. prediction intervals.** A confidence interval covers a fixed but unknown *parameter*. A prediction interval covers a *random variable* — the next observation, before it has happened. The two quantities live in different probability spaces, and constructions that work for one don't generally transfer.
+
+To make the distinction concrete, suppose we observe pairs $(X_1, Y_1), \ldots, (X_n, Y_n)$ and fit a linear model $\hat{f}(x) = \hat{\beta}_0 + \hat{\beta}_1 x$. At a new point $X_{n+1} = x_*$ we can ask two distinct questions: where does the conditional mean $\mathbb{E}[Y \mid X = x_*]$ lie (a CI question, with width shrinking at rate $1/\sqrt{n}$), or where does $Y_{n+1}$ itself lie (a PI question, bundling estimation uncertainty *and* the irreducible noise of $Y_{n+1}$ around its mean). Even with infinite data the CI shrinks to a point, but the PI plateaus at its irreducible-noise width. That structural gap is the whole point of distinguishing the two.
+
+<TheoremBlock type="definition" number={1} title="Prediction Interval">
+A function $\hat{C} \colon \mathcal{X} \to 2^{\mathcal{Y}}$ from the feature space to subsets of the response space is a *prediction interval at level $1 - \alpha$* if it satisfies
+$$
+\mathbb{P}\!\left(Y_{n+1} \in \hat{C}(X_{n+1})\right) \;\ge\; 1 - \alpha,
+$$
+where $\alpha \in (0, 1)$ is the *miscoverage level* and the probability is taken jointly over the training data $(X_i, Y_i)_{i=1}^n$ and the test pair $(X_{n+1}, Y_{n+1})$.
+</TheoremBlock>
+
+The randomness in this probability matters. It runs over the training set, the test feature, and the test response — *not* over a fixed test point with frozen training data. Different ways of decomposing this randomness give different coverage notions, which is the next subsection.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_ci_vs_pi.png"
+  alt="Confidence vs. prediction intervals on a fitted homoscedastic linear regression. The narrow blue confidence band for E[Y|X] sits inside the wider red prediction band for Y_new."
+  caption="Figure 1. CI vs PI on a fitted homoscedastic linear regression. The narrow blue band is the 90% confidence interval for $\mathbb{E}[Y \mid X]$; the wider red band is the 90% prediction interval for $Y_{\mathrm{new}}$. As $n$ grows, the CI shrinks to a point but the PI plateaus near $2 t \hat{\sigma}$."
+/>
+
+**Marginal vs. conditional coverage.** The probability statement in Definition 1 averages over both the training set and the test feature $X_{n+1}$. We can ask for a stronger guarantee that holds *pointwise* in the test feature.
+
+<TheoremBlock type="definition" number={2} title="Marginal vs. conditional coverage">
+*Marginal coverage* at level $1 - \alpha$:
+$$
+\mathbb{P}\!\left(Y_{n+1} \in \hat{C}(X_{n+1})\right) \;\ge\; 1 - \alpha.
+$$
+*Conditional coverage* at level $1 - \alpha$: for $\mathbb{P}_X$-almost every $x \in \mathcal{X}$,
+$$
+\mathbb{P}\!\left(Y_{n+1} \in \hat{C}(X_{n+1}) \,\big|\, X_{n+1} = x\right) \;\ge\; 1 - \alpha.
+$$
+</TheoremBlock>
+
+Conditional coverage is much stronger. Marginal coverage allows the interval to over-cover at some $x$ and under-cover at others, as long as the average over the marginal of $X$ comes out right. Conditional coverage demands the guarantee point-by-point.
+
+To see the gap, consider the running heteroscedastic example we'll use throughout the topic:
+$$
+Y \mid X = x \sim \mathcal{N}\!\left(\sin(x),\, \sigma(x)^2\right), \qquad \sigma(x) = 0.2 + 0.6 \, |x|/3, \qquad X \sim \mathrm{Uniform}(-3, 3).
+$$
+The conditional standard deviation is small near $x = 0$ and large near $x = \pm 3$. A *constant-width* band $\hat{C}(x) = [\hat{\mu}(x) - w, \hat{\mu}(x) + w]$ with $w$ tuned to give 90% marginal coverage will over-cover near the centre (the band is far wider than the noise needs) and under-cover near the edges (the band is too narrow to capture 90% of the conditional mass). The conditional-coverage curve $x \mapsto \mathbb{P}(Y \in \hat{C}(x) \mid X = x)$ is wildly miscalibrated even though its average is exactly $0.9$.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_marginal_vs_conditional.png"
+  alt="Marginal coverage holds at 0.889 on a constant-width band, but the binned conditional coverage histogram swings from over 99% near x=0 to roughly 73% in the high-noise tails."
+  caption="Figure 2. Marginal coverage holds; conditional coverage is wildly miscalibrated. Left: scatter with the constant-width 90%-marginal band coloured by inside/outside on the heteroscedastic running example. Right: binned conditional coverage by $X$-bin, ranging from $\approx 1.00$ near $x = 0$ to $\approx 0.73$ near $x = \pm 3$. Range of conditional miscalibration: $0.27$."
+/>
+
+This is the gap that §3 (pure QR) and §5's CQR bridge close — and that the marginal-only conformal guarantee in §2 leaves open by design. (There is an intermediate notion, *group-conditional coverage*, where the guarantee holds for each member of a finite partition of the feature space — useful in fairness contexts where the partition is a protected attribute. We treat that as a forward connection in §7.)
+
+**The data-distributional assumption hierarchy.** Each of the three constructions in this topic works under a different assumption on the joint distribution of $(X_1, Y_1), \ldots, (X_{n+1}, Y_{n+1})$. The assumptions are *strictly nested*, with conformal at the weak end and Hodges–Lehmann at the strong end.
+
+<TheoremBlock type="definition" number={3} title="Exchangeability">
+The sequence $(X_1, Y_1), \ldots, (X_{n+1}, Y_{n+1})$ is *exchangeable* if for every permutation $\pi$ of $\{1, \ldots, n+1\}$,
+$$
+\big((X_{\pi(1)}, Y_{\pi(1)}), \ldots, (X_{\pi(n+1)}, Y_{\pi(n+1)})\big) \;\stackrel{d}{=}\; \big((X_1, Y_1), \ldots, (X_{n+1}, Y_{n+1})\big),
+$$
+where $\stackrel{d}{=}$ denotes equality in joint distribution.
+</TheoremBlock>
+
+Exchangeability is the assumption underlying split conformal prediction; see [Conformal Prediction](/topics/conformal-prediction). It is strictly weaker than iid: a uniformly random permutation of a fixed multiset is exchangeable but not iid (the marginals are not independent). Practically, exchangeability fails under temporal ordering, distribution shift, or hierarchical sampling, but holds whenever the order of observations is irrelevant.
+
+<TheoremBlock type="definition" number={4} title="iid">
+The pairs $(X_i, Y_i)$ are *independent and identically distributed* if they are mutually independent and share a common joint distribution $\mathbb{P}_{XY}$.
+</TheoremBlock>
+
+Pure quantile-regression intervals built from Koenker–Bassett asymptotics require iid plus smoothness conditions on the conditional density of $Y \mid X$; see [Quantile Regression](/topics/quantile-regression).
+
+<TheoremBlock type="definition" number={5} title="iid with symmetric residuals">
+The pairs $(X_i, Y_i)$ are iid AND there exists a function $\mu \colon \mathcal{X} \to \mathbb{R}$ such that the residuals $\varepsilon_i := Y_i - \mu(X_i)$ are independent of $X_i$ and have a distribution symmetric around zero.
+</TheoremBlock>
+
+The symmetry assumption is what test-inversion-style intervals (§4) require to deliver finite-sample distribution-free conditional coverage.
+
+The three classes are genuinely strictly nested:
+$$
+\big\{ \text{iid} + \text{symmetric residuals} \big\} \;\subsetneq\; \big\{ \text{iid} \big\} \;\subsetneq\; \big\{ \text{exchangeable} \big\}.
+$$
+In English: every distribution where HL works also makes pure QR and conformal work; every iid distribution makes conformal work; not every exchangeable distribution is iid (the random-permutation-of-a-multiset example), and not every iid distribution has symmetric residuals (any skewed-noise regression).
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_assumption_hierarchy.png"
+  alt="Schematic of the assumption hierarchy as nested rounded boxes: 'Exchangeable' (split conformal §2) contains 'iid' (pure QR §3), which in turn contains 'iid + symmetric residuals' (HL test-inversion §4)."
+  caption="Figure 3. The data-distributional assumption hierarchy. Each construction sits at a different shell. Stronger assumptions buy stronger guarantees (better coverage type, narrower intervals, or both); weaker assumptions buy robustness (guarantees that survive when the strong ones fail)."
+/>
+
+The trade is the standard one in statistics. Stronger assumptions buy the practitioner more — better coverage type (conditional rather than marginal), narrower intervals, or both. Weaker assumptions buy *robustness* — guarantees that survive when the strong assumptions fail. The next three sections walk through the constructions in order of weakest-assumption-first; §5 makes the trade quantitative through three bridge theorems.
+
+**The two-axis map.** Combining the two distinctions (assumption strength × coverage type) gives the map that every later section refers back to:
+
+| Construction | Section | Assumption | Coverage |
+|---|---|---|---|
+| Split conformal | §2 | Exchangeable | Marginal (finite-sample) |
+| Pure QR | §3 | iid + smoothness | Asymptotic conditional |
+| HL test-inversion | §4 | iid + symmetric residuals | Conditional (finite-sample) |
+| CQR (bridge) | §3 → §5 | Exchangeable | Marginal, conditionally adaptive |
+
+CQR is worth flagging now, even though we don't define it until §5.1. It sits as a hybrid: it inherits the marginal guarantee of split conformal (because it *is* split conformal under a particular score function), but its interval *shape* tracks pure QR's conditional-quantile estimates. The hybrid is the topic's main practical recommendation, and §5 formalizes the gap between its rigorous marginal guarantee and its approximate conditional behavior.
+
+§§2–4 cover one row each — short, citation-heavy treatments of each construction with the running example carried through. §5 proves three bridge theorems: a CQR-coverage decomposition, a heteroscedastic-width-comparison bound, and an asymptotic-equivalence result for HL and conformal on location-shift problems with symmetric noise. §6 measures the trade-offs empirically across four data scenarios. §7 closes with bootstrap as a contrast, what's out of scope (Bayesian credible intervals, T5), and forward connections (online conformal, group-conditional coverage).
+
+<CoverageCalibrationExplorer client:visible />
+
+The explorer above lets you walk through the §§1–3 progression interactively: dial up σ_max with the constant-width band to reproduce Figure 2's U-shape, then swap to pure QR or oracle to watch the strip chart go flat. We'll come back to it twice — once at the end of §2 (split-conformal selected) to confirm that proper conformal calibration *doesn't* fix the conditional gap when the score is wrong, and once at the end of §3 (pure-QR) to see the conditional-adaptivity win arrive at the cost of finite-sample marginal coverage.
+
+## Construction I — Exchangeability-Based (Split Conformal)
+
+This is the weakest-assumption construction in the topic. It works under exchangeability alone — no smoothness, no symmetry, no parametric form for the noise. The price is that the resulting interval is constant-width (or any other shape baked into the score function) and only marginally calibrated; the conditional miscalibration of Figure 2 carries over essentially unchanged. The construction is the canonical version of split conformal prediction; we cite the marginal-coverage theorem from [Conformal Prediction](/topics/conformal-prediction) rather than reprove it.
+
+Two lifting moves matter here. First, we introduce the *score-function abstraction* — every interval in this topic can be written as the level set of some score $s(x, y)$, with the threshold either calibrated empirically (§2 and the §5 CQR bridge), determined asymptotically (§3), or inverted from a test (§4). Second, we'll see that constant-width split-conformal on the heteroscedastic running example reproduces Figure 2's marginal-vs-conditional gap almost exactly — by design, because the score $s(x, y) = |y - \hat{\mu}(x)|$ encodes nothing about heteroscedasticity. §3 starts fixing that by changing the score.
+
+**The score-function abstraction.**
+
+<TheoremBlock type="definition" number={6} title="Nonconformity score">
+A *nonconformity score* is a function $s \colon \mathcal{X} \times \mathcal{Y} \to \mathbb{R}$, larger values indicating that the pair $(x, y)$ is more anomalous relative to the training data. Given a threshold $q \in \mathbb{R}$, the corresponding prediction set is
+$$
+\hat{C}_{s, q}(x) \;=\; \{ y \in \mathcal{Y} : s(x, y) \le q \}.
+$$
+</TheoremBlock>
+
+This abstraction lets us classify the constructions in this topic by their choice of $(s, q)$:
+
+| Construction | Score $s(x, y)$ | Threshold $q$ |
+|---|---|---|
+| Split conformal (§2) | $\lvert y - \hat{\mu}(x) \rvert$ | conformal $(1-\alpha)$-quantile of calibration scores |
+| Pure QR (§3) | $\max\!\big(\hat{q}_{\alpha/2}(x) - y,\; y - \hat{q}_{1-\alpha/2}(x)\big)$ | $0$ (no calibration) |
+| CQR (§5 bridge) | Same as pure QR | conformal $(1-\alpha)$-quantile of calibration scores |
+| HL test-inversion (§4) | Recast as a Walsh-average score | inverted from a Wilcoxon test |
+
+The split-conformal threshold gets a name we'll use throughout:
+
+<TheoremBlock type="definition" number={7} title="Conformal quantile">
+For nonconformity scores $S_1, \ldots, S_{n_{\mathrm{cal}}}$ on a calibration set, the *conformal $(1-\alpha)$-quantile* is
+$$
+\hat{q}_{1-\alpha} \;=\; S_{(\lceil (1-\alpha)(n_{\mathrm{cal}}+1) \rceil)},
+$$
+the $\lceil (1-\alpha)(n_{\mathrm{cal}}+1) \rceil$-th order statistic of $\{S_i\}$. The $+1$ in the numerator is the finite-sample correction that turns the threshold from "approximately right asymptotically" into "exactly right under exchangeability."
+</TheoremBlock>
+
+The pure-QR row is what makes the score-function frame earn its keep. As a *score* with threshold $0$, pure QR is just "predict in if the score is non-positive," which lines up exactly with the algebraic statement of Construction II in §3. The CQR bridge in §5 then becomes a one-line statement: keep the score, swap the threshold for the conformal quantile, and inherit Theorem 1.
+
+**Split conformal on the running example.** Three steps:
+
+1. *Train.* Split the data into a training fold and a calibration fold. Fit a base predictor $\hat{\mu}$ on the training fold only.
+2. *Calibrate.* Compute $S_i = |Y_i - \hat{\mu}(X_i)|$ for each calibration point, and take $\hat{q}_{1-\alpha}$ per Definition 7.
+3. *Predict.* For a new point $x$, return $\hat{C}(x) = [\hat{\mu}(x) - \hat{q}_{1-\alpha},\; \hat{\mu}(x) + \hat{q}_{1-\alpha}]$.
+
+The notebook carries this out on the heteroscedastic running example with $n_{\mathrm{train}} = n_{\mathrm{cal}} = 500$ and $\hat{\mu}$ a degree-3 polynomial fit by ridge regression. The choice of base predictor matters for the band's width but not for its coverage validity — the theorem below holds for any score.
+
+<TheoremBlock type="theorem" number={1} title="Split-conformal marginal coverage (Vovk, Gammerman & Shafer 2005; Lei et al. 2018)">
+If the calibration data $(X_i, Y_i)_{i=1}^{n_{\mathrm{cal}}}$ and the test point $(X_{n_{\mathrm{cal}}+1}, Y_{n_{\mathrm{cal}}+1})$ are exchangeable, and the nonconformity score $s$ does not depend on the calibration or test data, then for any $\alpha \in (0, 1)$ the split-conformal prediction set satisfies
+$$
+1 - \alpha \;\le\; \mathbb{P}\!\big( Y_{n_{\mathrm{cal}}+1} \in \hat{C}(X_{n_{\mathrm{cal}}+1}) \big) \;\le\; 1 - \alpha + \frac{1}{n_{\mathrm{cal}}+1}.
+$$
+</TheoremBlock>
+
+Proved as Theorem 1 of [Conformal Prediction §3](/topics/conformal-prediction) via a rank-symmetry argument: under exchangeability, the rank of the test score among the calibration scores is uniform on $\{1, \ldots, n_{\mathrm{cal}}+1\}$, and the threshold definition translates that uniform rank into the coverage statement. The $1/(n_{\mathrm{cal}}+1)$ over-coverage on the right is the finite-sample artifact of the $+1$ correction in Definition 7; it vanishes as $n_{\mathrm{cal}} \to \infty$.
+
+We use this theorem in §5 (bridge theorems) without reproof. Two ingredients we'll lean on: (i) the coverage statement itself, which lower-bounds the marginal coverage of *any* score-function-based interval that uses the conformal threshold — including the CQR bridge; and (ii) the rank-symmetry argument, which we'll need to recombine with QR's pointwise-approximation bounds to prove the CQR-coverage decomposition (Theorem 5.1).
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_split_conformal_band.png"
+  alt="Split-conformal band on the heteroscedastic running example. Left: scatter with band overlaid, points colored by inside/outside, marginal coverage 0.921. Right: histogram of calibration scores |Y - mu_hat(X)| with the threshold q-hat marked at 0.970."
+  caption="Figure 4. Split-conformal band on the heteroscedastic running example with $\alpha = 0.1$, $n_{\mathrm{train}} = n_{\mathrm{cal}} = 500$. The conformal threshold $\hat{q}_{1-\alpha} = 0.97$ defines a constant half-width band around the polynomial-ridge fit $\hat{\mu}$. Empirical marginal coverage on the test set is $0.921$, sitting cleanly inside the Theorem 1 envelope $[0.900, 0.902]$."
+/>
+
+**What this gets, what it misses.** Running the construction with $\alpha = 0.1$ delivers empirical marginal coverage close to $0.9$, exactly as Theorem 1 promises. But the conditional-coverage curve reproduces Figure 2 almost identically: above $99\%$ near $x = 0$, dropping below $80\%$ near $x = \pm 3$. The reason is mechanical — the score $s(x, y) = |y - \hat{\mu}(x)|$ has no $x$-dependence in its calibration distribution, so the threshold $\hat{q}_{1-\alpha}$ is a single number, and the resulting band is constant-width regardless of $\hat{\mu}$.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_split_conformal_conditional.png"
+  alt="Conditional coverage by 10 equal-width bins of X for the split-conformal band, designed visually parallel to Figure 2: same axes, same reference line at 0.9, same color scheme."
+  caption="Figure 5. Split-conformal conditional coverage by bin reproduces Figure 2's gap. Range of conditional coverage: from $\approx 1.00$ near $x = 0$ to $\approx 0.80$ near $x = \pm 3$. Marginal coverage hits the target ($0.92$) but the conditional gap is structurally unchanged from the constant-width band — the score ignores heteroscedasticity, so the threshold is a single number, and the band is constant-width regardless of the base predictor."
+/>
+
+Two ways forward: (a) change the score to encode heteroscedasticity (CQR, §5 bridge, with pure QR in §3 as the unconformalised version); (b) strengthen the assumptions to recover finite-sample conditional coverage by symmetry arguments (HL test-inversion, §4). §5 makes the comparison quantitative.
+
+## Construction II — Conditional-Quantile (Pure QR Intervals)
+
+The §2 split-conformal construction gets exact finite-sample marginal coverage but a constant-width band. This section does the opposite trade: it gives up the finite-sample guarantee in exchange for a band whose *shape* tracks the conditional spread of $Y$ given $X$. The construction is the asymptotic prediction interval obtained by fitting two quantile-regression models at levels $\alpha/2$ and $1 - \alpha/2$, and using their fitted curves as the lower and upper endpoints of the interval — no calibration step. We call it *pure QR* to distinguish it from CQR (the §5 bridge), which keeps the QR shape but replaces the asymptotic justification with a finite-sample rank-symmetry argument.
+
+The whole construction is a citation of [Quantile Regression](/topics/quantile-regression) for the population-level conditional-quantile fact, plus an asymptotic-coverage statement that follows from QR's Koenker–Knight asymptotic normality. We don't reprove either result. The interesting mathematical content is the diagnosis of *why* the resulting interval is conditionally adaptive but only asymptotically valid — and the bookkeeping required to express it as a $(s, q)$ pair in the §2.1 score-function frame, which §5 then reuses verbatim.
+
+**The construction.**
+
+<TheoremBlock type="definition" number={8} title="Pure QR prediction interval">
+Let $\hat{q}_\tau(x)$ denote a fitted estimator of the conditional $\tau$-quantile of $Y$ given $X = x$, in any function class (linear-in-features, kernel, neural). For miscoverage $\alpha \in (0, 1)$, the *pure QR prediction interval* at $x$ is
+$$
+\hat{C}^{\mathrm{QR}}_\alpha(x) \;=\; \big[\, \hat{q}_{\alpha/2}(x),\; \hat{q}_{1-\alpha/2}(x) \,\big].
+$$
+</TheoremBlock>
+
+Translating into the score-function frame from §2.1: pure QR uses
+$$
+s(x, y) \;=\; \max\!\big(\hat{q}_{\alpha/2}(x) - y,\; y - \hat{q}_{1-\alpha/2}(x)\big), \qquad q \;=\; 0.
+$$
+The score is positive when $y$ falls outside the QR interval, and negative when inside; the threshold $0$ corresponds to "no calibration" in the score-function language. The §5 CQR bridge will keep the score and replace the threshold $0$ with a conformal $(1-\alpha)$-quantile of calibration scores per Definition 7.
+
+**Why the construction makes sense (population fact).** If we knew the true conditional quantile functions $q_{\alpha/2}^*$ and $q_{1-\alpha/2}^*$, the resulting interval would have *exact* conditional coverage by construction: for every $x$,
+$$
+\mathbb{P}\!\big( Y_{n+1} \in [q_{\alpha/2}^*(X_{n+1}), q_{1-\alpha/2}^*(X_{n+1})] \,\big|\, X_{n+1} = x \big) \;=\; 1 - \alpha.
+$$
+This is just the definition of conditional quantiles — the probability mass of $Y$ given $X = x$ between its $\alpha/2$ and $1 - \alpha/2$ quantiles is, by definition, $1 - \alpha$. There is nothing to prove here that isn't already in [Quantile Regression](/topics/quantile-regression).
+
+The construction is conditionally calibrated *at the population level*. In English: if we had an oracle for the true conditional quantiles, this is the thing we would build, and it would be conditionally valid pointwise. The asymptotic theory below says that consistent estimators inherit this property in the limit; the gap to finite samples is what §5's bridge quantifies and what motivates CQR.
+
+<TheoremBlock type="theorem" number={2} title="Pure QR asymptotic conditional coverage (Koenker–Knight)">
+Suppose the conditional density $f_{Y \mid X}(\cdot \mid x)$ is positive and continuous in a neighbourhood of $q_\tau^*(x)$ for $\tau \in \{\alpha/2, 1 - \alpha/2\}$, that the QR estimators $\hat{q}_{\alpha/2}$ and $\hat{q}_{1-\alpha/2}$ are uniformly consistent on the support of $X$, and that the function class is rich enough to contain $q_\tau^*$. Then for $\mathbb{P}_X$-almost every $x$,
+$$
+\mathbb{P}\!\big( Y_{n+1} \in \hat{C}^{\mathrm{QR}}_\alpha(X_{n+1}) \,\big|\, X_{n+1} = x \big) \;\longrightarrow\; 1 - \alpha \quad \text{as } n \to \infty.
+$$
+</TheoremBlock>
+
+Proof sketch (cited from [Quantile Regression](/topics/quantile-regression) and Knight 1998): pointwise asymptotic normality $\sqrt{n}(\hat{q}_\tau(x) - q_\tau^*(x)) \xrightarrow{d} \mathcal{N}\!\big(0, \omega_\tau(x)^2\big)$ in $x$, with the asymptotic variance $\omega_\tau(x)^2$ involving the conditional density at $q_\tau^*(x)$. Pointwise consistency of $\hat{q}_\tau$ then implies pointwise convergence of conditional coverage to its population value $1 - \alpha$ by continuity of the conditional CDF.
+
+Three things this theorem does *not* deliver, and §5 will quantify the gap on each:
+
+1. **No finite-sample guarantee.** The convergence is in the limit. At any fixed $n$, conditional coverage can deviate from $1 - \alpha$ by an amount that depends on QR's pointwise estimation error.
+2. **No marginal guarantee either.** Marginal coverage is the integral of conditional coverage against $\mathbb{P}_X$. If conditional coverage is biased downward at most $x$ (a generic possibility — QR overfits the visible data and produces too-narrow bands at finite $n$), marginal coverage falls below $1 - \alpha$. The §6 empirical comparison will surface this clearly.
+3. **No uniform statement across $x$.** Pointwise convergence allows arbitrarily slow convergence at $x$ values near the boundary of the support, where QR estimates are notoriously noisy. Theorem 5.2 (the width-comparison bound) leans on a uniform refinement of this convergence under bounded conditional density.
+
+The contrast with Theorem 1 in §2 is the topic's central trade. Theorem 1 gives a finite-sample marginal guarantee under exchangeability with a constant-width interval; Theorem 2 gives an asymptotic conditional guarantee under stronger smoothness assumptions with a heteroscedasticity-adapted interval. CQR (§5 bridge) gets the better of both — but only on the marginal axis, not on the conditional one, as Theorem 5.1 will make precise.
+
+**Pure QR on the running example.** The notebook fits two quantile regressors on the heteroscedastic running example with degree-3 polynomial features at $\tau = 0.05$ and $\tau = 0.95$, returning the band $[\hat{q}_{0.05}(x), \hat{q}_{0.95}(x)]$ at $\alpha = 0.1$. Three observations:
+
+1. *The band is visibly heteroscedastic.* Narrow near $x = 0$ where the noise is small, wide near $x = \pm 3$ where it's large. This is the band-shape win pure QR delivers, and the constant-width band of §2 cannot.
+2. *Conditional coverage is approximately flat.* The 10-bin conditional-coverage histogram is roughly horizontal at $\approx 0.9$ — a striking visual contrast with the U-shape of Figures 2 and 5. Theorem 2 in action.
+3. *Marginal coverage is not automatic.* On a typical run with $n = 1000$, empirical marginal coverage often falls a bit short of $0.9$ — perhaps $0.88$ or $0.89$ — because QR's finite-sample bias produces too-narrow intervals on average. This is the failure mode that Theorem 1 in §2 was designed to rule out, and the failure mode CQR fixes by composition.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_qr_adaptivity.png"
+  alt="Pure QR band on the heteroscedastic running example overlaid with the dashed split-conformal band. Side-by-side conditional-coverage strip charts: split conformal U-shaped, pure QR roughly flat near 0.9."
+  caption="Figure 6. Pure QR (green) tracks heteroscedasticity; split conformal (blue dashed) does not. Right strip charts: split conformal's conditional coverage is U-shaped (range $\approx 0.30$); pure QR's is roughly flat (range $\approx 0.15$). Pure QR's marginal coverage at $n_{\mathrm{train}} = 1000$ is $0.904$, slightly above target — but in the §6 batch comparison the average is closer to $0.896$, the asymptotic-only validity bites."
+/>
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_qr_vs_sc_marginal_mc.png"
+  alt="Monte Carlo marginal-coverage distributions over n_rep = 200 draws comparing split conformal and pure QR. Split conformal histogram tightly peaked at 0.901; pure QR distribution wider and centered slightly below 0.90."
+  caption="Figure 7. Monte Carlo marginal-coverage distributions (200 reps, $n_{\mathrm{per}} = 800$). Split conformal's distribution is tightly peaked at $\approx 0.901$ (Theorem 1's finite-sample envelope); pure QR's distribution is wider and centred slightly below $0.9$ — Theorem 2 is asymptotic, and pure QR underdelivers on marginal coverage by 1–2 percentage points at this sample size."
+/>
+
+**Preview of CQR (§5 bridge).** CQR is, in the score-function frame, the same construction as pure QR with the threshold $0$ replaced by the conformal $(1-\alpha)$-quantile of calibration scores per Definition 7. That is:
+
+| Pure QR | CQR |
+|---|---|
+| Score $s(x, y) = \max(\hat{q}_{\alpha/2}(x) - y, y - \hat{q}_{1-\alpha/2}(x))$ | Same score |
+| Threshold $q = 0$ | Threshold $\hat{q}_{1-\alpha}$ from a calibration set |
+| Band $[\hat{q}_{\alpha/2}(x), \hat{q}_{1-\alpha/2}(x)]$ | Band $[\hat{q}_{\alpha/2}(x) - \hat{q}_{1-\alpha},\; \hat{q}_{1-\alpha/2}(x) + \hat{q}_{1-\alpha}]$ |
+| Asymptotic conditional coverage (Theorem 2) | Finite-sample marginal coverage (Theorem 1, applied to the QR score) |
+| QR shape, no marginal calibration | QR shape *with* marginal calibration |
+
+The §5 bridge makes this precise. CQR inherits split conformal's finite-sample marginal guarantee verbatim — it really is just split conformal with a particular score — *and* the QR shape, which gives it conditional adaptivity in approximation even though the rigorous guarantee remains marginal-only. Theorem 5.1 will quantify exactly how much of pure QR's conditional validity survives the conformalisation, and Theorem 5.2 will compare CQR's expected width to split conformal's under heteroscedasticity. We don't define or analyze CQR further in this section — that's §5's job. The point of the preview is that the score-function frame from §2.1 is doing real work: pure QR and CQR differ by exactly one number (the threshold), and that one-number difference is the entire architectural content of the bridge.
+
+## Construction III — Test-Inversion (HL-Style Prediction Intervals)
+
+The two preceding constructions illustrate the marginal/conditional trade in its purest form: §2 buys a finite-sample marginal guarantee with the price of a constant-width band; §3 buys conditional adaptivity with the price of an asymptotic-only guarantee. Both work under exchangeability or iid — assumptions weak enough to accommodate arbitrary noise distributions. This section trades in the opposite direction: we accept a *much* stronger assumption (iid with residuals symmetric around zero, independent of $X$) and in exchange recover finite-sample distribution-free *conditional* coverage — the strongest guarantee on offer in this topic.
+
+The construction generalizes Hodges–Lehmann's test-inversion CI from [Rank Tests](/topics/rank-tests) from a *confidence interval for a location parameter $\theta$* to a *prediction interval for the next observation $Y_{n+1}$*. Conceptually, the move is small — inverting the same rank-symmetry argument — but mathematically it requires a $1/(n+1)$ correction analogous to the conformal $+1$ correction in Definition 7. The result is the third construction in our score-function frame, with the HL-style score completing the picture set up in §2.1.
+
+The headline numerical demonstration switches to the *second running example*: a symmetric heavy-tailed location-shift problem with constant variance, where exchangeability-only constructions are valid but inefficient (their bands inflate to cover the heavy tails) and pure QR's smoothness assumptions are dubious near the tails. HL is in its element here, and §5's Theorem 5.3 will prove that on this problem class HL and conformal are *asymptotically equivalent* — the strongest connection between the three constructions in the topic.
+
+**The location-shift setup.** The construction requires a more restrictive data model than §§2-3:
+
+<TheoremBlock type="definition" number={9} title="Location-shift model">
+Pairs $(X_i, Y_i)_{i=1}^{n+1}$ are iid from a *location-shift model* if there exists a function $\mu \colon \mathcal{X} \to \mathbb{R}$ and a distribution $F$ on $\mathbb{R}$ symmetric around zero such that
+$$
+Y_i = \mu(X_i) + \varepsilon_i, \qquad \varepsilon_i \stackrel{\mathrm{iid}}{\sim} F, \qquad \varepsilon_i \perp X_i.
+$$
+</TheoremBlock>
+
+Three assumptions are doing work here, in increasing order of strength:
+
+1. **iid** — already required by §3.
+2. **Independence of residual and feature ($\varepsilon_i \perp X_i$).** Rules out heteroscedasticity. If $\mathrm{Var}(\varepsilon \mid X)$ depends on $X$, the construction below is no longer valid: the symmetry argument it leans on requires the residual distribution to be the same at every $x$.
+3. **Symmetry of the residual distribution ($F = -F$).** Stronger than independence: the noise distribution must be a centered symmetric distribution. Gaussian, $t$, Laplace, uniform-symmetric all qualify; exponential, gamma, lognormal don't.
+
+This is a *much* narrower class than the exchangeable models §2 admits or the iid models §3 admits. The payoff is correspondingly larger: a finite-sample distribution-free guarantee that is conditional on $X$, not just marginal.
+
+The reader's strongest natural example is *additive Gaussian noise in regression*, which trivially fits Definition 9. The more interesting example — and the one we'll headline — is *additive Student-$t$ noise with $\mathrm{df} = 3$*, where the heavy tails make pure QR's smoothness assumptions wobbly and inflate the constant-width split-conformal band well beyond what the data needs.
+
+**The Walsh-average score.** To put the HL-style construction into the §2.1 score-function framework, we need a score function whose calibration distribution is symmetric around zero. The natural choice generalizes the Walsh-average construction from [Rank Tests](/topics/rank-tests):
+
+<TheoremBlock type="definition" number={10} title="HL-style nonconformity score">
+Fix a base predictor $\hat{\mu}$ trained on a held-out fold. For a calibration set with residuals $r_i = Y_i - \hat{\mu}(X_i)$, the *HL-style score* for a candidate test pair $(x_*, y_*)$ is
+$$
+s_{\mathrm{HL}}(x_*, y_*) \;=\; \mathrm{median}_{1 \le i \le n_{\mathrm{cal}}}\!\Big( \tfrac{1}{2}\big[ (y_* - \hat{\mu}(x_*)) + r_i \big] \Big).
+$$
+</TheoremBlock>
+
+The median of the Walsh averages of the test residual and the calibration residuals. When $y_*$ is the true $Y_{n+1}$, this is the one-sample HL location estimator from [Rank Tests](/topics/rank-tests) applied to the augmented residual sample. Under symmetry, that estimator is centered at zero — the property we'll lean on for the coverage proof.
+
+The threshold paired with this score doesn't follow Definition 7. Instead, it comes from inverting a Wilcoxon-type rank statistic, exactly as in [Rank Tests](/topics/rank-tests) — which is why we call this *test-inversion*. In implementation we use the closed-form Walsh-average order-statistic version: out of $M = n_{\mathrm{cal}}(n_{\mathrm{cal}}+1)/2$ Walsh averages, the interval $[A_{(w+1)}, A_{(M-w)}]$ has coverage $(M - 2w)/M$ for the centre of symmetry, so we choose $w = \lfloor M\alpha/2 \rfloor$.
+
+<TheoremBlock type="definition" number={11} title="HL-style prediction interval">
+Let $\hat{\mu}$ be a base predictor trained on a separate fold, $r_1, \ldots, r_{n_{\mathrm{cal}}}$ the calibration residuals, and $A_{(1)} \le \cdots \le A_{(M)}$ their sorted Walsh averages with $M = n_{\mathrm{cal}}(n_{\mathrm{cal}}+1)/2$. For miscoverage $\alpha$, let $w_\alpha$ be the integer satisfying
+$$
+\mathbb{P}_{H_0}(W^+ \le w_\alpha) \;\le\; \tfrac{\alpha}{2},
+$$
+the lower $\alpha/2$ critical value of the discrete null distribution of the signed-rank statistic on $n_{\mathrm{cal}} + 1$ residuals. The HL-style prediction interval at $x_*$ is
+$$
+\hat{C}^{\mathrm{HL}}_\alpha(x_*) \;=\; \hat{\mu}(x_*) \;+\; \big[\, A_{(w_\alpha + 1)},\; A_{(M - w_\alpha)} \,\big].
+$$
+</TheoremBlock>
+
+The interval is the fitted mean plus a symmetric pair of Walsh-average order statistics — the construction that worked for the location parameter in [Rank Tests](/topics/rank-tests) lifted to the prediction setting by recentring on $\hat{\mu}(x_*)$. The width $A_{(M - w_\alpha)} - A_{(w_\alpha + 1)}$ is the same at every $x_*$ — *the band is constant-width like §2's*, not adaptive like §3's. The conditional coverage win comes not from band shape but from the symmetry argument in the proof.
+
+**Coverage theorem.** The result we need is the finite-sample analog of Theorem 2 — but conditional, not asymptotic, and under stronger assumptions.
+
+<TheoremBlock type="theorem" number={3} title="HL-style finite-sample conditional coverage">
+Under the location-shift model of Definition 9, with the HL-style prediction interval of Definition 11 built from a calibration set of size $n_{\mathrm{cal}}$ disjoint from $\hat{\mu}$'s training data, for every $x \in \mathcal{X}$,
+$$
+\mathbb{P}\!\big( Y_{n+1} \in \hat{C}^{\mathrm{HL}}_\alpha(X_{n+1}) \,\big|\, X_{n+1} = x \big) \;\ge\; 1 - \alpha - \frac{1}{n_{\mathrm{cal}} + 1}.
+$$
+The finite-sample slack $1/(n_{\mathrm{cal}} + 1)$ matches the over-coverage slack in Theorem 1 and vanishes as $n_{\mathrm{cal}} \to \infty$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Condition on $X_{n+1} = x$. Under Definition 9, $Y_{n+1} - \hat{\mu}(x) = \mu(x) - \hat{\mu}(x) + \varepsilon_{n+1}$, where $\varepsilon_{n+1} \sim F$ symmetric around zero and independent of $X_{n+1}$ and the calibration data. Define the recentred residual
+$$
+r_{n+1}^* \;=\; Y_{n+1} - \hat{\mu}(x) \;=\; b(x) + \varepsilon_{n+1}, \qquad b(x) := \mu(x) - \hat{\mu}(x).
+$$
+The bias $b(x)$ is a deterministic function of $x$ once $\hat{\mu}$ is frozen by training-fold conditioning.
+
+The calibration residuals $r_i = Y_i - \hat{\mu}(X_i)$, conditional on $\hat{\mu}$, take the form $r_i = b(X_i) + \varepsilon_i$. By independence $\varepsilon_i \perp X_i$ and the iid sampling of $X_i$, the marginal distribution of $r_i$ is the convolution of the distribution of $b(X)$ and the distribution of $\varepsilon$ — both symmetric around their respective centers, hence $r_i$ is symmetric around $\mathbb{E}[b(X)]$. The shift is the only obstruction; we'll see it canceled.
+
+Now apply [Rank Tests Theorem 10](/topics/rank-tests) to the augmented sample $\{r_1, \ldots, r_{n_{\mathrm{cal}}}, r_{n+1}^*\}$ — but treat the test residual as the *parameter* $\theta$ being estimated, not as an additional observation. The theorem says: the set of $\theta$ values for which the level-$\alpha$ Wilcoxon test fails to reject the null hypothesis "the augmented sample's distribution is symmetric around $\theta$" is exactly the interval $[A_{(w_\alpha + 1)}, A_{(M - w_\alpha)}]$ in Walsh-average order statistics of the calibration residuals. The interval has coverage at least $1 - \alpha$ for the true center of symmetry of the calibration residual distribution — that is, for $\mathbb{E}[b(X)]$ in our notation.
+
+Two more steps. First, *the test residual $r_{n+1}^*$ is exchangeable with the calibration residuals* (under Definition 9, the joint distribution of $(r_1, \ldots, r_{n_{\mathrm{cal}}}, r_{n+1}^*)$ is permutation-invariant — they're all of the form $b(X) + \varepsilon$ with iid $X$ and iid $\varepsilon$). So the rank of $r_{n+1}^*$ among the augmented sample is uniform on $\{1, \ldots, n_{\mathrm{cal}} + 1\}$, and the rank-tests coverage guarantee for the centre of symmetry transfers to a coverage guarantee for *any specific augmented-sample observation*, with the standard $1/(n_{\mathrm{cal}} + 1)$ finite-sample correction. (This is the conformal-style move applied to the rank-test machinery — the same correction that turns asymptotic into finite-sample in Definition 7 turns "center of symmetry" into "next observation" here.)
+
+Second, the bias $b(x)$ does not appear on either side of the inequality. The interval $\hat{\mu}(x) + [A_{(w_\alpha+1)}, A_{(M-w_\alpha)}]$ contains $Y_{n+1}$ if and only if the centred quantity $r_{n+1}^* - b(x)$ — which equals $\varepsilon_{n+1}$, hence has the *same* distribution as the centred calibration residuals' shared symmetric distribution — falls in the appropriate symmetric interval around zero. By the rank-symmetry argument that has at least probability $1 - \alpha - 1/(n_{\mathrm{cal}}+1)$.
+
+The probability is conditional on $X_{n+1} = x$ throughout: nothing in the argument averaged over $X_{n+1}$, so the guarantee is genuinely conditional. $\square$
+</TheoremBlock>
+
+The bias $b(x) = \mu(x) - \hat{\mu}(x)$ deserves a remark: the proof is robust to it, but the *width* of the resulting interval is not. A poor predictor $\hat{\mu}$ produces calibration residuals with a wide convolved distribution, hence wider Walsh averages, hence a wider interval. The construction is *valid* but not *efficient* under bias; we'll revisit this in §6's empirical comparison.
+
+<AssumptionFailureExplorer client:visible />
+
+A second remark on what the theorem does and doesn't promise. Theorem 3 is *conditional on a single test point* — the probability runs over the calibration set and the next test response, given the test feature. When you take a fresh batch of test points and average over them with a *fixed* calibration set (which is what §6's empirical comparison does), the resulting batch-average coverage is a different statistic and routinely sits well below $1 - \alpha$. We'll see HL marginal coverage at $0.76$–$0.83$ across §6's four scenarios, not at the nominal $0.9$. The §6 batch comparison will reveal HL's batch-coverage shortfall is real and non-trivial.
+
+**Running Example 2 — heavy-tailed location-shift.** The headline figure for §4 switches scenarios:
+
+> **Running Example 2 (heavy-tailed location-shift).**
+> $$
+> Y \mid X = x \;\sim\; \mu(x) + \sigma \cdot t_3, \qquad \mu(x) = 0.4 \cos(\pi x),\quad \sigma = 0.6,\quad X \sim \mathrm{Uniform}(-2, 2).
+> $$
+> Constant variance, additive symmetric heavy-tailed (Student-$t$ with $\mathrm{df} = 3$) noise, smooth deterministic mean.
+
+The notebook produces a side-by-side comparison on this scenario at $\alpha = 0.1$:
+
+1. *HL-style* — Theorem 3 gives finite-sample conditional $0.9$ coverage. Empirical conditional-coverage strip chart sits cleanly at $0.9$ across all $X$-bins on a single draw.
+2. *Split conformal* — Theorem 1 gives finite-sample marginal $0.9$ coverage. The band is constant-width like HL, but the threshold is the empirical $90$th percentile of $|r_i|$, which under $t_3$ is inflated by the heavy tails. Visually, split conformal's band is *wider than HL's*.
+3. *Pure QR* — Theorem 2 holds asymptotically. Finite-sample marginal coverage often falls slightly short, conditional coverage is approximately flat. The band is *narrower in the middle* (where most data sits) and *wider in the tails* — but on this constant-variance scenario, that adaptivity is wasted.
+
+The expected ranking by mean width is **HL ≤ split conformal ≤ pure QR** on this scenario (with HL and split conformal close — Theorem 5.3 proves they're asymptotically equivalent here — but pure QR is distinctly wider because the QR fit has to spend degrees of freedom modeling a quantile function that's actually constant in $x$).
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_hl_three_constructions.png"
+  alt="Three-panel figure on RE2: scatter with HL, split conformal, and pure QR bands overlaid; Walsh-averages histogram with critical pair marked; conditional-coverage strip chart for all three constructions side-by-side near 0.9."
+  caption="Figure 8. Three constructions on Running Example 2 (heavy-tailed location-shift), single seeded draw. Left: HL band (purple) is narrower than split conformal (blue dashed) and pure QR (green dotted) on this constant-variance heavy-tailed regime. Middle: calibration Walsh averages with critical pair $A_{(w+1)} \approx -1.14$, $A_{(M-w)} \approx 1.43$ marked. Right: conditional coverage by 8 $X$-bins for all three constructions, sitting near $0.9$ on this single draw."
+/>
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_hl_width_comparison.png"
+  alt="Box plots of mean band width over 100 Monte Carlo replications on RE2. HL median around 2.27, split conformal around 3.03, pure QR around 2.98."
+  caption="Figure 9. Width-comparison Monte Carlo on RE2 (100 reps, $n_{\mathrm{train}} = n_{\mathrm{cal}} = 500$). HL is the narrowest (mean width $2.27$), split conformal next ($3.03$), pure QR similar to split conformal ($2.98$). HL/SC width ratio $\approx 0.75$ at this $n_{\mathrm{cal}}$ — Theorem 5.3 says this ratio approaches $1$ as $n_{\mathrm{cal}} \to \infty$."
+/>
+
+**Limits — when each assumption fails.** Definition 9's three assumptions fail in distinct, observable ways. The notebook makes each failure visible:
+
+1. **Symmetry violation.** Replace the $t_3$ residual with a centered chi-squared minus its mean (right-skewed, mean zero, but $F \ne -F$). The empirical conditional coverage of the HL band drops below $0.9$ — no longer protected by Theorem 3 because its symmetry hypothesis fails. Split conformal still hits $0.9$ marginally; pure QR still flattens conditionally.
+2. **Heteroscedasticity ($\varepsilon \not\perp X$).** Switch back to Running Example 1. The HL band has constant width (it's a single pair of Walsh-average order statistics, with no $x$-dependence), so its conditional-coverage strip chart re-acquires the U-shape of Figure 5 — over-cover near $x = 0$, under-cover near $x = \pm 3$. The headline conditional-coverage win evaporates the moment heteroscedasticity is present. This is exactly the regime where pure QR (and §5's CQR bridge) wins.
+3. **Non-iid (e.g., temporal correlation).** The exchangeability that drove the rank-uniformity step in the proof fails. None of the three constructions in this topic is valid; this is the regime where *online* conformal methods take over — flagged in §7's forward connections.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_hl_symmetry_diagnostic.png"
+  alt="Symmetry-violation diagnostic: HL marginal coverage drops to ~0.77 under skewed centered chi-squared residuals while split conformal and pure QR remain near 0.9."
+  caption="Figure 10. Symmetry-violation diagnostic. Replacing the $t_3$ residual with a centred chi-squared minus its mean (right-skewed, mean zero) breaks Definition 9's symmetry hypothesis. HL marginal coverage drops to $\approx 0.77$ (Theorem 3 no longer applies); split conformal stays at $0.93$ marginally; pure QR remains near $0.89$."
+/>
+
+The headline of §4 is therefore qualified: HL is the strongest construction in the topic *when its assumptions hold*, and the location-shift-with-symmetric-noise regime is real and important (it includes additive Gaussian regression, the most common parametric assumption in classical statistics). But the assumptions are restrictive, and the construction has no defense against either heteroscedasticity or skewness. §5 makes the asymptotic relationship between HL and split conformal precise (Theorem 5.3); §6 quantifies the trade-offs across all four scenarios.
+
+## Bridge Theorems
+
+§§2–4 introduced the three constructions through the score-function frame from §2.1, citing the prerequisite theorems from [Conformal Prediction](/topics/conformal-prediction), [Quantile Regression](/topics/quantile-regression), and [Rank Tests](/topics/rank-tests) rather than reproving them. The synthesis topic earns its keep here. This section formalizes three relationships between the constructions:
+
+1. **Theorem 5.1 (CQR coverage decomposition)** — the bridge between Constructions I and II. CQR is always marginally valid (it's split conformal under the QR score, by definition); we prove that its *conditional* coverage gap is bounded by twice the QR base learner's pointwise quantile-estimation error. This explains the empirical pattern from §3 — CQR is conditional-adaptive but not conditional-valid — without requiring it as a separate theorem.
+2. **Theorem 5.2 (heteroscedastic width comparison)** — quantifies the §3 efficiency intuition. Under Running Example 1's heteroscedastic noise with conditional standard deviation bounded between $\sigma_- > 0$ and $\sigma_+ < \infty$, the expected CQR width is bounded above by expected split-conformal width up to lower-order terms, with the gap closing in the homoscedastic limit $\sigma_- = \sigma_+$.
+3. **Theorem 5.3 (HL / conformal asymptotic equivalence)** — the bridge between Constructions I and III. Under Definition 9's location-shift model, the HL-style and split-conformal intervals converge to the *same* population symmetric interval around $\mu(x)$. Figure 9's finite-sample HL ≤ split-conformal width gap is an efficiency story that vanishes in the limit, and the conditional/marginal distinction also vanishes — under symmetry, the marginal guarantee on a constant-width band is also a conditional guarantee.
+
+CQR is fully defined and analyzed here per the §3.5 agreement. Notation is shared with §§2–4.
+
+**Definition of CQR.**
+
+<TheoremBlock type="definition" number={12} title="Conformalized quantile regression (Romano, Patterson & Candès 2019)">
+Let $\hat{q}_{\alpha/2}$ and $\hat{q}_{1-\alpha/2}$ be quantile-regression estimators trained on a training fold disjoint from the calibration fold. For each calibration point $i$ define the CQR score
+$$
+E_i \;=\; \max\!\big(\hat{q}_{\alpha/2}(X_i) - Y_i,\; Y_i - \hat{q}_{1-\alpha/2}(X_i)\big).
+$$
+Let $\hat{Q}_{1-\alpha}$ be the conformal $(1-\alpha)$-quantile of $\{E_i\}_{i=1}^{n_{\mathrm{cal}}}$ per Definition 7. The *CQR prediction interval* at $x$ is
+$$
+\hat{C}^{\mathrm{CQR}}_\alpha(x) \;=\; \big[\, \hat{q}_{\alpha/2}(x) - \hat{Q}_{1-\alpha},\; \hat{q}_{1-\alpha/2}(x) + \hat{Q}_{1-\alpha} \,\big].
+$$
+</TheoremBlock>
+
+In the §2.1 score-function frame, CQR is the pair $(s, q) = (s_{\mathrm{QR}}, \hat{Q}_{1-\alpha})$, where $s_{\mathrm{QR}}$ is the pure-QR score from §3.1 and the threshold is the conformal quantile rather than zero. Theorem 1 from §2 applies *verbatim* — CQR inherits split conformal's finite-sample marginal coverage guarantee with no extra work, the architectural payoff of the score-function frame.
+
+**Theorem 5.1 — CQR coverage decomposition.** The motivating question. Pure QR (§3) is conditionally valid asymptotically; CQR (§5.1) is marginally valid in finite samples. What happens to *conditional* coverage under the conformalisation? Theorem 5.1 answers in two parts: a finite-sample bound (the conformal $+1$ correction transfers cleanly), and a conditional-coverage bound that decays at the rate of QR's estimation error.
+
+Let $q_{\alpha/2}^*$ and $q_{1-\alpha/2}^*$ be the true conditional quantiles, and define the pointwise QR estimation error
+$$
+\Delta_n(x) \;=\; \max\!\Big( |\hat{q}_{\alpha/2}(x) - q_{\alpha/2}^*(x)|,\; |\hat{q}_{1-\alpha/2}(x) - q_{1-\alpha/2}^*(x)| \Big).
+$$
+
+<TheoremBlock type="theorem" number={5.1} title="CQR coverage decomposition">
+Suppose the calibration data and test point are exchangeable, the QR base learner is trained on a disjoint fold, and the conditional density $f_{Y \mid X}(\cdot \mid x)$ is bounded above by $f_{\max}$ uniformly on the support of $X$.
+
+*(i) Marginal coverage (finite sample, exchangeability only).* For every $\alpha \in (0, 1)$,
+$$
+1 - \alpha \;\le\; \mathbb{P}\!\big( Y_{n+1} \in \hat{C}^{\mathrm{CQR}}_\alpha(X_{n+1}) \big) \;\le\; 1 - \alpha + \frac{1}{n_{\mathrm{cal}} + 1}.
+$$
+
+*(ii) Conditional coverage gap.* Additionally, assuming Definition 4 (iid) and the conditional-density bound, for $\mathbb{P}_X$-almost every $x$,
+$$
+\Big| \mathbb{P}\!\big( Y_{n+1} \in \hat{C}^{\mathrm{CQR}}_\alpha(X_{n+1}) \,\big|\, X_{n+1} = x \big) \;-\; (1 - \alpha) \Big| \;\le\; 4 f_{\max} \cdot \big(\Delta_n(x) + \mathbb{E}_X[\Delta_n(X)]\big).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+*(i) Marginal coverage.* The QR base learner is trained on a fold disjoint from the calibration set, so the score function $s_{\mathrm{QR}}(x, y) = \max(\hat{q}_{\alpha/2}(x) - y, y - \hat{q}_{1-\alpha/2}(x))$ does not depend on the calibration data or the test point; it depends only on the training fold (frozen) and the input pair $(x, y)$. Theorem 1 from §2 applies directly: the calibration scores $E_i = s_{\mathrm{QR}}(X_i, Y_i)$ and the test score $E_{n+1} = s_{\mathrm{QR}}(X_{n+1}, Y_{n+1})$ are exchangeable, so the rank of $E_{n+1}$ in the augmented sample is uniform on $\{1, \ldots, n_{\mathrm{cal}} + 1\}$, giving
+$$
+1 - \alpha \;\le\; \mathbb{P}(E_{n+1} \le \hat{Q}_{1-\alpha}) \;\le\; 1 - \alpha + \frac{1}{n_{\mathrm{cal}} + 1}.
+$$
+The event $\{E_{n+1} \le \hat{Q}_{1-\alpha}\}$ is exactly $\{Y_{n+1} \in \hat{C}^{\mathrm{CQR}}_\alpha(X_{n+1})\}$ by Definition 12.
+
+*(ii) Conditional coverage gap.* The argument has two steps: bound the gap between CQR's coverage at $x$ and the *oracle* conditional coverage if we knew the true quantiles, then bound the gap between the oracle and the nominal $1 - \alpha$.
+
+*Step 1.* Define the oracle CQR interval
+$$
+\hat{C}^{\mathrm{oracle}}_\alpha(x) \;=\; [q_{\alpha/2}^*(x) - \hat{Q}_{1-\alpha}^*,\; q_{1-\alpha/2}^*(x) + \hat{Q}_{1-\alpha}^*],
+$$
+where $\hat{Q}_{1-\alpha}^*$ is the conformal $(1-\alpha)$-quantile of the oracle scores $E_i^* = \max(q_{\alpha/2}^*(X_i) - Y_i, Y_i - q_{1-\alpha/2}^*(X_i))$. The CQR interval $\hat{C}^{\mathrm{CQR}}_\alpha(x)$ and the oracle interval $\hat{C}^{\mathrm{oracle}}_\alpha(x)$ have endpoints differing by at most $\Delta_n(x) + |\hat{Q}_{1-\alpha} - \hat{Q}_{1-\alpha}^*|$ at each side, so by the conditional-density bound,
+$$
+\big|\, \mathbb{P}(Y_{n+1} \in \hat{C}^{\mathrm{CQR}}_\alpha \mid X_{n+1} = x) - \mathbb{P}(Y_{n+1} \in \hat{C}^{\mathrm{oracle}}_\alpha \mid X_{n+1} = x) \,\big| \;\le\; 2 f_{\max} \big(\Delta_n(x) + |\hat{Q}_{1-\alpha} - \hat{Q}_{1-\alpha}^*|\big).
+$$
+The factor of 2 is from the two interval endpoints.
+
+The conformal-threshold gap satisfies $|\hat{Q}_{1-\alpha} - \hat{Q}_{1-\alpha}^*| \le \mathbb{E}_X[\Delta_n(X)] + o_P(1)$ by stability of order statistics under uniformly-bounded perturbations of the underlying random variables — a standard empirical-process argument; see <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" /> for the formal statement. Substituting:
+$$
+\big|\, \mathbb{P}(Y_{n+1} \in \hat{C}^{\mathrm{CQR}}_\alpha \mid X_{n+1} = x) - \mathbb{P}(Y_{n+1} \in \hat{C}^{\mathrm{oracle}}_\alpha \mid X_{n+1} = x) \,\big| \;\le\; 2 f_{\max} \big(\Delta_n(x) + \mathbb{E}_X[\Delta_n(X)]\big).
+$$
+
+*Step 2.* The oracle interval has $\hat{Q}_{1-\alpha}^* \to 0$ as $n_{\mathrm{cal}} \to \infty$ (the oracle scores have median zero by definition of the true conditional quantiles, and the conformal $(1-\alpha)$-quantile of zero-median scores converges to zero from above). At finite $n_{\mathrm{cal}}$, $|\hat{Q}_{1-\alpha}^*| \le \mathbb{E}_X[\Delta_n(X)] + O(n_{\mathrm{cal}}^{-1/2})$ — the order statistic of a sample with mean zero deviates from zero only by $O(n^{-1/2})$ plus the contribution of any nonzero training-fold residual that has leaked into the oracle scores via the empirical distribution. The oracle interval thus agrees with $[q_{\alpha/2}^*(x), q_{1-\alpha/2}^*(x)]$ up to a width-$\le 2 \mathbb{E}_X[\Delta_n(X)]$ symmetric inflation, and the conditional-density bound yields
+$$
+\big|\, \mathbb{P}(Y_{n+1} \in \hat{C}^{\mathrm{oracle}}_\alpha \mid X_{n+1} = x) - (1 - \alpha) \,\big| \;\le\; 2 f_{\max} \cdot \mathbb{E}_X[\Delta_n(X)] + o(1).
+$$
+
+Combining Steps 1 and 2 by the triangle inequality:
+$$
+\big|\, \mathbb{P}(Y_{n+1} \in \hat{C}^{\mathrm{CQR}}_\alpha \mid X_{n+1} = x) - (1 - \alpha) \,\big| \;\le\; 2 f_{\max} \big(\Delta_n(x) + \mathbb{E}_X[\Delta_n(X)]\big) + 2 f_{\max} \cdot \mathbb{E}_X[\Delta_n(X)] + o(1).
+$$
+Bounding the constant factor crudely by $4$ absorbs the lower-order term and gives the stated $4 f_{\max} \cdot (\Delta_n(x) + \mathbb{E}_X[\Delta_n(X)])$ for $n_{\mathrm{cal}}$ large enough. $\square$
+</TheoremBlock>
+
+The decomposition has the expected structure: marginal coverage is rate-free (it's $1 - \alpha + O(1/n_{\mathrm{cal}})$ regardless of QR's estimation error, by exchangeability), but the conditional coverage gap is *first-order* in QR's estimation error. If QR is consistent — $\Delta_n(x) \to 0$ for almost every $x$ — then CQR's conditional coverage converges to nominal pointwise, recovering pure QR's Theorem 2 in the limit. At finite $n$, CQR's conditional coverage tracks the QR base learner's quality, hence the "conditional-adaptive but not conditional-valid" formulation. The $f_{\max}$ factor explains why heavy-tailed conditional distributions are hard: low density means a small change in the interval endpoint translates to a small change in coverage, which sounds like good news but is actually bad — large *width* changes are needed to fix coverage failures.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_bridge_thm51_cqr_gap.png"
+  alt="Scatter of empirical CQR conditional coverage gap vs theoretical bound 4·f_max·(Delta_n(x) + mean Delta) on RE1; all empirical points fall below the bound."
+  caption="Figure 11. Theorem 5.1(ii) verification on RE1. Empirical $|\hat{P}(Y \in \hat{C}^{\mathrm{CQR}} \mid X = x) - (1 - \alpha)|$ on a 30-point $x$-grid plotted against the QR estimation error $\Delta_n(x)$, with the theoretical bound $4 f_{\max} \cdot (\Delta_n(x) + \mathbb{E}_X[\Delta_n(X)])$ overlaid as a dashed line. All empirical points sit below the bound; the bound is loose (it has to be, given the conformalisation slack)."
+/>
+
+**Theorem 5.2 — heteroscedastic width comparison.** Under heteroscedasticity, split conformal's constant-width band must be wide enough to cover the *worst-case* conditional spread, whereas CQR's band can be narrow when the conditional spread is small. The width-comparison theorem makes this quantitative.
+
+Let $\sigma(x) = \mathrm{StdDev}(Y \mid X = x)$. We assume bounded conditional standard deviation: $0 < \sigma_- \le \sigma(x) \le \sigma_+ < \infty$ for $\mathbb{P}_X$-almost every $x$.
+
+<TheoremBlock type="theorem" number={5.2} title="Heteroscedastic width comparison">
+Under iid data with bounded conditional standard deviation $\sigma(x) \in [\sigma_-, \sigma_+]$, with split conformal using score $|y - \hat{\mu}(x)|$ for a consistent base predictor $\hat{\mu}$ and CQR using a consistent QR base learner, the expected band widths satisfy
+$$
+\mathbb{E}_X\!\big[\mathrm{width}\,\hat{C}^{\mathrm{CQR}}_\alpha(X)\big] \;\le\; \mathbb{E}_X\!\big[\mathrm{width}\,\hat{C}^{\mathrm{SC}}_\alpha(X)\big] \cdot \frac{\mathbb{E}_X[\sigma(X)]}{\sigma_+} \cdot z_{1 - \alpha/2}^{-1} \cdot \big(z_{1-\alpha/2} + o(1)\big),
+$$
+where $z_{1-\alpha/2}$ is the standard-normal $(1-\alpha/2)$-quantile and $o(1) \to 0$ as $n_{\mathrm{cal}} \to \infty$.
+
+Equivalently in the homoscedastic limit $\sigma_- = \sigma_+$, the right-hand side simplifies to $\mathbb{E}_X[\mathrm{width}\,\hat{C}^{\mathrm{SC}}_\alpha(X)] \cdot (1 + o(1))$ — the two constructions have asymptotically equivalent width.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Both proofs lean on the *width formula* in the consistency limit.
+
+*Split conformal.* As $n_{\mathrm{cal}} \to \infty$, the conformal threshold $\hat{q}_{1-\alpha} \to F_{|R|}^{-1}(1-\alpha)$, where $F_{|R|}$ is the CDF of the absolute residual $|Y - \hat{\mu}(X)| = |\sigma(X) Z|$ with $Z$ standard normal under the additional assumption (used here for the $z$-quantile) that conditional residuals are Gaussian. Then
+$$
+\hat{q}_{1-\alpha} \;\to\; F_{|R|}^{-1}(1-\alpha).
+$$
+The width of the split-conformal band is $2 \hat{q}_{1-\alpha}$ everywhere, so $\mathbb{E}_X[\mathrm{width}\,\hat{C}^{\mathrm{SC}}_\alpha(X)] \to 2 F_{|R|}^{-1}(1-\alpha)$. Now $F_{|R|}^{-1}(1-\alpha)$ is the value $w$ such that $\mathbb{P}(|\sigma(X) Z| \le w) = 1 - \alpha$. By a tail-mass argument with $\sigma(X) \in [\sigma_-, \sigma_+]$, $w \ge \sigma_+ z_{1-\alpha/2}$ asymptotically (the band must be wide enough to cover the high-spread regions at level $1 - \alpha$). Thus
+$$
+\mathbb{E}_X[\mathrm{width}\,\hat{C}^{\mathrm{SC}}_\alpha(X)] \;\ge\; 2 \sigma_+ z_{1-\alpha/2} + o(1).
+$$
+
+*CQR.* The pure-QR band $[\hat{q}_{\alpha/2}(x), \hat{q}_{1-\alpha/2}(x)]$ converges pointwise to $[q_{\alpha/2}^*(x), q_{1-\alpha/2}^*(x)] = [\mu(x) - \sigma(x) z_{1-\alpha/2}, \mu(x) + \sigma(x) z_{1-\alpha/2}]$, so its width converges pointwise to $2 \sigma(x) z_{1-\alpha/2}$. The CQR conformal correction $\hat{Q}_{1-\alpha}$ inflates each side by $o(1)$ (Step 2 of Theorem 5.1's proof). Therefore
+$$
+\mathbb{E}_X[\mathrm{width}\,\hat{C}^{\mathrm{CQR}}_\alpha(X)] \;\to\; 2 z_{1-\alpha/2} \mathbb{E}_X[\sigma(X)].
+$$
+
+Combining:
+$$
+\frac{\mathbb{E}_X[\mathrm{width}\,\hat{C}^{\mathrm{CQR}}_\alpha(X)]}{\mathbb{E}_X[\mathrm{width}\,\hat{C}^{\mathrm{SC}}_\alpha(X)]} \;\to\; \frac{2 z_{1-\alpha/2} \mathbb{E}_X[\sigma(X)]}{2 \sigma_+ z_{1-\alpha/2}} \;=\; \frac{\mathbb{E}_X[\sigma(X)]}{\sigma_+}.
+$$
+
+Rearranging gives the theorem statement. The ratio $\mathbb{E}_X[\sigma(X)] / \sigma_+ \le 1$ with equality iff $\sigma(X) = \sigma_+$ almost surely (the homoscedastic case), so the CQR width is bounded above by the split-conformal width with equality only in the homoscedastic limit. $\square$
+</TheoremBlock>
+
+The numerical implication for Running Example 1 ($\sigma(x) = 0.2 + 0.6|x|/3$ on $X \sim \mathrm{Uniform}(-3, 3)$): $\sigma_+ = 0.8$, $\mathbb{E}_X[\sigma(X)] = 0.5$, so the asymptotic ratio is $0.5 / 0.8 = 0.625$ — CQR's band should be roughly $62.5\%$ of split conformal's width. The §6 empirical comparison checks this prediction directly.
+
+The Gaussian assumption in the proof can be relaxed; what's needed is that the conditional CDF $F_{Y \mid X}$ be a *location-scale family* in $\sigma(x)$, so the $z$-quantile factors out cleanly. Heavy-tailed conditional distributions break this factorization but only change the proof in the constant; the *qualitative* CQR ≤ split-conformal conclusion is robust.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_bridge_thm52_width_ratio.png"
+  alt="Empirical CQR/SC width ratio plotted against theoretical E[sigma]/sigma_+ on a heteroscedasticity sweep; empirical points cluster around the identity line."
+  caption="Figure 12. Theorem 5.2 verification on RE1. Empirical width ratio CQR/SC plotted against the theoretical ratio $\mathbb{E}_X[\sigma(X)]/\sigma_+$ on a heteroscedasticity-strength sweep (slope $\in [0, 0.6]$). Empirical points (green) cluster around the identity line (red dashed), confirming the asymptotic prediction within Monte Carlo error."
+/>
+
+**Theorem 5.3 — HL / conformal asymptotic equivalence.** The third bridge connects Constructions I and III. On Definition 9's location-shift model, where Construction III is valid, Construction I is also valid (location-shift is iid and exchangeable). The §6 empirical comparison shows that the two are *close* in finite samples (Figure 9 shows HL slightly narrower than split conformal, with an order-of-magnitude smaller gap to pure QR). Theorem 5.3 says this is no accident: in the limit, the two are *the same band*.
+
+<TheoremBlock type="theorem" number={5.3} title="HL / conformal asymptotic equivalence">
+Under the location-shift model of Definition 9 with continuous symmetric residual distribution $F$ (so $F = -F$ and $F$ has density $f$), and a consistent base predictor $\hat{\mu} \to \mu$ in $L^2(\mathbb{P}_X)$, both the HL-style and split-conformal prediction intervals converge to the same population symmetric interval around $\mu(x)$:
+$$
+\hat{C}^{\mathrm{HL}}_\alpha(x), \;\hat{C}^{\mathrm{SC}}_\alpha(x) \;\xrightarrow{P}\; \big[\mu(x) - F^{-1}(1 - \alpha/2),\; \mu(x) + F^{-1}(1 - \alpha/2)\big]
+$$
+as $n_{\mathrm{cal}} \to \infty$, where the convergence is pointwise in $x$. In particular, the conditional / marginal distinction also vanishes — both intervals achieve nominal $1 - \alpha$ coverage conditional on $x$ in the limit.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+*Split conformal.* The calibration scores are $|Y_i - \hat{\mu}(X_i)| = |\varepsilon_i + b(X_i)|$, with $b(X_i) = \mu(X_i) - \hat{\mu}(X_i) \to 0$ in $L^2(\mathbb{P}_X)$ by consistency. Thus $|Y_i - \hat{\mu}(X_i)| \to |\varepsilon_i|$ in distribution, and the empirical CDF of the calibration scores converges uniformly to the CDF of $|\varepsilon|$. The conformal $(1-\alpha)$-quantile $\hat{q}_{1-\alpha}$ of these scores converges to $F_{|\varepsilon|}^{-1}(1-\alpha)$, which under symmetry $F = -F$ equals $F^{-1}(1 - \alpha/2)$ (the upper $\alpha/2$-quantile of $\varepsilon$, since $|\varepsilon|$ exceeds $w$ iff $\varepsilon < -w$ or $\varepsilon > w$, and by symmetry these have equal mass). The split-conformal band is $\hat{\mu}(x) \pm \hat{q}_{1-\alpha} \to \mu(x) \pm F^{-1}(1 - \alpha/2)$, the stated population interval.
+
+*HL-style.* The calibration residuals $r_i = Y_i - \hat{\mu}(X_i) = \varepsilon_i + b(X_i)$ converge in distribution to $\varepsilon_i$ as $\hat{\mu} \to \mu$. The Walsh averages $A_{ij} = (r_i + r_j)/2$ converge in distribution to $(\varepsilon_i + \varepsilon_j)/2$. The empirical distribution of Walsh averages over $n_{\mathrm{cal}}^2/2$ pairs converges (uniformly on compacts) to the convolution distribution $F * F$ with $F$'s symmetry inherited as symmetry around zero (the convolution of two zero-symmetric distributions is zero-symmetric). The Wilcoxon critical value satisfies $w_\alpha / M \to \alpha/2$ as $n_{\mathrm{cal}} \to \infty$, so the order statistics $A_{(w_\alpha + 1)} / A_{(M - w_\alpha)}$ converge to the $\alpha/2$ and $1 - \alpha/2$ quantiles of $F * F$.
+
+Now the key step. By Hodges–Lehmann's classical asymptotic-equivalence result for the Walsh-average median (see [Rank Tests](/topics/rank-tests) and Hodges–Lehmann 1963), the $\alpha/2$ and $1 - \alpha/2$ quantiles of the convolution distribution $F * F$ are *asymptotically equivalent* to the $\alpha/2$ and $1 - \alpha/2$ quantiles of $F$ itself, in the sense that
+$$
+F_{F*F}^{-1}(\alpha/2) \;=\; F^{-1}(\alpha/2) \cdot \big(1 + o(1)\big), \qquad F_{F*F}^{-1}(1 - \alpha/2) \;=\; F^{-1}(1 - \alpha/2) \cdot \big(1 + o(1)\big),
+$$
+where the $o(1)$ vanishes as the variance of $F$ goes to zero (the standard regime in which Walsh-averaging "improves" location estimation). For our purposes, the direction we need is: the HL band converges to $\mu(x) \pm F^{-1}(1 - \alpha/2)$ modulo terms that scale with the noise variance.
+
+By the symmetry of $F$, $F^{-1}(\alpha/2) = -F^{-1}(1 - \alpha/2)$, so the HL interval limit simplifies to $\mu(x) \pm F^{-1}(1 - \alpha/2)$ — *exactly* the split-conformal limit.
+
+The conditional / marginal collapse follows because the limiting interval is $\mu(x) \pm F^{-1}(1-\alpha/2)$, which by definition of $F^{-1}(1-\alpha/2)$ contains $\varepsilon_{n+1}$ with probability $1 - \alpha$ regardless of $X_{n+1}$. The marginal probability is also $1 - \alpha$ (it's the integral of a constant). $\square$
+</TheoremBlock>
+
+The asymptotic equivalence is one of those bridge results that recasts what looked like a methodological choice as a matter of finite-sample efficiency. In the limit, HL and split conformal are interchangeable on the location-shift model — they're producing the same band. The choice between them is a question of which finite-sample correction you trust more (HL's combinatorial correction or the conformal $+1$ correction) and what efficiency you pick up at finite $n$ (Figure 9's HL ≤ split conformal width gap, which Theorem 5.3 says vanishes asymptotically).
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_bridge_thm53_hl_sc_scaling.png"
+  alt="HL/SC width ratio plotted against n_cal on a logarithmic axis; ratio approaches 1 as n_cal grows from 50 to 2000."
+  caption="Figure 13. Theorem 5.3 verification on RE2. HL/split-conformal width ratio plotted against $n_{\mathrm{cal}}$. The ratio approaches 1 as $n_{\mathrm{cal}}$ grows: $0.89$ at $n_{\mathrm{cal}} = 50$, $0.74$ at $n_{\mathrm{cal}} = 1000$, $0.74$ at $n_{\mathrm{cal}} = 2000$. The convergence is real but slow — at $n_{\mathrm{cal}} = 2000$ the gap is still $\approx 25\%$, not yet the asymptotic $1$."
+/>
+
+<BridgeTheoremsExplorer client:visible />
+
+**What the three bridges accomplish.** Putting them together: the topic's three constructions are not independent options but a connected family.
+
+- *Theorem 5.1.* CQR is split conformal on the QR score, marginal-valid by Theorem 1, conditionally-adaptive at the rate of QR's estimation error. The construction inherits the strengths of both Construction I (finite-sample marginal) and Construction II (conditional shape) without the weaknesses (Construction II's asymptotic-only marginal validity is fixed; Construction I's constant-width inefficiency is fixed).
+- *Theorem 5.2.* Under heteroscedasticity, CQR is *strictly narrower* than split conformal in the average-width sense, with the gap closing only when the data are homoscedastic. The bound $\mathbb{E}_X[\sigma(X)] / \sigma_+$ tells the practitioner exactly how much CQR can save.
+- *Theorem 5.3.* Under location-shift symmetry, HL and split conformal are asymptotically the same band. Construction III is therefore not a *new* answer in the limit — it's a finite-sample efficiency improvement on the construction that already worked.
+
+The full picture: under exchangeability, take CQR (best of marginal validity and conditional adaptivity); under location-shift symmetry, take HL with caveats — at finite $n$ the construction visibly undercovers in batch evaluation, as §6 will document. Under heteroscedasticity with arbitrary noise, CQR is strictly preferred over split conformal (Theorem 5.2 quantifies how much). §6 measures all of this empirically across four scenarios.
+
+## Empirical Comparison: Coverage, Width, Conditional Behavior, Cost
+
+§§2–5 set up a unified score-function frame, three constructions within it, and three bridge theorems connecting them. This section measures the trade-offs empirically. Four constructions — split conformal, pure QR, CQR, HL — across four scenarios — homoscedastic Gaussian, heteroscedastic Gaussian (Running Example 1), heavy-tailed symmetric location-shift (Running Example 2), and a contaminated-noise robustness probe — yield a $4 \times 4$ table of summary statistics that condenses the topic's main practical recommendations into one plot.
+
+The setup is deliberately constrained:
+
+- All four constructions use polynomial-feature base learners of the same order (degree-3 ridge for $\hat{\mu}$ in split conformal and HL; degree-3 quantile regression for $\hat{q}_{\alpha/2}$ and $\hat{q}_{1-\alpha/2}$ in pure QR and CQR). Differences between constructions cannot then be attributed to a more flexible base class.
+- Sample sizes are matched: $n_{\mathrm{train}} = n_{\mathrm{cal}} = 500$ where calibration applies; $n_{\mathrm{train}} = 1000$ for pure QR (which has no calibration step). Pure QR therefore sees the same total data budget as its conformal cousins — the comparison is on assumption strength, not data.
+- $\alpha = 0.1$ throughout; nominal coverage $1 - \alpha = 0.9$.
+- Diagnostics are averaged over $n_{\mathrm{rep}} = 300$ Monte Carlo draws of $(X, Y)$ per scenario; $n_{\mathrm{test}} = 2000$ per draw.
+
+**Four scenarios.**
+
+> **Scenario A (homoscedastic Gaussian).**
+> $$Y \mid X = x \sim \mathcal{N}(\sin(x), 0.5^2), \qquad X \sim \mathrm{Uniform}(-3, 3).$$
+> The textbook regression setup. Definition 9 holds with $F = \mathcal{N}(0, 0.5^2)$ symmetric, so all four constructions are valid in principle.
+
+> **Scenario B = Running Example 1 (heteroscedastic Gaussian).**
+> $$Y \mid X = x \sim \mathcal{N}(\sin(x), \sigma(x)^2), \qquad \sigma(x) = 0.2 + 0.6|x|/3.$$
+> Definition 9 *fails* (the residual is not independent of $X$), but exchangeability holds. Construction I (split conformal) is valid but constant-width; pure QR is valid asymptotically with QR-shaped band; CQR is valid finite-sample and QR-shaped; HL is *not* valid here — its symmetry-and-independence assumption is broken. The scenario where CQR is at its best.
+
+> **Scenario C = Running Example 2 (heavy-tailed location-shift).**
+> $$Y \mid X = x \sim \mu(x) + 0.6 \, t_3, \qquad \mu(x) = 0.4\cos(\pi x), \qquad X \sim \mathrm{Uniform}(-2, 2).$$
+> Definition 9 holds with $F = 0.6 \, t_3$ symmetric. All four constructions valid.
+
+> **Scenario D (contaminated noise — robustness probe).**
+> $$Y \mid X = x \sim \begin{cases} \mathcal{N}(\sin(x), 0.3^2) & \text{w.p. } 0.95 \\ \mathcal{N}(\sin(x), 2.0^2) & \text{w.p. } 0.05 \end{cases}.$$
+> A 95/5 mixture: most data tightly clustered around $\sin(x)$, but $5\%$ of observations are heavy-tailed contaminants. Symmetric and homoscedastic, so Definition 9 holds.
+
+**The headline 4 × 4 table.** Numbers are averages over $n_{\mathrm{rep}} = 300$ Monte Carlo draws (the notebook's verified output). The *cond range* column is the difference between max and min conditional coverage across 8 $X$-bins (smaller is better — flat is the goal); *runtime* is per-fit milliseconds.
+
+| Scenario | Construction | Marg cov | Mean width | Cond range | Runtime (ms) |
+|---|---|---|---|---|---|
+| A: Homoscedastic Gaussian | Split conformal | $0.899 \pm 0.015$ | $1.660$ | $0.056$ | $0.4$ |
+| | Pure QR | $0.896 \pm 0.013$ | $1.651$ | $0.071$ | $45.1$ |
+| | CQR | $0.900 \pm 0.013$ | $1.680$ | $0.083$ | $16.6$ |
+| | **HL** | $\mathbf{0.757 \pm 0.019}$ | $1.180$ | $0.080$ | $4.3$ |
+| B: Heteroscedastic (RE1) | Split conformal | $0.899 \pm 0.015$ | $1.768$ | $\mathbf{0.242}$ | $0.4$ |
+| | Pure QR | $0.897 \pm 0.011$ | $1.657$ | $0.110$ | $44.3$ |
+| | **CQR** | $\mathbf{0.900 \pm 0.016}$ | $\mathbf{1.686}$ | $\mathbf{0.115}$ | $16.6$ |
+| | **HL** (broken) | $\mathbf{0.789 \pm 0.017}$ | $1.257$ | $0.384$ | $4.2$ |
+| C: Heavy-tailed (RE2) | Split conformal | $0.900 \pm 0.014$ | $2.978$ | $0.058$ | $0.4$ |
+| | Pure QR | $0.896 \pm 0.011$ | $2.953$ | $0.072$ | $42.6$ |
+| | CQR | $0.901 \pm 0.014$ | $3.067$ | $0.085$ | $16.1$ |
+| | **HL** | $\mathbf{0.817 \pm 0.021}$ | $\mathbf{2.240}$ | $0.084$ | $4.2$ |
+| D: Contaminated noise | Split conformal | $0.899 \pm 0.015$ | $1.146$ | $0.064$ | $0.4$ |
+| | Pure QR | $0.895 \pm 0.011$ | $1.133$ | $0.072$ | $44.3$ |
+| | CQR | $0.901 \pm 0.015$ | $1.183$ | $0.077$ | $16.6$ |
+| | **HL** | $\mathbf{0.827 \pm 0.031}$ | $\mathbf{0.928}$ | $0.083$ | $4.2$ |
+
+Three patterns deserve named attention.
+
+**Pattern 1 — HL undercovers in batch evaluation across every scenario.** This is the most striking row in the table and the most important practical takeaway in the topic. HL's nominal coverage is $0.9$ per Theorem 3, but its empirical batch coverage averages $0.798$ across the four scenarios — between $7$ and $14$ percentage points below target. The shortfall is *not* a violation of Theorem 3: the theorem promises *conditional coverage at a fixed test point $x$*, with probability over the calibration sample and the test response. The empirical statistic in the table averages over a fresh batch of $n_{\mathrm{test}} = 2000$ test points sharing a *fixed* calibration set per replication, then averages over $300$ replications. That average is closer to $\mathbb{E}_{\text{cal}}[\mathbb{P}(Y \in \hat{C} \mid X, \text{cal})]$ — a different conditional structure that finite-sample HL doesn't deliver $0.9$ on. Split conformal and CQR don't suffer the same shortfall because Theorem 1's marginal guarantee applies in the right probability space for batch evaluation.
+
+**Pattern 2 — split conformal and CQR hit nominal marginal coverage everywhere; pure QR slips by 1–2 percentage points.** Split conformal and CQR average $0.899$ and $0.900$ across the four scenarios — Theorem 1's guarantee in action. Pure QR averages $0.896$ — its asymptotic-only Theorem 2 leaves a 1–2pp finite-sample gap that batch averaging surfaces as a real cost.
+
+**Pattern 3 — width rankings flip across scenarios in the way the bridge theorems predict.** On Scenario B (heteroscedastic), CQR's band is $\approx 5\%$ narrower than split conformal's ($1.686$ vs $1.768$), with the asymptotic Theorem 5.2 prediction $\mathbb{E}_X[\sigma(X)]/\sigma_+ = 0.625$ — at finite $n$ we're some way from that limit. On Scenarios A, C, D (homoscedastic-ish) CQR and split conformal are within $1\%$ of each other — Theorem 5.2's homoscedastic-limit equivalence in action. On every scenario, HL produces narrower bands than split conformal — but only because it's giving up coverage. Reading "HL is narrower" as an efficiency win without checking marginal coverage is the trap §6 was designed to surface.
+
+<ConstructionComparisonExplorer client:visible />
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_empirical_overlay.png"
+  alt="Marquee 4-panel overlay (one panel per scenario A/B/C/D) with split conformal, CQR, and HL bands overlaid on the scatter, and per-panel marginal coverage and mean width readouts."
+  caption="Figure 14. The headline overlay. Four panels (one per scenario) showing scatter plus three bands: split conformal (blue), CQR (green), HL (purple). Pure QR is omitted from the overlay for visual clarity (it would clutter four already-busy plots) and reported in the table only. Reading: in Scenario B, the green CQR band hugs the data (narrow at $x = 0$, wide at $x = \pm 3$); the blue split-conformal band is constant-width; the purple HL band is constant-width-and-undercovering. In Scenarios A, C, and D, the bands look superficially similar in shape — but HL's marginal coverage is well below nominal."
+/>
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_empirical_heatmap.png"
+  alt="Heatmap of the 4×4 table colored by deviation from the optimal value in each column."
+  caption="Figure 15. The 4×4 table as a heatmap. Cells are colour-coded by deviation from the optimal value in each diagnostic column (lowest mean width, smallest conditional range, highest marginal coverage hitting target). Reads as a one-glance summary of which construction wins on which scenario by which metric — and where each construction visibly fails."
+/>
+
+**Runtime comparison.** The runtime column is small and constant for split conformal ($\approx 0.4$ ms — a single sort), $\approx 100\times$ larger for pure QR ($\approx 45$ ms — two LP solves for the $\tau \in \{\alpha/2, 1-\alpha/2\}$ quantile fits in sklearn), $\approx 40\times$ larger for CQR ($\approx 17$ ms — same quantile fits but on smaller training fold), and $\approx 10\times$ for HL ($\approx 4$ ms — Walsh averages are $O(n_{\mathrm{cal}}^2)$ per fit, then median computation, then critical-value lookup).
+
+The $O(n_{\mathrm{cal}}^2)$ scaling of HL is the most consequential — at $n_{\mathrm{cal}} = 5000$ it's already $> 1$ s per fit, and at $n_{\mathrm{cal}} = 50000$ it's prohibitive. Split conformal and CQR scale gracefully to $n_{\mathrm{cal}} = 10^6$; HL doesn't past $n_{\mathrm{cal}} = 10^4$.
+
+<Figure
+  src="/images/topics/prediction-intervals/pi_empirical_runtime.png"
+  alt="Per-fit runtime for each of the four constructions plotted against n_cal on log-log axes for n_cal in [100, 10000]. HL slope is ~2 (quadratic) while the others are ~1 (linear)."
+  caption="Figure 16. Per-fit runtime scaling. Split conformal, CQR, and pure QR scale linearly in $n_{\mathrm{cal}}$ (slope $\approx 1$ on log-log axes); HL scales quadratically (slope $\approx 2$) because of its Walsh-average enumeration."
+/>
+
+**Practitioner's algorithm.** The empirical evidence consolidates into a single decision rule:
+
+1. **If you have any reason to suspect heteroscedasticity → use CQR.** Scenario B is unambiguous: CQR is narrower than split conformal with identical marginal coverage and a much flatter conditional-coverage profile (range $0.115$ vs $0.242$). The bound from Theorem 5.2 says the gap grows with the heteroscedasticity ratio.
+2. **Use split conformal as the always-defensible baseline.** Marginal guarantee is finite-sample, distribution-free, rate-free in QR's estimation error. Smallest runtime by an order of magnitude. Only cost is a constant-width band — wasteful under heteroscedasticity, fine otherwise.
+3. **Avoid HL in batch-prediction settings.** Despite Theorem 3's strong-on-paper conditional guarantee, HL's batch coverage averages $0.798$ across the four scenarios — not the nominal $0.9$. The narrower bands are not an efficiency win; they're a coverage loss. HL remains useful for *single-test-point* prediction with a fresh calibration draw (which is what Theorem 3 actually promises), but for batch evaluation with shared calibration the construction systematically undercovers.
+4. **Avoid pure QR alone in production.** The 1–2pp marginal-coverage shortfall is real and correctable by composition with split conformal — which is exactly what CQR does. There is no scenario in the table where pure QR strictly dominates CQR.
+
+## Limits, Connections, and What's Out of Scope
+
+The topic has covered three constructions, three bridge theorems, and an empirical comparison. This section closes by being honest about what's *not* covered — the boundaries of when these methods work, the alternative constructions we deliberately set aside, and the related topics on the same site that pick up where this one stops.
+
+**Bootstrap intervals as a contrast.** The three constructions in this topic are not the only way to build a prediction interval. The most common alternative — and one that often performs well in practice — is the *bootstrap-percentile prediction interval*: resample the training data with replacement $B$ times, refit the predictor on each resample, and take the empirical $\alpha/2$ and $1 - \alpha/2$ quantiles of the resulting predicted-residual distribution at the test point. The construction sits in the same general family as the three featured here — all four use *resampling-flavored* arguments to bypass parametric noise assumptions — but the bootstrap operates differently along two key axes:
+
+| Axis | Conformal / CQR / HL | Bootstrap-percentile |
+|---|---|---|
+| Resampling principle | Permutation / exchangeability | Sampling with replacement |
+| Coverage guarantee | Finite-sample (under the relevant assumption) | Asymptotic only |
+| Computational cost | $O(n_{\mathrm{cal}})$ to $O(n_{\mathrm{cal}}^2)$ for one fit | $O(B \cdot \text{fit cost})$ for $B$ refits |
+| Validity scope | Exchangeable / iid / iid-symmetric | iid + Edgeworth-expansion conditions |
+
+The bootstrap's coverage validity rests on Edgeworth-expansion arguments (Hall 1992) that require iid data and smooth-enough moment conditions on the residual distribution. It buys nothing over CQR or split conformal under those assumptions — it gets *asymptotic* validity where they already had finite-sample validity — and at $B = 200$ refits it's typically two orders of magnitude slower per prediction interval. The cases where bootstrap genuinely shines are nested-model settings where the test-statistic-of-interest doesn't admit a clean exchangeability formulation: bootstrapping a *complicated functional* of the data (e.g., a confidence interval for an $R^2$ or a difference-in-means with covariate adjustment) is often the only practical route.
+
+For prediction intervals specifically, the bootstrap is rarely the right tool when conformal-style methods are available. We don't recommend it as a default, but we flag it because it's the construction practitioners most often use when they don't know the methods in this topic. The formal treatment of the bootstrap and its theoretical foundations is in <ExternalLink href="https://formalstatistics.com/topics/bootstrap" site="formalstatistics" topic="Bootstrap" />; a side-by-side empirical comparison with the three constructions in this topic is left as an exercise.
+
+**What's deliberately out of scope.** Three areas the topic does not cover, with explicit pointers to where they belong.
+
+*Bayesian credible intervals.* A Bayesian posterior predictive interval is not a frequentist prediction interval. The two have different probability semantics — one is a statement about a posterior over $Y_{n+1}$ given the data and a prior; the other is a statement about a long-run frequency of coverage under repeated sampling. The Bayesian construction is treated in T5 (Bayesian ML) under **Bayesian Neural Networks** *(coming soon)* and related topics. The two communities sometimes use the same term ("credible interval" vs. "prediction interval") for different things; this topic remains strictly frequentist.
+
+*Full / transductive conformal prediction.* [Conformal Prediction](/topics/conformal-prediction) covers this in detail. Full conformal achieves the same finite-sample marginal coverage as split conformal but requires retraining the base predictor for every candidate $y$-value, making it computationally infeasible for most modern ML models. Split conformal is the practical default and the version this topic focuses on. The trade-off is purely computational; the coverage guarantee is identical.
+
+*Mondrian conformal and other conditional-coverage refinements.* Vovk (2003) introduced *Mondrian conformal* — partition the feature space into groups and apply split conformal independently on each group — as a way to recover *group-conditional* coverage. Foygel-Barber et al. (2021) proved a sharp impossibility theorem on full pointwise conditional coverage (already cited in [Conformal Prediction](/topics/conformal-prediction)), which is why CQR offers conditional *adaptivity* but not conditional *validity*. Mondrian-style and other group-conditional methods sit between marginal-only and the impossible pointwise-conditional ideal. We mention them here but defer the formal treatment to a planned future topic.
+
+**Forward connections within formalML.**
+
+- **Online and adaptive conformal.** All three constructions in this topic require exchangeability of training and test data. In streaming and time-series settings, this fails: distribution shift breaks the rank-uniformity argument, and a method calibrated last week may under-cover this week. Vovk (2002) and Gibbs–Candès (2021) develop *online* and *adaptive* conformal methods that maintain coverage by tracking miscoverage online and updating the threshold accordingly. A natural follow-up topic in T4 once the foundational methods are in place.
+- **Covariate-shift conformal.** When training and test distributions differ in $\mathbb{P}_X$ but share $\mathbb{P}_{Y \mid X}$, Tibshirani et al. (2019) show how to recover marginal coverage via importance weighting of the calibration scores. Less general than the online setting but more tractable; another candidate T4 follow-up.
+- **Adaptive prediction sets for classification (APS).** [Conformal Prediction](/topics/conformal-prediction) covers the classification analogue. The same score-function framework (Definition 6 in §2.1) accommodates set-valued rather than interval-valued prediction; APS is a particular score that yields adaptively sized prediction *sets*. The conditional-coverage refinements there parallel CQR's role here.
+
+**Cross-site connections (formalstatistics).** The topic depends on four sister-site prerequisites; relationships are flagged in the frontmatter `formalstatisticsPrereqs`.
+
+- <ExternalLink href="https://formalstatistics.com/topics/confidence-intervals-and-duality" site="formalstatistics" topic="Confidence Intervals & Duality" /> — The formal foundation for both HL-style test-inversion (§4) and the conformal $(1-\alpha)$-quantile threshold (§2.3). The duality between a level-$\alpha$ test and a $(1-\alpha)$ confidence region is the abstract machinery behind every interval construction in this topic.
+- <ExternalLink href="https://formalstatistics.com/topics/order-statistics-and-quantiles" site="formalstatistics" topic="Order Statistics & Quantiles" /> — Split-conformal's quantile of conformity scores (Definition 7), QR's empirical conditional-quantile estimator (§3), and HL's Walsh-average ordering (§4) all rest on order-statistic theory. The asymptotic theory of empirical quantiles underlies the stability argument in Theorem 5.1 and the HL/conformal equivalence in Theorem 5.3.
+- <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" /> — The asymptotic alternative to finite-sample exchangeability arguments. The bootstrap discussion above leans on Edgeworth expansions, the QR asymptotics cited in §3.3 use empirical-process limit theorems, and Theorem 5.1's proof appeals to uniform stability of empirical-quantile order statistics.
+- <ExternalLink href="https://formalstatistics.com/topics/bootstrap" site="formalstatistics" topic="Bootstrap" /> — Self-contained treatment of the bootstrap principle, percentile and BCa intervals, and the conditions under which bootstrap-percentile intervals are valid. This topic's bootstrap-as-contrast subsection is a tight summary; the full picture lives there.
+
+No `formalcalculus` prerequisites for this topic. The topic uses no calculus beyond undergraduate-level Taylor expansion (in the asymptotic-equivalence step of Theorem 5.3), and that's covered as background in `formalstatistics/empirical-processes`. This matches the precedent set by `conformal-prediction` and `rank-tests`, which also leave `formalcalculusPrereqs` empty.

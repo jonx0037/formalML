@@ -100,7 +100,6 @@ export const tracks = [
     description:
       'Distribution-free prediction sets, rank-based testing, quantile regression, and statistical depth \u2014 methods that work under minimal distributional assumptions.',
     planned: [
-      'prediction-intervals',
       'extreme-value-theory',
       'statistical-depth',
     ],
