@@ -160,30 +160,34 @@ function shuffle(pool: Float64Array, rng: () => number) {
   }
 }
 
-// Iterate over all C(N, n1) subsets via a bitmask path. Returns a generator-
-// friendly callback. Used only when C(N, n1) ≤ ENUMERATE_CAP.
+// Iterate over all C(N, n1) subsets directly via recursive backtracking.
+// Cost: O(C(N, n1)) — independent of N — and avoids JS's 32-bit bitwise
+// overflow for N ≥ 31. The brute-force `for b in 0..2^N` approach (with
+// popcount filter) hangs the browser at N as small as 62 even when the
+// combinatorial answer is tiny (e.g., n1=2, n2=60 → 1830 subsets but 2^62
+// candidate masks). Used only when C(N, n1) ≤ ENUMERATE_CAP.
 function enumerateSubsets(N: number, n1: number, cb: (subset: Uint8Array) => void) {
-  // Enumerate via Gosper's hack: walk through all integers with popcount = n1.
-  // For N ≤ ~30 this is fast; we cap at ENUMERATE_CAP combinations anyway.
-  const total = 1 << N;
   const mask = new Uint8Array(N);
   let count = 0;
-  for (let b = 0; b < total; b++) {
-    if (countBits(b) !== n1) continue;
-    for (let i = 0; i < N; i++) mask[i] = (b >> i) & 1;
-    cb(mask);
-    count++;
-    if (count >= ENUMERATE_CAP) break;
+  // Choose `pick` more elements from positions [start..N).
+  function recurse(start: number, pick: number): boolean {
+    if (count >= ENUMERATE_CAP) return false;
+    if (pick === 0) {
+      cb(mask);
+      count++;
+      return count < ENUMERATE_CAP;
+    }
+    const remaining = N - start;
+    if (remaining < pick) return true;
+    // Take position `start`
+    mask[start] = 1;
+    if (!recurse(start + 1, pick - 1)) return false;
+    mask[start] = 0;
+    // Skip position `start`
+    if (!recurse(start + 1, pick)) return false;
+    return true;
   }
-}
-
-function countBits(x: number): number {
-  let c = 0;
-  while (x) {
-    c += x & 1;
-    x >>>= 1;
-  }
-  return c;
+  recurse(0, n1);
 }
 
 // Binomial coefficient C(N, k), computed in floating point but exact for small N.
@@ -284,15 +288,18 @@ export default function PermutationDistributionExplorer({
       }
     }
 
-    // Two-sided p-value using Phipson-Smyth correction.
+    // Two-sided p-value using Phipson-Smyth correction. Compute the
+    // permutation-distribution mean once outside the loop — calling
+    // `mean(stats)` per iteration would be O(B²).
+    const muNull = mean(stats);
+    const obsAbsDev = Math.abs(observed - muNull);
     let nExtreme = 0;
-    const obsAbsDev = Math.abs(observed - mean(stats));
     for (let s = 0; s < stats.length; s++) {
-      if (Math.abs(stats[s] - mean(stats)) >= obsAbsDev - 1e-12) nExtreme++;
+      if (Math.abs(stats[s] - muNull) >= obsAbsDev - 1e-12) nExtreme++;
     }
     const p = (1 + nExtreme) / (1 + stats.length);
 
-    return { stats, observed, p, mean: mean(stats), numSamples: stats.length };
+    return { stats, observed, p, mean: muNull, numSamples: stats.length };
   }, [data, n1, n2, statistic, effectiveStrategy, B, seed, totalSubsets]);
 
   const isStacked = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
