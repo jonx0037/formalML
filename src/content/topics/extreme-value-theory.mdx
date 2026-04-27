@@ -1,0 +1,1055 @@
+---
+title: "Extreme Value Theory"
+subtitle: "Asymptotic theory of sample maxima and tail-based inference — Fisher–Tippett–Gnedenko trichotomy, generalized Pareto distribution, peaks-over-threshold, tail-index estimation, and ML applications including tail-aware prediction intervals, OOD detection, and tail-risk quantification"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "concentration-inequalities"
+formalstatisticsPrereqs:
+  - topic: "empirical-processes"
+    site: "formalstatistics"
+    relationship: "The Donsker / functional-CLT machinery in Topic 32 is the framework for 'what happens to the entire empirical CDF as n grows.' EVT is the analog at the tail rather than the bulk. The technical machinery overlaps directly in the slow-variation arguments of §3 and the regular-variation expansions of §5. Topic 32's outgoing edge to extreme-value-theory is already declared as a deferred reciprocal in the audit dump; this entry resolves it."
+  - topic: "order-statistics-and-quantiles"
+    site: "formalstatistics"
+    relationship: "The sample maximum $M_n = X_{(n)}$ is the extreme order statistic; Topic 29 treats the joint distribution of order statistics and the asymptotic theory of $X_{(\\lceil pn \\rceil)}$ for fixed $p \\in (0, 1)$. EVT continues this story for $p \\to 1$ (the maximum, §§1–4) and $p$ close to 1 (high quantiles via §5 POT). Topic 29's outgoing edge to extreme-value-theory is already declared as a deferred reciprocal in the audit dump."
+formalcalculusPrereqs:
+  - topic: "measure-theoretic-probability"
+    site: "formalcalculus"
+    relationship: "The weak-convergence framework that all of §§2–3 lean on lives there: convergence-in-distribution as weak convergence of probability measures, the Portmanteau theorem (used explicitly in the Khintchine / type-convergence proof of §2.3), and Slutsky's theorem (used implicitly in the same proof and throughout §3). This is a NEW cross-site edge — the formalcalculus side will need a reciprocal `formalmlConnections` entry added when this topic ships."
+tags:
+  - "nonparametric-ml"
+  - "extreme-value-theory"
+  - "tail-modeling"
+  - "asymptotic-statistics"
+  - "risk-quantification"
+  - "ood-detection"
+  - "machine-learning"
+domain: "nonparametric-ml"
+videoId: null
+notebookPath: "notebooks/extreme-value-theory/01_extreme_value_theory.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/extreme-value-theory.mdx"
+datePublished: 2026-04-27
+estimatedReadTime: 65
+abstract: "The asymptotic theory of sample maxima and tail-based inference. Where the central limit theorem classifies the limit distribution of normalized sample means as Gaussian, extreme value theory classifies the limit distribution of normalized sample maxima as a three-parameter family — the generalized extreme value distribution — via the Fisher–Tippett–Gnedenko trichotomy. Every parent distribution whose normalized maxima admit a non-degenerate limit lands in one of three domains (Gumbel, Fréchet, reverse-Weibull), determined entirely by the rate at which its upper tail decays. The peaks-over-threshold framework, anchored by the Pickands–Balkema–de Haan theorem, extends the story to general tail modeling via the generalized Pareto distribution. The topic develops the asymptotic theory through full proofs of necessity-of-max-stability and the Fréchet domain-of-attraction characterization, then turns to inference: GEV maximum-likelihood and probability-weighted-moments estimators in §4, GPD MLE plus the Hill, Pickands, and Dekkers–Einmahl–de Haan tail-index estimators in §5, with closed-form delta-method standard errors and worked examples on standard-normal and Pareto data threading §§4–5. Modern ML applications thread §6: tail-aware prediction intervals as a refinement of conformal prediction for heavy-tailed residuals, out-of-distribution detection via calibrated tail probabilities of in-distribution scores, and tail-risk quantification — Value-at-Risk and Expected Shortfall — for deployed models with finite operational records."
+connections:
+  - topic: "concentration-inequalities"
+    relationship: "Topic predecessor on the Probability & Statistics track. The sub-Gaussian / sub-exponential machinery of concentration-inequalities §§4–5 is the lead-in to the Fréchet-domain treatment of §3 — what happens when the moment-bound assumptions of concentration fail. The §1.1 CLT-companion framing of EVT also uses concentration's framing of tail-bound regimes."
+  - topic: "prediction-intervals"
+    relationship: "T4 sibling. The heavy-tailed-residual scenario in prediction-intervals §4 uses Student-$t_3$ residuals, which fall in $\\mathrm{DA}(\\mathrm{Fr\\acute{e}chet}_3)$; §6.1 of this topic discusses GPD-extrapolated quantiles as a refinement of conformal-quantile regression for that regime."
+references:
+  - type: "paper"
+    title: "Limiting Forms of the Frequency Distribution of the Largest or Smallest Member of a Sample"
+    authors: "Fisher & Tippett"
+    year: 1928
+    note: "The original statement of the trichotomy used in Theorem 2 (Mathematical Proceedings of the Cambridge Philosophical Society)."
+  - type: "paper"
+    title: "Sur la distribution limite du terme maximum d'une série aléatoire"
+    authors: "Gnedenko"
+    year: 1943
+    note: "The complete proof of the trichotomy and the domain-of-attraction characterizations of Theorems 3–5 (Annals of Mathematics)."
+  - type: "paper"
+    title: "Statistical Inference Using Extreme Order Statistics"
+    authors: "Pickands"
+    year: 1975
+    note: "The unbounded-support half of the Pickands–Balkema–de Haan theorem (Theorem 7 here) plus the Pickands tail-index estimator of §5.5 (Annals of Statistics)."
+  - type: "paper"
+    title: "Residual Life Time at Great Age"
+    authors: "Balkema & de Haan"
+    year: 1974
+    note: "The bounded-support companion to Pickands 1975, jointly forming Theorem 7 (Annals of Probability)."
+  - type: "paper"
+    title: "A Simple General Approach to Inference About the Tail of a Distribution"
+    authors: "Hill"
+    year: 1975
+    note: "The Hill estimator of §5.5 and its consistency analysis under regular variation (Annals of Statistics)."
+  - type: "paper"
+    title: "Estimation of the Generalized Extreme-Value Distribution by the Method of Probability-Weighted Moments"
+    authors: "Hosking, Wallis & Wood"
+    year: 1985
+    note: "The PWM estimator of §4.3, with the small-sample superiority over MLE documented in a Monte Carlo study (Technometrics)."
+  - type: "paper"
+    title: "Maximum Likelihood Estimation in a Class of Nonregular Cases"
+    authors: "Smith"
+    year: 1985
+    note: "Theorem 6 here: GEV MLE asymptotic normality plus the $\\xi > -1/2$ / $\\xi \\in (-1, -1/2]$ / $\\xi \\le -1$ regime distinction (Biometrika)."
+  - type: "paper"
+    title: "Estimating Tails of Probability Distributions"
+    authors: "Smith"
+    year: 1987
+    note: "Theorem 8 here: GPD MLE asymptotics and the closed-form covariance matrix used for delta-method standard errors in §5.6 (Annals of Statistics)."
+  - type: "paper"
+    title: "A Moment Estimator for the Index of an Extreme-Value Distribution"
+    authors: "Dekkers, Einmahl & de Haan"
+    year: 1989
+    note: "The DEdH moment estimator of §5.5; consistent across the full $\\xi$ parameter range, in contrast to Hill's $\\xi > 0$ restriction (Annals of Statistics)."
+  - type: "paper"
+    title: "Laws of Large Numbers for Sums of Extreme Values"
+    authors: "Mason"
+    year: 1982
+    note: "Theorem 9 here: Hill estimator consistency and asymptotic normality under intermediate-sequence conditions (Annals of Probability)."
+  - type: "book"
+    title: "Modeling Extremal Events for Insurance and Finance"
+    authors: "Embrechts, Klüppelberg & Mikosch"
+    year: 1997
+    note: "Principal reference for §§2–5. Chapter 3 covers the trichotomy, regular variation, and the Pickands–Balkema–de Haan theorem (Springer)."
+  - type: "book"
+    title: "An Introduction to Statistical Modeling of Extreme Values"
+    authors: "Coles"
+    year: 2001
+    note: "Practitioner-oriented complement to EKM. Chapter 3.3.3 covers profile-likelihood intervals for return levels (§4.4 here); Chapter 4 covers POT inference (Springer)."
+  - type: "book"
+    title: "Extreme Values, Regular Variation, and Point Processes"
+    authors: "Resnick"
+    year: 1987
+    note: "The advanced-theory reference for the Gumbel domain (Theorem 5 here, von Mises sufficient condition) and the de Haan class $\\Pi$ (Springer)."
+  - type: "book"
+    title: "Regular Variation"
+    authors: "Bingham, Goldie & Teugels"
+    year: 1987
+    note: "Standard reference for slow variation and Karamata's theorems used in §3 (Cambridge University Press)."
+  - type: "paper"
+    title: "Coherent Measures of Risk"
+    authors: "Artzner, Delbaen, Eber & Heath"
+    year: 1999
+    note: "The coherent-risk-measure axioms that distinguish Expected Shortfall (subadditive) from Value-at-Risk (not subadditive); §5.6 references this (Mathematical Finance)."
+  - type: "paper"
+    title: "A Baseline for Detecting Misclassified and Out-of-Distribution Examples in Neural Networks"
+    authors: "Hendrycks & Gimpel"
+    year: 2017
+    note: "The maximum-softmax-probability OOD baseline that §6.1 reformulates via GPD calibration (ICLR)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+
+## 1. From the center to the tails
+
+This section motivates the topic by drawing a clean parallel to the central limit theorem, sets up the formal target object (a non-degenerate limit law for the normalized sample maximum), introduces the running example that threads §§2–5, and previews where extreme value theory shows up in modern ML practice.
+
+### 1.1 The companion to the central limit theorem
+
+The central limit theorem classifies the limit distribution of one specific summary of an iid sample — the mean — by reducing an infinite-dimensional limit problem to a two-parameter family. The statement: as long as the second moment is finite, $\sqrt{n}(\bar{X}_n - \mu)$ converges in distribution to $\mathcal{N}(0, \sigma^2)$ regardless of what the underlying iid law is. The result is universal in a strong sense — the *shape* of the limit (Gaussian) doesn't depend on the parent distribution at all; only the parameters $\mu$ and $\sigma^2$ do.
+
+Extreme value theory is the analogous story for a different summary: the maximum. Given iid $X_1, \dots, X_n \sim F$, the sample maximum $M_n = \max(X_1, \dots, X_n)$ is a perfectly well-defined random variable, and the question of how $M_n$ behaves as $n \to \infty$ has an answer of exactly the same shape as CLT's. There is a finite-dimensional family of limit distributions — a *three*-parameter family this time, the **generalized extreme value (GEV)** distribution — and any non-degenerate limit of normalized sample maxima must lie in that family. This is the **Fisher–Tippett–Gnedenko trichotomy** of §2, the load-bearing result of the topic.
+
+The parallel is worth holding in mind throughout. CLT and EVT are two faces of the same kind of theorem: take an iid sample, take a specific functional of the sample (mean for CLT, max for EVT), normalize affinely, and ask what the limit distribution looks like. In both cases, the answer is universal; the universality is the surprising part. CLT's universality depends on the parent distribution's second moment; EVT's, on the rate at which its upper tail $1 - F(x)$ decays. We will see in §3 that the tail-decay condition partitions all "reasonable" parent distributions into three buckets, and the bucket determines which member of the GEV family shows up as the limit.
+
+A warning before we set up the formalism. CLT-flavored intuition suggests that the bulk of the distribution should determine $M_n$'s asymptotic behavior. It does not. The mean averages over the bulk; doubling $n$ halves the mean's variance regardless of the parent distribution. The maximum picks a single observation, and not a representative one — its behavior is governed entirely by the right tail. Two distributions can be nearly identical in their first ninety-nine percentiles and have wildly different maxima. The classical illustration is Normal versus $t_3$: both are symmetric, both have moderate variance, and CLT applies to both. But the maximum of $n$ iid standard normals grows like $\sqrt{2 \log n}$ — slowly — while the maximum of $n$ iid $t_3$ samples grows like $n^{1/3}$, polynomially. The difference is invisible until one specifically looks at the tail. It is the same gap that drives the heavy-tailed regime of [prediction-intervals](/topics/prediction-intervals) §4: split-conformal coverage holds for $t_3$ residuals as it does for Gaussian residuals, but the resulting interval is much wider because the tail is much heavier. EVT will give us the language to quantify the extent of the widening.
+
+### 1.2 The target object
+
+Let $X_1, X_2, \dots$ be iid with common CDF $F$, and define the running maximum $M_n = \max(X_1, \dots, X_n)$. Independence lets us compute $M_n$'s CDF exactly:
+$$
+\mathbb{P}(M_n \le x) \;=\; \prod_{i=1}^n \mathbb{P}(X_i \le x) \;=\; F(x)^n.
+$$
+This is the *unnormalized* answer, and on its own it carries no useful asymptotic information. For any $x$ in the interior of $F$'s support, $F(x) < 1$ and so $F(x)^n \to 0$. For any $x \ge x^* := \sup\{u : F(u) < 1\}$ (the *upper endpoint* of $F$, possibly $+\infty$), $F(x)^n \to 1$. The unnormalized $M_n$ converges in probability to the constant $x^*$, a degenerate limit that contains no distributional information at all.
+
+Affine normalization rescues us. We seek sequences $a_n > 0$ and $b_n \in \mathbb{R}$ such that
+$$
+\mathbb{P}\!\left(\frac{M_n - b_n}{a_n} \le x\right) \;=\; F(a_n x + b_n)^n \;\longrightarrow\; G(x) \qquad (n \to \infty)
+$$
+at every continuity point of some non-degenerate limit CDF $G$. The point of the normalization is to track $M_n$ on a scale where its distribution stabilizes — directly analogous to normalizing $\bar{X}_n - \mu$ by $\sqrt{n}$ in CLT.
+
+Two observations about this setup that will matter in §2.
+
+First, the choice of $(a_n, b_n)$ is not unique. If $G$ is a valid limit under $(a_n, b_n)$, then for any $\alpha > 0, \beta \in \mathbb{R}$ the affinely transformed CDF $G(\alpha x + \beta)$ is also a valid limit under sequences $(a_n / \alpha, b_n - a_n \beta / \alpha)$. So the *shape* of $G$ — its equivalence class under the affine transformation $G \mapsto G(\alpha \cdot + \beta)$ — is what's universal, not the specific representative. The convergence-of-types lemma in §2 will turn this informal observation into a usable tool.
+
+Second, not every $F$ admits a non-degenerate normalization. The pathological cases are essentially distributions whose tails decay too irregularly to admit a clean asymptotic shape. A concrete example: a Poisson distribution. We will see in §3 why; for now, the qualitative picture is that integer-valued distributions with light tails leave $M_n$ jumping discretely between consecutive integers in a way that no affine rescaling can smooth out. The set of $F$ for which a non-degenerate $G$ exists is exactly the *domain of attraction* of some GEV member, and the trichotomy of §2 says these domains exhaust everything reachable.
+
+### 1.3 Running example: block maxima of iid standard normals
+
+The single example that threads the entire topic is block maxima of iid standard normals. It is the simplest non-trivial parent distribution for which the limit theory bites, and every key construction (block-maxima fitting in §4, POT in §5, tail-index estimation in §5.4) reuses it as the calibration baseline.
+
+For $X_i \stackrel{\text{iid}}{\sim} \mathcal{N}(0, 1)$, the right normalization is
+$$
+a_n \;=\; \frac{1}{\sqrt{2 \log n}}, \qquad b_n \;=\; \sqrt{2 \log n} - \frac{\log \log n + \log(4 \pi)}{2 \sqrt{2 \log n}},
+$$
+under which
+$$
+\mathbb{P}\!\left(\frac{M_n - b_n}{a_n} \le x\right) \;\longrightarrow\; \Lambda(x) \;:=\; \exp\!\bigl(-e^{-x}\bigr) \qquad (n \to \infty).
+$$
+The limit $\Lambda$ is the **standard Gumbel distribution**. The derivation is a careful expansion of the Mills-ratio asymptotic for the Normal upper tail: $1 - \Phi(x) \sim \phi(x)/x$ as $x \to \infty$, where $\phi$ and $\Phi$ are the standard Normal density and CDF. We reproduce the derivation in §3 once the regular-variation machinery is in place; for now, we take the result on faith and check it numerically.
+
+A few features of this normalization are worth pausing on. The location $b_n$ grows like $\sqrt{2 \log n}$, slowly. With $n = 10^6$, the typical maximum of iid standard normals is around $4.7$; doubling to $n = 2 \times 10^6$ moves it to about $4.74$. The maximum drifts off to infinity, but extremely slowly. The scale $a_n$ shrinks at the same $1/\sqrt{2 \log n}$ rate, so the spread of the maximum on its native scale also vanishes — but the affine rescaling exposes a stable *shape*, the Gumbel, with support on all of $\mathbb{R}$ and double-exponentially decaying tails on both sides.
+
+The convergence is visibly slow. The §1 figure shows histograms of $(M_n - b_n)/a_n$ at $n \in \{10, 100, 1000\}$ overlaid with the Gumbel density. At $n = 10$, the empirical distribution is noticeably to the left of the limit; at $n = 100$, the agreement is decent in the body and poor in the right tail; at $n = 1000$, the match is good across most of the range. This slow convergence is generic — *not* a failure of the example — and we will return to it in §3 when we compute the convergence rate explicitly.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s1_block_maxima_normal_to_gumbel.png"
+  alt="Three histograms of normalized block maxima of iid standard normals at block sizes n=10, 100, 1000, overlaid with the standard Gumbel density. The match improves with n but converges slowly."
+  caption="Figure 1.1. Block maxima of iid standard normals normalized by Theorem 5's sequences, overlaid with the standard Gumbel density at $n \in \{10, 100, 1000\}$. Empirical mean and standard deviation are reported on each panel; the Gumbel theoretical values are $\gamma \approx 0.5772$ and $\pi/\sqrt{6} \approx 1.2825$. Convergence is visibly slow — at $n = 10$, the histogram is shifted left of the limit; at $n = 1000$, the agreement is good across the body."
+/>
+
+### 1.4 Where this matters: ML applications
+
+Three application areas thread the topic and motivate why an ML practitioner should care.
+
+**Tail-aware prediction intervals.** When residuals are heavy-tailed — the $t_3$ regime in [prediction-intervals](/topics/prediction-intervals) §4 is the canonical example — central-limit-flavored confidence bounds on the conditional mean systematically undershoot the actual coverage of *prediction* intervals. The Fréchet limit (§2) gives a principled way to quantify how far the tail extends and to construct prediction intervals that respect it. We return to this in §6.
+
+**Out-of-distribution detection.** In production ML systems, OOD inputs often manifest as extreme values of some scalar score — softmax confidence, energy, reconstruction error, embedding norm. Modeling the tail of the in-distribution score with the GPD of §5 turns "score is unusually large" into a calibrated probability statement. This is the EVT reformulation of the classical softmax baseline.
+
+**Tail-risk quantification.** Deployed models have failure modes that show up at the tail of some loss distribution — a 99.9th-percentile latency, a worst-case cost, a maximum classification error over a year. Estimating these from a finite sample requires extrapolating beyond the empirical tail, which is what fitted GEV/GPD models provide. The Value-at-Risk and Expected Shortfall computations in §5.6 are the canonical instances.
+
+These three threads stay in the background through §§2–5 as we develop the asymptotic theory, and return to the foreground in §6.
+
+## 2. Max-stability and the Fisher–Tippett–Gnedenko trichotomy
+
+This is the load-bearing section of the topic. We define max-stability, prove that any non-degenerate limit law for normalized sample maxima must be max-stable, develop the type-convergence (Khintchine) lemma that powers the proof, and use these tools to state the Fisher–Tippett–Gnedenko theorem and its unified GEV parametrization. The classification proof is sketched in detail through the multiplicativity-of-scaling-coefficients argument that bridges the functional equation to the three families; the closing case work is referenced to Embrechts, Klüppelberg, and Mikosch §3.2 for full exhaustiveness.
+
+### 2.1 Max-stability
+
+The definition is the natural notion of "stability under taking maxima," directly parallel to stability under sums.
+
+<TheoremBlock type="definition" number={1} title="Max-stability">
+A non-degenerate CDF $G$ on $\mathbb{R}$ is *max-stable* if for every integer $k \ge 1$ there exist constants $\alpha_k > 0$ and $\beta_k \in \mathbb{R}$ such that
+$$
+G^k(\alpha_k x + \beta_k) \;=\; G(x) \qquad \text{for all } x \in \mathbb{R}.
+$$
+</TheoremBlock>
+
+The relation has a clean probabilistic reading. If $X_1, \dots, X_k$ are iid with CDF $G$, the maximum $\max(X_1, \dots, X_k)$ has CDF $G^k$. Setting $y = \alpha_k x + \beta_k$ and rearranging gives $G^k(y) = G((y - \beta_k)/\alpha_k)$, i.e., $\max(X_1, \dots, X_k)$ has the same distribution as $\alpha_k X_1 + \beta_k$, a single $X$ affinely shifted. Taking the maximum of $k$ copies is, up to known affine recalibration, statistically equivalent to scaling and shifting one copy. The defining feature of CLT's Gaussian — that taking sums and rescaling preserves shape — has its analog here, with maxima instead of sums, in $G$ rather than $\Phi$.
+
+A worked example fixes ideas. The standard Gumbel $\Lambda(x) = \exp(-e^{-x})$ from §1 satisfies
+$$
+\Lambda^k(x) \;=\; \exp(-k e^{-x}) \;=\; \exp\bigl(-e^{-(x - \log k)}\bigr) \;=\; \Lambda(x - \log k).
+$$
+So $\Lambda$ is max-stable with $\alpha_k = 1, \beta_k = \log k$ — taking the max of $k$ iid Gumbels just shifts the location by $\log k$ with no rescaling. The other two families we will meet (Fréchet and reverse-Weibull) are also max-stable with their own $(\alpha_k, \beta_k)$ patterns; the figure below verifies the Gumbel relation numerically.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s2_max_stability_gumbel.png"
+  alt="Empirical CDF of the maximum of k iid standard Gumbels overlaid with the location-shifted single-Gumbel CDF for k in {2, 5, 10}. The two curves match at all three k values."
+  caption="Figure 2.1. Numerical verification of Gumbel max-stability. For each $k \in \{2, 5, 10\}$, the empirical CDF of $\max(X_1, \dots, X_k)$ with $X_i \sim \mathrm{Gumbel}(0, 1)$ (computed from $10^4$ replicates) is overlaid with the location-shifted CDF $\Lambda(x - \log k)$. The two curves coincide, confirming Definition 1 with $(\alpha_k, \beta_k) = (1, \log k)$."
+/>
+
+The standard Normal $\Phi$, by contrast, is *not* max-stable. The maximum of $k$ iid standard normals does not have the same distribution as any affine recalibration of a single standard normal — its tail is too thin in a different way. The §1 example showed this concretely: the Normal-block-maxima limit is Gumbel, not Normal. So the parent distribution and the limit distribution genuinely differ; the limit picks up a structural property (max-stability) that the parent lacks.
+
+### 2.2 Any non-degenerate limit must be max-stable
+
+The first half of Fisher–Tippett–Gnedenko is the implication "limit ⟹ max-stable." It is a short, clean argument once the type-conversion lemma is in place.
+
+<TheoremBlock type="theorem" number={1} title="Necessity of max-stability">
+Suppose $X_1, X_2, \dots$ are iid with CDF $F$, and that for some sequences $a_n > 0, b_n \in \mathbb{R}$ and some non-degenerate CDF $G$,
+$$
+F^n(a_n x + b_n) \;\longrightarrow\; G(x)
+$$
+at every continuity point of $G$. Then $G$ is max-stable.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The strategy is to look at sample sizes that are products: replace $n$ by $kn$ for a fixed positive integer $k$, and compute the limit of $F^{kn}$ under two different normalizing schemes. The two schemes converge to two different (but type-equivalent) limits; the type-convergence lemma will tell us how to relate them, and that relationship will be the max-stability functional equation.
+
+*Scheme 1 — block-of-blocks.* Partition the first $kn$ observations into $k$ disjoint blocks of size $n$, write $M_n^{(1)}, \dots, M_n^{(k)}$ for the per-block maxima, and observe that $M_{kn} = \max(M_n^{(1)}, \dots, M_n^{(k)})$. By independence the $M_n^{(j)}$ are iid with CDF $F^n$, so
+$$
+\mathbb{P}\!\left(\frac{M_{kn} - b_n}{a_n} \le x\right) \;=\; \mathbb{P}\!\left(\frac{M_n^{(j)} - b_n}{a_n} \le x \text{ for all } j\right) \;=\; \bigl(F^n(a_n x + b_n)\bigr)^k.
+$$
+By hypothesis, the inner expression converges to $G(x)$, so by continuous-mapping
+$$
+\mathbb{P}\!\left(\frac{M_{kn} - b_n}{a_n} \le x\right) \;\longrightarrow\; G(x)^k \qquad (n \to \infty)
+$$
+at every continuity point of $G^k$ — equivalently, of $G$, since $G^k$ has the same continuity set as $G$.
+
+*Scheme 2 — direct.* Apply the original hypothesis with $n$ replaced by $kn$ (a valid substitution since $kn \to \infty$ as $n \to \infty$ for fixed $k$). This gives
+$$
+F^{kn}(a_{kn} x + b_{kn}) \;\longrightarrow\; G(x),
+$$
+i.e., $\mathbb{P}\bigl((M_{kn} - b_{kn})/a_{kn} \le x\bigr) \to G(x)$.
+
+*Combining.* We have the same sequence $M_{kn}$ converging to two non-degenerate limits under two affine renormalizations: to $G^k$ under $(a_n, b_n)$ and to $G$ under $(a_{kn}, b_{kn})$. The type-convergence lemma (Lemma 1 below) takes this input precisely. It guarantees that $a_n / a_{kn} \to \alpha_k$ and $(b_n - b_{kn})/a_{kn} \to \beta_k$ for some $\alpha_k > 0, \beta_k \in \mathbb{R}$, and that the two limits are related by
+$$
+G(x) \;=\; G^k(\alpha_k x + \beta_k).
+$$
+This is the defining functional equation of Definition 1. Since $k \ge 1$ was arbitrary, $G$ is max-stable.
+</TheoremBlock>
+
+The proof did not use any property of $F$ beyond the convergence hypothesis. Whatever the parent is, if the normalized maximum has a non-degenerate limit, that limit is max-stable. The constraints on the limit are entirely structural.
+
+### 2.3 The type-convergence lemma
+
+The lemma the necessity proof leans on is Khintchine's *convergence of types*. It is a general statement about how affine renormalizations of one sequence relate when both produce non-degenerate limits — the maxima context plays no role in the lemma itself. We state and prove it carefully because it is doing all the technical work essentially.
+
+<TheoremBlock type="lemma" number={1} title="Convergence of types — Khintchine">
+Let $Y_n$ be a sequence of random variables, and suppose for some $a_n, \alpha_n > 0$ and $b_n, \beta_n \in \mathbb{R}$ that
+$$
+\frac{Y_n - b_n}{a_n} \;\Rightarrow\; X \qquad \text{and} \qquad \frac{Y_n - \beta_n}{\alpha_n} \;\Rightarrow\; Y
+$$
+where $X$ and $Y$ are both non-degenerate (i.e., neither is a point mass). Then there exist $\alpha > 0$ and $\beta \in \mathbb{R}$ such that
+$$
+\frac{a_n}{\alpha_n} \;\to\; \alpha, \qquad \frac{b_n - \beta_n}{\alpha_n} \;\to\; \beta,
+$$
+and the two limits are of the same affine type:
+$$
+Y \;\stackrel{d}{=}\; \alpha X + \beta, \qquad \text{equivalently} \qquad F_Y(y) = F_X\!\left(\frac{y - \beta}{\alpha}\right).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write $W_n = (Y_n - b_n)/a_n$ and $V_n = (Y_n - \beta_n)/\alpha_n$. Direct algebra:
+$$
+V_n \;=\; \frac{Y_n - \beta_n}{\alpha_n} \;=\; \frac{a_n}{\alpha_n} \cdot \frac{Y_n - b_n}{a_n} \;+\; \frac{b_n - \beta_n}{\alpha_n} \;=\; \frac{a_n}{\alpha_n} W_n \;+\; \frac{b_n - \beta_n}{\alpha_n}.
+$$
+So $V_n$ is an affine function of $W_n$ with deterministic coefficients $A_n := a_n / \alpha_n$ and $B_n := (b_n - \beta_n)/\alpha_n$. We have $W_n \Rightarrow X$ and $V_n \Rightarrow Y$, both non-degenerate.
+
+We claim $A_n$ and $B_n$ are convergent. Suppose $A_{n_k} \to \infty$ along some subsequence. Then $V_{n_k} = A_{n_k} W_{n_k} + B_{n_k}$ has variance ratio (with $W_{n_k}$ as denominator) blowing up, while $V_{n_k}$ is supposed to converge in distribution to a non-degenerate $Y$ with finite spread. The standard tightness argument: for any $\epsilon > 0$ there is $K_\epsilon$ with $\mathbb{P}(|V_{n_k}| > K_\epsilon) < \epsilon$ for all $k$ large, since $V_{n_k} \Rightarrow Y$ and $Y$ is tight. But also there exist $a < b$ with $\mathbb{P}(a < W < b) > 0$ for $W \sim X$, which by Portmanteau gives $\mathbb{P}(a < W_{n_k} < b) > c$ for some $c > 0$ and all $k$ large. On the event $\{a < W_{n_k} < b\}$,
+$$
+A_{n_k} \min(|a|, |b|) - |B_{n_k}| \;\le\; |V_{n_k}| \;\le\; A_{n_k} \max(|a|, |b|) + |B_{n_k}|.
+$$
+So $A_{n_k} \to \infty$ along this subsequence forces $|V_{n_k}|$ to be unbounded with positive probability bounded away from zero, contradicting tightness. So $\{A_n\}$ is bounded above. The same argument with $W$ and $V$ swapped (using $W_n = A_n^{-1}(V_n - B_n)$) shows $\{A_n\}$ is bounded away from zero. So $A_n$ is bounded in $(0, \infty)$.
+
+A separate but parallel argument bounds $|B_n|$. If $B_{n_k} \to \infty$, then $V_{n_k} - B_{n_k} = A_{n_k} W_{n_k}$ would be tight (from $A_n$'s boundedness and $W_n$'s tightness), but $V_{n_k}$ itself is tight, so $B_{n_k}$ would have to be tight — contradiction.
+
+So both $A_n$ and $B_n$ are precompact in their respective ranges. Take any pair of subsequence-limits $(\alpha, \beta)$ with $A_{n_k} \to \alpha > 0, B_{n_k} \to \beta$. Along this subsequence, $V_{n_k} = A_{n_k} W_{n_k} + B_{n_k} \Rightarrow \alpha X + \beta$ by Slutsky, so $\alpha X + \beta \stackrel{d}{=} Y$. The pair $(\alpha, \beta)$ is uniquely determined by this distributional equation (since $X$ is non-degenerate, the affine transformation taking $X$ to $Y$ is unique), hence every convergent subsequence of $(A_n, B_n)$ converges to the same limit, and the full sequence converges.
+</TheoremBlock>
+
+The non-degeneracy of $X$ and $Y$ is the substantive hypothesis. Without it, the affine transformation taking $X$ to $Y$ is not unique — collapsing both to point masses would let any $(\alpha, \beta)$ work. Maxima of iid samples without normalization (recall §1.2) converge to the point mass at $x^*$, and the lemma fails for that degenerate limit. The non-degeneracy clause in the FTG hypothesis exists precisely to bring Khintchine into reach.
+
+### 2.4 The Fisher–Tippett–Gnedenko theorem
+
+With necessity (§2.2) and the type-convergence lemma (§2.3) in place, we can state the theorem and the three families.
+
+<TheoremBlock type="theorem" number={2} title="Fisher–Tippett 1928, Gnedenko 1943">
+Suppose $X_1, X_2, \dots$ are iid with CDF $F$, and $F^n(a_n x + b_n) \to G(x)$ for some sequences $a_n > 0, b_n \in \mathbb{R}$ and some non-degenerate CDF $G$, at every continuity point of $G$. Then $G$ is, up to an affine recalibration of its argument, one of the following three CDFs:
+
+- **Gumbel** ($\xi = 0$). $\Lambda(x) = \exp(-e^{-x})$, with support $\mathbb{R}$.
+- **Fréchet** ($\xi > 0$). $\Phi_{1/\xi}(x) = \exp(-x^{-1/\xi})$ for $x > 0$, $\Phi_{1/\xi}(x) = 0$ for $x \le 0$.
+- **Reverse-Weibull** ($\xi < 0$). $\Psi_{-1/\xi}(x) = \exp(-(-x)^{-1/\xi})$ for $x < 0$, $\Psi_{-1/\xi}(x) = 1$ for $x \ge 0$.
+
+Conversely, every distribution in these three families arises as the limit of normalized maxima for some iid parent $F$.
+</TheoremBlock>
+
+The three families are unified by a single parametrization. The **generalized extreme value distribution** with shape parameter $\xi \in \mathbb{R}$, location $\mu \in \mathbb{R}$, and scale $\sigma > 0$ is
+$$
+G_{\xi, \mu, \sigma}(x) \;=\;
+\begin{cases}
+\exp\!\Bigl(-\bigl(1 + \xi \tfrac{x - \mu}{\sigma}\bigr)^{-1/\xi}\Bigr), & \xi \ne 0, \quad 1 + \xi (x - \mu)/\sigma > 0, \\[4pt]
+\exp\!\Bigl(-\exp\bigl(-\tfrac{x - \mu}{\sigma}\bigr)\Bigr), & \xi = 0, \quad x \in \mathbb{R}.
+\end{cases}
+$$
+With $\mu = 0, \sigma = 1$ this reduces to the standardized form $G_\xi(x) = \exp(-(1 + \xi x)^{-1/\xi})$ for $\xi \ne 0$ and $G_0(x) = \Lambda(x)$. The $\xi \ne 0$ case is well-defined on the half-line $1 + \xi x > 0$, which is $(-1/\xi, \infty)$ for $\xi > 0$ and $(-\infty, -1/\xi)$ for $\xi < 0$; outside this half-line $G_\xi$ extends by the obvious limit (0 below the lower endpoint, 1 above the upper endpoint).
+
+The shape $\xi$ controls the trichotomy directly: $\xi = 0$ is Gumbel, $\xi > 0$ is Fréchet (with Fréchet's classical shape $\alpha = 1/\xi$), $\xi < 0$ is reverse-Weibull (with reverse-Weibull's classical shape $\alpha = -1/\xi$). The continuous parametrization makes likelihood-based inference tractable in §4 — a single MLE in $(\xi, \mu, \sigma)$ handles all three cases simultaneously, including the boundary $\xi = 0$ via the limiting Gumbel form.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s2_gev_trichotomy_densities.png"
+  alt="Three GEV densities at xi = -0.3, 0, 0.5 with mu=0 and sigma=1, showing the bounded support of reverse-Weibull, the unbounded symmetric-decay support of Gumbel, and the polynomial right-tail support of Frechet."
+  caption="Figure 2.2. The GEV trichotomy at $\mu = 0, \sigma = 1$. Reverse-Weibull ($\xi = -0.3$, green) has bounded upper support; Gumbel ($\xi = 0$, blue) is supported on $\mathbb{R}$ with double-exponential tails; Fréchet ($\xi = 0.5$, red) is supported on $(-1/\xi, \infty) = (-2, \infty)$ with a polynomial right tail. The shape parameter $\xi$ smoothly interpolates the three families through the unified GEV parametrization."
+/>
+
+{/* TODO: <GEVFamilyExplorer client:visible /> — featured viz embed deferred to step 6 */}
+
+### 2.5 Proof of the trichotomy: outline
+
+The full classification proof is too long to reproduce in its entirety — Embrechts, Klüppelberg, and Mikosch §3.2 takes about five pages even with the regular-variation machinery available. We give the reductions in detail through the bridge to the three cases; the closing case work is referenced to that source.
+
+<TheoremBlock type="proof">
+*Step 1 — Reduce to a functional equation.* Taking logs of both sides of the max-stability relation $G^k(\alpha_k x + \beta_k) = G(x)$ and writing $H(x) := -\log G(x)$ (well-defined on the support of $G$, with $H \ge 0$, $H$ non-increasing, $H(x) \to 0$ as $x \to x^*$ where $x^*$ is the upper endpoint of $G$, and $H(x) \to \infty$ as $x$ approaches the lower endpoint) gives
+$$
+k \cdot H(\alpha_k x + \beta_k) \;=\; H(x), \quad \text{i.e.,} \quad H(\alpha_k x + \beta_k) \;=\; \frac{H(x)}{k}.
+$$
+This is the central functional equation. Pulling the argument of $H$ through an affine transformation $(\alpha_k, \beta_k)$ corresponds to dividing $H$'s value by $k$. The classification of $G$ reduces to classifying which functions $H$ satisfy this equation.
+
+*Step 2 — Multiplicativity of $\alpha_k$.* The scaling coefficients $\alpha_k$ are not free across $k$; they satisfy a multiplicativity constraint. Iterating the functional equation: from $H(\alpha_k x + \beta_k) = H(x)/k$, replace $x$ by $\alpha_j y + \beta_j$ and use the same relation with $k$ replaced by $j$:
+$$
+H\bigl(\alpha_k(\alpha_j y + \beta_j) + \beta_k\bigr) \;=\; \frac{H(\alpha_j y + \beta_j)}{k} \;=\; \frac{H(y)}{jk}.
+$$
+On the other hand, the same functional equation directly with $jk$ in place of $k$ gives $H(\alpha_{jk} y + \beta_{jk}) = H(y)/(jk)$. Comparing the two right-hand sides — both are $H(y)/(jk)$ — and using injectivity of $H$ on the relevant range (which holds because $H$ is strictly monotone on the support of $G$, since $G$ is non-degenerate), the two affine transformations of $y$ inside $H$ must agree:
+$$
+\alpha_{jk} = \alpha_j \alpha_k, \qquad \beta_{jk} = \alpha_k \beta_j + \beta_k.
+$$
+The first relation says $\alpha_k$ is multiplicative in $k$ over $\mathbb{N}$; the second is a one-cocycle condition for $\beta_k$.
+
+Multiplicativity over $\mathbb{N}$ together with $\alpha_k > 0$ and a mild regularity assumption (specifically: $\alpha_k$ doesn't oscillate wildly — formally, one shows $\alpha_k$ is uniformly bounded in $k$, which uses the fact that $G^k$'s support tracks $G$'s support up to affine recalibration) forces
+$$
+\alpha_k \;=\; k^{\theta}
+$$
+for some $\theta \in \mathbb{R}$. The sign of $\theta$ is the bridge to the three cases.
+
+*Step 3 — Three cases by the sign of $\theta$.*
+
+**Case A: $\theta = 0$, so $\alpha_k = 1$ for all $k$.** The functional equation becomes $H(x + \beta_k) = H(x)/k$. The cocycle relation $\beta_{jk} = \beta_j + \beta_k$ together with monotonicity of $\beta_k$ in $k$ (which one shows from $H$'s monotonicity) forces $\beta_k = c \log k$ for some constant $c$. Substituting back: $H(x + c \log k) = H(x)/k$, equivalently $H(x + c \log k) = e^{-\log k} H(x)$. The unique non-negative non-increasing solution (up to a multiplicative constant absorbed into the affine recalibration of $G$) is $H(x) = e^{-x/c}$, giving
+$$
+G(x) \;=\; \exp\bigl(-e^{-x/c}\bigr).
+$$
+After rescaling by $c$, this is the Gumbel distribution.
+
+**Case B: $\theta > 0$, so $\alpha_k = k^\theta$ grows with $k$.** Substituting $\alpha_k = k^\theta$ into the cocycle gives $\beta_{jk} = j^\theta \beta_k + \beta_j$, whose general solution under monotonicity is $\beta_k = b(k^\theta - 1)$ for some $b$. Setting $H(x) = (x - b)^{-1/\theta}$ (defined for $x > b$) verifies the functional equation directly. So $G(x) = \exp(-(x - b)^{-1/\theta})$ for $x > b$, which is Fréchet with shape $\alpha = 1/\theta$ (taking $b = 0$ after translation).
+
+**Case C: $\theta < 0$, so $\alpha_k = k^\theta < 1$ for $k \ge 2$.** Symmetric to Case B with the support flipped. The solution is $H(x) = (b - x)^{-1/\theta} = (b - x)^{1/|\theta|}$ (defined for $x < b$, with $|\theta| = -\theta$), giving $G(x) = \exp(-(b - x)^{1/|\theta|})$ for $x < b$. This is reverse-Weibull with shape $\alpha = 1/|\theta| = -1/\theta$.
+
+The closing technical step — verifying that the regularity assumption in Step 2 holds (so $\alpha_k$ really does have the form $k^\theta$ rather than something pathological), and that the three cases exhaust all possibilities — uses regular-variation theory and the structure of $G$'s support. EKM §3.2, Theorem 3.2.3 carries this out fully; Resnick (1987), Chapter 0 gives the alternative point-process route. With the multiplicativity bridge of Step 2 in hand, the remaining work is technical but contains no further conceptual surprises.
+</TheoremBlock>
+
+Substituting $\theta = \xi$ throughout, the three cases (Gumbel for $\xi = 0$, Fréchet for $\xi > 0$, reverse-Weibull for $\xi < 0$) align with the GEV parametrization of §2.4 by direct substitution. Cases A, B, and C are the GEV at $\xi = 0$, $\xi > 0$, $\xi < 0$, respectively.
+
+## 3. Domains of attraction
+
+Section 2 classified the *limits*: any non-degenerate limit law for normalized sample maxima is GEV. Section 3 now classifies the *parents*: which CDFs $F$ produce which GEV limit, and what the normalizing sequences $(a_n, b_n)$ look like for each. The classification runs through the right tool — regular variation — which we develop just enough of to state the three domain-of-attraction criteria precisely. The Fréchet criterion gets a full sufficiency proof; the Gumbel and reverse-Weibull criteria are stated with proofs deferred to Resnick (1987), Chapter 0. The §1 promise to derive the Normal-to-Gumbel normalization from first principles is fulfilled here in §3.4.
+
+### 3.1 What the domain-of-attraction question asks
+
+A parent CDF $F$ is in the **domain of attraction** of GEV-with-shape-$\xi$, written $F \in \mathrm{DA}(G_\xi)$, if there exist sequences $a_n > 0$ and $b_n \in \mathbb{R}$ such that
+$$
+F^n(a_n x + b_n) \;\longrightarrow\; G_\xi(x) \qquad (n \to \infty)
+$$
+at every continuity point of $G_\xi$. Trichotomy says every $F$ that admits any non-degenerate limit at all lands in exactly one $\mathrm{DA}(G_\xi)$, with $\xi$ determined by $F$. Three questions immediately arise: which $F$ lands in which DA, what are the normalizing sequences, and which $F$ admit no limit at all.
+
+A useful warm-up is to revisit §1's three asserted classifications — Pareto $\to$ Fréchet, Normal $\to$ Gumbel, Uniform $\to$ reverse-Weibull — and notice what they have in common. In all three cases, the assignment is determined entirely by how $1 - F(x)$ behaves as $x$ approaches the upper endpoint $x^* = \sup\{u: F(u) < 1\}$. The Pareto's $1 - F(x) = x^{-\alpha}$ is a polynomial decay over the unbounded support $(0, \infty)$. The Normal's $1 - \Phi(x) \sim \phi(x)/x$ is exponential-times-polynomial decay over the unbounded support $\mathbb{R}$. The Uniform on $[0, 1]$ has $1 - F(x) = 1 - x$ near the bounded upper endpoint $x^* = 1$. Three qualitatively different tail patterns; three different DAs.
+
+The pattern is not that the DA classification cares about $F$'s mean or variance or whether it is symmetric. It cares only about the asymptotic behavior of the upper tail as $x \to x^*$. This is geometrically consistent with §1.1's warning that the maximum is governed by a single observation, not by the bulk of the distribution. The DA criteria of §3.3 will make this precise.
+
+### 3.2 Regular variation: the right tool
+
+Regular variation is the analytical theory of "tails that scale like power laws, possibly modulated by a slowly varying correction." It is the language in which the Fréchet DA criterion has its cleanest statement.
+
+<TheoremBlock type="definition" number={2} title="Regular variation">
+A measurable function $U : (0, \infty) \to (0, \infty)$ is **regularly varying at infinity with index $\rho \in \mathbb{R}$**, written $U \in \mathrm{RV}_\rho$, if for every $\lambda > 0$,
+$$
+\lim_{x \to \infty} \frac{U(\lambda x)}{U(x)} \;=\; \lambda^\rho.
+$$
+A function in $\mathrm{RV}_0$ is called **slowly varying** and is conventionally denoted $L$.
+</TheoremBlock>
+
+The intuition: $U$ behaves asymptotically like $x^\rho$ times a slowly-varying correction. Formally, $U \in \mathrm{RV}_\rho \iff U(x) = x^\rho L(x)$ for some $L \in \mathrm{RV}_0$. Slow variation captures functions that change much more slowly than any polynomial; the canonical examples are $L(x) = c$ (constant), $L(x) = \log x$, $L(x) = \log \log x$, and any iterated logarithm. Slow variation is preserved under positive integer powers, sums, products, and reciprocals — and it is what gets factored out when one isolates the polynomial-decay rate of a tail.
+
+The structural result we need is **Karamata's representation theorem**, which states that slowly varying functions, despite the apparent abstractness of the definition, have a clean integral form.
+
+<TheoremBlock type="lemma" number={2} title="Karamata's representation theorem">
+A measurable function $L : (0, \infty) \to (0, \infty)$ is slowly varying if and only if there exist a measurable $c : (0, \infty) \to (0, \infty)$ with $c(x) \to c \in (0, \infty)$ as $x \to \infty$ and a measurable $\eta : (0, \infty) \to \mathbb{R}$ with $\eta(t) \to 0$ as $t \to \infty$ such that for some $x_0 > 0$ and all $x \ge x_0$,
+$$
+L(x) \;=\; c(x) \exp\!\left( \int_{x_0}^x \frac{\eta(t)}{t}\, dt \right).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+*Sufficiency (the easier direction).* Assume the representation. For $\lambda > 0$ fixed,
+$$
+\frac{L(\lambda x)}{L(x)} \;=\; \frac{c(\lambda x)}{c(x)} \cdot \exp\!\left( \int_x^{\lambda x} \frac{\eta(t)}{t}\, dt \right).
+$$
+The first factor tends to $c/c = 1$. The integral inside the exponential is bounded above by $|\sup_{t \ge x} \eta(t)| \cdot \int_x^{\lambda x} dt/t = |\sup_{t \ge x} \eta(t)| \cdot \log \lambda$. Since $\eta(t) \to 0$, this supremum tends to $0$, so the integral tends to $0$, and the exponential tends to $1$. Hence $L(\lambda x)/L(x) \to 1$, i.e., $L \in \mathrm{RV}_0$.
+
+*Necessity (sketch).* The harder direction is a real analysis exercise. Define $c(x) = L(x) / \exp\!\left( \int_{x_0}^x \eta(t)/t\, dt \right)$ for some choice of $\eta$, and show $\eta$ can be chosen so that $\eta(t) \to 0$ and $c(x)$ has a finite positive limit. The full argument uses the *uniform convergence theorem for slowly-varying functions* (Bingham–Goldie–Teugels 1987, Theorem 1.2.1) and is technical but standard; we omit it.
+</TheoremBlock>
+
+Two consequences of Lemma 2 will be used in §3.3.
+
+<TheoremBlock type="corollary" number={1} title="Slow variation under composition with growing arguments">
+If $L$ is slowly varying and $a_n \to \infty$, then for every $\lambda > 0$, $L(\lambda a_n) / L(a_n) \to 1$.
+</TheoremBlock>
+
+This is the definitional property restated, since $L(\lambda x)/L(x) \to 1$ as $x \to \infty$ for every $\lambda > 0$ implies the same with $x = a_n \to \infty$. The corollary is what lets us replace $L(a_n x)$ by $L(a_n)$ inside limit expressions in §3.3's Fréchet sufficiency proof.
+
+<TheoremBlock type="corollary" number={2} title="Karamata's integration lemma">
+If $L$ is slowly varying and $\rho > -1$, then
+$$
+\int_1^x t^\rho L(t)\, dt \;\sim\; \frac{x^{\rho+1} L(x)}{\rho + 1} \qquad (x \to \infty).
+$$
+</TheoremBlock>
+
+The proof uses Lemma 2 to write $L(t) = c(t) \exp(\int_1^t \eta(s)/s \, ds)$ and then integrates by parts, with the slow variation of $L$ doing the work to eliminate lower-order terms. Bingham–Goldie–Teugels §1.5.6 has the full computation. We will not need this corollary directly in the §3 proofs, but it is the standard tool for refining tail integrals (which appear in §5's POT analysis).
+
+### 3.3 The three domain-of-attraction criteria
+
+With regular variation in hand, we can precisely state the three DA characterizations. Only the Fréchet direction will be proved fully; the other two are stated.
+
+<TheoremBlock type="theorem" number={3} title="Gnedenko 1943 — Fréchet DA">
+Let $F$ have unbounded upper endpoint $x^* = \infty$. Then $F \in \mathrm{DA}(G_\xi)$ for some $\xi > 0$ if and only if $1 - F$ is regularly varying at infinity with index $-1/\xi$:
+$$
+1 - F(x) \;=\; x^{-1/\xi} L(x), \qquad L \in \mathrm{RV}_0.
+$$
+A valid normalizing sequence is $b_n = 0$ and $a_n = F^{-1}(1 - 1/n) = \inf\{x : F(x) \ge 1 - 1/n\}$, the $(1 - 1/n)$-quantile of $F$.
+</TheoremBlock>
+
+The criterion is intuitive: a parent lands in $\mathrm{DA}(\mathrm{Fréchet})$ exactly when its tail decays polynomially. The shape $\xi > 0$ records the polynomial exponent: $\xi = 1/2$ means $1 - F \sim x^{-2} L(x)$, so the tail decays quadratically (after slow-variation correction); larger $\xi$ corresponds to slower decay (heavier tail).
+
+<TheoremBlock type="theorem" number={4} title="Gnedenko 1943 — reverse-Weibull DA">
+Let $F$ have *bounded* upper endpoint $x^* < \infty$. Then $F \in \mathrm{DA}(G_\xi)$ for some $\xi < 0$ if and only if the function $G(x) := F(x^* - 1/x)$, defined for $x > 0$, is in $\mathrm{DA}(G_{|\xi|}) = \mathrm{DA}(\mathrm{Fréchet})$. Equivalently, $1 - F(x^* - h)$ is regularly varying in $h \to 0^+$ with index $-1/\xi = 1/|\xi|$:
+$$
+1 - F(x^* - h) \;=\; h^{1/|\xi|} L(1/h), \qquad L \in \mathrm{RV}_0.
+$$
+</TheoremBlock>
+
+Theorem 4 reduces the bounded-support case to the Fréchet case via the substitution $x \mapsto x^* - 1/x$. The polynomial-tail behavior shows up in how fast $F$ approaches $1$ as the argument approaches the right endpoint. Pure polynomial $1 - F(x^* - h) = h^\alpha$ corresponds to $\xi = -1/\alpha$.
+
+<TheoremBlock type="theorem" number={5} title="Gumbel DA — von Mises sufficient condition">
+Let $F$ have density $f$ that is positive in some left-neighborhood of $x^*$ (which may be finite or infinite), and let $h(x) := f(x)/(1 - F(x))$ be the **hazard rate** of $F$. If $h$ is differentiable in some left-neighborhood of $x^*$ and
+$$
+\lim_{x \to x^*} \frac{d}{dx}\!\left( \frac{1}{h(x)} \right) \;=\; 0,
+$$
+then $F \in \mathrm{DA}(G_0) = \mathrm{DA}(\mathrm{Gumbel})$. A valid normalizing sequence is $b_n$ defined by $1 - F(b_n) = 1/n$ (the $(1 - 1/n)$-quantile) and $a_n = 1/h(b_n)$.
+</TheoremBlock>
+
+The full Gumbel characterization (necessary and sufficient) involves de Haan's class $\Pi$ and is presented with proof in Resnick (1987), Chapter 0, §0.3. The von Mises sufficient condition catches every parent we will need in this topic and has the practical advantage of being directly checkable. The Gumbel domain is the largest of the three by a wide margin: it contains essentially every "reasonable light-tailed" distribution — Normal, Exponential, Gamma, Lognormal, Weibull (the *parent* Weibull, not reverse-Weibull, despite the name collision) — anything whose tail decays faster than polynomial but for which $h(x) \to \infty$ in a controlled way.
+
+We prove only the sufficiency direction of Theorem 3. The remaining proofs are technical extensions of the same regular-variation machinery and are given in full in Resnick (1987), Chapter 0.
+
+<TheoremBlock type="proof">
+*Theorem 3 (Fréchet DA, sufficiency direction).* Assume $1 - F(x) = x^{-1/\xi} L(x)$ with $L \in \mathrm{RV}_0$ and $x^* = \infty$. We construct a sequence $a_n$ for which $F^n(a_n x) \to \exp(-x^{-1/\xi})$ for every $x > 0$, the standard Fréchet limit.
+
+The choice $a_n = F^{-1}(1 - 1/n)$ makes $F(a_n) = 1 - 1/n$, so $a_n$ is the $(1 - 1/n)$-quantile. Substituting the regular-variation form: $1/n = a_n^{-1/\xi} L(a_n)$, equivalently $a_n^{1/\xi} = n L(a_n)$. Since $L$ is slowly varying and the equation is asymptotically polynomial-with-slowly-varying-correction in $a_n$, $a_n \to \infty$ as $n \to \infty$.
+
+Now compute $n(1 - F(a_n x))$ for fixed $x > 0$:
+$$
+n(1 - F(a_n x)) \;=\; n (a_n x)^{-1/\xi} L(a_n x) \;=\; n a_n^{-1/\xi} \cdot x^{-1/\xi} \cdot \frac{L(a_n x)}{L(a_n)} \cdot L(a_n).
+$$
+Using $a_n^{-1/\xi} = 1/(n L(a_n))$ from the definition of $a_n$ and rearranging:
+$$
+n a_n^{-1/\xi} L(a_n) \;=\; \frac{n L(a_n)}{n L(a_n)} \;=\; 1.
+$$
+By Corollary 1 applied with $\lambda = x$ and $a_n \to \infty$: $L(a_n x)/L(a_n) \to 1$. Combining,
+$$
+n(1 - F(a_n x)) \;\longrightarrow\; x^{-1/\xi} \qquad (n \to \infty).
+$$
+Now the standard Poisson-approximation argument:
+$$
+F^n(a_n x) \;=\; \bigl(1 - (1 - F(a_n x))\bigr)^n \;=\; \exp\!\Bigl(n \log\bigl(1 - (1 - F(a_n x))\bigr)\Bigr).
+$$
+Since $1 - F(a_n x) \to 0$ as $n \to \infty$ (because $a_n x \to \infty$ and $1 - F$ is regularly varying with negative index, hence decays), the inner $\log(1 - u)$ behaves like $-u + O(u^2)$. Substituting $u = 1 - F(a_n x)$ and using $n u \to x^{-1/\xi}$ together with $n u^2 \to 0$ (since $u \to 0$ and $nu$ has a finite limit):
+$$
+n \log\bigl(1 - (1 - F(a_n x))\bigr) \;=\; -n(1 - F(a_n x)) + o(1) \;\longrightarrow\; -x^{-1/\xi}.
+$$
+Therefore $F^n(a_n x) \to \exp(-x^{-1/\xi}) = G_\xi(x)$, which is the Fréchet CDF with shape $\xi$. So $F \in \mathrm{DA}(G_\xi)$.
+</TheoremBlock>
+
+The proof did all the work in three moves: rewrite $a_n$ via the quantile equation, factor the regular-variation expansion, and apply slow variation to eliminate the $L$-ratio. The same skeleton — quantile equation + polynomial factor + slow-variation correction — drives the necessity direction (which we omit) and the reverse-Weibull case (which is the same proof after the $x \mapsto x^* - 1/x$ substitution of Theorem 4).
+
+A remark closes off the converse direction of Theorem 2 (FTG, "every GEV arises as a limit"): the GEV with shape $\xi$ is itself in $\mathrm{DA}(G_\xi)$, since $G_\xi$ is max-stable and so $G_\xi^n(\alpha_n x + \beta_n) = G_\xi(x)$ for the natural sequences from §2.1. So every GEV trivially attracts itself, and the converse of Theorem 2 holds. The non-trivial content of Theorem 2 is the forward direction (which is the §2 proof), not the converse.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s3_domains_of_attraction.png"
+  alt="Three-panel summary of the trichotomy at a glance: log-log plot of 1 - F(x) for Pareto vs Normal vs Uniform showing polynomial decay for Pareto, exponential-times-polynomial decay for Normal, and bounded-support decay for Uniform."
+  caption="Figure 3.1. The trichotomy at a glance. Left: $\log(1 - F(x))$ vs. $\log x$ for standard Pareto ($\alpha = 2$), standard Normal, and Uniform on $[0, 1]$. The Pareto trace is linear with slope $-2$ (polynomial tail, Fréchet domain); the Normal trace curves down faster than any polynomial (Gumbel domain); the Uniform trace terminates at $x = 1$ (reverse-Weibull domain, bounded support). Middle/right panels show the three DA-criteria diagnostics: regular-variation index for Pareto, hazard-rate growth for Normal, and tail-equivalence ratio for Uniform."
+/>
+
+### 3.4 Three worked examples
+
+The three classic examples — Pareto $\to$ Fréchet, Normal $\to$ Gumbel, Uniform $\to$ reverse-Weibull — are now within reach. We also pay off the §1.3 promise to derive the Normal-to-Gumbel normalization from first principles.
+
+<TheoremBlock type="example" number={1} title="Pareto → Fréchet">
+The standard Pareto with shape $\alpha > 0$ has $1 - F(x) = x^{-\alpha}$ for $x \ge 1$. This is exactly the regular-variation form $x^{-1/\xi} L(x)$ with $\xi = 1/\alpha$ and $L \equiv 1$ (constant, hence trivially slowly varying). By Theorem 3, $F \in \mathrm{DA}(G_{1/\alpha})$ with normalizing sequences
+$$
+b_n = 0, \qquad a_n = F^{-1}(1 - 1/n) = n^{1/\alpha},
+$$
+the latter from solving $a_n^{-\alpha} = 1/n$. The numerical check: for Pareto with $\alpha = 2$ ($\xi = 1/2$), the empirical histogram of $M_n / n^{1/2}$ at $n = 1000$ should match $\Phi_{2}(x) = \exp(-x^{-2})$ closely.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={2} title="Normal → Gumbel — paying off §1.3">
+The standard Normal has density $\phi(x) = (2\pi)^{-1/2} e^{-x^2/2}$ and tail $1 - \Phi(x)$. The classical Mills-ratio asymptotic is
+$$
+1 - \Phi(x) \;\sim\; \frac{\phi(x)}{x} \;=\; \frac{1}{x \sqrt{2\pi}}\, e^{-x^2/2} \qquad (x \to \infty),
+$$
+which follows from a single integration by parts: $\int_x^\infty e^{-t^2/2}\, dt = e^{-x^2/2}/x - \int_x^\infty e^{-t^2/2}/t^2\, dt$, where the second term is dominated by $e^{-x^2/2}/x^3$ and so is negligible relative to the first.
+
+Verifying the von Mises condition: the hazard rate is $h(x) = \phi(x)/(1 - \Phi(x)) \sim \phi(x) \cdot x / \phi(x) = x$ as $x \to \infty$, so $1/h(x) \sim 1/x$ and
+$$
+\frac{d}{dx}\!\left( \frac{1}{h(x)} \right) \;\sim\; \frac{d}{dx}\!\left( \frac{1}{x} \right) \;=\; -\frac{1}{x^2} \;\to\; 0 \qquad (x \to \infty).
+$$
+The von Mises condition holds, so $\Phi \in \mathrm{DA}(\mathrm{Gumbel})$ by Theorem 5. The Normal lands in the Gumbel domain — the assertion of §1.3.
+
+Now derive the normalizing sequences $(a_n, b_n)$. Theorem 5 gives $b_n$ as the $(1 - 1/n)$-quantile of $\Phi$ and $a_n = 1/h(b_n)$. Solve $1 - \Phi(b_n) = 1/n$ using the Mills-ratio asymptotic:
+$$
+\frac{1}{b_n \sqrt{2\pi}}\, e^{-b_n^2/2} \;=\; \frac{1}{n}, \qquad \text{equivalently} \qquad e^{-b_n^2/2} \;=\; \frac{b_n \sqrt{2\pi}}{n}.
+$$
+Taking logs:
+$$
+-\frac{b_n^2}{2} \;=\; \log b_n + \log(2\pi)/2 - \log n, \qquad \text{i.e.,} \qquad b_n^2 \;=\; 2\log n - 2\log b_n - \log(2\pi).
+$$
+This is implicit in $b_n$ but admits a clean asymptotic expansion. Leading order: dropping the lower-order $-2 \log b_n - \log(2\pi)$ terms gives $b_n \sim \sqrt{2 \log n}$. Refining: substitute the leading-order $b_n$ back into $\log b_n$:
+$$
+\log b_n \;\sim\; \frac{1}{2} \log(2 \log n) \;=\; \frac{1}{2}\log 2 + \frac{1}{2} \log \log n,
+$$
+so $2 \log b_n \sim \log 2 + \log \log n$. Substituting:
+$$
+b_n^2 \;=\; 2 \log n - \log 2 - \log \log n - \log(2\pi) \;=\; 2 \log n - \log \log n - \log(4\pi).
+$$
+Taking the square root and using $\sqrt{A - B} \approx \sqrt{A} - B/(2 \sqrt{A})$ for $B \ll A$ (with $A = 2 \log n$ and $B = \log \log n + \log(4\pi)$):
+$$
+b_n \;=\; \sqrt{2 \log n} \;-\; \frac{\log \log n + \log(4\pi)}{2 \sqrt{2 \log n}} + o\!\left(\frac{1}{\sqrt{\log n}}\right).
+$$
+The scale follows from $a_n = 1/h(b_n) \sim 1/b_n \sim 1/\sqrt{2 \log n}$. These are the sequences quoted in §1.3 — now derived rather than asserted.
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s3_mills_ratio_normal_tail.png"
+  alt="Two-panel diagnostic for the Normal-to-Gumbel derivation: the Mills-ratio asymptotic 1 - Phi(x) vs. phi(x)/x on log scale, and the hazard rate h(x) = phi(x)/(1 - Phi(x)) compared to the leading-order expansion x."
+  caption="Figure 3.2. Diagnostics for Example 2's Normal-to-Gumbel derivation. Left: $\log(1 - \Phi(x))$ overlaid with $\log(\phi(x)/x)$ — the Mills-ratio asymptotic of Example 2 — confirming $1 - \Phi(x) \sim \phi(x)/x$ as $x \to \infty$. Right: hazard rate $h(x) = \phi(x)/(1 - \Phi(x))$ compared with the leading-order expansion $x$, showing convergence to the linear-growth regime that drives the von Mises condition."
+/>
+
+<TheoremBlock type="example" number={3} title="Uniform on [0,1] → reverse-Weibull">
+The Uniform on $[0, 1]$ has bounded upper endpoint $x^* = 1$ and $1 - F(x^* - h) = h$ for $h \in (0, 1)$. This is the regular-variation form of Theorem 4 with index $1/|\xi| = 1$, so $\xi = -1$. The Uniform is in $\mathrm{DA}(G_{-1})$, the reverse-Weibull-with-shape-$1$ domain. The normalizing sequences are $b_n = 1$ and $a_n = 1/n$, giving
+$$
+\mathbb{P}(n(M_n - 1) \le x) \;\longrightarrow\; \exp(-(-x)) \;=\; e^{x} \qquad (x < 0),
+$$
+which is the standard reverse-Weibull-with-shape-$1$ CDF $G_{-1}(x) = \exp(x)$ for $x < 0, =1$ for $x \ge 0$.
+
+The geometric reading: the deficit $1 - M_n$ shrinks like $1/n$ (because the maximum of $n$ iid uniforms approaches the upper endpoint at rate $1/n$), and the rescaled deficit $n(1 - M_n)$ has a limiting Exponential distribution. The reverse-Weibull-with-shape-$1$ is the Exponential after the sign flip: $-X \sim \mathrm{Exp}(1)$ if $X$ has CDF $G_{-1}$.
+</TheoremBlock>
+
+### 3.5 Pathological cases and tail equivalence
+
+Not every $F$ has a non-degenerate normalized limit. Two classes of pathology are worth flagging.
+
+**Atomic distributions.** A discrete $F$ supported on integers (Poisson, geometric, negative binomial) has $1 - F$ piecewise constant — it jumps at integers and is flat between them. The regular-variation-style smoothness condition does not hold in the form required by Theorems 3–5. Concretely, for $X \sim \mathrm{Poisson}(\lambda)$, $M_n$ is itself integer-valued, and no affine rescaling can produce a continuous-distribution limit. The §3 figure illustrates: the empirical CDF of $(M_n - b_n)/a_n$ for any sensible choice of $(a_n, b_n)$ retains visible step structure that no GEV CDF has.
+
+There is a partial salvage. If a discrete $F$ has tail $1 - F(k)$ that is regularly varying as $k \to \infty$ along the integer lattice, then "smoothed" versions of $F$ (e.g., the maximum has a continuous version limit after taking integer-floor) exist, but the formalism is technical (Anderson 1970). For the topic's purposes, we treat discrete-tail parents as a footnote and concentrate on continuous $F$.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s3_poisson_discrete_pathology.png"
+  alt="Empirical CDF of normalized block maxima of iid Poisson(5) at n = 1000, retaining visible discrete steps that no continuous GEV CDF can match."
+  caption="Figure 3.3. The Poisson pathology. Empirical CDF of $(M_n - b_n)/a_n$ at $n = 1000$ for $X_i \sim \mathrm{Poisson}(5)$, with location $b_n$ and scale $a_n$ chosen by the natural Mills-ratio analog for discrete light-tailed parents. The empirical CDF retains visible step structure at integer-spaced points — no continuous GEV CDF (which is smooth) can match it. Discrete-tail parents are outside the scope of Theorems 3–5 in their stated form."
+/>
+
+**Tail equivalence.** Two CDFs $F$ and $\tilde F$ are **tail-equivalent** if $\lim_{x \to x^*} (1 - F(x))/(1 - \tilde F(x)) = c$ for some $c \in (0, \infty)$. Tail equivalence is exactly the equivalence relation that the DA classification respects: $F \in \mathrm{DA}(G_\xi)$ if and only if every tail-equivalent $\tilde F$ does, with the same $\xi$ and normalizing sequences differing only by a constant multiple. The DA classification cares only about the tail, exactly as §3.1 advertised.
+
+This justifies a useful abuse of language. We write things like "$t_\nu$ is in DA(Fréchet) with $\xi = 1/\nu$" without distinguishing among the various Student's-$t$ parameterizations — the tail is $1 - F(x) \sim c \cdot x^{-\nu}$ for *some* $c$, and tail equivalence absorbs the constant. The same goes for Cauchy ($\xi = 1$, since the Cauchy is $t_1$) and for any of the standard heavy-tailed distributions used in robust statistics.
+
+## 4. Block-maxima inference
+
+The previous two sections developed the asymptotic theory: any non-degenerate limit of normalized sample maxima is GEV (§2), and the parent's tail determines which member of the GEV family appears (§3). This section pivots from theory to inference. Given an actual finite dataset, how do we fit a GEV distribution to it, and what can we say about quantiles further out in the tail than any observed data point — the *return level* extrapolation that motivates EVT for risk applications? We work through two estimators (maximum likelihood, probability-weighted moments), state their consistency and asymptotic normality results, and apply both to the §1 running example and a Fréchet-domain comparison.
+
+### 4.1 From asymptotic theory to inference
+
+The setup is the natural one. Suppose we have $N$ raw observations $X_1, \dots, X_N$ that we group into $B$ disjoint blocks of size $m = N/B$, computing one block maximum per block:
+$$
+M_n^{(j)} \;=\; \max(X_{(j-1)m + 1}, \dots, X_{jm}), \qquad j = 1, \dots, B.
+$$
+The block maxima $M_n^{(1)}, \dots, M_n^{(B)}$ are iid (the underlying $X_i$ are iid and the blocks are disjoint), and §§2–3 say their common distribution is approximately $G_{\xi, \mu, \sigma}$ for some triple $(\xi, \mu, \sigma)$ when the block size $m$ is large. The inferential task: estimate $(\xi, \mu, \sigma)$ from $\{M_n^{(j)}\}_{j=1}^B$.
+
+The block-size choice is the standard bias–variance tradeoff for asymptotic-distribution-based inference. Larger $m$ improves the GEV approximation at each block (less *bias* — closer to the asymptotic limit) but yields fewer blocks $B = N/m$ for the same total sample size (more *variance* in the parameter estimates). The classical practitioner heuristic for environmental data is $m = 1$ year (so $B = $ number of years of record), which has the dual virtue of a natural physical scale and a typical $m$ in the hundreds. For the purposes of this section, we treat $m$ and $B$ as given and focus on inference; the §5 POT framework offers an alternative that uses tail data more efficiently.
+
+A modeling subtlety: even at moderate $m$, the GEV approximation is only asymptotically exact, and the *shape* parameter $\xi$ is what matters most for tail extrapolation. The §1 running example showed that the normalized maximum of $1000$ standard normals matched the Gumbel limit reasonably well; at $B = 50$ blocks we should expect to recover $\hat\xi \approx 0$ with a standard error well wide of zero — the data don't have enough information to nail $\xi$ tightly at moderate $B$, regardless of how good the GEV approximation is per block. This is generic, not a failure of the method.
+
+### 4.2 Maximum likelihood for the GEV
+
+The GEV density is the derivative of the CDF $G_{\xi, \mu, \sigma}$ from §2.4. For $\xi \ne 0$ on the support $\{x : 1 + \xi(x - \mu)/\sigma > 0\}$:
+$$
+g_{\xi, \mu, \sigma}(x) \;=\; \frac{1}{\sigma}\,\bigl(1 + \xi z\bigr)^{-1/\xi - 1} \exp\!\bigl(-(1 + \xi z)^{-1/\xi}\bigr), \qquad z = \frac{x - \mu}{\sigma}.
+$$
+For $\xi = 0$ (the Gumbel limit) the density is $g_{0, \mu, \sigma}(x) = \sigma^{-1} \exp(-z - e^{-z})$. The two cases match continuously at $\xi = 0$, but the SciPy convention $c = -\xi$ means a careful implementation pulls $\xi = 0$ out as a special case to avoid division-by-zero in the inner formula.
+
+The negative log-likelihood for a sample $\{M_j\}_{j=1}^B$ at parameters $\theta = (\xi, \mu, \sigma)$ with $\xi \ne 0$ is
+$$
+-\ell(\theta) \;=\; B \log \sigma + \left(\frac{1}{\xi} + 1\right) \sum_{j=1}^B \log(1 + \xi z_j) + \sum_{j=1}^B (1 + \xi z_j)^{-1/\xi},
+$$
+defined on $\{\theta : 1 + \xi z_j > 0 \text{ for all } j\}$. Outside this set, the likelihood is $0$ and the log-likelihood is $-\infty$. The MLE is
+$$
+\hat\theta \;=\; \arg\min_\theta\, -\ell(\theta).
+$$
+There is no closed form. Standard practice is to minimize $-\ell$ numerically with a quasi-Newton method (BFGS or its bounded variant L-BFGS-B); SciPy ships this in `scipy.optimize.minimize` and its convenience wrapper `scipy.stats.genextreme.fit`. The §4.5 code cell wraps both for the worked example and reports timing — full MLE on a $B = 100$ block maxima takes well under a second on a 2020-era laptop.
+
+The asymptotic theory is non-trivial because the GEV's support depends on $\theta$. The boundary cases:
+
+<TheoremBlock type="theorem" number={6} title="Smith 1985 — MLE asymptotic normality for the GEV">
+Let $M_1, \dots, M_B$ be iid $G_{\xi, \mu, \sigma}$. The MLE $\hat\theta$ satisfies:
+
+- If $\xi > -1/2$: $\hat\theta$ is consistent and $\sqrt{B}(\hat\theta - \theta) \Rightarrow \mathcal{N}(0, I(\theta)^{-1})$ as $B \to \infty$, with $I(\theta)$ the Fisher information matrix.
+- If $\xi \in (-1, -1/2]$: the MLE exists but converges at a non-standard rate slower than $\sqrt{B}$; the asymptotic distribution is non-Gaussian.
+- If $\xi \le -1$: the MLE may fail to exist (the likelihood may be unbounded in $\theta$).
+</TheoremBlock>
+
+Smith (1985) is the original; Falk–Hüsler–Reiss (2010), §4.3, provides a textbook treatment.
+
+The practical reading: $\xi > -1/2$ is the regular regime where standard likelihood-theory machinery (delta method, profile likelihood, Wald confidence intervals) all work. This regime covers all three classic examples — Normal ($\xi = 0$), Pareto ($\xi > 0$), and Uniform ($\xi = -1$ is the boundary, but environmental and ML applications rarely produce $\xi$ this negative). For applications with $\xi \approx -1$ — bounded-domain environmental data with a hard upper limit — the standard machinery breaks, and Bayesian methods or non-standard asymptotics are required; we will not develop these further here.
+
+The Fisher information $I(\theta)$ has a known closed form (Prescott–Walden 1980), but in practice the estimated information $\hat I = -\nabla^2 \ell(\hat\theta)$ from numerical Hessian evaluation is what gets used. SciPy's `genextreme.fit` does not return $\hat I$ directly; the §4.5 code cell extracts it via `scipy.optimize.minimize`'s `hess_inv` attribute.
+
+### 4.3 Probability-weighted moments
+
+A second estimator with often-better small-sample behavior is **probability-weighted moments** (PWM), introduced by Greenwood, Landwehr, Matalas, and Wallis (1979) and adapted to the GEV by Hosking, Wallis, and Wood (1985) and Hosking and Wallis (1987).
+
+The starting observation: rather than match raw moments of the data to GEV-population moments (the method-of-moments approach, which fails for $\xi \ge 1$ when even the mean is infinite), match certain *weighted* moments. For a random variable $M$ with CDF $G$, the $r$-th probability-weighted moment is
+$$
+\beta_r \;:=\; \mathbb{E}\bigl[M \cdot G(M)^r\bigr], \qquad r = 0, 1, 2, \dots.
+$$
+The GEV-population $\beta_r$ has a closed form in $(\xi, \mu, \sigma)$ involving the Gamma function:
+$$
+\beta_r \;=\; \frac{1}{r+1}\!\left( \mu + \frac{\sigma}{\xi}\bigl(\Gamma(1 - \xi)(r+1)^\xi - 1\bigr) \right) \qquad \text{for } \xi < 1, \xi \ne 0.
+$$
+Hosking and Wallis (1987) show that the system of three equations $\hat\beta_0, \hat\beta_1, \hat\beta_2$ from the data, with $\hat\beta_r$ the unbiased sample analog
+$$
+\hat\beta_r \;=\; \frac{1}{B} \sum_{j=1}^B \frac{(j-1)(j-2)\cdots(j-r)}{(B-1)(B-2)\cdots(B-r)}\, M_{(j)},
+$$
+where $M_{(1)} \le M_{(2)} \le \dots \le M_{(B)}$ are sorted block maxima — can be solved for $(\xi, \mu, \sigma)$ in closed form modulo a one-dimensional root-finding step in $\xi$:
+$$
+\frac{3 \hat\beta_2 - \hat\beta_0}{2\hat\beta_1 - \hat\beta_0} \;=\; \frac{3^\xi - 1}{2^\xi - 1},
+$$
+solve numerically for $\hat\xi$, then close-form-recover $\hat\sigma$ and $\hat\mu$ from $\hat\beta_0, \hat\beta_1$.
+
+PWM has two practical advantages and one disadvantage relative to MLE.
+
+*Advantages.* PWM is consistent for any $\xi < 1$ (where $\beta_r$ are finite) — no $\xi > -1/2$ constraint. Empirically, PWM has lower mean-squared error than MLE at small $B$ (say $B \le 50$), as documented in the Hosking–Wallis–Wood (1985) Monte Carlo study; the precision gap closes around $B \approx 100$ and reverses at larger sample sizes where MLE's asymptotic efficiency wins.
+
+*Disadvantage.* PWM has no general likelihood-based inference machinery — confidence intervals require either explicit asymptotic-variance formulas (which are messy for the GEV) or bootstrap. The §4.5 code cell uses a percentile bootstrap to attach uncertainty quantification to PWM estimates.
+
+The MLE-vs-PWM choice is a small-sample-vs-machinery tradeoff. For $B \ge 50$ and $\xi$ comfortably above $-1/2$, MLE is the default. For $B < 30$ or for cases where $\hat\xi$ approaches $-1/2$, PWM (or its more recent L-moments generalization, Hosking 1990) is the safer choice.
+
+### 4.4 Return levels and return periods
+
+The applied payoff of fitting a GEV is *extrapolation* — using the fitted distribution to estimate quantiles further out in the tail than any observed data point. For an annual-block-maxima fit, the relevant question is "what is the level $x_T$ that gets exceeded once every $T$ years on average?" — the **$T$-year return level**, defined as the $1 - 1/T$ quantile of the annual-maximum distribution:
+$$
+x_T \;:=\; G^{-1}\!\left(1 - \frac{1}{T}\right) \;=\; \mu + \frac{\sigma}{\xi}\bigl((-\log(1 - 1/T))^{-\xi} - 1\bigr) \qquad (\xi \ne 0),
+$$
+or $\mu - \sigma \log(-\log(1 - 1/T))$ for $\xi = 0$. The reciprocal $T = 1/(1 - G(x))$ is the **return period**: the expected number of blocks until a maximum exceeding $x$ is observed.
+
+A standard error for $\hat x_T$ follows from the **delta method** applied to the MLE. With $\hat\theta = (\hat\xi, \hat\mu, \hat\sigma)^\top$ and asymptotic covariance $\hat\Sigma = \hat I^{-1}/B$,
+$$
+\widehat{\mathrm{SE}}(\hat x_T) \;=\; \sqrt{\,(\nabla x_T)^\top \hat\Sigma \,(\nabla x_T)\,}\Bigm|_{\theta = \hat\theta},
+$$
+where $\nabla x_T$ is the gradient of $x_T(\theta)$. The three partial derivatives are mechanical:
+$$
+\frac{\partial x_T}{\partial \mu} = 1, \qquad \frac{\partial x_T}{\partial \sigma} = \frac{1}{\xi}\bigl(y_T^{-\xi} - 1\bigr), \qquad \frac{\partial x_T}{\partial \xi} = -\frac{\sigma}{\xi^2}\bigl(y_T^{-\xi} - 1\bigr) - \frac{\sigma}{\xi} y_T^{-\xi} \log y_T,
+$$
+with $y_T := -\log(1 - 1/T)$. The §4.5 code cell implements `return_level_se` using these closed-form gradients.
+
+A caveat about delta-method intervals at large $T$. The Wald-style symmetric interval $\hat x_T \pm 1.96 \cdot \widehat{\mathrm{SE}}(\hat x_T)$ is symmetric in $x_T$, but the actual sampling distribution of $\hat x_T$ is positively skewed at large $T$ — extrapolation uncertainty is asymmetric, with the upper bound much wider than the lower bound. **Profile-likelihood intervals** for $x_T$ are the standard fix:
+$$
+\bigl\{x : -2[\ell_p(x) - \ell(\hat\theta)] \le \chi^2_{1, 1-\alpha}\bigr\},
+$$
+where $\ell_p(x) = \sup_\theta \{\ell(\theta) : x_T(\theta) = x\}$ is the profile log-likelihood for $x_T$. The profile interval is invariant under reparametrization and directly captures the asymmetry. Coles (2001) §3.3.3 has the standard treatment; the §4.5 code cell computes profile-likelihood intervals for $\hat\xi$ on the worked example. (Profile-likelihood intervals for $x_T$ itself are a further reparametrization step we leave to the MDX layer.)
+
+A final remark: at large $T$ — say $T = 1000$ when only $B = 50$ years of data are available — the *extrapolation error* dominates the parametric uncertainty quantified by these intervals. The fitted GEV may be only approximately valid (recall the asymptotic-vs-finite-$m$ distinction of §4.1), and small mis-specifications in the GEV approximation get amplified as $T$ grows. Confidence intervals for $x_T$ at $T \gg B$ are best read as "given the GEV approximation, this is the parametric uncertainty" and not as "this is how confident we should be about the actual physical $T$-year level." The latter requires diagnostic checks and ideally external corroboration (longer historical records, paleoclimatic proxies, physical models).
+
+### 4.5 Worked example: Normal and Pareto block maxima
+
+We close with two worked examples that thread back to §1's running example and §3's domain-of-attraction examples.
+
+<TheoremBlock type="example" number={4} title="Normal block maxima — Gumbel domain, ξ = 0">
+Generate $N = 50{,}000$ iid standard normals, group into $B = 50$ blocks of $m = 1000$, take per-block maxima. Fit GEV via MLE and PWM. Expected results: $\hat\xi \approx 0$ with SE around $0.1$; $\hat\mu \approx b_{1000} = 3.12$, $\hat\sigma \approx a_{1000} = 0.27$ (the §3.4 derived values); profile-likelihood interval for $\xi$ should comfortably contain $0$. The notebook prints MLE $(\hat\xi, \hat\mu, \hat\sigma) = (-0.086, 3.123, 0.275)$ with SEs $(0.504, 0.080, 0.089)$, and PWM bootstrap $(\hat\xi, \hat\mu, \hat\sigma) = (-0.066, 3.118, 0.276)$ with bootstrap SEs $(0.111, 0.044, 0.034)$ — both consistent with $\xi = 0$ within their CIs.
+</TheoremBlock>
+
+<TheoremBlock type="example" number={5} title="Pareto block maxima — Fréchet domain, ξ = 1/α">
+Generate $N = 50{,}000$ iid standard Pareto with shape $\alpha = 2$ ($\xi_{\text{true}} = 0.5$), group into $B = 50$ blocks of $m = 1000$. Expected: $\hat\xi \approx 0.5$ with SE around $0.1$; $\hat\mu \approx 0$ with the location quietly reabsorbing into the scale; $\hat\sigma \approx n^{1/\alpha} = 1000^{0.5} \approx 31.6$ (from the §3.4 derivation); return level $x_{100}$ at $\hat\theta$ around $300$–$400$ with substantial parametric uncertainty. The notebook prints MLE $(\hat\xi, \hat\mu, \hat\sigma) = (0.308, 29.90, 11.96)$ with SEs $(0.133, 1.99, 1.82)$, and PWM bootstrap $\hat\xi = 0.369$ with bootstrap SE $0.080$ — both biased low relative to $\xi_{\text{true}} = 0.5$, a well-known finite-$B$ feature of GEV inference in the Fréchet regime.
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s4_gev_qq_plots.png"
+  alt="Q-Q plots of fitted GEV vs. empirical block maxima for the Normal and Pareto worked examples. Both show good agreement in the body, with mild tail deviations attributable to finite-B sampling noise."
+  caption="Figure 4.1. GEV Q-Q plots for the Examples 4 (Normal blocks, left) and 5 (Pareto blocks, right) MLE fits. The diagonal reference line indicates exact agreement; both panels show good agreement in the body of the distribution, with mild tail deviations attributable to finite-$B$ sampling noise. Q-Q plots are the standard goodness-of-fit diagnostic for fitted GEV models."
+/>
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s4_profile_loglik_xi.png"
+  alt="Profile log-likelihood curves for the GEV shape parameter xi on the Normal and Pareto worked examples. Each curve peaks near the truth, with the 95% chi-squared cutoff drawn as a horizontal line."
+  caption="Figure 4.2. Profile log-likelihood for $\xi$ on Examples 4 and 5. Each curve $\ell_p(\xi) = \sup_{\mu, \sigma} \ell(\xi, \mu, \sigma)$ peaks near the truth — at $\xi = 0$ for the Normal example (left) and $\xi = 0.5$ for the Pareto example (right). The $-2[\ell_p(\xi) - \ell(\hat\theta)] \le \chi^2_{1, 0.95} = 3.84$ cutoff defines the 95% profile-likelihood CI (horizontal dashed line); the CI is asymmetric, capturing the skewed sampling distribution of $\hat\xi$ that the symmetric Wald interval misses."
+/>
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s4_return_level_pareto.png"
+  alt="Return-level curve for the Pareto example: x_T as a function of return period T from 2 to 1000, with delta-method 95% CI as a shaded band that widens substantially at large T."
+  caption="Figure 4.3. Return-level curve $x_T$ vs. return period $T$ for the Pareto example (Example 5). The point estimate (solid line) extrapolates from the fitted GEV; the delta-method 95% CI (shaded band) widens substantially at large $T$, reflecting the extrapolation uncertainty discussed in §4.4. At $T = 100$ the band is roughly $\pm 30\%$ of the point estimate; at $T = 1000$ it widens to $\pm 70\%$ — a regime where parametric uncertainty alone is large, before any concerns about the GEV approximation's validity at finite $m$."
+/>
+
+{/* TODO: <BlockMaximaVsPOT client:visible /> — viz embed deferred to step 6 (placed at the end of §4 to introduce the §5 POT contrast) */}
+
+## 5. Peaks over threshold and the generalized Pareto distribution
+
+The block-maxima approach of §4 throws away most of the data. From $N$ raw observations partitioned into $B$ blocks of size $m$, only $B$ block maxima feed into the GEV fit; the other $N - B = N(1 - 1/m)$ observations are discarded. For environmental records where $m$ is naturally 1 year, this might be acceptable; for ML loss distributions with $N = 10^6$ raw observations and an interest in the upper tail, it's wasteful. The peaks-over-threshold (POT) framework uses the $X_i$ themselves — keeping every observation that exceeds a threshold $u$ — and develops a parallel asymptotic theory for the conditional excess distribution. The payoff: a much larger effective sample size for tail estimation, at the cost of choosing a threshold (a non-trivial choice) and a different parametric family (the generalized Pareto distribution). This section develops the asymptotic foundation (Pickands–Balkema–de Haan), the inferential machinery (threshold selection, GPD MLE, three tail-index estimators), and the canonical risk applications (Value-at-Risk, Expected Shortfall).
+
+### 5.1 The exceedance distribution and the generalized Pareto family
+
+Fix a threshold $u$ in the interior of $F$'s support. The **exceedance distribution at $u$** is the conditional distribution of $X - u$ given $X > u$:
+$$
+F_u(y) \;:=\; \mathbb{P}(X - u \le y \mid X > u) \;=\; \frac{F(u + y) - F(u)}{1 - F(u)}, \qquad y \in [0, x^* - u),
+$$
+where $x^* = \sup\{x : F(x) < 1\}$ is the upper endpoint as in §1. The exceedance distribution is supported on $[0, x^* - u)$ — the gap between the threshold and the upper endpoint of the parent. As $u$ moves up, this support typically shrinks; in the limit $u \uparrow x^*$, we expect $F_u$ to converge to some non-degenerate limit after appropriate rescaling. The Pickands–Balkema–de Haan theorem of §5.2 says exactly that, and the limit family it identifies is the GPD.
+
+<TheoremBlock type="definition" number={3} title="Generalized Pareto distribution">
+The **generalized Pareto distribution** with shape parameter $\xi \in \mathbb{R}$ and scale parameter $\beta > 0$ has CDF
+$$
+H_{\xi, \beta}(y) \;=\;
+\begin{cases}
+1 - (1 + \xi y/\beta)^{-1/\xi}, & \xi \ne 0, \\
+1 - \exp(-y/\beta), & \xi = 0,
+\end{cases}
+$$
+defined on the half-line $y \ge 0$ for $\xi \ge 0$ and on $[0, -\beta/\xi]$ for $\xi < 0$. The corresponding density is $h_{\xi, \beta}(y) = \beta^{-1}(1 + \xi y/\beta)^{-1/\xi - 1}$ for $\xi \ne 0$ (and the obvious limit at $\xi = 0$).
+</TheoremBlock>
+
+The GPD is the GEV's natural partner. Three structural connections, each worth pausing on.
+
+*The GPD is what's left of the GEV when conditioning on exceeding the location.* If $Z \sim G_{\xi, \mu, \sigma}$ is GEV-distributed and we condition on $Z > \mu$ (the GEV location parameter), the rescaled excess $(Z - \mu)/\sigma$ given $Z > \mu$ is $H_{\xi, 1}$. Up to scaling, the GPD is the GEV's conditional-tail distribution.
+
+*The shape parameter $\xi$ is shared.* The GPD's shape and the GEV's shape from §2.4 are the same parameter — this is not an accident of notation. The §3 trichotomy classifies parents by tail-decay rate via $\xi$, and the same $\xi$ governs the tail of the limiting GPD in the POT framework. Heavy-tailed parents have $\xi > 0$ (Pareto-like GPD limit), light-tailed parents have $\xi = 0$ (Exponential GPD limit), and bounded-support parents have $\xi < 0$ (truncated-Beta-like GPD limit).
+
+*The Exponential is the GPD at $\xi = 0$.* Specifically $H_{0, \beta}(y) = 1 - e^{-y/\beta}$, the standard parametrization of $\mathrm{Exp}(\text{rate} = 1/\beta)$. So when the parent is Normal, Gamma, or any other Gumbel-domain distribution, the §5 framework predicts that high-threshold exceedances are *approximately exponential*. The §5.7 code cell verifies this for standard normals: at threshold $u = 2.5$ (the empirical $98\%$-tile), the exceedance distribution should be tightly Exponential.
+
+### 5.2 The Pickands–Balkema–de Haan theorem
+
+The asymptotic foundation of POT inference. Two independent groups proved this in 1974–75: Balkema and de Haan (1974) for the bounded-support case, Pickands (1975) for the unbounded case. The unified statement:
+
+<TheoremBlock type="theorem" number={7} title="Pickands 1975, Balkema–de Haan 1974">
+Let $F$ be a continuous CDF with upper endpoint $x^* \in (-\infty, \infty]$. Then $F \in \mathrm{DA}(G_\xi)$ for some $\xi \in \mathbb{R}$ if and only if there exists a positive measurable function $\beta(u)$ such that
+$$
+\lim_{u \uparrow x^*}\, \sup_{0 \le y < x^* - u}\, \bigl| F_u(y) - H_{\xi, \beta(u)}(y) \bigr| \;=\; 0.
+$$
+</TheoremBlock>
+
+The convergence is *uniform* in $y$, not pointwise. Above any threshold $u$ close enough to $x^*$, the exceedance distribution $F_u$ is well-approximated by a GPD with the same shape $\xi$ as the GEV limit of $F$'s normalized maxima, and with a threshold-dependent scale $\beta(u)$.
+
+The biconditional content is striking. The $(\Leftarrow)$ direction says that the GPD approximation of exceedances is enough to determine the GEV domain of attraction, even though the GEV concerns sample maxima rather than individual exceedances. The $(\Rightarrow)$ direction is the operational one: knowing $F$ is in some DA, we are licensed to fit a GPD to high-threshold exceedances and use it as a tail model.
+
+<TheoremBlock type="proof">
+*Theorem 7 (⇒ direction — the operational direction).* Assume $F \in \mathrm{DA}(G_\xi)$ with normalizing sequences $(a_n, b_n)$ from §3. The §3 limit
+$$
+F^n(a_n x + b_n) \;\to\; G_\xi(x)
+$$
+can be rewritten in tail-probability form. Take logs:
+$$
+n \log F(a_n x + b_n) \;\to\; \log G_\xi(x).
+$$
+Both sides go to $-\infty$ at fixed lower limits and to $0$ at fixed upper limits, but the rate at which $\log F$ approaches $0$ is exactly the rate at which $1 - F$ goes to $0$. Concretely, $\log F(t) = \log(1 - (1 - F(t))) = -(1 - F(t)) + O((1 - F(t))^2)$ as $t \to x^*$, so
+$$
+n(1 - F(a_n x + b_n)) \;\to\; -\log G_\xi(x) \;=\; (1 + \xi x)^{-1/\xi}, \qquad \xi \ne 0.
+$$
+This is the §3.3 quantity in disguise: $n(1 - F(t_n))$ with $t_n = a_n x + b_n$ approaches the inverse-CDF-style quantity $(1 + \xi x)^{-1/\xi}$.
+
+Now translate to exceedances. For threshold $u = a_n x + b_n$, the exceedance probability $1 - F(u + y)$ at $y \ge 0$ is, by the same expansion at the shifted argument $a_n x' + b_n$ where $x' = (u + y - b_n)/a_n = x + y/a_n$:
+$$
+n(1 - F(u + y)) \;\to\; (1 + \xi (x + y/a_n))^{-1/\xi}.
+$$
+Dividing this by $n(1 - F(u))$ to form the conditional probability $\mathbb{P}(X > u + y \mid X > u) = 1 - F_u(y)$:
+$$
+1 - F_u(y) \;=\; \frac{1 - F(u + y)}{1 - F(u)} \;\to\; \frac{(1 + \xi(x + y/a_n))^{-1/\xi}}{(1 + \xi x)^{-1/\xi}} \;=\; \left(1 + \frac{\xi y/a_n}{1 + \xi x}\right)^{-1/\xi}.
+$$
+Choosing $\beta(u) := a_n (1 + \xi x)/\xi$ — keeping track of scaling — gives $1 - F_u(y) \to (1 + \xi y/\beta(u))^{-1/\xi}$, which is $1 - H_{\xi, \beta(u)}(y)$. This is the GPD with the same $\xi$.
+
+The argument so far is pointwise in $y$. The uniform-in-$y$ convergence in Theorem 7 requires uniform convergence over compact subsets of the support of $F_u$, which follows from monotonicity (both $F_u$ and $H_{\xi, \beta(u)}$ are CDFs, hence monotone, so pointwise convergence on a dense set plus monotonicity gives uniform convergence on compact sets — the Pólya extension of pointwise to uniform convergence for monotone functions). The full proof verifying that uniformity extends to the entire support $[0, x^* - u)$ uses regular-variation arguments specific to each of the three DA cases; Embrechts–Klüppelberg–Mikosch §3.4 carries this out in full.
+
+The $(\Leftarrow)$ direction — GPD-uniform-approximation implies GEV domain — is the structural content of the theorem and is genuinely deeper. The proof in EKM §3.4 builds on the de Haan-class-Π characterization mentioned in §3 and runs about a page after the prerequisite machinery is in place. We state the result and refer to that source.
+</TheoremBlock>
+
+The function $\beta(u)$ in Theorem 7 is determined up to scaling by the GEV normalizing sequences. For the worked example, the explicit form follows from §3's normalization; for a fitted model, we estimate $\beta(\hat u)$ directly from the data, without trying to recover it from a §3 derivation.
+
+A clarifying remark: Theorem 7 is the source of the slogan "exceedances over a high threshold are approximately Pareto-tailed when the parent is heavy-tailed, exponential-tailed when the parent is light-tailed." It formalizes an old empirical observation in extreme-value analysis (the "Pickands plot" tradition predates Pickands' 1975 proof) and licenses the GPD as the universal parametric tail model used in modern risk applications.
+
+{/* TODO: <BlockMaximaVsPOT client:visible /> — viz embed deferred to step 6 (placed here to motivate the §5 vs §4 contrast directly after PBdH) */}
+
+### 5.3 Threshold selection: the bias–variance tradeoff
+
+Theorem 7 promises GPD approximation as $u \uparrow x^*$. In practice, we must choose a finite $u$ from finite data, and the choice is a bias–variance tradeoff exactly analogous to §4's block-size choice.
+
+*Bias.* The approximation error $\sup_y |F_u(y) - H_{\xi, \beta(u)}(y)|$ in Theorem 7 is small only when $u$ is close enough to $x^*$. At low $u$, the exceedance distribution may be far from any GPD — there's no asymptotic regime to invoke.
+
+*Variance.* The number of exceedances $N_u = \#\{i : X_i > u\}$ is what GPD inference uses; lowering $u$ raises $N_u$ and tightens parameter estimates. At high $u$, $N_u$ is small, and the fitted parameters are noisy.
+
+The standard diagnostic is the **mean-excess plot**. Define the **mean excess function**
+$$
+e(u) \;:=\; \mathbb{E}[X - u \mid X > u] \;=\; \frac{1}{1 - F(u)} \int_u^{x^*} (1 - F(t))\, dt.
+$$
+A direct calculation from Definition 3 shows that for $X \sim H_{\xi, \beta}$ with $\xi < 1$,
+$$
+e(u) \;=\; \frac{\beta + \xi u}{1 - \xi}, \qquad u \in [0, x^*).
+$$
+The mean-excess function is *linear* in $u$ for the GPD, with slope $\xi/(1 - \xi)$ and intercept $\beta/(1 - \xi)$. So if $F$ is GPD above some threshold $u_0$, the empirical mean-excess function
+$$
+\hat e(u) \;:=\; \frac{1}{N_u} \sum_{i : X_i > u} (X_i - u)
+$$
+should be approximately linear in $u$ for $u \ge u_0$. Plotting $\hat e(u)$ against $u$ and looking for the smallest $u$ above which the plot becomes linear is the standard threshold-selection diagnostic.
+
+A second diagnostic — the **parameter-stability plot** — fits a GPD at each candidate threshold $u$ in a grid and plots the estimates $\hat\xi(u)$ and the modified scale $\hat\beta^*(u) := \hat\beta(u) - \hat\xi(u) \cdot u$ versus $u$. If the parent is GPD-tailed above some $u_0$, both quantities should be approximately constant in $u$ for $u \ge u_0$ (the modified scale is constructed precisely to be threshold-invariant under GPD).
+
+In practice, neither diagnostic gives a single optimal $u$ — they suggest a range, and sensitivity analysis across that range is the standard practice. The §5.7 code cell produces both plots for the worked example.
+
+A pragmatic alternative for ML applications: choose $u$ to be the empirical $\tau$-quantile for some preselected $\tau$ such as $0.95$ or $0.98$. This avoids the diagnostic-plot judgment call and yields reproducible $u$ across resamples or across deployments — useful for OOD detection in production systems, where automated threshold selection is required. The cost is a bias of unknown magnitude.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s5_mean_excess_plots.png"
+  alt="Mean-excess plots for Normal and Pareto data: Normal's plot is approximately flat above the 95% empirical quantile (Gumbel-domain prediction of zero slope), Pareto's is linear with slope ~1 (Frechet-domain prediction xi/(1-xi) = 1)."
+  caption="Figure 5.1. Mean-excess plots for the Examples 6 (Normal, left) and 7 (Pareto, right) datasets at $N = 50{,}000$. The Normal plot (Gumbel-domain prediction $\xi = 0 \Rightarrow$ slope 0) is approximately flat above $u \approx 1.5$. The Pareto plot (Fréchet-domain prediction $\xi = 0.5 \Rightarrow$ slope $\xi/(1 - \xi) = 1$) is linear with slope $\approx 1$ above $u \approx 5$. Both confirm Theorem 7's predictions and identify the threshold above which GPD inference is well-licensed."
+/>
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s5_parameter_stability_pareto.png"
+  alt="Parameter-stability plots for the Pareto example: fitted xi-hat and modified scale beta-star plotted versus threshold u over the upper 30% of the empirical support, both stabilizing near xi = 0.5 and a constant scale above u ≈ 3."
+  caption="Figure 5.2. Parameter-stability plots for the Pareto example (Example 7). Top: $\hat\xi(u)$ versus threshold $u$ over the upper $30\%$ of the empirical support, with point-wise 95% delta-method CIs. Bottom: modified scale $\hat\beta^*(u) = \hat\beta(u) - \hat\xi(u) \cdot u$, threshold-invariant under GPD. Both stabilize near the truth ($\xi = 0.5$, $\beta^*$ constant) above $u \approx 3$, identifying the threshold range where GPD inference is well-calibrated."
+/>
+
+### 5.4 GPD maximum likelihood
+
+Once $u$ is fixed, GPD inference reduces to standard MLE on the exceedances. Let $Y_i = X_{(i)} - u$ for $i = 1, \dots, N_u$ index the (positive) exceedances. The negative log-likelihood at parameters $\theta = (\xi, \beta)$ for $\xi \ne 0$ is
+$$
+-\ell(\theta) \;=\; N_u \log \beta + \left(\frac{1}{\xi} + 1\right) \sum_{i=1}^{N_u} \log\!\left(1 + \frac{\xi Y_i}{\beta}\right),
+$$
+defined on $\{\theta : 1 + \xi Y_i / \beta > 0 \text{ for all } i\}$. The Gumbel limit at $\xi = 0$ is $-\ell = N_u \log \beta + \beta^{-1} \sum Y_i$, the Exponential negative log-likelihood. As with the GEV in §4, the support depends on $\theta$, so boundary issues at $\xi \le -1/2$ recur.
+
+<TheoremBlock type="theorem" number={8} title="Smith 1987 — GPD MLE asymptotics">
+Let $Y_1, \dots, Y_{N_u}$ be i.i.d. $H_{\xi, \beta}$. The MLE $\hat\theta = (\hat\xi, \hat\beta)$ satisfies:
+
+- If $\xi > -1/2$: $\hat\theta$ is consistent and $\sqrt{N_u}(\hat\theta - \theta) \Rightarrow \mathcal{N}(0, V(\theta))$ with
+$$
+V(\theta) = (1 + \xi)^2 \begin{pmatrix} 1 + \xi & -\beta \\ -\beta & 2\beta^2 \end{pmatrix}.
+$$
+- If $\xi \in (-1, -1/2]$, non-standard rate, non-Gaussian limit.
+- If $\xi \le -1$: MLE may fail to exist.
+</TheoremBlock>
+
+The covariance matrix $V$ has a clean closed form (in contrast to the GEV's, which requires the Fisher-information closed-form computation of Prescott–Walden). The simplification is because the GPD has only two parameters, and the support boundary at $-\beta/\xi$ is more tractable than the GEV's boundary at $\mu - \sigma/\xi$.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s5_gpd_qq_plots.png"
+  alt="GPD Q-Q plots for the Normal and Pareto exceedance examples: both show good agreement in the body, with mild tail deviations attributable to finite-N_u sampling noise."
+  caption="Figure 5.3. GPD Q-Q plots for the Examples 6 and 7 MLE fits. Diagonal reference lines indicate exact agreement; both panels show good fit in the body of the exceedance distribution. The Normal-exceedances panel (left) at threshold $u = 2.05$ recovers $\hat\xi \approx 0$ — consistent with the Gumbel-domain prediction. The Pareto-exceedances panel (right) at threshold $u = 7.30$ recovers $\hat\xi \approx 0.48$ — close to the Fréchet truth $\xi = 0.5$."
+/>
+
+### 5.5 Tail-index estimation: three classical estimators
+
+The shape parameter $\xi$ — equivalently the *tail index* $\alpha = 1/\xi$ for $\xi > 0$ — governs the polynomial decay of the right tail in the Fréchet domain. Several estimators target $\xi$ directly without going through full GPD MLE; the three classical ones, all consistent and asymptotically Normal under regularity, are the Hill, Pickands, and Dekkers–Einmahl–de Haan (DEdH) "moment" estimators.
+
+The natural setting for these estimators is the upper-order-statistic framework. Let $X_{(1)} \le X_{(2)} \le \dots \le X_{(n)}$ be the sorted observations. For an integer $k \in \{1, \dots, n - 1\}$ — the number of upper order statistics used — the threshold is implicitly $u = X_{(n - k)}$, and the upper $k+1$ observations are the candidate "tail."
+
+**The Hill estimator (Hill 1975).** For $\xi > 0$ (Fréchet domain only):
+$$
+\hat\xi_{\mathrm{Hill}}(k) \;:=\; \frac{1}{k} \sum_{i=1}^k \log X_{(n - i + 1)} - \log X_{(n - k)}.
+$$
+The estimator is a *log-spacing* statistic — the sample mean of $\log$ ratios of upper order statistics to the threshold. It is the MLE for $\xi$ in the GPD restricted to $\xi > 0$ at threshold $u = X_{(n-k)}$, conditional on the remaining $k$ exceedances.
+
+<TheoremBlock type="theorem" number={9} title="Mason 1982 — Hill consistency and asymptotic normality">
+Suppose $X_i$ are iid with $1 - F(x) = x^{-1/\xi} L(x)$ for some $L \in \mathrm{RV}_0$ and $\xi > 0$ (i.e., $F$ is in the Fréchet domain with shape $\xi$). If $k = k_n$ is an intermediate sequence with $k_n \to \infty$ and $k_n/n \to 0$, then $\hat\xi_{\mathrm{Hill}}(k_n) \to \xi$ in probability. If additionally a second-order regular-variation condition holds, $\sqrt{k_n}(\hat\xi_{\mathrm{Hill}}(k_n) - \xi) \Rightarrow \mathcal{N}(0, \xi^2)$.
+</TheoremBlock>
+
+**The Pickands estimator (Pickands 1975).** Works for any $\xi \in \mathbb{R}$ (not just $\xi > 0$):
+$$
+\hat\xi_{\mathrm{Pickands}}(k) \;:=\; \frac{1}{\log 2} \log\!\left( \frac{X_{(n - k + 1)} - X_{(n - 2k + 1)}}{X_{(n - 2k + 1)} - X_{(n - 4k + 1)}} \right).
+$$
+The estimator compares ratios of differences at three nested upper-order-statistic levels. Its asymptotic variance is $\xi^2 (2^{2\xi + 1} + 1) / (k_n (2(2^\xi - 1) \log 2)^2)$, larger than the Hill variance $\xi^2 / k_n$ for typical $\xi$ values — Pickands sacrifices some efficiency for the broader $\xi \in \mathbb{R}$ applicability.
+
+**The DEdH (moment) estimator (Dekkers–Einmahl–de Haan 1989).** A bias-improved estimator that works for any $\xi \in \mathbb{R}$. Let $M_n^{(j)}(k) := \frac{1}{k} \sum_{i=1}^k (\log X_{(n - i + 1)} - \log X_{(n - k)})^j$ for $j = 1, 2$ — the first two log-spacing moments. Then
+$$
+\hat\xi_{\mathrm{DEdH}}(k) \;:=\; M_n^{(1)}(k) + 1 - \frac{1}{2}\!\left(1 - \frac{(M_n^{(1)}(k))^2}{M_n^{(2)}(k)}\right)^{-1}.
+$$
+The first term $M_n^{(1)}(k)$ is the Hill estimator. The correction term improves bias for $\xi \le 0$ — where Hill is inconsistent — and the resulting estimator is consistent and asymptotically Normal across the full parameter range.
+
+**The bias–variance tradeoff in $k$.** All three estimators share a common feature: they depend on a tuning parameter $k$ (the number of upper order statistics), and their bias and variance both depend on $k$ in opposing directions.
+
+- *Small $k$.* High variance (small effective sample size for tail estimation) but low bias (the estimator uses only the most extreme observations, where the GPD approximation is best).
+- *Large $k$.* Low variance but high bias (the estimator dilutes the tail with non-tail observations that violate the GPD assumption).
+
+The standard graphical diagnostic is the **Hill plot** (or Pickands or DEdH plot): plot $\hat\xi(k)$ against $k$ for $k = 1, \dots, n/2$ and look for a stable plateau in the middle range. Choose $k$ in the plateau; report the corresponding $\hat\xi$. The plot is the tail-index analog of the §5.3 mean-excess plot — same diagnostic philosophy, applied to a different family of estimators.
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s5_tail_index_estimators.png"
+  alt="Hill, Pickands, and DEdH estimator traces for the Pareto example, plotted versus k from 1 to n/2. The Hill trace is smooth and plateaus near 0.5; Pickands is noisier; DEdH tracks Hill in the middle range and recovers more accurately near the boundary."
+  caption="Figure 5.4. Hill, Pickands, and DEdH tail-index estimator traces $\hat\xi(k)$ versus $k$ for the Pareto example (Example 7) at $N = 50{,}000$. The dashed horizontal line marks $\xi_{\text{true}} = 0.5$. Hill (red) is smooth and plateaus near the truth in the middle range $k \in [50, 200]$; Pickands (blue) is noisier as expected from its larger asymptotic variance; DEdH (green) tracks Hill in the middle range. Pickands is greyed out for $4k \ge n$ where the estimator is undefined."
+/>
+
+{/* TODO: <HillPlotExplorer client:visible /> — viz embed deferred to step 6 (placed after Figure 5.4 to let the reader interact with the same plot) */}
+
+### 5.6 Value-at-Risk and Expected Shortfall
+
+The applied payoff for risk management — and increasingly for ML tail-risk quantification — is estimating two summary statistics of the tail.
+
+<TheoremBlock type="definition" number={4} title="Value-at-Risk">
+For confidence level $\alpha \in (0, 1)$, the **Value-at-Risk** is the $\alpha$-quantile of $X$:
+$$
+\mathrm{VaR}_\alpha(X) \;:=\; F^{-1}(\alpha) \;=\; \inf\{x : F(x) \ge \alpha\}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={5} title="Expected Shortfall">
+The **Expected Shortfall** at level $\alpha$ is the conditional expectation of $X$ given that $X$ exceeds the corresponding VaR:
+$$
+\mathrm{ES}_\alpha(X) \;:=\; \mathbb{E}[X \mid X > \mathrm{VaR}_\alpha(X)] \;=\; \frac{1}{1 - \alpha} \int_\alpha^1 \mathrm{VaR}_t(X)\, dt.
+$$
+</TheoremBlock>
+
+VaR is the standard quantile interpretation; ES is the standard mean-loss-given-loss interpretation. ES dominates VaR as a risk measure — it is **coherent** in the Artzner–Delbaen–Eber–Heath (1999) sense (it satisfies subadditivity, an axiom VaR violates) — and Basel III regulatory frameworks have shifted to ES as the primary capital-adequacy metric for banks. For ML, ES quantifies the expected severity of a tail event, not just the cutoff.
+
+POT provides closed-form estimators for both VaR and ES after fitting a GPD to exceedances above the threshold $u$. The probability that $X > u + y$ for $y > 0$ factorizes as
+$$
+\mathbb{P}(X > u + y) \;=\; \mathbb{P}(X > u) \cdot \mathbb{P}(X - u > y \mid X > u) \;\approx\; \frac{N_u}{n} \cdot \bigl(1 + \xi y/\beta\bigr)^{-1/\xi},
+$$
+using the empirical estimate $N_u/n$ for $\mathbb{P}(X > u)$ and the GPD approximation for the conditional excess. Inverting this for the $\alpha$-quantile, with $\alpha$ such that $1 - \alpha < N_u/n$ (i.e., the quantile we want lies above the threshold):
+$$
+\widehat{\mathrm{VaR}}_\alpha \;=\; u + \frac{\hat\beta}{\hat\xi}\!\left(\!\left(\frac{n(1 - \alpha)}{N_u}\right)^{-\hat\xi} - 1\right).
+$$
+And from the GPD's mean-excess function $e(u) = (\beta + \xi u)/(1 - \xi)$, applied at threshold $\widehat{\mathrm{VaR}}_\alpha$:
+$$
+\widehat{\mathrm{ES}}_\alpha \;=\; \widehat{\mathrm{VaR}}_\alpha + \frac{\hat\beta + \hat\xi(\widehat{\mathrm{VaR}}_\alpha - u)}{1 - \hat\xi}, \qquad \hat\xi < 1.
+$$
+The ES expression requires $\hat\xi < 1$, equivalently the tail index $\hat\alpha = 1/\hat\xi > 1$ — the tail must be light enough for the mean to exist. For very heavy-tailed data with $\hat\xi \ge 1$, ES is infinite.
+
+A remark on practitioner interpretation. The factor $n(1 - \alpha)/N_u$ inside the VaR formula is the ratio of the target tail probability $1 - \alpha$ to the threshold tail probability $N_u/n$. When this ratio is much less than $1$ — i.e., we are extrapolating past the threshold to a more extreme quantile — the formula does work the empirical CDF cannot do (the empirical $\alpha$-quantile is undefined for $\alpha > 1 - 1/n$). When this ratio is close to or above $1$ — i.e., the target quantile is below the threshold — the GPD approximation is not the right tool; use the empirical CDF directly. A useful default: choose $u$ such that $N_u/n$ is comfortably larger than $1 - \alpha$, typically $5$–$10\times$ larger.
+
+### 5.7 Worked example: standard normals and Pareto exceedances
+
+Two examples thread the §5 machinery, paralleling the §4 setup. Both use $N = 50{,}000$ raw observations; threshold $u$ is selected at the empirical $98\%$-tile.
+
+<TheoremBlock type="example" number={6} title="Standard Normal exceedances — Gumbel domain">
+GPD MLE should recover $\hat\xi \approx 0$ (consistent with the Gumbel-domain prediction of $\xi = 0$ in §3.4). The mean-excess plot should be approximately flat (slope $\xi / (1 - \xi) = 0$ at $\xi = 0$) above the threshold. The notebook prints threshold $u = 2.05$, $N_u = 1000$, GPD-MLE $\hat\xi \approx 0.10$ with wide SE (the Gumbel-domain $\hat\xi$ is poorly identified at this $N_u$ because the tail is too thin to pin down $\xi$ precisely).
+</TheoremBlock>
+
+<TheoremBlock type="example" number={7} title="Pareto(α=2) exceedances — Fréchet domain">
+GPD MLE should recover $\hat\xi \approx 0.5$ (consistent with §3.4's $\xi = 1/\alpha$). Mean-excess plot should be linear with slope $\xi/(1 - \xi) = 0.5/0.5 = 1$. The Hill plot should plateau at $\hat\xi \approx 0.5$ over a middle range of $k$. The notebook prints threshold $u = 7.30$, $N_u = 1000$, GPD-MLE $\hat\xi = 0.480$ (SE $0.051$), $\hat\beta = 3.59$ (SE $0.21$) — within $\sim 4\%$ of the truth $\xi = 0.5$.
+
+VaR at $\alpha = 0.999$ and ES at the same level are computed for both examples. For the Pareto example, the analytical truth is $\mathrm{VaR}_{0.999} = \sqrt{1000} \approx 31.6$ and $\mathrm{ES}_{0.999} = 2 \cdot \mathrm{VaR}_{0.999}$ (using the closed-form $\mathrm{ES}_\alpha = \alpha \cdot \mathrm{VaR}_\alpha / (\alpha - 1)$ for the standard Pareto with shape $\alpha$); the GPD-fit-based estimate gives $\widehat{\mathrm{VaR}}_{0.999} = 31.34$ and $\widehat{\mathrm{ES}}_{0.999} = 60.43$, agreeing with the analytical truth to within $\sim 1\%$ for VaR and $\sim 4\%$ for ES.
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/extreme-value-theory/evt_s5_pot_var_sweep.png"
+  alt="Sweep of GPD-based VaR_alpha and ES_alpha over alpha from 0.95 to 0.9999 for the Pareto example, with delta-method 95% CIs as shaded bands. Both estimates agree closely with the analytical-truth dashed curves, with CI bands widening at the highest alpha values."
+  caption="Figure 5.5. POT-based $\widehat{\mathrm{VaR}}_\alpha$ and $\widehat{\mathrm{ES}}_\alpha$ as functions of $\alpha$ for the Pareto example (Example 7), with delta-method 95% CIs as shaded bands. Analytical-truth curves shown as dashed lines for reference. Both estimates agree closely with the truth across the sweep; CI bands widen at the highest $\alpha$ values where the extrapolation distance from the threshold $u$ to the target quantile is largest. At $\alpha = 0.999$: $\widehat{\mathrm{VaR}} = 31.34$ vs. truth $31.62$; $\widehat{\mathrm{ES}} = 60.43$ vs. truth $63.25$."
+/>
+
+## 6. Connections, ML applications, and limits
+
+Sections 2–5 developed the asymptotic theory and inferential machinery of extreme value theory: max-stability and the trichotomy in §2, domains of attraction in §3, block-maxima inference in §4, and peaks-over-threshold inference in §5. This closing section steps back from the math. We discuss three modern ML applications that put the framework to work, sketch the natural follow-up topics that extend EVT in directions a typical practitioner will encounter, and lay out the cross-site map that locates this topic in the formalstatistics → formalML curriculum graph.
+
+### 6.1 Three ML applications
+
+**Tail-aware prediction intervals.** The [prediction-intervals](/topics/prediction-intervals) topic covers split conformal, conformalized quantile regression (CQR), and Hodges–Lehmann test-inversion intervals on a heteroscedastic regression problem with Student-$t_3$ residuals as one of its scenarios (the §4 heavy-tailed location-shift example there). Split conformal achieves nominal marginal coverage in that scenario, but pays for it with band widths nearly twice the homoscedastic-Gaussian case. Why? Because the $t_3$ tail is in $\mathrm{DA}(\Phi_{1/3}) = \mathrm{DA}(\mathrm{Fréchet}_3)$ — heavy enough that the residual distribution's $1 - \alpha/2$ quantile is qualitatively larger than the Gaussian's. The fitted GPD on residuals from §5 lets us decompose this bandwidth effect: $\mathrm{VaR}_{1 - \alpha/2}$ on the residual distribution is exactly the half-width of an oracle-quantile prediction interval, and $\widehat{\mathrm{ES}}_{1 - \alpha/2}$ tells us how much further the typical conditional miscoverage extends past the band. For deployed regression models with heavy-tailed residuals — financial returns, queue latencies, certain biomedical responses — fitting a GPD to the residuals is a cheap and informative diagnostic that the standard CQR/conformal pipeline doesn't surface.
+
+A natural follow-up: replace the empirical quantile in CQR with a GPD-extrapolated quantile when the calibration set is small relative to the target $1 - \alpha$. Conformal's finite-sample guarantee holds for any score function, including a GPD-fitted one; the question is whether the GPD-fitted score has materially better conditional coverage in tail regimes. Initial work in this direction has shown promise (Chernozhukov–Wüthrich–Zhu 2018); a fuller treatment is beyond the scope of this section.
+
+**Out-of-distribution detection.** A standard pattern in production ML is to monitor a scalar score per input — softmax confidence, energy, embedding norm, reconstruction error — and flag inputs where the score is unusually extreme as out-of-distribution. The classical baseline (Hendrycks–Gimpel 2017) uses a hard threshold on the maximum softmax probability; modern variants train an OOD-detection head or use likelihood ratios. The EVT contribution is principled threshold calibration: if we model the in-distribution score's right tail as a GPD via §5's machinery, then a candidate input's "OOD-ness" becomes a calibrated tail probability — $1 - H_{\hat\xi, \hat\beta}(s_{\text{new}} - \hat u)$ — rather than an uncalibrated raw score. This converts threshold tuning from a per-deployment hyperparameter into a single $\alpha$-level choice ("flag the top 0.1% of in-distribution scores as suspicious"), which generalizes across model versions and data drifts in a way raw thresholds do not.
+
+The honest caveat: production OOD detection rarely fails at the right tail of a single score — it fails when the input violates assumptions the score doesn't capture (covariate shift, novel object categories, adversarial inputs). EVT calibrates the tail; it does not detect the right tail of the right score. In production, this manifests as "EVT-calibrated OOD has well-controlled false-positive rates but mediocre true-positive rates on the failure modes that matter." Treat the calibration as the floor, not the ceiling, of the OOD problem.
+
+**Tail-risk quantification for deployed models.** A deployed model has a loss distribution — per-query latency, per-prediction error, per-decision regret — and the tails of that distribution are what determine real-world cost. The 99.9th percentile latency triggers SLA violations; the worst-case classification error over a deployment year is what regulators ask about. Estimating these from a finite history requires extrapolating past observed extremes, which is exactly what §4's return-level machinery and §5's POT-VaR-ES machinery are designed for. For a model deployed on $10^7$ queries per day with daily monitoring, a year of operation gives $\sim 3.6 \times 10^9$ raw observations and $\sim 3.6 \times 10^7$ daily-block-maxima — far more than enough for both block-maxima GEV and POT-GPD fits. The fitted models then give principled answers to "what loss is exceeded once a year on average" (a return level) or "what is the expected loss conditional on being in the worst 0.1% of queries" (an Expected Shortfall).
+
+Two subtleties recur in production tail-risk work. First, daily blocks are usually *not* iid — diurnal cycles, day-of-week effects, and deployment changes induce serial dependence. The §6.2 forward-pointer to extremes-of-dependent-sequences is the relevant one. Second, the *parent* distribution drifts over time as the model and data change, so a single fitted GEV / GPD is not a stationary model — re-fitting on a rolling window is standard practice. The EVT framework is silent on both issues; they are handled by surrounding engineering.
+
+### 6.2 Forward-pointers
+
+Five directions extend the topic, each natural enough that a cross-reference is warranted, but with depth that pushes past this topic's scope.
+
+- **Extremes of dependent sequences.** The Leadbetter–Lindgren–Rootzén (1983) framework introduces the **extremal index** $\theta \in (0, 1]$ that quantifies tail dependence: at $\theta = 1$ the dependent sequence behaves like its iid counterpart for extreme-value purposes, while $\theta < 1$ indicates clustering of extremes (one big event predicts another). The full theory generalizes the GEV trichotomy to weakly-dependent stationary sequences. For ML applications with serially-correlated losses, this is the right framework; the topic above silently assumes $\theta = 1$ throughout.
+
+- **Multivariate EVT and copula-based tail dependence.** When the object of interest is the joint upper tail of a multivariate distribution rather than the univariate maximum, the GEV / GPD framework generalizes via the **extreme-value copula** and the **spectral measure** of tail dependence. The univariate marginals are still GEV / GPD; the dependence structure is encoded separately. Resnick (1987) and Beirlant–Goegebeur–Segers–Teugels (2004) are the standard references. ML applications include multivariate outlier detection and joint-quantile prediction.
+
+- **Spatial extremes and max-stable processes.** When the object of interest is the entire spatial field of extremes — extreme rainfall over a region, extreme network latencies across a service mesh — the framework generalizes further to **max-stable processes**. Davison, Padoan, and Ribatet (2012) is the standard practitioner introduction; Coles (2001), Chapter 9 has a textbook treatment. The mathematical machinery is more involved (the Pickands representation theorem for max-stable processes is the load-bearing result) and substantially beyond the scope of this topic.
+
+- **Bayesian EVT.** Frequentist GEV / GPD inference per §§4–5 has well-known difficulties at small $B$ or $N_u$ — wide confidence intervals, profile-likelihood asymmetries that delta-method intervals miss, and the boundary-MLE issues at $\xi \le -1/2$. Bayesian methods sidestep many of these via informative priors on $\xi$ that exclude the pathological regime, plus full posterior inference over $(\xi, \mu, \sigma)$ that captures asymmetry directly. Coles and Tawn (1996) and Stephenson (2016) give standard treatments; the Bayesian framework also opens the door to hierarchical EVT models that share information across blocks or thresholds. **Variational Inference** *(coming soon)* and **Probabilistic Programming** *(coming soon)* provide the inferential machinery.
+
+- **Deep learning for EVT.** Recent work has explored neural-network parameterizations of GEV / GPD parameters as functions of covariates — replacing the constant $(\xi, \mu, \sigma)$ or $(\xi, \beta)$ with neural-network outputs that vary smoothly with input features. This is to EVT what mixture-density networks are to standard regression. The natural conformal-prediction connection — using a deep-learned GEV / GPD as a calibration model for tail-aware conformal scores — is, as far as we are aware, an open direction.
+
+### 6.3 Limits
+
+Three honest limitations of the framework as developed in this topic.
+
+*Asymptotic, not finite-sample.* Both the GEV-of-block-maxima and GPD-of-exceedances results are asymptotic. At finite $m$ or finite $u$, the parametric families are *approximations* whose error depends on how fast the parent's tail enters the regular-variation regime. Second-order regular variation theory (de Haan–Resnick 1996) provides quantitative bounds, but these involve constants that are difficult to estimate. In practice, residual diagnostics — Q-Q plots, mean-excess plots, parameter-stability plots — are the working assurance that the approximation is acceptable.
+
+*Tail-only.* By construction, the framework cares only about the upper tail of the parent distribution. It says nothing about the bulk, and a fitted GEV / GPD is not a useful generative model for typical observations. For applications where both bulk and tail matter — full-distribution density estimation, simulation, generative modeling — EVT provides one component (the tail) of a hybrid model whose body is fit by other means (kernel density estimation, parametric models, deep generative models). The hybrid construction is itself non-trivial; Carreau and Bengio (2009) discuss the body-tail-stitching problem.
+
+*Univariate.* The topic treats only univariate extremes. Multivariate generalizations exist (the §6.2 forward-pointer), but the formalism becomes substantially more involved. For ML applications where the natural object is a multivariate loss vector or a high-dimensional embedding, the univariate framework applies to scalar summaries (norms, projections) but loses the joint tail-dependence structure.
+
+A meta-point worth making: the asymptotic theory's universality is its great virtue and its great limit. Trichotomy says we don't need to know the parent — the limit is one of three families. But the limit is *only* one of three families, and choosing among them at finite samples is the inferential burden of §§4–5. Get $\hat\xi$ wrong, and the extrapolation goes badly wrong, in directions the parametric family doesn't constrain.
+
+## Connections and Further Reading
+
+Extreme value theory sits at a specific location in the formalstatistics → formalML curriculum graph. The backward pointers (prerequisites) and forward pointers (where this topic shows up downstream) are worth surfacing explicitly.
+
+**Backward to formalstatistics.**
+
+- <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" />. The Donsker / functional-CLT machinery is the framework for "what happens to the entire empirical CDF $\hat F_n$ as $n \to \infty$." EVT is the analog at the tail. The technical machinery overlaps in the slow-variation arguments of §3 and the regular-variation expansions of §5. Referenced primarily in §3.
+
+- <ExternalLink href="https://formalstatistics.com/topics/order-statistics-and-quantiles" site="formalstatistics" topic="Order Statistics & Quantiles" />. The sample maximum $M_n = X_{(n)}$ is the extreme order statistic; that topic treats the joint distribution of $X_{(1)}, \dots, X_{(n)}$ and the asymptotic theory of $X_{(\lceil pn \rceil)}$ for fixed $p \in (0, 1)$. EVT continues this story for $p \to 1$ (the maximum) and $p$ close to 1 (high quantiles via §5 POT). Referenced primarily in §1, §4, and §5.
+
+**Backward to formalcalculus.**
+
+- <ExternalLink href="https://formalcalculus.com/topics/measure-theoretic-probability" site="formalcalculus" topic="Measure-Theoretic Probability" />. The weak-convergence framework that all of §§2–3 lean on lives there — convergence-in-distribution as weak convergence of probability measures, the Portmanteau theorem (used in the Khintchine proof of §2.3), and Slutsky's theorem (used implicitly throughout). Referenced in §§2–3.
+
+**Internal to formalML.**
+
+- [Concentration Inequalities](/topics/concentration-inequalities). The sub-Gaussian / sub-exponential machinery there is the lead-in to "what happens when those moment-bound assumptions fail" — and the Fréchet domain of §3 is exactly the answer.
+- [Prediction Intervals](/topics/prediction-intervals). T4 sibling. The heavy-tailed-residual scenario in `prediction-intervals` §4 uses Student-$t_3$ residuals, which are in $\mathrm{DA}(\mathrm{Fréchet}_3)$; this topic's §6.1 discusses GPD-extrapolated quantiles as a refinement of CQR for that regime.
+
+
