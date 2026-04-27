@@ -836,14 +836,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _A probability space (Ω, F, P) is a measure space with P(Ω) = 1. Sigma-algebras formalize observable events; filtrations model information flow._
 
-## When `formalml/rank-tests` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/order-statistics-and-quantiles** declares `formalmlConnections` → `rank-tests` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Wilcoxon signed-rank, Mann–Whitney U, Kruskal–Wallis. Permutation-distribution machinery is orthogonal to Bahadur asymptotics and deferred. §29.10 Rem 20 pointer; forthcoming on formalml._
-
 ## When `formalml/regularization` ships
 
 Add the reciprocal pointer back to:
