@@ -102,8 +102,9 @@ function generate(
   const sampler = residSampler(dist, rng);
   const X = new Float64Array(n);
   const Y = new Float64Array(n);
+  const xRange = X_MAX - X_MIN;
   for (let i = 0; i < n; i++) {
-    const x = X_MIN + (X_MAX - X_MIN) * rng();
+    const x = X_MIN + xRange * rng();
     // σ(x) = 1 + σ_max * |x| / 2  (multiplicative heteroscedasticity factor)
     const sig = 1 + (sigmaMax * Math.abs(x)) / 2;
     X[i] = x;

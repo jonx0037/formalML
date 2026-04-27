@@ -5,6 +5,7 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   cqrIntervalPI,
   fitPredictRidge,
+  gaussianSampler,
   generateHeavyTailedLocation,
   generateHeteroscedastic,
   hlIntervalPI,
@@ -63,30 +64,15 @@ export default function BridgeTheoremsExplorer() {
       const yCloseAll = new Float64Array(N_GRID * N_PER);
       const sigmaCloseAll = new Float64Array(N_GRID * N_PER);
       const sigmaTrue = (x: number) => 0.2 + (0.6 * Math.abs(x)) / 3;
-      // Use Box-Muller via gaussianSampler
-      const gauss2 = (() => {
-        let cached: number | null = null;
-        return () => {
-          if (cached !== null) {
-            const v = cached;
-            cached = null;
-            return v;
-          }
-          const u1 = Math.max(rng(), 1e-12);
-          const u2 = rng();
-          const r = Math.sqrt(-2 * Math.log(u1));
-          const theta = 2 * Math.PI * u2;
-          cached = r * Math.sin(theta);
-          return r * Math.cos(theta);
-        };
-      })();
+      const gauss2 = gaussianSampler(rng);
       for (let k = 0; k < N_GRID; k++) {
         const xc = grid[k];
         const sg = sigmaTrue(xc);
+        const muXc = Math.sin(xc); // hoist constant within inner loop
         for (let j = 0; j < N_PER; j++) {
           xCloseAll[k * N_PER + j] = xc + (rng() - 0.5) * 0.05; // local jitter
           sigmaCloseAll[k * N_PER + j] = sg;
-          yCloseAll[k * N_PER + j] = Math.sin(xc) + sg * gauss2();
+          yCloseAll[k * N_PER + j] = muXc + sg * gauss2();
         }
       }
       const r = cqrIntervalPI(tr.X, tr.Y, ca.X, ca.Y, xCloseAll, ALPHA);

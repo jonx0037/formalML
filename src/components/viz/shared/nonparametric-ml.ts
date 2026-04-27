@@ -1276,17 +1276,26 @@ export function walshAveragesPI(r: ArrayLike<number>): Float64Array {
 
 /**
  * Hodges-Lehmann critical index for prediction-interval test inversion (Definition 11).
- * Notebook closed form: w = ⌊M·α/2⌋ where M = n(n+1)/2 with n = nCal + 1.
- * The resulting interval [A_(w+1), A_(M-w)] in sorted Walsh-average order statistics
- * has coverage (M - 2w)/M ≥ 1 - α for the centre of symmetry.
- * Notebook source: hl_critical_index in cell 10.
+ * Closed form: w = ⌊M·α/2⌋ where M = n_cal(n_cal+1)/2 — the count of Walsh averages produced
+ * by `walshAveragesPI(r_cal)` for a calibration set of size n_cal.
+ *
+ * The resulting interval [A_(w+1), A_(M-w)] in sorted Walsh-average order statistics has
+ * coverage (M - 2w)/M ≥ 1 - α for the centre of symmetry.
+ *
+ * NOTE: The original notebook (cell 10) uses `n = nCal + 1` to compute M, motivated by the
+ * augmented-sample (n_cal + 1 residuals) framing of Theorem 3's rank-symmetry argument. But
+ * downstream `hl_interval` indexes into the *calibration-only* Walsh averages (length
+ * n_cal(n_cal+1)/2), creating a small but real discrepancy where the upper-endpoint index
+ * `A[M - 1 - w]` reads from a position offset by ~n_cal slots from where the closed-form
+ * theory prescribes. We use the calibration-only M here so the closed-form's α-fraction
+ * trim semantics apply to the array we actually slice. Empirical impact: HL widths shift by
+ * ~0.5–1% versus the notebook output; coverage shifts by ≤0.5pp. See PR #59 review thread.
  */
 export function hlCriticalIndexPI(
   nCal: number,
   alpha: number,
 ): { w: number; M: number } {
-  const n = nCal + 1;
-  const M = (n * (n + 1)) / 2;
+  const M = (nCal * (nCal + 1)) / 2;
   let w = Math.floor((M * alpha) / 2);
   if (2 * w >= M) w = Math.floor((M - 1) / 2);
   return { w, M };
@@ -1524,6 +1533,41 @@ export function hlIntervalPI(
     fitTimeMs: performance.now() - t0,
   };
 }
+
+// ─── §6 reference table (300-rep MC averages from notebook cell 14) ────────
+
+/** Verified §6.2 4×4 table values from the notebook (n_rep = 300, n_train = n_cal = 500,
+ *  n_test = 2000, α = 0.1). Used by ConstructionComparisonExplorer to render the live-vs-
+ *  notebook comparison panel. Single source of truth for the topic's empirical claims. */
+export const PI_REFERENCE_TABLE = {
+  A: {
+    split: { marg: 0.899, width: 1.660, cond: 0.056, ms: 0.4 },
+    qr:    { marg: 0.896, width: 1.651, cond: 0.071, ms: 45.1 },
+    cqr:   { marg: 0.900, width: 1.680, cond: 0.083, ms: 16.6 },
+    hl:    { marg: 0.757, width: 1.180, cond: 0.080, ms: 4.3 },
+  },
+  B: {
+    split: { marg: 0.899, width: 1.768, cond: 0.242, ms: 0.4 },
+    qr:    { marg: 0.897, width: 1.657, cond: 0.110, ms: 44.3 },
+    cqr:   { marg: 0.900, width: 1.686, cond: 0.115, ms: 16.6 },
+    hl:    { marg: 0.789, width: 1.257, cond: 0.384, ms: 4.2 },
+  },
+  C: {
+    split: { marg: 0.900, width: 2.978, cond: 0.058, ms: 0.4 },
+    qr:    { marg: 0.896, width: 2.953, cond: 0.072, ms: 42.6 },
+    cqr:   { marg: 0.901, width: 3.067, cond: 0.085, ms: 16.1 },
+    hl:    { marg: 0.817, width: 2.240, cond: 0.084, ms: 4.2 },
+  },
+  D: {
+    split: { marg: 0.899, width: 1.146, cond: 0.064, ms: 0.4 },
+    qr:    { marg: 0.895, width: 1.133, cond: 0.072, ms: 44.3 },
+    cqr:   { marg: 0.901, width: 1.183, cond: 0.077, ms: 16.6 },
+    hl:    { marg: 0.827, width: 0.928, cond: 0.083, ms: 4.2 },
+  },
+} as const;
+
+export type PIScenarioKey = keyof typeof PI_REFERENCE_TABLE;
+export type PIConstructionKey = keyof typeof PI_REFERENCE_TABLE['A'];
 
 // ─── §6 four scenarios ─────────────────────────────────────────────────────
 

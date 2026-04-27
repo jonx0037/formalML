@@ -518,11 +518,12 @@ function test_pi_1_helpers(): void {
     `got [${Array.from(W).join(', ')}], expected [${expected.join(', ')}]`,
   );
 
-  // hlCriticalIndexPI(500, 0.1): n = 501, M = 501·502/2 = 125751, w = ⌊M·0.05⌋ = 6287.
+  // hlCriticalIndexPI(500, 0.1): M = 500·501/2 = 125250 (matches walshAveragesPI(rCal).length),
+  // w = ⌊M·0.05⌋ = 6262. Updated post PR #59 review (Copilot caught M-vs-A.length mismatch).
   const { w, M } = hlCriticalIndexPI(500, 0.1);
   ok(
-    'PI-1.b hlCriticalIndexPI(500, 0.1) returns (w=6287, M=125751)',
-    w === 6287 && M === 125751,
+    'PI-1.b hlCriticalIndexPI(500, 0.1) returns (w=6262, M=125250)',
+    w === 6262 && M === 125250,
     `got (w=${w}, M=${M})`,
   );
 

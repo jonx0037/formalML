@@ -8,6 +8,7 @@ import {
   hlIntervalPI,
   mulberry32,
   palettePI,
+  PI_REFERENCE_TABLE,
   pureQrIntervalPI,
   scenarioAPI,
   scenarioBPI,
@@ -47,35 +48,6 @@ const CONSTRUCTION_META: Record<Construction, { label: string; color: string; li
   qr:    { label: 'pure QR',         color: palettePI.green,  light: palettePI.lightGreen },
   cqr:   { label: 'CQR',             color: palettePI.teal,   light: '#CCFBF1' },
   hl:    { label: 'HL',              color: palettePI.purple, light: palettePI.lightPurple },
-};
-
-// Notebook-verified reference values for the §6.2 table (averages over n_rep = 300).
-// Used to overlay markers on the static table panel.
-const TABLE_REF: Record<Scenario, Record<Construction, { marg: number; width: number; cond: number; ms: number }>> = {
-  A: {
-    split: { marg: 0.899, width: 1.660, cond: 0.056, ms: 0.4 },
-    qr:    { marg: 0.896, width: 1.651, cond: 0.071, ms: 45.1 },
-    cqr:   { marg: 0.900, width: 1.680, cond: 0.083, ms: 16.6 },
-    hl:    { marg: 0.757, width: 1.180, cond: 0.080, ms: 4.3 },
-  },
-  B: {
-    split: { marg: 0.899, width: 1.768, cond: 0.242, ms: 0.4 },
-    qr:    { marg: 0.897, width: 1.657, cond: 0.110, ms: 44.3 },
-    cqr:   { marg: 0.900, width: 1.686, cond: 0.115, ms: 16.6 },
-    hl:    { marg: 0.789, width: 1.257, cond: 0.384, ms: 4.2 },
-  },
-  C: {
-    split: { marg: 0.900, width: 2.978, cond: 0.058, ms: 0.4 },
-    qr:    { marg: 0.896, width: 2.953, cond: 0.072, ms: 42.6 },
-    cqr:   { marg: 0.901, width: 3.067, cond: 0.085, ms: 16.1 },
-    hl:    { marg: 0.817, width: 2.240, cond: 0.084, ms: 4.2 },
-  },
-  D: {
-    split: { marg: 0.899, width: 1.146, cond: 0.064, ms: 0.4 },
-    qr:    { marg: 0.895, width: 1.133, cond: 0.072, ms: 44.3 },
-    cqr:   { marg: 0.901, width: 1.183, cond: 0.077, ms: 16.6 },
-    hl:    { marg: 0.827, width: 0.928, cond: 0.083, ms: 4.2 },
-  },
 };
 
 const fmt = (x: number, digits = 3) => x.toFixed(digits);
@@ -369,7 +341,7 @@ export default function ConstructionComparisonExplorer() {
           <tbody>
             {(['split', 'qr', 'cqr', 'hl'] as Construction[]).map((c) => {
               const live = tableRef[c];
-              const ref = TABLE_REF[scenario][c];
+              const ref = PI_REFERENCE_TABLE[scenario][c];
               const meta = CONSTRUCTION_META[c];
               return (
                 <tr
