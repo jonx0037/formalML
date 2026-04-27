@@ -795,14 +795,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _After AIC/BIC/CV selection, naive Wald CIs are invalid because the selection event is data-dependent. Debiased lasso (Zhang–Zhang 2014), selective conditioning (Lee–Sun–Sun–Taylor 2016), and cross-…_
 
-## When `formalml/prediction-intervals` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bootstrap** declares `formalmlConnections` → `prediction-intervals` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§31.4's bootstrap CIs are the foundation of conformal-prediction's non-residual precursor: construct a bootstrap distribution for the point prediction, then take percentile endpoints as the predict…_
-
 ## When `formalml/principal-component-analysis` ships
 
 Add the reciprocal pointer back to:

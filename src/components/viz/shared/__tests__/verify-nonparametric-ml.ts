@@ -14,16 +14,29 @@ import {
   apsPredictionSetDeterministic,
   apsScoreDeterministic,
   bootstrapQuantileCI,
+  conformalQuantile,
   cqrInterval,
+  cqrIntervalPI,
   fitPredictLogisticRegression2D,
   fitPredictMultipleQuantiles,
   fitPredictRidge,
+  generateHeavyTailedLocation,
+  generateHeteroscedastic,
+  hlCriticalIndexPI,
+  hlIntervalPI,
   jackknifePlusInterval,
   mulberry32,
+  pureQrIntervalPI,
   rearrangedQuantilePredictions,
+  scenarioAPI,
+  scenarioBPI,
+  scenarioCPI,
+  scenarioDPI,
   splitConformalInterval,
+  splitConformalIntervalPI,
   synth3Class,
   synthHeteroscedastic,
+  walshAveragesPI,
   weightedSplitConformal,
 } from '../nonparametric-ml';
 
@@ -478,6 +491,215 @@ function test_5_10_rearranged_identity_on_monotone(): void {
 }
 
 // =============================================================================
+// Prediction-intervals topic verifications.
+//
+// Notebook source: notebooks/prediction-intervals/01_prediction_intervals.ipynb.
+// Tolerances are looser than the §5 tests because (a) the TS QR uses a smoothed
+// AGD approximation rather than sklearn's exact LP, (b) mulberry32 ≠ NumPy's
+// PCG64. Single-draw comparisons allow ±0.025 on coverage and ±10% on width;
+// 50-rep MC averages tighten to ±0.015 on coverage / ±5% on width.
+// =============================================================================
+
+function test_pi_1_helpers(): void {
+  console.log('\nTest PI-1: low-level helpers (Walsh, conformal quantile, HL critical index)');
+
+  // walshAveragesPI([1, 2, 4]) should give pairs (i ≤ j):
+  //   (1+1)/2 = 1.0,  (1+2)/2 = 1.5,  (1+4)/2 = 2.5,
+  //   (2+2)/2 = 2.0,  (2+4)/2 = 3.0,  (4+4)/2 = 4.0
+  const W = walshAveragesPI([1, 2, 4]);
+  const expected = [1.0, 1.5, 2.5, 2.0, 3.0, 4.0];
+  let walshOK = W.length === expected.length;
+  for (let i = 0; i < expected.length && walshOK; i++) {
+    if (Math.abs(W[i] - expected[i]) > 1e-12) walshOK = false;
+  }
+  ok(
+    'PI-1.a walshAveragesPI([1,2,4]) matches expected',
+    walshOK,
+    `got [${Array.from(W).join(', ')}], expected [${expected.join(', ')}]`,
+  );
+
+  // hlCriticalIndexPI(500, 0.1): M = 500·501/2 = 125250 (matches walshAveragesPI(rCal).length),
+  // w = ⌊M·0.05⌋ = 6262. Updated post PR #59 review (Copilot caught M-vs-A.length mismatch).
+  const { w, M } = hlCriticalIndexPI(500, 0.1);
+  ok(
+    'PI-1.b hlCriticalIndexPI(500, 0.1) returns (w=6262, M=125250)',
+    w === 6262 && M === 125250,
+    `got (w=${w}, M=${M})`,
+  );
+
+  // conformalQuantile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.1): n=10, k = ⌈0.9·11⌉ = 10, returns 10.
+  const q = conformalQuantile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.1);
+  ok(
+    'PI-1.c conformalQuantile of 1..10 at α=0.1 returns 10 (=S_(10))',
+    Math.abs(q - 10) < 1e-12,
+    `got ${q}`,
+  );
+
+  // generateHeteroscedastic should return σ ∈ [0.2, 0.8] for default slope 0.6 on X ∈ [-3, 3].
+  const rng0 = mulberry32(1);
+  const { sigma } = generateHeteroscedastic(1000, rng0);
+  let sigMin = Infinity, sigMax = -Infinity;
+  for (let i = 0; i < sigma.length; i++) {
+    if (sigma[i] < sigMin) sigMin = sigma[i];
+    if (sigma[i] > sigMax) sigMax = sigma[i];
+  }
+  ok(
+    'PI-1.d generateHeteroscedastic σ profile in [0.2, 0.8]',
+    sigMin >= 0.2 - 1e-9 && sigMax <= 0.8 + 1e-9,
+    `σ ∈ [${sigMin.toFixed(4)}, ${sigMax.toFixed(4)}], expected ⊂ [0.20, 0.80]`,
+  );
+}
+
+function test_pi_2_split_conformal_RE1(): void {
+  console.log('\nTest PI-2: splitConformalIntervalPI on RE1, single seeded draw');
+  const rng = mulberry32(2026);
+  const tr = generateHeteroscedastic(500, rng);
+  const ca = generateHeteroscedastic(500, rng);
+  const te = generateHeteroscedastic(5000, rng);
+  const { lo, hi, qHat } = splitConformalIntervalPI(
+    tr.X, tr.Y, ca.X, ca.Y, te.X, 0.1,
+  );
+  let cov = 0;
+  let widthSum = 0;
+  for (let i = 0; i < te.Y.length; i++) {
+    if (te.Y[i] >= lo[i] && te.Y[i] <= hi[i]) cov++;
+    widthSum += hi[i] - lo[i];
+  }
+  const meanCov = cov / te.Y.length;
+  const meanWidth = widthSum / te.Y.length;
+  ok(
+    'PI-2.a marginal coverage in [0.880, 0.945] (notebook single-draw 0.921)',
+    meanCov >= 0.88 && meanCov <= 0.945,
+    `marginal = ${meanCov.toFixed(4)}, target [0.880, 0.945]`,
+  );
+  ok(
+    'PI-2.b q̂ in [0.85, 1.10] (notebook 0.970)',
+    qHat >= 0.85 && qHat <= 1.10,
+    `q̂ = ${qHat.toFixed(3)}, target [0.85, 1.10]`,
+  );
+  ok(
+    'PI-2.c constant-width band: hi[i] − lo[i] = 2·q̂',
+    Math.abs(meanWidth - 2 * qHat) < 1e-9,
+    `mean width = ${meanWidth.toFixed(4)}, 2·q̂ = ${(2 * qHat).toFixed(4)}`,
+  );
+}
+
+function test_pi_3_pure_qr_RE1(): void {
+  console.log('\nTest PI-3: pureQrIntervalPI on RE1, single seeded draw');
+  const rng = mulberry32(2027);
+  const tr = generateHeteroscedastic(1000, rng);
+  const te = generateHeteroscedastic(5000, rng);
+  const { lo, hi } = pureQrIntervalPI(tr.X, tr.Y, te.X, 0.1);
+  let cov = 0;
+  let widthSum = 0;
+  for (let i = 0; i < te.Y.length; i++) {
+    if (te.Y[i] >= lo[i] && te.Y[i] <= hi[i]) cov++;
+    widthSum += hi[i] - lo[i];
+  }
+  const meanCov = cov / te.Y.length;
+  const meanWidth = widthSum / te.Y.length;
+  ok(
+    'PI-3.a marginal coverage in [0.85, 0.93] (notebook 0.904)',
+    meanCov >= 0.85 && meanCov <= 0.93,
+    `marginal = ${meanCov.toFixed(4)}, target [0.85, 0.93]`,
+  );
+  ok(
+    'PI-3.b mean width in [1.40, 1.90] (notebook 1.662)',
+    meanWidth >= 1.4 && meanWidth <= 1.9,
+    `mean width = ${meanWidth.toFixed(3)}, target [1.40, 1.90]`,
+  );
+}
+
+function test_pi_4_cqr_RE1(): void {
+  console.log('\nTest PI-4: cqrIntervalPI on RE1, single seeded draw');
+  const rng = mulberry32(2028);
+  const tr = generateHeteroscedastic(500, rng);
+  const ca = generateHeteroscedastic(500, rng);
+  const te = generateHeteroscedastic(5000, rng);
+  const { lo, hi, Q } = cqrIntervalPI(tr.X, tr.Y, ca.X, ca.Y, te.X, 0.1);
+  let cov = 0;
+  let widthSum = 0;
+  for (let i = 0; i < te.Y.length; i++) {
+    if (te.Y[i] >= lo[i] && te.Y[i] <= hi[i]) cov++;
+    widthSum += hi[i] - lo[i];
+  }
+  const meanCov = cov / te.Y.length;
+  const meanWidth = widthSum / te.Y.length;
+  ok(
+    'PI-4.a marginal coverage in [0.86, 0.93] (notebook 0.888)',
+    meanCov >= 0.86 && meanCov <= 0.93,
+    `marginal = ${meanCov.toFixed(4)}, target [0.86, 0.93]`,
+  );
+  ok(
+    'PI-4.b mean width in [1.45, 1.90] (notebook 1.669)',
+    meanWidth >= 1.45 && meanWidth <= 1.9,
+    `mean width = ${meanWidth.toFixed(3)}, target [1.45, 1.90]`,
+  );
+  ok(
+    'PI-4.c |Q| ≤ 0.30 (notebook -0.039 — small relative to QR band)',
+    Math.abs(Q) <= 0.3,
+    `Q = ${Q.toFixed(4)}, target |Q| ≤ 0.30`,
+  );
+}
+
+function test_pi_5_hl_RE2(): void {
+  console.log('\nTest PI-5: hlIntervalPI on RE2, single seeded draw');
+  const rng = mulberry32(2029);
+  const tr = generateHeavyTailedLocation(500, rng);
+  const ca = generateHeavyTailedLocation(500, rng);
+  const te = generateHeavyTailedLocation(5000, rng);
+  const { lo, hi, ALo, AHi } = hlIntervalPI(tr.X, tr.Y, ca.X, ca.Y, te.X, 0.1);
+  let cov = 0;
+  let widthSum = 0;
+  for (let i = 0; i < te.Y.length; i++) {
+    if (te.Y[i] >= lo[i] && te.Y[i] <= hi[i]) cov++;
+    widthSum += hi[i] - lo[i];
+  }
+  const meanCov = cov / te.Y.length;
+  const meanWidth = widthSum / te.Y.length;
+  // HL undercovers on batch test data; notebook single-draw shows 0.862.
+  // Allow [0.78, 0.92] — test detects gross algorithm error rather than bit-match.
+  ok(
+    'PI-5.a HL marginal coverage in [0.78, 0.92] (notebook 0.862, undercovers in batch)',
+    meanCov >= 0.78 && meanCov <= 0.92,
+    `marginal = ${meanCov.toFixed(4)}, target [0.78, 0.92]`,
+  );
+  ok(
+    'PI-5.b HL mean width in [2.0, 3.2] (notebook 2.572)',
+    meanWidth >= 2.0 && meanWidth <= 3.2,
+    `mean width = ${meanWidth.toFixed(3)}, target [2.0, 3.2]`,
+  );
+  ok(
+    'PI-5.c Walsh A pair has correct sign and magnitude (notebook (-1.139, 1.433))',
+    ALo < 0 && AHi > 0 && Math.abs(ALo) >= 0.7 && Math.abs(AHi) >= 0.7,
+    `(A_lo, A_hi) = (${ALo.toFixed(3)}, ${AHi.toFixed(3)})`,
+  );
+}
+
+function test_pi_6_scenarios_smoke(): void {
+  console.log('\nTest PI-6: §6 four-scenario generators smoke test');
+  const rng = mulberry32(2030);
+  const A = scenarioAPI(2000, rng);
+  const B = scenarioBPI(2000, rng);
+  const C = scenarioCPI(2000, rng);
+  const D = scenarioDPI(2000, rng);
+  // Each scenario yields well-formed (X, Y) of length n; X ∈ [-3,3] for A/B/D; X ∈ [-2,2] for C.
+  const inRange = (X: Float64Array, lo: number, hi: number) =>
+    Array.from(X).every((x) => x >= lo - 1e-9 && x <= hi + 1e-9);
+  ok('PI-6.a Scenario A X ⊂ [-3, 3]', inRange(A.X, -3, 3), `length ${A.X.length}`);
+  ok('PI-6.b Scenario B X ⊂ [-3, 3]', inRange(B.X, -3, 3), `length ${B.X.length}`);
+  ok('PI-6.c Scenario C X ⊂ [-2, 2]', inRange(C.X, -2, 2), `length ${C.X.length}`);
+  ok('PI-6.d Scenario D X ⊂ [-3, 3]', inRange(D.X, -3, 3), `length ${D.X.length}`);
+  // Y should be finite throughout
+  const allFinite = (arr: Float64Array) => Array.from(arr).every(Number.isFinite);
+  ok(
+    'PI-6.e all four scenarios produce finite Y',
+    allFinite(A.Y) && allFinite(B.Y) && allFinite(C.Y) && allFinite(D.Y),
+    `Y arrays all-finite check`,
+  );
+}
+
+// =============================================================================
 // Run all tests
 // =============================================================================
 
@@ -493,6 +715,14 @@ test_5_7_bootstrap_qr_ci_n500();
 test_5_8_multitau_crossings();
 test_5_9_rearranged_zero_crossings();
 test_5_10_rearranged_identity_on_monotone();
+
+// Prediction-intervals topic
+test_pi_1_helpers();
+test_pi_2_split_conformal_RE1();
+test_pi_3_pure_qr_RE1();
+test_pi_4_cqr_RE1();
+test_pi_5_hl_RE2();
+test_pi_6_scenarios_smoke();
 
 console.log(`\n${pass} passed, ${fail} failed.`);
 if (fail > 0) {
