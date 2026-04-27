@@ -240,7 +240,9 @@ function permutationP(
 ): number {
   const N = pool.length;
   const work = Float64Array.from(pool);
-  const muNull = arrayMean(pool);
+  // Centring is at zero by construction: under H₀^sharp (Theorem 12) the
+  // randomization distribution of mean(A) − mean(B) is symmetric about 0,
+  // so the rejection criterion is |stat| ≥ |observed|.
   let nExtreme = 0;
   for (let s = 0; s < B; s++) {
     for (let i = N - 1; i > 0; i--) {
@@ -250,8 +252,7 @@ function permutationP(
     const mA = meanRange(work, 0, nA);
     const mB = meanRange(work, nA, N);
     const stat = mA - mB;
-    if (Math.abs(stat) >= Math.abs(observed - 0) - 1e-12) nExtreme++;
-    void muNull;
+    if (Math.abs(stat) >= Math.abs(observed) - 1e-12) nExtreme++;
   }
   return (1 + nExtreme) / (1 + B);
 }

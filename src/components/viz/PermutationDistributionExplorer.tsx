@@ -548,7 +548,7 @@ export default function PermutationDistributionExplorer({
           fontStyle: 'italic',
         }}
       >
-        The permutation framework is statistic-agnostic — same procedure, four interchangeable test statistics, validity from Theorem 3 in every case. Switch the group distribution to log-normal or shrink Δ to feel the power profile shift.
+        The permutation framework is statistic-agnostic — same procedure, three interchangeable test statistics, validity from Theorem 3 in every case. Switch the group distribution to log-normal or shrink Δ to feel the power profile shift.
       </p>
     </div>
   );
