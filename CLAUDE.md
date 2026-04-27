@@ -38,9 +38,11 @@ The 32 ML Methodology topics discharge forward-pointers from formalstatistics.co
 ## Commands
 
 ```bash
-pnpm dev        # Dev server at localhost:4321
-pnpm build      # Production build (runs pagefind post-build)
-pnpm preview    # Preview production build
+pnpm dev                                            # Dev server at localhost:4321
+pnpm build                                          # Production build (runs pagefind). Needs NODE_OPTIONS=--max-old-space-size=8192 (default 4GB OOMs).
+pnpm preview                                        # Preview production build
+pnpm verify:nonparametric-ml                        # Numerical regression tests for src/components/viz/shared/nonparametric-ml.ts vs notebook printed outputs
+pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md — don't hand-edit that file.
 ```
 
 ## Project Structure
@@ -70,8 +72,9 @@ public/images/          # Static images organized by topic
 - **Geometric-first:** Introduce concepts visually and concretely before algebraic machinery
 - **Foundational topics:** Zero algebra — stop at geometric intuition
 - **Intermediate topics:** Algebra only after geometric setup is established
-- **Proofs:** Expand fully with combinatorial detail — never "it can be shown"
+- **Proofs:** Expand fully with combinatorial detail — never "it can be shown."
 - **Examples:** Concrete, motivating examples before every definition
+- **Language:** Always use American English spelling and conventions (e.g., "organize," "color," "analyze," "defense," "catalog") — never British English variants.
 
 ### MDX topic file structure
 
@@ -80,6 +83,10 @@ Each topic in `src/content/topics/` is an MDX file with YAML frontmatter definin
 - `formalcalculusPrereqs` — array of objects (each with `topic`, `site`, `relationship`) declaring formalcalculus.com prerequisites; full schema in the "Cross-site references" subsection below
 - `formalstatisticsPrereqs` — array of objects (same shape) declaring formalstatistics.com prerequisites
 - Interactive viz components are imported and embedded inline
+
+**MDX top-level rule:** between the closing frontmatter `---` and the first heading, only `import`/`export` statements are allowed. JSX comments (`{/* … */}`) at top level cause `MDXError: Unexpected BlockStatement`; put comments inside the body.
+
+**Proofs:** use `<TheoremBlock type="proof">…$\square$</TheoremBlock>` with no `number` and no `title`. There is no `<ProofExpand>` component — the standalone `proof` block is the codebase pattern (rank-tests, conformal-prediction, quantile-regression).
 
 ### Cross-site references
 
@@ -107,12 +114,15 @@ The cross-site infrastructure is documented in detail in [docs/plans/cross-site-
 - Shared color scales in `viz/shared/colorScales.ts`
 - Shared types in `viz/shared/types.ts`
 - Use `.style()` for CSS custom properties in D3 SVG elements (not `.attr("style", ...)`)
+- Hydration: `client:visible` defers React mount until the component scrolls into view. Until then `useResizeObserver` returns `width = 0` and `useD3` paints nothing. When testing via `preview_eval`, scroll the viz into view (`el.scrollIntoView({block: 'center'})`) before inspecting children.
 
 ### Images & figures
 
 Use the `<Figure>` component from `src/components/ui/Figure.astro` for any image that deserves a caption or is worth optimizing. Two patterns are supported:
 
 Topic MDX files use YAML frontmatter between `---` lines for content-collection metadata; JS imports go **after** the closing `---`, at the top of the MDX body. `Figure` must be imported explicitly — no global MDX components mapping is configured.
+
+The `caption` prop is a plain string — `$x$` math syntax inside it does NOT get KaTeX-processed; it renders as literal text. Match the track-mate precedent (rank-tests, conformal-prediction) rather than working around it. If you need rendered math in a caption, that's a `Figure.astro` architecture change.
 
 **Optimized path (preferred for new images):** place the file in `src/assets/topics/<topic>/` and import it. Astro generates srcset, WebP, and width/height automatically.
 
@@ -175,6 +185,8 @@ All other topics stay in the NumPy/SciPy default. Notebook cells must run CPU-on
 
 ## Do NOT
 
+- Run `git stash -u` / `--include-untracked`. Untracked files in this repo are user-owned working state (notebooks, briefs, drafts, `.venv/`) — sweeping them into stashes loses them invisibly. To branch off main, `git checkout main && git checkout -b <new-branch>` directly; the working tree follows.
+- Touch any untracked file without per-instance authorization — no `rm`/`mv`/overwrite/`git add`. Reading is fine.
 - Use npm or generate package-lock.json
 - Commit .vscode/, .DS_Store, or firebase-debug.log
 - Create draft files outside src/content/topics/ — drafts live as unpublished MDX
