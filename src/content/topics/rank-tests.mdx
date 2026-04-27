@@ -118,6 +118,8 @@ import ExternalLink from '../../components/ui/ExternalLink.astro';
 
 ## From the Sign Test to Wilcoxon Signed-Rank
 
+The simplest hypothesis test you can run on paired data — pre-treatment vs post-treatment, twin-pair A vs twin-pair B, before-and-after readings on the same subject — is the *sign test*: count how many differences came out positive and ask if that count is consistent with random chance. The test makes no distributional assumption beyond continuity and a symmetry around zero, so it works under conditions where Gaussian-based tests would fail. But it also throws away the magnitudes — a difference of $0.01$ counts the same as a difference of $5.0$. Wilcoxon's signed-rank statistic recovers the magnitude information through ranks while keeping the distribution-free property. Both tests turn out to be special cases of the more general permutation framework we develop in §2.
+
 <TheoremBlock type="definition" number={1} title="Sign-Test Statistic">
 For paired differences $D_1, \ldots, D_n$, the **sign-test statistic** is the count of positive differences,
 $$
@@ -166,7 +168,21 @@ $$
 For symmetry: the sign-flip $B \mapsto \mathbf{1} - B$ is a bijection on $\{0, 1\}^n$ that maps $W^+ = \sum_i i B_i$ to $\sum_i i (1 - B_i) = \tfrac{n(n+1)}{2} - W^+$. Hence the null distribution is symmetric about its mean $n(n+1)/4 = \tfrac{1}{2} \cdot \tfrac{n(n+1)}{2}$. $\square$
 </TheoremBlock>
 
+A concrete example illustrates the workflow. Take $n = 8$ paired differences from a treatment study,
+$$
+D \;=\; (-0.4,\; 1.2,\; 2.8,\; -0.1,\; 3.7,\; 0.6,\; -1.5,\; 2.0).
+$$
+Five of the eight are positive, so $N^+ = 5$ — the sign-test two-sided $p$-value from $\mathrm{Binomial}(8, 1/2)$ is $\approx 0.727$, well above $\alpha = 0.05$. The Wilcoxon signed-rank statistic uses the absolute ranks $R = (2, 4, 7, 1, 8, 3, 5, 6)$ and sums the ranks at positive differences: $W^+ = 4 + 7 + 8 + 3 + 6 = 28$. Enumerating all $2^8 = 256$ sign vectors gives a discrete null with mean $18$ and variance $51$, against which $W^+ = 28$ has two-sided $p \approx 0.195$. Both tests agree the effect is not significant at $\alpha = 0.05$, but the framework — replace data with rank-and-sign information, derive the null from the symmetry group of sign flips, get an exact $p$-value from enumeration — is the structure we generalize next.
+
+<Figure
+  src="/images/topics/rank-tests/01_signed_rank_null.png"
+  alt="Exact null distribution of the Wilcoxon signed-rank statistic for n=8, with the observed W+ = 28 marked and the two-sided rejection region shaded; a Gaussian approximation overlays the discrete bars"
+  caption="Exact null distribution of $W^+$ for $n = 8$, enumerated over all $2^8 = 256$ sign vectors. The observed $W^+ = 28$ falls in the upper tail but not at the rejection threshold for $\alpha = 0.05$. The interactive `SignedRankNullBuilder` (below) lets you drag the $D_i$ values to see how the histogram and rejection region update; for $n \leq 15$ the enumeration is fast enough to be live."
+/>
+
 ## The Permutation Principle and Exchangeability
+
+Theorem 2's null distribution didn't really need symmetric continuous differences — it needed something subtler. The joint distribution of $(D_1, \ldots, D_n)$ had to be invariant under sign-flips. That kind of invariance generalises to a property called **exchangeability**, which is the engine driving every test in this topic and (it turns out) [conformal prediction](/topics/conformal-prediction) as well.
 
 <TheoremBlock type="definition" number={3} title="Exchangeability">
 A random vector $(X_1, \ldots, X_n)$ is **exchangeable** if for every permutation $\pi$ of $\{1, \ldots, n\}$,
@@ -210,7 +226,17 @@ with equality whenever $\alpha$ is a multiple of $1/|\mathcal{G}|$. $\square$
 The permutation principle is sometimes called the *randomization* principle, and the two terms are routinely conflated. There is a real distinction. In the **population-sampling** context (data drawn from an infinite population), Theorem 3's invariance assumption is exchangeability of the sample under $H_0$ — a property of the joint *distribution*. In the **finite-population or experimental** context (Theorem 12 below; §8), the invariance is assured by the experimenter's random treatment assignment — a property of the *physical* randomization mechanism. The two are mathematically identical (both are instances of Theorem 3 with different choices of $\mathcal{G}$), but their justifications differ. In observational studies, exchangeability is often a much stronger assumption than experimenters realise; in randomized experiments, it is guaranteed by design. We pick this back up explicitly in §8.
 </TheoremBlock>
 
+The proof is short and statistic-free. That's the power of the permutation principle: validity comes from the symmetry of the null, not from any asymptotic property of $T$. Use a $t$-statistic, a mean difference, a max correlation, anything — the permutation test wraps it in an exact level-$\alpha$ envelope.
+
+<Figure
+  src="/images/topics/rank-tests/02_permutation_uniform.png"
+  alt="Histogram of 800 permutation p-values from datasets generated under H0, showing approximate uniformity on the unit interval"
+  caption="Permutation $p$-values from $800$ datasets generated under $H_0$ (both groups iid from the same distribution): the histogram is close to uniform on $[0, 1]$, and the Kolmogorov-Smirnov test for uniformity gives $p_{\mathrm{KS}} \approx 0.45$ — strongly consistent with Theorem 3. Empirical rejection rates at nominal $\alpha \in \{0.01, 0.05, 0.10\}$ are $0.004, 0.028, 0.084$ respectively, all below the nominal level. The interactive `PermutationDistributionExplorer` (below) lets you swap in different test statistics — mean difference, Welch $t$, Mann-Whitney $U$, max correlation — and watch the permutation distribution and $p$-value redraw."
+/>
+
 ## Wilcoxon Rank-Sum and Mann-Whitney $U$
+
+The two-sample setting moves from paired data to two independent groups: $n_1$ observations $X_1, \ldots, X_{n_1}$ from one population and $n_2$ from another, with $N = n_1 + n_2$ pooled. Test scores from two teaching methods, activation latencies from two neural regions, conversion times for two checkout flows. The null is that the populations have the same continuous distribution; the alternative is that one is *stochastically larger* than the other. Pool the samples, rank them from $1$ to $N$, and take the rank-sum of the smaller group — that's the Wilcoxon rank-sum statistic. Mann-Whitney's $U$ is its combinatorial twin, counting pairs $(X_i, Y_j)$ in which $X$ comes out smaller. They contain the same information (Theorem 4), and both inherit exact null moments from the exchangeability of pooled ranks (Theorem 5).
 
 <TheoremBlock type="definition" number={4} title="Wilcoxon Rank-Sum Statistic">
 With $X_1, \ldots, X_{n_1}$ from one population and $Y_1, \ldots, Y_{n_2}$ from another, pool all $N = n_1 + n_2$ observations and rank them $1, \ldots, N$. Let $R_i^X$ denote the rank of $X_i$ in the pooled sample. The **Wilcoxon rank-sum statistic** is
@@ -289,7 +315,17 @@ $$
 `scipy.stats.mannwhitneyu(X, Y)` returns $U$ for the *first* argument, counting $\#\{(i, j) : Y_j < X_i\}$ — the **complement** of our Definition 5. The two conventions satisfy $U_{XY} + U_{YX} = n_1 n_2$, encode the same information, and produce identical two-sided $p$-values; only the reported statistic differs. Practitioners who run `mannwhitneyu(X, Y)` and then look up "expected $U = n_1 n_2 / 2$" sometimes lose an hour to this. The fix is to pass the arguments in the order matching whichever convention you have in mind.
 </TheoremBlock>
 
+A worked example: $X = (1.2, 2.7, 3.1, 4.0, 5.5)$ and $Y = (2.1, 3.5, 4.8, 6.0, 6.2)$. Pooled ranks give $W = 22$ (the sum of $X$-ranks $1, 3, 4, 6, 8$) and $U = 18$ (the count of $(X_i, Y_j)$ pairs with $X_i < Y_j$). Theorem 5's null moments give $\mathbb{E}[U] = 12.5$ and $\mathrm{Var}(U) \approx 22.92$. The two-sided exact $p$-value (`scipy.stats.mannwhitneyu`) is $\approx 0.31$ — consistent with no shift between the two populations. The interactive `PermutationDistributionExplorer` below lets you switch the underlying parametric families (normal, log-normal, exponential) and verify that $U$'s null moments hold across all of them — that's the distribution-free promise.
+
+<Figure
+  src="/images/topics/rank-tests/03_mann_whitney_null.png"
+  alt="Mann-Whitney U null distribution at n_1 = n_2 = 6 (924 enumerated subsets) overlaid with the Gaussian approximation; observed value U = 18 marked"
+  caption="Empirical null distribution of $U$ from the $\\binom{12}{6} = 924$ rank assignments at $n_1 = n_2 = 6$, with the Gaussian approximation $\\mathcal{N}(18, 39)$ overlaid. The observed $U = 18$ sits at the mode. At $n_1 = n_2 = 20$, $5{,}000$ Monte Carlo permutations give empirical mean $200.76$ vs theoretical $200$, and empirical variance $1363.79$ vs theoretical $1366.67$ — agreement to three significant figures."
+/>
+
 ## Kruskal-Wallis: The $k$-Sample Extension
+
+When there are $k$ groups instead of $2$ — three teaching methods, four drug doses, five regional cohorts — the natural extension is the **Kruskal-Wallis test**. It is the rank analog of one-way ANOVA's $F$-test: pool, rank, and look at the between-group dispersion of mean ranks. The shape of the test mirrors ANOVA exactly, with the rank substitution buying distribution-freeness without giving up the chi-squared limit.
 
 <TheoremBlock type="definition" number={6} title="Kruskal-Wallis Statistic">
 Suppose we have $k$ groups of sizes $n_1, \ldots, n_k$ with total $N = \sum_j n_j$. Pool all observations and rank them $1, \ldots, N$; let $R_{ji}$ denote the rank of the $i$-th observation in group $j$, and let
@@ -344,7 +380,17 @@ H \;=\; Z^\top Z \;\xrightarrow{\;d\;}\; \chi^2_{k-1}. \;\square
 $$
 </TheoremBlock>
 
+The translation from $F$ to $H$ is essentially "replace data values with their pooled ranks." A worked example with three groups of $n_j = 8$ each, drawn under $H_0$ from a common normal, gives mean ranks $\bar R \approx (10.4, 14.5, 12.6)$ and $H = 1.365$ — a $\chi^2_2$ $p$-value of $\approx 0.50$, well within the null. Empirical type-I error at $\alpha \in \{0.01, 0.05, 0.10\}$ tracks the nominal levels closely for both balanced ($n_j = 15$) and unbalanced $(n_1, n_2, n_3) = (10, 25, 40)$ designs.
+
+<Figure
+  src="/images/topics/rank-tests/04_kruskal_wallis_chi2.png"
+  alt="Histogram of the Kruskal-Wallis H statistic under H0 for three balanced groups with n_j = 15, overlaid with the chi-squared(2) density showing convergence"
+  caption="Empirical null distribution of $H$ from $5000$ simulations under $H_0$ at $k = 3$, $n_j = 15$, overlaid with the asymptotic $\chi^2_2$ density. The convergence is visibly tight even at this moderate $n$. The static figure is the right tool for this story — interactivity wouldn't add insight to a one-shape, one-degree-of-freedom convergence."
+/>
+
 ## Asymptotic Relative Efficiency (Pitman)
+
+The rank tests of §§1, 3, 4 are valid under nearly any continuous distribution — that's the distribution-free promise. A natural concern is that we might be paying for that generality with reduced **power**: under conditions where the optimal parametric test exists (the $t$-test under normality, say), are we losing meaningful sensitivity by using ranks? Pitman's framework of asymptotic relative efficiency answers the question precisely. ARE compares the sample sizes two tests need to achieve equal power against the same local alternative; under contiguous alternatives $\theta_n = h/\sqrt{n}$, the ratio depends only on the noise density's variance and an integral $\int f^2$. The result is the celebrated formula in Theorem 8 below — and the surprise is just how forgiving it is to give up the parametric optimum.
 
 <TheoremBlock type="theorem" number={7} title="U-statistic Representation of $W^+$">
 For continuous paired differences $D_1, \ldots, D_n$ with no ties in $|D_i|$,
@@ -438,6 +484,14 @@ $$
 $$
 </TheoremBlock>
 
+A direct numerical sanity check on the $\mathrm{ARE}(W, T) = 0.955$ figure under normality: at $n = 30$, $\theta = 0.3$, normal noise, $5000$ Monte Carlo replications, the Wilcoxon empirical power is $0.465$ vs the $t$-test's $0.478$ — a ratio of $\approx 0.974$, just above the asymptotic $0.955$. The asymptotic ARE is the limit, and finite-$n$ ratios bracket it.
+
+<Figure
+  src="/images/topics/rank-tests/05_pitman_are.png"
+  alt="Power curves of Wilcoxon and t-test plotted against shift theta for several densities (normal, Laplace, t_5), illustrating the ARE values 0.955, 1.500, 1.241"
+  caption="Empirical power of Wilcoxon vs $t$-test as a function of shift $\theta$ for three error densities: normal ($\mathrm{ARE} \approx 0.955$, Wilcoxon slightly behind $t$), Laplace ($\mathrm{ARE} = 1.500$, Wilcoxon $50\%$ more efficient), and $t_5$ ($\mathrm{ARE} \approx 1.241$). The curves cross at $\theta = 0$ where both tests have $\alpha = 0.05$ size, then separate. The interactive `AREExplorer` (below) lets you sweep across many density families and shape parameters to feel the full landscape."
+/>
+
 <TheoremBlock type="remark" number={3} title="The Hodges-Lehmann 0.864 Floor">
 A celebrated result of Hodges & Lehmann (1956) establishes that for any density $f$ symmetric with finite variance and a bounded twice-differentiable form,
 $$
@@ -447,6 +501,10 @@ Wilcoxon never loses more than ~14% asymptotic efficiency relative to the $t$-te
 </TheoremBlock>
 
 ## The Hodges-Lehmann Estimator
+
+The Wilcoxon test gives a $p$-value but not a *point estimate* of the location parameter — there's no obvious "Wilcoxon estimator of $\theta$" until you invert the test. **Hodges-Lehmann's** 1963 construction does exactly that: take the median of all pairwise averages of paired differences. The result is a point estimator that sits between the sample mean and the sample median in robustness, with the same asymptotic relative efficiency to the mean that the Wilcoxon test has to the $t$-test (Theorem 11). And because the construction is test-inversion, it comes with an exact distribution-free confidence interval (Theorem 10).
+
+A worked example with an outlier makes the case. Take $D = (-0.3, 0.2, 0.7, 0.9, 1.4, 1.8, 2.1, 8.0)$ — the $8.0$ is a single dominant value (think: a logging error, a server crash duration, a one-time mega-purchase). The sample mean is $1.85$, dragged up by the outlier. The sample median is $1.15$, ignoring the outlier completely. Hodges-Lehmann gives $\hat\theta_{\mathrm{HL}} = 1.20$ — between the mean and median, robust to the outlier without throwing it out. The $95\%$ HL confidence interval is $[0.30,\, 4.45]$, exact under symmetry of the underlying distribution.
 
 <TheoremBlock type="definition" number={7} title="Walsh Averages and One-Sample Hodges-Lehmann Estimator">
 For paired data $D_1, \ldots, D_n$, the **Walsh averages** are the pairwise means
@@ -477,6 +535,12 @@ W^+(D - \theta_0) \;=\; \sum_{i \leq j} \mathbf{1}\{(D_i - \theta_0) + (D_j - \t
 $$
 As $\theta_0$ increases from $-\infty$ to $+\infty$, the count $W^+(D - \theta_0)$ decreases from $M = n(n+1)/2$ to $0$, jumping by $1$ each time $\theta_0$ crosses a Walsh average. It equals the null mean $n(n+1)/4 = M/2$ exactly when $\theta_0$ is positioned with $M/2$ Walsh averages above it and $M/2$ below it — i.e., at the median of the discrete set $\{A_{ij}\}$. $\square$
 </TheoremBlock>
+
+<Figure
+  src="/images/topics/rank-tests/06_hodges_lehmann.png"
+  alt="Number-line visualization of the n=8 outlier example showing all 36 Walsh averages, the Hodges-Lehmann estimate at 1.2, the sample mean at 1.85, and the sample median at 1.15, plus the 95% confidence interval"
+  caption="The $n = 8$ paired-difference example with one outlier ($D_8 = 8.0$). The $36$ Walsh averages span $[-0.30,\, 8.00]$; their median is $\hat\theta_{\mathrm{HL}} = 1.20$, sitting between the sample median ($1.15$) and the sample mean ($1.85$). The $95\%$ HL confidence interval is $[0.30,\, 4.45]$. The interactive `WalshAveragesExplorer` (below) lets you drag points to feel the contrast between the three location estimators under contamination."
+/>
 
 <TheoremBlock type="theorem" number={10} title="Distribution-Free CI from Walsh-Average Ordering">
 Let $A_{(1)} \leq A_{(2)} \leq \cdots \leq A_{(M)}$ be the sorted Walsh averages with $M = n(n+1)/2$, and let $w_\alpha$ be the integer satisfying $\mathbb{P}_{H_0}(W^+ \leq w_\alpha) \leq \alpha/2$ — the lower $\alpha/2$ critical value of the discrete null distribution of $W^+$. Then
@@ -539,6 +603,14 @@ The median achieves asymptotic variance $1/(4 f(0)^2 n) = 1/n$, while HL achieve
 
 ## Permutation Tests with Non-Rank Statistics
 
+The permutation principle from §2 doesn't require rank statistics. **Any** test statistic permits a permutation test, and dropping the rank structure can buy back the small power loss that ranks impose under nice distributions. The trade-off is the standard one: parametric efficiency (when assumptions hold) vs robustness to outliers and tails (when they don't).
+
+The canonical example is the **permutation $t$-test**: take the same two-sample setting from §3 with the Welch $t$-statistic
+$$
+T \;=\; \frac{\bar X - \bar Y}{\sqrt{s_X^2 / n_1 + s_Y^2 / n_2}},
+$$
+but instead of comparing $T$ to a $t_\nu$ reference distribution (which requires the Welch-Satterthwaite approximation), enumerate or sample the $\binom{N}{n_1}$ label-swap permutations and compute the empirical permutation distribution. Theorem 3 gives exact level-$\alpha$ control under the exchangeability null, regardless of how non-normal the data are. A worked example: two samples of size $12$ from a $t_3$ distribution shifted by $1.0$. The classical Welch $t$-test gives $p \approx 0.889$ (off because $t_3$ is heavy-tailed); the permutation $t$ gives $p \approx 0.886$ — close, but the permutation version is the one that's exactly right.
+
 <TheoremBlock type="remark" number={5} title="Raw vs Ranks — A Power Trade-Off, Not a Validity Trade-Off">
 Both the permutation $t$-test and Mann-Whitney are exact under exchangeability — they differ only in the choice of statistic. The choice is a power decision, not a validity one:
 
@@ -553,7 +625,17 @@ is conservative; the "+1"s adjust for the observed value being one realisation, 
 The key point: the permutation framework is the umbrella, and rank tests are just one corner of it. When you encounter a clever test statistic in a paper, the question to ask is not "does it have a known asymptotic distribution?" — it's "is the null exchangeable?" If the answer is yes, you have a finite-sample exact test for free.
 </TheoremBlock>
 
+<Figure
+  src="/images/topics/rank-tests/07_three_tests_power.png"
+  alt="Empirical type-I error and power comparison of Welch t, permutation t, and Mann-Whitney across normal, Laplace, t_3, and contaminated-normal parent distributions"
+  caption="Empirical type-I error and power across four parent distributions: normal, Laplace, $t_3$, contaminated normal. All three tests (Welch $t$, permutation $t$, Mann-Whitney $U$) hold the nominal $\alpha = 0.05$ size in each case (rejection rates between $0.038$ and $0.060$ across $500$ Monte Carlo replications with $80$ permutation samples per replication). Power differences track Pitman ARE: Welch $t$ wins narrowly under normality, Mann-Whitney pulls ahead under $t_3$ and the contaminated normal."
+/>
+
 <NamedSection id="ab-testing" title="A/B Testing as Randomization Inference">
+
+Online controlled experiments — A/B tests in tech, RCTs in medicine and policy — are the natural home of permutation inference, but with a twist: they are really **randomization tests** in the Fisher sense (per Remark 1), not permutation tests in the population-sampling sense. The validity claim is different and considerably stronger: the experimenter's coin flip provides exactness regardless of the metric's distribution.
+
+The setup. A platform randomly assigns each of $n$ users to control (A) or treatment (B), measures an outcome metric (revenue, session length, conversion rate, ad clicks per impression) per user, and asks whether the treatment shifted the metric. Standard practice runs Welch's $t$-test on the means and reports a $p$-value. The trouble: heavy-tailed metrics (revenue is famously log-normal-ish) can break the Welch-Satterthwaite reference distribution, producing tests with the wrong size. Randomization-inference-via-permutation gives an exactly correct test even when Welch is wrong — and with one extra ingredient (a pre-period covariate) the **CUPED** adjustment can dramatically reduce variance without sacrificing exactness.
 
 <TheoremBlock type="definition" number={9} title="Fisher's Sharp Null and the Randomization Distribution">
 In an experiment, each unit $i$ has potential outcomes $Y_i(0), Y_i(1)$ under control and treatment respectively. Treatment is assigned by a known random mechanism $W = (W_1, \ldots, W_n)$ with $W_i \in \{0, 1\}$, and the observed outcome is $Y_i = Y_i(W_i)$. **Fisher's sharp null** is
@@ -587,9 +669,17 @@ where $X$ is a pre-experiment covariate per user (e.g., the user's revenue in th
 Crucially, the adjustment is **symmetric in the labels** — the same $\beta$ and the same $\bar X$ are used for both groups — so under $H_0^{\mathrm{sharp}}$ the $Y_{\mathrm{cuped}}$ values remain fixed under label permutations. Theorem 12's randomization-inference exactness carries through unchanged. Variance reduction translates directly to power gain. Typical pre-period correlations of $\rho_{X, Y} \approx 0.7$ deliver power gains equivalent to a $\sim$50% reduction in sample size — for free, from data the experimenter already had.
 </TheoremBlock>
 
+<Figure
+  src="/images/topics/rank-tests/08_ab_testing.png"
+  alt="Two panels showing (left) empirical type-I error of Welch t vs randomization across sample sizes under log-normal revenue, and (right) CUPED-adjusted permutation power lift compared to raw permutation"
+  caption="**Left:** under heavy-tailed log-normal revenue ($\sigma_{\log} = 2$), Welch's $t$-test sits noticeably **below** nominal $0.05$ across all sample sizes — skewed metrics distort the Welch-Satterthwaite reference, systematically under-rejecting. The randomization inference (permutation $p$-value) sits at $0.05$ across all $n$. **Right:** CUPED with $\rho_{X, Y} = 0.7$ lifts power substantially. At an effect where raw permutation reaches $50\%$ power, CUPED-adjusted permutation reaches $\sim 80\%$ — equivalent to a $50\%$ reduction in required sample size, achieved purely from the pre-period covariate. Randomization exactness carries through (Remark 6); the CUPED-adjusted test remains exact at level $\alpha$ by Theorem 12."
+/>
+
 </NamedSection>
 
 ## Limitations: Ties, Power, and the Covariate Problem
+
+The rank-and-permutation toolkit is powerful, but it has three honest limitations worth flagging before we close. Ties violate the continuity assumption of §§1, 3, 4 and require a midrank correction (otherwise the test under-rejects). The discreteness of small-$n$ exact null distributions can erase the asymptotic Wilcoxon advantage at the very sample sizes where it should matter most. And the framework does not extend cleanly to *covariate-adjusted* inference — you cannot easily ask "is the treatment effect non-zero, controlling for age and baseline severity" within rank tests alone. Each limitation has a partial fix; the third one points outward to [quantile regression](/topics/quantile-regression) and [conformal prediction](/topics/conformal-prediction) for the structural answer.
 
 <TheoremBlock type="remark" number={7} title="Tie Correction — Naive Variance Under-Rejects">
 The clean null distributions of §1, §3, §4 assume continuous data with no ties. Real data ties — especially on Likert scales (5- or 7-point ratings), integer counts, or coarsely-binned measurements. The standard fix replaces tied values with their **midrank** (the average of the ranks they would have occupied) and corrects the null variance.
@@ -604,6 +694,12 @@ $$
 $$
 `scipy.stats.mannwhitneyu` and `scipy.stats.wilcoxon` apply these corrections automatically. Skipping them produces tests with wrong size — and the direction is worth getting right. The corrected variance is **smaller** than the uncorrected one (the bracketed factor $1 - \sum(t_k^3 - t_k)/(N^3 - N)$ is strictly less than $1$ when ties exist). Using the larger uncorrected variance in the $z$-denominator inflates the denominator, shrinks $|z|$, and inflates $p$-values — making the uncorrected test conservative (under-rejecting), sacrificing power for no Type I error protection.
 </TheoremBlock>
+
+<Figure
+  src="/images/topics/rank-tests/09_tie_correction.png"
+  alt="Empirical type-I error rates at nominal alpha = 0.05 and 0.10 under 5-point Likert ties for naive (uncorrected), tie-corrected, and scipy-default Mann-Whitney"
+  caption="Empirical type-I error rates for $5$-point Likert data with $n_1 = n_2 = 30$ and $2500$ Monte Carlo replications under $H_0$. Naive (uncorrected) variance gives empirical $\\alpha \\approx 0.033$ at nominal $0.05$ — conservative, under-rejecting. Manual tie-corrected and `scipy.stats.mannwhitneyu` (which applies the correction automatically) hit $\\alpha \\approx 0.042$, close to nominal."
+/>
 
 <TheoremBlock type="remark" number={8} title="Discreteness at Very Small $n$">
 The Hodges-Lehmann lower bound (Remark 3) says rank tests lose at most $\sim$14% asymptotic efficiency vs the $t$-test even under normality, and gain unboundedly under heavy tails. But asymptotic efficiency is not the same as finite-sample dominance.
@@ -626,8 +722,46 @@ The shared mathematical primitive — exchangeability as a finite-sample statist
 
 ## Notation Reference
 
-*[§10 content — consolidated notation glossary pulled from across cells — to be added in Task 5.]*
+| Symbol | Meaning | Section |
+|---|---|---|
+| $D_i = X_i - Y_i$ | Paired difference | §1 |
+| $\mathbf{1}\{A\}$ | Indicator of event $A$ | throughout |
+| $N^+ = \sum_i \mathbf{1}\{D_i > 0\}$ | Sign-test statistic | §1 |
+| $R_i$ | Rank of $|D_i|$ in the absolute-value sample | §1 |
+| $W^+ = \sum_{i: D_i > 0} R_i$ | Wilcoxon signed-rank statistic | §1 |
+| $\mathcal{G}$ | Finite group of null-preserving transformations | §2 |
+| $g \cdot X$ | Transformation of the data vector by $g$ | §2 |
+| $\stackrel{d}{=}$ | Equality in distribution | §2 |
+| $p(X)$ | Permutation $p$-value | §2, §7, §8 |
+| $n_1, n_2, N = n_1 + n_2$ | Two-sample sizes and pooled total | §3 |
+| $R_i^X$ | Rank of $X_i$ in the pooled sample | §3 |
+| $W = \sum_i R_i^X$ | Wilcoxon rank-sum statistic | §3 |
+| $U = \sum_{i, j} \mathbf{1}\{X_i < Y_j\}$ | Mann-Whitney $U$ statistic | §3 |
+| $\theta = \mathbb{P}(X < Y)$ | Population parameter $U/(n_1 n_2)$ estimates | §3 |
+| $\bar R_j$ | Mean rank in group $j$ | §4 |
+| $H$ | Kruskal-Wallis statistic | §4 |
+| $\rho_j = \lim n_j/N$ | Limiting allocation in $k$-sample CLT | §4 |
+| $\theta_n = h/\sqrt{n}$ | Contiguous local alternative | §5 |
+| $c_T = 1/\sigma$, $c_W = \sqrt{12}\, I(f)$ | Drift coefficients | §5 |
+| $I(f) = \int f^2(x)\, dx$ | Density-functional integral | §5, §6 |
+| $A_{ij} = (D_i + D_j)/2$ | Walsh average | §6 |
+| $M = n(n+1)/2$ | Number of Walsh averages | §6 |
+| $\hat\theta_{\mathrm{HL}}$, $\hat\Delta_{\mathrm{HL}}$ | One-sample / two-sample Hodges-Lehmann estimators | §6 |
+| $A_{(k)}$ | Walsh-average order statistic | §6 |
+| $w_\alpha$ | Lower critical value of Wilcoxon null | §6 |
+| $T = (\bar X - \bar Y)/\sqrt{s_X^2/n_1 + s_Y^2/n_2}$ | Welch $t$-statistic | §7 |
+| $\hat p = (1 + \#\{T_\pi \geq T_{\mathrm{obs}}\})/(1 + B)$ | Phipson-Smyth $p$-value | §7, §8 |
+| $Y_i(0), Y_i(1)$ | Potential outcomes | §8 |
+| $W_i \in \{0, 1\}$ | Treatment assignment indicator | §8 |
+| $H_0^{\mathrm{sharp}}: Y_i(0) = Y_i(1)\,\forall i$ | Fisher's sharp null | §8 |
+| $Y_{\mathrm{cuped},\, i} = Y_i - \beta(X_i - \bar X)$ | CUPED-adjusted outcome | §8 |
+| $\beta = \mathrm{Cov}(X, Y)/\mathrm{Var}(X)$ | Pooled CUPED coefficient | §8 |
+| $\rho_{X, Y}$ | Pre/in-period correlation | §8 |
+| $t_k$ | Size of the $k$-th tie group | §9 |
+| $\sum_k (t_k^3 - t_k)$ | Tie-correction term | §9 |
 
 ## Connections and Further Reading
 
-*[§11 content — pulled from notebook Cell 21 markdown — to be added in Task 5.]*
+This topic is the testing-and-inference foundation of formalML's T4 (Nonparametric & Distribution-Free) track, sitting alongside [conformal prediction](/topics/conformal-prediction) (prediction under exchangeability) and [quantile regression](/topics/quantile-regression) (covariate-adjusted location). The shared mathematical primitive — exchangeability as a finite-sample inferential engine — ties the three together; the difference is what's being inferred (a parameter, a future observation, or a conditional quantile).
+
+The classical foundations live in Wilcoxon (1945), Mann & Whitney (1947), Kruskal & Wallis (1952), Pitman (1937), and the Hodges-Lehmann pair (1956 for the ARE bound, 1963 for the estimator and CI). Fisher's *Design of Experiments* (1935) is the source of randomization inference. Modern book-length treatments are Lehmann's *Nonparametrics* (2006, revised from the 1975 Holden-Day edition) and Hájek-Šidák-Sen's *Theory of Rank Tests* (1999) for the asymptotic theory in §§4–6. Van der Vaart's *Asymptotic Statistics* (1998), chapters 13 (rank tests) and 14 (relative efficiency), supplies the modern measure-theoretic foundation. For the A/B-testing applications in §8, Kohavi-Tang-Xu's *Trustworthy Online Controlled Experiments* (2020) is the operational guide, and Deng et al. (2013) is the original CUPED paper. See the **References** section above the page footer for the complete bibliography.
