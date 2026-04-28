@@ -971,38 +971,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The evidence lower bound (ELBO) is a variational approximation to $\log m(\mathbf{y})$ derived from the Kullback–Leibler projection of the posterior onto a tractable family. Replaces MCMC+bridge fo…_
 
-## When `formalml/variational-inference` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-computation-and-mcmc** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _VI is the non-MCMC alternative for approximate posterior inference: pick a tractable q(θ), minimize KL(q ∥ p(· | y)). Trades exactness for speed. §26.10 Rem 26 names the contrast; formalml develops…_
-- **formalStatistics/bayesian-foundations-and-prior-selection** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _When conjugate priors break down (non-exponential-family likelihoods, hierarchical models beyond Topic 28) and MCMC is too slow, variational inference approximates the posterior with a tractable fa…_
-- **formalStatistics/continuous-distributions** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Gaussian variational families are the default in VI. The Beta serves as the conjugate prior for Bernoulli likelihood in mean-field approximations._
-- **formalStatistics/exponential-families** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Exponential family variational distributions enable natural gradient VI. The ELBO has a closed-form expectation when both the prior and variational distribution are in the same exponential family._
-- **formalStatistics/hierarchical-bayes-and-partial-pooling** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Mean-field and structured VI for hierarchical models at scale; stochastic VI (Hoffman et al. 2013) and black-box VI (Ranganath et al. 2014). §28.10 Rem 24 pointer._
-- **formalCalculus/lebesgue-integral** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalcalculusPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The ELBO is an integral identity derived from Jensen's inequality applied to a Lebesgue integral: log p(x) ≥ ∫ q(z) log[p(x,z)/q(z)] dz._
-- **formalStatistics/multivariate-distributions** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The default variational family is the multivariate Normal — full-covariance or diagonal (mean-field). The reparameterization trick for VAEs uses the Cholesky sampling formula from §8: z = μ + Lε wh…_
-- **formalStatistics/random-variables** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Variational inference approximates posterior distributions by minimizing KL divergence between density functions. The conditional PDF framework enables the ELBO decomposition._
-- **formalStatistics/sufficient-statistics** declares `formalmlConnections` → `variational-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Variational bounds on the mutual information between $T$ and $\theta$ give tractable proxies for sufficiency in deep models. The exp-family structure from Topic 7 §7.7 gives the closed-form ELBO up…_
-
 ## When `formalml/wasserstein-distances` ships
 
 Add the reciprocal pointer back to:

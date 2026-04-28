@@ -1,0 +1,875 @@
+---
+title: "Variational Inference"
+subtitle: "Posterior approximation by reverse-KL projection onto a tractable family — the ELBO, mean-field CAVI, stochastic and reparameterization gradients, and normalizing-flow variational families"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "kl-divergence"
+  - "convex-analysis"
+  - "gradient-descent"
+formalstatisticsPrereqs:
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "Bayesian inference begins with the prior–likelihood–posterior decomposition that VI takes as given; the conjugate-prior framework underpins §3's closed-form CAVI on Gaussian-mixture and exponential-family models."
+  - topic: "bayesian-computation-and-mcmc"
+    site: "formalstatistics"
+    relationship: "MCMC is the asymptotically-exact alternative to VI's tractable approximation; §1.2's framing of sampling-versus-optimization and §6.3's no-free-lunch tradeoff both depend on the MCMC machinery formalstatistics develops."
+  - topic: "hierarchical-bayes-and-partial-pooling"
+    site: "formalstatistics"
+    relationship: "Mean-field and structured VI scale hierarchical Bayesian models past the reach of full HMC; §4.2 stochastic VI was originally motivated by latent Dirichlet allocation, a hierarchical Bayesian model, and §3.4's GMM is its simplest case."
+  - topic: "continuous-distributions"
+    site: "formalstatistics"
+    relationship: "§2.4 Gaussian–Gaussian conjugate inference, §3.4 GMM component-mean posteriors, §4.5 mean-field Gaussian ADVI, and §5.2 full-rank Gaussian VI all use the multivariate-Normal density, its differential entropy, and the Gaussian–Gaussian KL identity developed in continuous-distributions; the §1.3 Beta–Bernoulli mention also lives there."
+  - topic: "multivariate-distributions"
+    site: "formalstatistics"
+    relationship: "The default variational family is the multivariate Normal — diagonal in mean-field, full-rank in §5.2; the §4.4 reparameterization formula $\\theta = \\mu + L\\varepsilon$ is the multivariate-Normal sampling formula."
+  - topic: "random-variables"
+    site: "formalstatistics"
+    relationship: "VI minimizes reverse KL between density functions; the conditional-PDF framework is what makes §2's evidence decomposition a meaningful identity rather than a formal one."
+  - topic: "sufficient-statistics"
+    site: "formalstatistics"
+    relationship: "§3.3's closed-form conjugate CAVI relies on the natural-parameter and sufficient-statistic structure of exponential families; expectation-inside-the-natural-parameter is the operational form of that structure."
+  - topic: "exponential-families"
+    site: "formalstatistics"
+    relationship: "§3.3 conjugate CAVI is the operational specialization of the natural-parameter / sufficient-statistic / log-partition framework the exponential-families topic establishes; Proposition 1's 'expectation inside the natural parameter' recipe is exponential-family conjugacy applied to the variational $q_j$, and §4.2's natural gradient is the Fisher-information-weighted gradient on the same exp-family manifold."
+formalcalculusPrereqs:
+  - topic: "lebesgue-integral"
+    site: "formalcalculus"
+    relationship: "The §2 ELBO derivation applies Jensen's inequality to a Lebesgue integral; the integral identity is what makes the bound work for continuous-$\\theta$ models."
+  - topic: "jacobian"
+    site: "formalcalculus"
+    relationship: "The change-of-variable formula in §5.3's normalizing flows is a Jacobian computation; coupling layers are engineered so the Jacobian determinant is triangular and cheap."
+tags:
+  - "bayesian-ml"
+  - "variational-inference"
+  - "elbo"
+  - "mean-field"
+  - "cavi"
+  - "reparameterization-gradient"
+  - "advi"
+  - "normalizing-flows"
+  - "posterior-approximation"
+  - "machine-learning"
+domain: "bayesian-ml"
+videoId: null
+notebookPath: "notebooks/variational-inference/01_variational_inference.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/variational-inference.mdx"
+datePublished: 2026-04-28
+estimatedReadTime: 60
+abstract: "Variational inference is the projection-based response to the intractable evidence in Bayesian inference: pick a tractable family of distributions over the latent variables, find the member closest to the posterior under reverse KL, and report it. The recipe trades the exact-but-slow of MCMC for the approximate-but-fast of optimization, with structural error controlled by the variational family. We develop the evidence lower bound (ELBO) from a single application of Jensen's inequality, prove the evidence decomposition $\\log p(x) = \\mathrm{ELBO}(q) + \\mathrm{KL}(q \\,\\|\\, p(\\cdot \\mid x))$ that turns reverse-KL minimization into a tractable optimization, and develop the mean-field family with coordinate-ascent variational inference (CAVI) on a Bayesian Gaussian mixture. Modern VI moves to stochastic and black-box gradients: stochastic variational inference for big-data conjugate models, the score-function gradient for non-conjugate likelihoods, and the reparameterization gradient that powers automatic differentiation variational inference (ADVI) and every modern variational autoencoder. The topic closes with the structural error of mean-field — Gaussian targets are projected onto axis-aligned Gaussians whose marginal variances are systematically too small — and lifts the limitation through full-rank Gaussian VI and normalizing-flow variational families on a banana-shaped target where mean-field, full-rank, and flows form a strict hierarchy of approximation quality. Modern Bayesian computation is increasingly hybrid: VI for development and large-scale models, MCMC as the inferential reference whenever the bias matters."
+connections:
+  - topic: "kl-divergence"
+    relationship: "The reverse-KL projection that defines VI's optimization target lives entirely in the kl-divergence topic. Mode-seeking versus mode-covering asymmetry, Pinsker-type inequalities, and the variational representations of f-divergences are all developed there."
+  - topic: "convex-analysis"
+    relationship: "The ELBO is concave in $q$ on its full support; KL's joint convexity in its arguments underwrites the existence and uniqueness of the §3 CAVI coordinate updates. Mirror descent on the negative entropy is exactly the natural-gradient ascent of §4.2."
+  - topic: "gradient-descent"
+    relationship: "The §4 black-box and reparameterization estimators feed into stochastic gradient ascent. The Robbins–Monro step-size schedule under which §4.2's stochastic VI is consistent is the same one that underlies SGD for stochastic objectives."
+  - topic: "information-geometry"
+    relationship: "The natural gradient of §4.2 is the gradient on the statistical manifold of $q_\\phi$ with the Fisher information as the metric tensor. Mean-field's structural error is intrinsic in the Fisher–Rao geometry: the mean-field family is a low-dimensional submanifold of the full distribution space."
+  - topic: "spectral-theorem"
+    relationship: "Theorem 5 in §5.1 invokes the Schur-complement formula for the diagonal of the inverse covariance — a special case of the spectral decomposition machinery that the spectral theorem develops. The mean-field marginal variance equals the conditional variance, not the marginal."
+references:
+  - type: "paper"
+    title: "An Introduction to Variational Methods for Graphical Models"
+    authors: "Jordan, Ghahramani, Jaakkola & Saul"
+    year: 1999
+    url: "https://doi.org/10.1023/A:1007665907178"
+    note: "Foundational survey. Introduced VI to the mainstream ML community via factor graphs and convex-duality bounds (Machine Learning)."
+  - type: "paper"
+    title: "Graphical Models, Exponential Families, and Variational Inference"
+    authors: "Wainwright & Jordan"
+    year: 2008
+    url: "https://doi.org/10.1561/2200000001"
+    note: "The exponential-family treatment of conditional conjugacy that §3.3 specializes; the canonical reference for natural-parameter CAVI (Foundations and Trends in ML)."
+  - type: "paper"
+    title: "Variational Inference: A Review for Statisticians"
+    authors: "Blei, Kucukelbir & McAuliffe"
+    year: 2017
+    url: "https://doi.org/10.1080/01621459.2017.1285773"
+    note: "The modern survey. §§2–3 of this topic follow its exposition closely; recommended companion (Journal of the American Statistical Association)."
+  - type: "book"
+    title: "Pattern Recognition and Machine Learning"
+    authors: "Bishop"
+    year: 2006
+    url: "https://doi.org/10.1007/978-0-387-45528-0"
+    note: "Chapter 10 develops mean-field VI on Bayesian GMMs in the same form §3.4 takes here (Springer)."
+  - type: "book"
+    title: "Information Theory, Inference, and Learning Algorithms"
+    authors: "MacKay"
+    year: 2003
+    url: "https://www.inference.org.uk/itila/"
+    note: "Chapter 33 introduces VI in the variational-free-energy framing of §2's Form 1 (Cambridge University Press, free PDF)."
+  - type: "paper"
+    title: "Stochastic Variational Inference"
+    authors: "Hoffman, Blei, Wang & Paisley"
+    year: 2013
+    url: "https://jmlr.org/papers/v14/hoffman13a.html"
+    note: "Proposition 4.1 here. Introduced minibatch CAVI under Robbins–Monro; the substrate of corpus-scale Bayesian topic models (JMLR)."
+  - type: "paper"
+    title: "Black Box Variational Inference"
+    authors: "Ranganath, Gerrish & Blei"
+    year: 2014
+    url: "https://proceedings.mlr.press/v33/ranganath14.html"
+    note: "Theorem 2 here — the score-function gradient as a general-purpose VI estimator (AISTATS)."
+  - type: "paper"
+    title: "Auto-Encoding Variational Bayes"
+    authors: "Kingma & Welling"
+    year: 2014
+    url: "https://arxiv.org/abs/1312.6114"
+    note: "Theorem 3 here. Introduced the reparameterization gradient and the variational autoencoder (ICLR)."
+  - type: "paper"
+    title: "Stochastic Backpropagation and Approximate Inference in Deep Generative Models"
+    authors: "Rezende, Mohamed & Wierstra"
+    year: 2014
+    url: "https://proceedings.mlr.press/v32/rezende14.html"
+    note: "Independent contemporaneous derivation of the reparameterization gradient (ICML)."
+  - type: "paper"
+    title: "Automatic Differentiation Variational Inference"
+    authors: "Kucukelbir, Tran, Ranganath, Gelman & Blei"
+    year: 2017
+    url: "https://jmlr.org/papers/v18/16-107.html"
+    note: "ADVI: the §4.4 recipe packaged for general probabilistic programming languages. Stan/PyMC/NumPyro all run this under the hood (JMLR)."
+  - type: "paper"
+    title: "Variational Inference with Normalizing Flows"
+    authors: "Rezende & Mohamed"
+    year: 2015
+    url: "https://proceedings.mlr.press/v37/rezende15.html"
+    note: "Definition 3 here: normalizing flows as a variational family (ICML)."
+  - type: "paper"
+    title: "Density Estimation Using Real NVP"
+    authors: "Dinh, Sohl-Dickstein & Bengio"
+    year: 2017
+    url: "https://openreview.net/forum?id=HkpbnH9lx"
+    note: "Coupling layers — the §5.3 architecture used in the §5.4 banana experiment (ICLR)."
+  - type: "paper"
+    title: "Masked Autoregressive Flow for Density Estimation"
+    authors: "Papamakarios, Pavlakou & Murray"
+    year: 2017
+    url: "https://papers.nips.cc/paper/2017/hash/6c1da886822c67822bcf3679d04369fa-Abstract.html"
+    note: "MAF: the autoregressive companion to IAF, mentioned in §5.3 (NeurIPS)."
+  - type: "paper"
+    title: "Improving Variational Inference with Inverse Autoregressive Flow"
+    authors: "Kingma, Salimans, Jozefowicz, Chen, Sutskever & Welling"
+    year: 2016
+    url: "https://papers.nips.cc/paper/2016/hash/ddeebdeefdb7e7e7a697e1c3e3d8ef54-Abstract.html"
+    note: "IAF: autoregressive flows tuned for VI's forward-direction sampling (NeurIPS)."
+  - type: "paper"
+    title: "Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning"
+    authors: "Williams"
+    year: 1992
+    url: "https://doi.org/10.1007/BF00992696"
+    note: "REINFORCE — the score-function gradient under its RL name; Theorem 2 of this topic was first written down here (Machine Learning)."
+  - type: "paper"
+    title: "Natural Gradient Works Efficiently in Learning"
+    authors: "Amari"
+    year: 1998
+    url: "https://doi.org/10.1162/089976698300017746"
+    note: "The natural gradient on statistical manifolds — the geometric foundation for §4.2 (Neural Computation)."
+  - type: "paper"
+    title: "Two Problems with Variational Expectation Maximisation for Time-Series Models"
+    authors: "Turner & Sahani"
+    year: 2011
+    url: "https://doi.org/10.1017/CBO9780511984679.006"
+    note: "The empirical observation in §5.1: mean-field VI underestimates posterior variance well beyond the Gaussian case (Cambridge UP, Bayesian Time Series Models)."
+  - type: "paper"
+    title: "Keeping the Neural Networks Simple by Minimizing the Description Length of the Weights"
+    authors: "Hinton & van Camp"
+    year: 1993
+    url: "https://doi.org/10.1145/168304.168306"
+    note: "First mean-field VI on neural-network weights — the ancestor of every modern Bayesian neural network (COLT)."
+  - type: "paper"
+    title: "Practical Variational Inference for Neural Networks"
+    authors: "Graves"
+    year: 2011
+    url: "https://papers.nips.cc/paper/2011/hash/7eb3c8be3d411e8ebfab08eba5f49632-Abstract.html"
+    note: "Reparameterization-style VI for RNN weights, two years before Kingma–Welling (NeurIPS)."
+  - type: "paper"
+    title: "Weight Uncertainty in Neural Networks"
+    authors: "Blundell, Cornebise, Kavukcuoglu & Wierstra"
+    year: 2015
+    url: "https://proceedings.mlr.press/v37/blundell15.html"
+    note: "Bayes by Backprop — the practical recipe for mean-field-Gaussian Bayesian neural networks (ICML)."
+  - type: "paper"
+    title: "Latent Dirichlet Allocation"
+    authors: "Blei, Ng & Jordan"
+    year: 2003
+    url: "https://jmlr.org/papers/v3/blei03a.html"
+    note: "LDA — the canonical conjugate-CAVI application that motivated stochastic VI (JMLR)."
+  - type: "paper"
+    title: "Neural Processes"
+    authors: "Garnelo, Schwarz, Rosenbaum, Viola, Rezende, Eslami & Teh"
+    year: 2018
+    url: "https://arxiv.org/abs/1807.01622"
+    note: "Amortized VI: the §6.1 forward-link to meta-learning (ICML workshop)."
+  - type: "paper"
+    title: "Yes, but Did It Work?: Evaluating Variational Inference"
+    authors: "Yao, Vehtari, Simpson & Gelman"
+    year: 2018
+    url: "https://proceedings.mlr.press/v80/yao18a.html"
+    note: "Pareto-smoothed importance-sampling diagnostic ($\\hat k$) for catching VI pathologies in §6.3 (ICML)."
+  - type: "paper"
+    title: "Bayesian Parameter Estimation via Variational Methods"
+    authors: "Jaakkola & Jordan"
+    year: 2000
+    url: "https://doi.org/10.1023/A:1008932416310"
+    note: "Local-variational bounds for non-conjugate likelihoods — the model-specific predecessor to §4.4 black-box VI (Statistics and Computing)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+
+## Overview
+
+Bayesian inference begins with the same identity in every textbook:
+
+$$p(\theta \mid x) \;=\; \frac{p(x \mid \theta)\,p(\theta)}{p(x)}, \qquad p(x) \;=\; \int p(x \mid \theta)\,p(\theta)\,d\theta.$$
+
+The identity is conceptually clean: pick a prior, write a likelihood, divide. The catch is that for almost any model worth fitting, the integral defining $p(x)$ has no closed form, and the right-hand side cannot even be evaluated without it.
+
+The two scalable responses to this obstacle split the modern Bayesian computation literature in half. **Markov chain Monte Carlo**, the subject of [Bayesian Computation and MCMC](https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc) on formalstatistics, builds a Markov chain whose stationary distribution is the posterior and samples from it without ever computing $p(x)$ — asymptotically exact at the cost of long chains and post-hoc convergence diagnostics. **Variational inference**, the subject of this topic, takes a different tack: pick a tractable family $\mathcal{Q}$ of distributions over $\theta$, find the member $q^* \in \mathcal{Q}$ closest to the posterior under some divergence, and report $q^*$ as the approximate posterior. VI is fast and deterministic. It is also approximate in a way MCMC isn't, and the approximation error has a structure worth understanding before any algebra is on the page.
+
+This topic develops the machinery in six sections. §1 frames the geometry — VI is a projection. §2 derives the evidence lower bound (ELBO), the algebraic device that makes reverse-KL projection tractable. §3 develops mean-field VI and CAVI on a Bayesian Gaussian mixture. §4 lifts both restrictions of §3 — full-batch and conjugate — through stochastic VI, the score-function gradient, the reparameterization gradient, and ADVI. §5 attacks the structural error of mean-field with full-rank Gaussian VI and normalizing flows. §6 closes with connections to the rest of the curriculum and the limits a working Bayesian needs to know about.
+
+## 1. The intractable posterior
+
+#### 1.1 Why the evidence is intractable
+
+A concrete example fixes the obstacle. *Bayesian logistic regression* takes data $\mathcal{D} = \{(x_i, y_i)\}_{i=1}^n$ with covariates $x_i \in \mathbb{R}^d$ and binary responses $y_i \in \{0, 1\}$, a parameter vector $\theta \in \mathbb{R}^d$, and the likelihood
+
+$$p(y_i \mid x_i, \theta) \;=\; \sigma(x_i^\top \theta)^{y_i}\bigl(1 - \sigma(x_i^\top \theta)\bigr)^{1 - y_i}, \qquad \sigma(z) = \frac{1}{1 + e^{-z}},$$
+
+with a Gaussian prior $\theta \sim \mathcal{N}(0, \tau^2 I_d)$ on the regression coefficients. Up to the unknown evidence, the posterior is
+
+$$p(\theta \mid \mathcal{D}) \;\propto\; \exp\!\Bigl\{\,\sum_{i=1}^n y_i\,x_i^\top \theta - \log\bigl(1 + e^{x_i^\top \theta}\bigr)\,\Bigr\} \cdot \exp\!\Bigl\{-\tfrac{1}{2\tau^2}\|\theta\|^2\Bigr\},$$
+
+which is log-concave in $\theta$ but not Gaussian: the $\log(1 + e^{x_i^\top \theta})$ term is not quadratic in $\theta$, so the posterior is not in the same exponential family as the prior. Conjugacy fails. The marginal likelihood
+
+$$p(\mathcal{D}) \;=\; \int_{\mathbb{R}^d} p(\mathcal{D} \mid \theta)\,p(\theta)\,d\theta$$
+
+has no analytic expression — the integrand is a product of $n$ logistic terms times a Gaussian, and no antiderivative reduces the $d$-dimensional integral to closed form. Even *evaluating* $p(\theta \mid \mathcal{D})$ at a single $\theta$ requires that integral.
+
+The pattern generalizes. Conjugacy — the property that lets us write $p(\theta \mid x)$ in closed form — is the exception, not the rule. Most models that lift a likelihood from a textbook example into a real application break conjugacy at some point: a logit link, a non-Gaussian noise model, a hierarchical structure with cross-level couplings, or a deep neural network whose weights play the role of $\theta$. For all such models, the integral defining $p(x)$ is the bottleneck.
+
+#### 1.2 Two responses: sampling versus optimization
+
+MCMC sidesteps the intractable integral by exploiting a structural fact: ratios of the *unnormalized* posterior $\tilde p(\theta) = p(x \mid \theta)\,p(\theta)$ at two parameter values cancel the unknown $p(x)$ exactly, so a Markov chain whose transition probabilities depend only on those ratios has the right stationary distribution. The chain runs, eventually mixes, and the post-mixing samples are drawn from the posterior. The cost is wall-clock time: a chain on a large model can take hours or days, and convergence diagnostics are part of every analysis.
+
+Variational inference replaces the sampling problem with an optimization problem. We choose a *variational family* $\mathcal{Q}$ — a parametric set of distributions over $\theta$ — and search for the member of $\mathcal{Q}$ closest to the true posterior under a divergence $D\bigl(q,\, p(\cdot \mid x)\bigr)$:
+
+$$q^* \;=\; \arg\min_{q \in \mathcal{Q}}\, D\bigl(q,\, p(\cdot \mid x)\bigr).$$
+
+The choice of $\mathcal{Q}$ controls expressiveness; the choice of $D$ controls what *closest* means. Once $q^*$ is in hand, posterior expectations $\mathbb{E}_{p(\cdot \mid x)}[f(\theta)]$ are approximated by $\mathbb{E}_{q^*}[f(\theta)]$, which by construction is something we can compute. Both choices are deferred — $\mathcal{Q}$ to §3 and §5, $D$ to §1.3 below — but the bird's-eye view is already informative: VI trades the *exact-but-slow* of MCMC for the *approximate-but-fast* of optimization, and the quality of the trade depends entirely on whether $\mathcal{Q}$ is rich enough to host a good approximation to the true posterior.
+
+#### 1.3 The geometric picture
+
+Reading the optimization above out loud makes the geometry visible. The space of probability distributions on $\Theta$ is some infinite-dimensional set; the true posterior is a point in that set; the family $\mathcal{Q}$ is a much smaller submanifold parametrized by some finite-dimensional vector $\phi$; and $q^*$ is the point on $\mathcal{Q}$ closest to the posterior under $D$. *Variational inference is a projection.* When $\mathcal{Q}$ is too restrictive to contain the posterior, which is almost always the case, the projection introduces a bias, and the structure of that bias depends on what $D$ punishes most.
+
+Two natural choices of $D$ give qualitatively different projections.
+
+**Forward KL**, $\mathrm{KL}\bigl(p(\cdot \mid x)\,\|\,q\bigr)$, takes the expectation under the *true posterior*:
+
+$$\mathrm{KL}\bigl(p(\cdot \mid x)\,\|\,q\bigr) \;=\; \mathbb{E}_{p(\cdot \mid x)}\!\left[\log \frac{p(\theta \mid x)}{q(\theta)}\right].$$
+
+Computing this expectation requires sampling from the posterior, which is exactly what VI is trying to avoid. So forward KL is a non-starter as a stand-alone VI objective — though it does appear in the literature, paired with sampling-based corrections (importance-weighted bounds, reweighted wake-sleep) that lie outside this topic.
+
+**Reverse KL**, $\mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr)$, takes the expectation under $q$:
+
+$$\mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr) \;=\; \mathbb{E}_{q}\!\left[\log \frac{q(\theta)}{p(\theta \mid x)}\right].$$
+
+This is tractable in the sense that matters: $q$ is the distribution we chose, so we can sample from it (or compute expectations under it analytically when $q$ is in a simple family). The integrand involves $\log p(\theta \mid x) = \log p(x, \theta) - \log p(x)$, and the unknown constant $\log p(x)$ separates cleanly from the parts that depend on $q$ — which is the entire point and the subject of §2.
+
+Reverse KL is the standard VI objective, and it comes with a famous shape: the *mode-seeking* behavior previewed in [KL divergence](/topics/kl-divergence). A reverse-KL minimizer punishes mass placed where the target has none — $q(\theta) > 0$ where $p(\theta \mid x) \approx 0$ blows up the integrand — but pays no penalty for failing to cover regions where the target has mass and $q$ does not. When the target is multimodal, and the family is unimodal, the minimizer locks onto one mode rather than spreading across all of them. This is a feature in some applications (sharp predictions, decisive point estimates) and a pathology in others (genuine multimodality, identifiability problems where the modes correspond to distinct scientific hypotheses).
+
+The figure below illustrates the geometry on two synthetic 2D targets. Panel (a) shows a posterior with off-diagonal correlation; panel (b) overlays the reverse-KL projection onto the *mean-field* family of diagonal Gaussians — the projection captures the center but cannot represent orientation, and (we will see in §3 and again in §5) systematically *under*-estimates the marginal variance along correlated directions. Panel (c) shows the mode-seeking pathology: a bimodal target on the left, the reverse-KL projection onto a single Gaussian on the right — locked onto one mode, with a symmetric solution at the other.
+
+<Figure
+  src="/images/topics/variational-inference/01_intractable_posterior_geometry.png"
+  alt="Three panels: (a) correlated 2D Gaussian posterior contours; (b) same target with the diagonal-Gaussian reverse-KL projection overlaid, showing axis-aligned ellipses missing the diagonal correlation; (c) bimodal target with the single-Gaussian reverse-KL projection locking onto one mode"
+  caption="Variational families have shapes. The closest member of a family is constrained by what shapes the family allows, so structural error is intrinsic to the choice of Q. Reverse KL is mode-seeking, with consequences for multimodal posteriors that section 5 will revisit."
+/>
+
+The §2 derivation makes the unknown $\log p(x)$ disappear from the reverse-KL objective via an algebraic rearrangement called the *evidence lower bound*. With the ELBO in hand, §3 develops the workhorse mean-field algorithm, §4 extends VI to large-scale and non-conjugate problems, §5 lifts the mean-field assumption with structured families and normalizing flows, and §6 closes with connections and limits.
+
+## 2. The ELBO
+
+Reverse KL is tractable because $q$ is a distribution we chose; we can sample from it or compute expectations under it. But the integrand
+
+$$\mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr) \;=\; \mathbb{E}_q\!\left[\log q(\theta) - \log p(\theta \mid x)\right]$$
+
+still requires $\log p(\theta \mid x) = \log p(x, \theta) - \log p(x)$, and $\log p(x)$ is the unknown evidence we cannot compute. The way out is an algebraic rearrangement that isolates $\log p(x)$ as a constant — a constant from $q$'s point of view, irrelevant to optimization. The rearranged objective is the *evidence lower bound*, or ELBO. Three properties make it the central object of variational inference: it is computable from the model and a sample from $q$ alone; it lower-bounds $\log p(x)$ uniformly in $q$; and maximizing it over $q \in \mathcal{Q}$ is equivalent to minimizing reverse KL to the posterior.
+
+### 2.1 From Jensen to the ELBO
+
+The derivation is a single application of Jensen's inequality. Recall: a function $\varphi$ is *concave* if $\varphi(\mathbb{E}[Z]) \ge \mathbb{E}[\varphi(Z)]$ for every integrable random variable $Z$. The natural logarithm is concave on $(0, \infty)$, so for any positive random variable $Z$,
+
+$$\log \mathbb{E}[Z] \;\ge\; \mathbb{E}[\log Z].$$
+
+Now the *importance-sampling identity*: for any density $q$ on $\Theta$ that puts positive mass everywhere $p(x, \theta)$ does,
+
+$$p(x) \;=\; \int p(x, \theta)\,d\theta \;=\; \int q(\theta) \cdot \frac{p(x, \theta)}{q(\theta)}\,d\theta \;=\; \mathbb{E}_q\!\left[\frac{p(x, \theta)}{q(\theta)}\right].$$
+
+The marginal likelihood is the expectation under $q$ of the ratio between the joint and $q$. Taking logs and applying Jensen's inequality to $\log$:
+
+$$\log p(x) \;=\; \log \mathbb{E}_q\!\left[\frac{p(x, \theta)}{q(\theta)}\right] \;\ge\; \mathbb{E}_q\!\left[\log \frac{p(x, \theta)}{q(\theta)}\right] \;=\; \mathbb{E}_q[\log p(x, \theta)] - \mathbb{E}_q[\log q(\theta)].$$
+
+The right-hand side is the *evidence lower bound*. We give it a name and a notation.
+
+<TheoremBlock type="definition" number={1} title="ELBO">
+Let $p(x, \theta)$ be a joint density on $\mathcal{X} \times \Theta$, $x \in \mathcal{X}$ a fixed observation, and $q$ a density on $\Theta$ absolutely continuous with respect to $p(\cdot, \theta)$. The *evidence lower bound* of $q$ at $x$ is
+
+$$\mathrm{ELBO}(q) \;:=\; \mathbb{E}_q[\log p(x, \theta)] - \mathbb{E}_q[\log q(\theta)],$$
+
+with the convention $0 \log 0 = 0$.
+</TheoremBlock>
+
+Two properties are immediate from the derivation:
+
+1. $\mathrm{ELBO}(q) \le \log p(x)$ for every admissible $q$ — Jensen's inequality.
+2. $\mathrm{ELBO}(q)$ is computable whenever the model's joint density $p(x, \theta)$ is computable and we can take expectations under $q$. The unknown $\log p(x)$ does not appear.
+
+The first property explains the name: the ELBO is a *lower bound* on the *evidence*. The second explains why it matters: every quantity on the right-hand side is something we built and chose, so we can evaluate it.
+
+### 2.2 The evidence decomposition
+
+Jensen's inequality tells us $\mathrm{ELBO}(q) \le \log p(x)$ but not by how much. The gap turns out to have an exact, illuminating form.
+
+<TheoremBlock type="theorem" number={1} title="Evidence decomposition">
+For every admissible $q$,
+
+$$\log p(x) \;=\; \mathrm{ELBO}(q) \,+\, \mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr).$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Start from the definition of reverse KL and substitute Bayes' rule $p(\theta \mid x) = p(x, \theta) / p(x)$:
+
+$$\mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr) \;=\; \mathbb{E}_q\!\left[\log \frac{q(\theta)}{p(\theta \mid x)}\right] \;=\; \mathbb{E}_q[\log q(\theta)] - \mathbb{E}_q[\log p(\theta \mid x)].$$
+
+Expand the second term using $\log p(\theta \mid x) = \log p(x, \theta) - \log p(x)$:
+
+$$\mathbb{E}_q[\log p(\theta \mid x)] \;=\; \mathbb{E}_q[\log p(x, \theta)] - \log p(x),$$
+
+where $\log p(x)$ comes out of the expectation because it does not depend on $\theta$. Substituting:
+
+$$\mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr) \;=\; \mathbb{E}_q[\log q(\theta)] - \mathbb{E}_q[\log p(x, \theta)] + \log p(x) \;=\; -\mathrm{ELBO}(q) + \log p(x).$$
+
+Rearranging gives the claim. $\square$
+</TheoremBlock>
+
+The decomposition is the operational identity of variational inference. Three consequences come immediately.
+
+**Maximizing the ELBO is equivalent to minimizing the reverse KL.** Because $\log p(x)$ does not depend on $q$, it is a constant in the optimization over $q \in \mathcal{Q}$. So
+
+$$\arg\max_{q \in \mathcal{Q}} \mathrm{ELBO}(q) \;=\; \arg\min_{q \in \mathcal{Q}} \mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr).$$
+
+The intractable optimization (reverse KL involves $\log p(\theta \mid x)$, which we cannot evaluate) and the tractable optimization (the ELBO involves $\log p(x, \theta)$, which we can) have the same argmax.
+
+**The bound is tight when $\mathcal{Q}$ contains the posterior.** Reverse KL is non-negative and equals zero iff $q = p(\cdot \mid x)$ almost everywhere. So if the family is rich enough that $p(\cdot \mid x) \in \mathcal{Q}$, the optimum $q^* \in \mathcal{Q}$ equals the posterior and $\mathrm{ELBO}(q^*) = \log p(x)$. Outside the conjugate cases this almost never happens; the §3 mean-field GMM and §4 Bayesian logistic regression both have $\mathrm{ELBO}(q^*) < \log p(x)$, and the gap measures the structural error of the family.
+
+**The ELBO is a free lower bound on the evidence.** For model comparison or hyperparameter selection, $\log p(x)$ is exactly the quantity we want to compare across models — a higher evidence is a better fit. Computing $\log p(x)$ requires the intractable integral; the ELBO gives a lower bound that costs only a forward pass under $q$. This is the substrate of variational Bayesian model selection (forward link to the planned **Variational Bayes for Model Selection** *(coming soon)* topic).
+
+### 2.3 Three equivalent forms
+
+Definition 1 gives one expression for the ELBO. Two algebraic rearrangements produce equivalent expressions, each useful in a different context.
+
+**Form 1: Energy plus entropy.** The entropy of $q$ is $H(q) = -\mathbb{E}_q[\log q(\theta)]$. Substituting into Definition 1:
+
+$$\mathrm{ELBO}(q) \;=\; \mathbb{E}_q[\log p(x, \theta)] + H(q).$$
+
+Reading: the ELBO rewards $q$-mass in regions of high joint log-density (the *energy* term, by analogy with the Boltzmann distribution's $-\beta E$) and rewards $q$ for being *spread out* (the entropy term). Maximizing the ELBO trades off between concentrating on the mode of $p(x, \theta)$ and avoiding collapse to a delta. This form is canonical in the statistical-mechanics framing of VI as *variational free-energy minimization* — Feynman's variational principle for the partition function, transcribed into Bayesian language.
+
+**Form 2: Reconstruction minus prior-KL.** Decompose $\log p(x, \theta) = \log p(x \mid \theta) + \log p(\theta)$:
+
+$$\mathrm{ELBO}(q) \;=\; \mathbb{E}_q[\log p(x \mid \theta)] + \mathbb{E}_q[\log p(\theta)] - \mathbb{E}_q[\log q(\theta)] \;=\; \mathbb{E}_q[\log p(x \mid \theta)] - \mathrm{KL}\bigl(q(\theta)\,\|\,p(\theta)\bigr).$$
+
+Reading: the ELBO rewards $q$ for placing mass on $\theta$ values that *explain* the data (the *reconstruction* term, $\mathbb{E}_q[\log p(x \mid \theta)]$) but penalizes $q$ for moving away from the prior (the *prior-KL* term). This form is the workhorse of latent-variable models: in a variational autoencoder, the reconstruction term is the expected log-likelihood of the observed image given a latent code drawn from $q$, and the prior-KL term keeps the encoder distribution close to the standard-Gaussian prior. The two terms encode the model's bias-variance tradeoff at the level of $q$.
+
+**Form 3: Evidence minus posterior-KL.** This is Theorem 1 rearranged:
+
+$$\mathrm{ELBO}(q) \;=\; \log p(x) - \mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr).$$
+
+Reading: the ELBO equals the log-evidence (a constant) minus the reverse KL of $q$ to the posterior. This form makes the bound's *tightness* transparent — the ELBO is closest to $\log p(x)$ exactly when $q$ is closest to the posterior under reverse KL — and is the cleanest form for theoretical arguments. It is not directly useful for optimization, since the right-hand side contains the unknown $\log p(x)$ and the unknown posterior.
+
+The three forms are the same identity rearranged. Which one we reach for depends on what we want: Form 1 for thermodynamic intuition, Form 2 for implementation in latent-variable models, Form 3 for proofs.
+
+### 2.4 Worked example: a conjugate Gaussian
+
+A model with every quantity having a closed form lets us numerically verify the identity and visualize the ELBO landscape. We take the simplest such model.
+
+**Model.** Observe $x_1, \dots, x_n \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(\theta, \sigma^2)$ with $\sigma^2 > 0$ known. Place a Gaussian prior $\theta \sim \mathcal{N}(0, \tau^2)$ on the unknown mean. The joint density is
+
+$$p(x, \theta) \;=\; \prod_{i=1}^n \mathcal{N}(x_i \mid \theta, \sigma^2) \cdot \mathcal{N}(\theta \mid 0, \tau^2).$$
+
+**Exact posterior.** Completing the square in $\theta$ inside $\log p(x, \theta)$ gives the posterior in closed form:
+
+$$p(\theta \mid x) \;=\; \mathcal{N}\bigl(\theta \mid \mu_{\mathrm{post}},\, \sigma_{\mathrm{post}}^2\bigr), \qquad \sigma_{\mathrm{post}}^2 = \left(\frac{1}{\tau^2} + \frac{n}{\sigma^2}\right)^{-1}, \qquad \mu_{\mathrm{post}} = \sigma_{\mathrm{post}}^2 \cdot \frac{n \bar x}{\sigma^2},$$
+
+where $\bar x = n^{-1} \sum_i x_i$ is the sample mean. The posterior precision is the prior precision plus $n$ times the data precision, and the posterior mean is the posterior precision times the data's natural-parameter contribution. This is the standard Gaussian–Gaussian conjugate result.
+
+**Variational family.** Take $\mathcal{Q} = \{\mathcal{N}(\theta \mid \mu, s^2) : \mu \in \mathbb{R},\, s^2 > 0\}$, the family of all 1D Gaussians. Crucially, the true posterior is *in* this family — the conjugate setup is the rare case where $\mathcal{Q}$ contains $p(\cdot \mid x)$.
+
+**Closed-form ELBO.** With $q(\theta) = \mathcal{N}(\theta \mid \mu, s^2)$, every expectation in Definition 1 has a closed form. We use the standard identity $\mathbb{E}_q[(a - \theta)^2] = (a - \mu)^2 + s^2$ for any constant $a$, plus $H(q) = \tfrac{1}{2} \log(2\pi e s^2)$:
+
+$$\mathrm{ELBO}(\mu, s^2) = -\frac{n}{2} \log(2\pi \sigma^2) - \frac{1}{2\sigma^2}\!\left[\sum_{i=1}^n (x_i - \mu)^2 + n s^2\right] - \frac{1}{2} \log(2\pi \tau^2) - \frac{\mu^2 + s^2}{2\tau^2} + \frac{1}{2}\log(2\pi e s^2).$$
+
+Setting partial derivatives to zero recovers the exact posterior:
+
+$$\frac{\partial \mathrm{ELBO}}{\partial \mu} = \frac{1}{\sigma^2}\sum_i(x_i - \mu) - \frac{\mu}{\tau^2} = 0 \;\implies\; \mu^* = \mu_{\mathrm{post}},$$
+
+$$\frac{\partial \mathrm{ELBO}}{\partial s^2} = -\frac{n}{2\sigma^2} - \frac{1}{2\tau^2} + \frac{1}{2 s^2} = 0 \;\implies\; (s^*)^2 = \sigma_{\mathrm{post}}^2.$$
+
+The variational optimum exactly equals the true posterior, as Theorem 1 predicted: when $\mathcal{Q}$ contains $p(\cdot \mid x)$, the ELBO maximum saturates at $\log p(x)$ and $\mathrm{KL}(q^* \,\|\, p(\cdot \mid x)) = 0$.
+
+The figure below makes this concrete on a simulated dataset ($n = 20$, $\sigma^2 = 1$, $\tau^2 = 100$, true $\theta = 1.5$): panel (a) plots the ELBO surface over $(\mu_q, \log s)$ with the optimum marked, panel (b) overlays three candidate $q$'s on the exact posterior (the optimum, an off-center version, and a too-narrow version), and panel (c) shows the evidence decomposition numerically — for each candidate, $\mathrm{ELBO}(q)$ sits below $\log p(x)$ by exactly $\mathrm{KL}(q \,\|\, p(\cdot \mid x))$, with the gap collapsing to zero at $q^*$.
+
+<Figure
+  src="/images/topics/variational-inference/02_elbo_decomposition.png"
+  alt="Three panels: (a) ELBO contour plot over the variational mean and log-scale, showing a sharp single peak; (b) exact posterior overlaid with three candidate variational Gaussians; (c) ELBO values plotted against log p(x) reference line with KL gap annotations"
+  caption="The ELBO landscape on a tractable family is well behaved and the optimum recovers the true posterior. The identity log p(x) = ELBO(q) + KL(q || p(.|x)) holds at every q, not just the optimum."
+/>
+
+The conjugate case is not VI's typical regime — most real models break conjugacy somewhere, and the §3 mean-field GMM is the first example where $\mathrm{ELBO}(q^*) < \log p(x)$ at the optimum. But the identity from Theorem 1 is universal: every ELBO maximization is a reverse-KL projection, and the gap to $\log p(x)$ is always the KL of $q^*$ to the true posterior, whether that gap is zero or not.
+
+## 3. Mean-field VI and CAVI
+
+The §2 conjugate Gaussian example is misleading, because conjugacy is rare. For most Bayesian models, the posterior is not in the same family as the prior, the ELBO has no closed-form maximum even on simple parametric families, and Definition 1's sole virtue is that it is an *expression we can compute* — not yet an algorithm we can execute. The mean-field assumption is the algorithmic move that turns the ELBO into something we can optimize coordinate-by-coordinate, and *coordinate-ascent variational inference* (CAVI) is the algorithm that results. CAVI is the workhorse of variational inference in conjugate exponential-family models — Bayesian Gaussian mixtures, latent Dirichlet allocation, factorial hidden Markov models, mixed-effects models, sparse linear regression with conjugate priors. The trade-off it makes is structural: mean-field cannot represent posterior correlations between variables in different blocks. §5 returns to that limit.
+
+### 3.1 The mean-field family
+
+Partition the latent variables into $m$ blocks: $\theta = (\theta_1, \ldots, \theta_m)$ with $\theta_j \in \Theta_j$. The blocks are arbitrary and chosen by the modeler — usually one block per parameter (fully factorized) or one block per logical group (e.g., all component means together, all assignments together).
+
+<TheoremBlock type="definition" number={2} title="Mean-field variational family">
+The *mean-field family* relative to the partition $(\theta_1, \ldots, \theta_m)$ is
+
+$$\mathcal{Q}_{\mathrm{MF}} \;=\; \left\{ q(\theta) = \prod_{j=1}^m q_j(\theta_j) \,:\, q_j \text{ a density on } \Theta_j \right\}.$$
+</TheoremBlock>
+
+The factorization is *across* blocks; *within* a block, $q_j$ is unconstrained — any density on $\Theta_j$ is admissible. So the family is simultaneously *flexible* (each $q_j$ can be any shape) and *restrictive* (the joint $q$ assumes block-independence).
+
+What we gain is computational tractability. The ELBO under mean-field separates:
+
+$$\mathrm{ELBO}(q) \;=\; \mathbb{E}_q[\log p(x, \theta)] \;-\; \sum_{j=1}^m \mathbb{E}_{q_j}[\log q_j(\theta_j)],$$
+
+where the entropy term is a simple sum over blocks because $\log q(\theta) = \sum_j \log q_j(\theta_j)$ under the factorization. The first term doesn't separate — it depends jointly on all $q_j$ — but conditional on fixing every factor except one, it *does*, which is the door §3.2 walks through.
+
+What we lose is correlation. If the true posterior couples $\theta_j$ and $\theta_k$ in different blocks (which it generically does — even simple regression posteriors couple the coefficient with the intercept), no $q \in \mathcal{Q}_{\mathrm{MF}}$ can represent that coupling. The §1 panel (b) figure already showed this on a 2D Gaussian: the diagonal-Gaussian projection captures the center but cannot tilt to match the posterior's correlated shape. §5 quantifies this loss as systematic *under*-estimation of marginal posterior variance along correlated directions.
+
+### 3.2 The CAVI update
+
+The optimization strategy for mean-field VI is *coordinate ascent*: cycle through the blocks $j = 1, \ldots, m$, holding all factors except $q_j$ fixed and updating $q_j$ to its conditional optimum. The update has a clean closed form.
+
+<TheoremBlock type="theorem" number={2} title="CAVI optimal coordinate update">
+Fix $q_{-j}(\theta_{-j}) := \prod_{k \ne j} q_k(\theta_k)$. The unique maximizer of $\mathrm{ELBO}(q_j \cdot q_{-j})$ over densities $q_j$ on $\Theta_j$ is
+
+$$q_j^*(\theta_j) \;\propto\; \exp\!\Bigl\{\, \mathbb{E}_{q_{-j}}\!\left[\log p(x, \theta)\right] \,\Bigr\},$$
+
+with the proportionality constant chosen to make $q_j^*$ a density.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Hold $q_{-j}$ fixed and write the ELBO as a functional of $q_j$ alone. Starting from Form 1 (energy plus entropy):
+
+$$\mathrm{ELBO}(q_j \cdot q_{-j}) \;=\; \mathbb{E}_q[\log p(x, \theta)] \;-\; \mathbb{E}_{q_j}[\log q_j(\theta_j)] \;-\; \sum_{k \ne j} \mathbb{E}_{q_k}[\log q_k(\theta_k)].$$
+
+The last sum is constant in $q_j$. For the first term, condition on $\theta_j$ and apply Fubini's theorem:
+
+$$\mathbb{E}_q[\log p(x, \theta)] \;=\; \mathbb{E}_{q_j}\!\left[ \mathbb{E}_{q_{-j}}[\log p(x, \theta) \mid \theta_j] \right] \;=\; \mathbb{E}_{q_j}[f_j(\theta_j)],$$
+
+where $f_j(\theta_j) := \mathbb{E}_{q_{-j}}[\log p(x, \theta)]$ is the expected complete log-density viewed as a function of $\theta_j$ alone, with the expectation taken over the *other* factors. Substituting:
+
+$$\mathrm{ELBO}(q_j \cdot q_{-j}) \;=\; \mathbb{E}_{q_j}[f_j(\theta_j)] \;-\; \mathbb{E}_{q_j}[\log q_j(\theta_j)] \;+\; \mathrm{const}.$$
+
+Define $\tilde q_j(\theta_j) := Z_j^{-1} \exp f_j(\theta_j)$, with $Z_j := \int \exp f_j(\theta_j) \, d\theta_j$ assumed finite. Then $f_j(\theta_j) = \log \tilde q_j(\theta_j) + \log Z_j$, and
+
+$$\mathbb{E}_{q_j}[f_j(\theta_j)] \;-\; \mathbb{E}_{q_j}[\log q_j(\theta_j)] \;=\; \mathbb{E}_{q_j}[\log \tilde q_j(\theta_j)] \;-\; \mathbb{E}_{q_j}[\log q_j(\theta_j)] \;+\; \log Z_j \;=\; -\mathrm{KL}(q_j \,\|\, \tilde q_j) \;+\; \log Z_j.$$
+
+So $\mathrm{ELBO}(q_j \cdot q_{-j}) = -\mathrm{KL}(q_j \,\|\, \tilde q_j) + \log Z_j + \mathrm{const}$. The right-hand side is maximized over $q_j$ by minimizing the KL term, which is non-negative and equals zero iff $q_j = \tilde q_j$ almost everywhere. The unique maximizer is therefore $q_j^* = \tilde q_j \propto \exp f_j$. $\square$
+</TheoremBlock>
+
+The reading: the optimal $q_j$ given the others is proportional to the exponentiated expected complete log-joint, with the expectation taken over the *other* factors. This is also the form of the *complete conditional* $p(\theta_j \mid \theta_{-j}, x)$ as a function of $\theta_j$ — except with $\theta_{-j}$ replaced by an expectation under $q_{-j}$. CAVI replaces conditioning on a value with averaging over a distribution.
+
+> **Algorithm (CAVI).** Initialize $q_1, \ldots, q_m$. Repeat until convergence:
+>
+> - For $j = 1, \ldots, m$: set $q_j(\theta_j) \leftarrow Z_j^{-1} \exp \mathbb{E}_{q_{-j}}[\log p(x, \theta)]$.
+>
+> Convergence is monitored by tracking the ELBO; halt when the ELBO change between sweeps falls below a tolerance.
+
+The monotonicity of the ELBO under CAVI follows immediately from Theorem 2: each block update either increases the ELBO (if $q_j$ wasn't already optimal) or leaves it unchanged, so the ELBO is non-decreasing across iterations. Like EM, CAVI is guaranteed to converge to a *local* maximum of the ELBO; the global maximum is generally unattainable because the ELBO is non-concave in $q$ for non-trivial models — particularly for mixtures, where the symmetry across component labels generates exponentially many local maxima.
+
+### 3.3 Conjugate exponential families
+
+CAVI's update has a closed form whenever the model is *conditionally conjugate* — meaning each complete conditional $p(\theta_j \mid \theta_{-j}, x)$ is in an exponential family. The derivation is short, and the result is operationally important.
+
+Suppose
+
+$$p(\theta_j \mid \theta_{-j}, x) \;=\; h_j(\theta_j) \exp\!\Bigl\{\, \eta_j(\theta_{-j}, x)^\top T_j(\theta_j) \;-\; A_j\bigl(\eta_j(\theta_{-j}, x)\bigr) \,\Bigr\},$$
+
+with base measure $h_j$, sufficient statistics $T_j$, natural parameter $\eta_j(\theta_{-j}, x)$, and log-partition $A_j$. The exponential-family form means the dependence on $\theta_j$ enters only through $T_j(\theta_j)$ and $h_j(\theta_j)$, while the dependence on the rest enters only through $\eta_j$ and $A_j$.
+
+Writing $\log p(x, \theta) = \log p(\theta_j \mid \theta_{-j}, x) + \log p(x, \theta_{-j})$ and noting that the second term is constant in $\theta_j$:
+
+$$\mathbb{E}_{q_{-j}}[\log p(x, \theta)] \;=\; \log h_j(\theta_j) \;+\; \mathbb{E}_{q_{-j}}[\eta_j(\theta_{-j}, x)]^\top T_j(\theta_j) \;+\; \mathrm{const}.$$
+
+Exponentiating gives the CAVI update:
+
+$$q_j^*(\theta_j) \;\propto\; h_j(\theta_j) \exp\!\Bigl\{\, \mathbb{E}_{q_{-j}}[\eta_j(\theta_{-j}, x)]^\top T_j(\theta_j) \,\Bigr\}.$$
+
+This is in the same exponential family as $p(\theta_j \mid \theta_{-j}, x)$, with natural parameter $\eta_j^* = \mathbb{E}_{q_{-j}}[\eta_j(\theta_{-j}, x)]$.
+
+<TheoremBlock type="proposition" number={1} title="Conjugate CAVI in closed form">
+If the complete conditional $p(\theta_j \mid \theta_{-j}, x)$ is in an exponential family with natural parameter $\eta_j(\theta_{-j}, x)$, the CAVI update sets $q_j$ to the same exponential family with natural parameter $\eta_j^* = \mathbb{E}_{q_{-j}}[\eta_j(\theta_{-j}, x)]$.
+</TheoremBlock>
+
+The result is "expectation inside the natural parameter": take the natural-parameter expression for the complete conditional, and replace each occurrence of $\theta_{-j}$ with the appropriate expectation under $q_{-j}$. The class of *conditionally conjugate* models — where every complete conditional is an exponential family with a tractable expectation — is the natural domain of closed-form CAVI: Bayesian GMMs, LDA, hidden Markov models, factorial HMMs, and the broader family of conjugate hierarchical models that defines structured Bayesian-machine-learning workflows.
+
+### 3.4 Worked example: Bayesian Gaussian mixture model
+
+The canonical worked example is the Bayesian Gaussian mixture. We take the simplest version that exhibits all the structure: known component variance, a Gaussian prior on component means, and uniform mixing weights.
+
+**Model.** Observe $x_1, \ldots, x_n \in \mathbb{R}^d$. Place a $K$-component mixture with:
+
+- Component means $\mu_k \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(0,\, \tau^2 I_d)$ for $k = 1, \ldots, K$;
+- Cluster assignments $z_i \stackrel{\mathrm{iid}}{\sim} \mathrm{Cat}(1/K, \ldots, 1/K)$ (uniform mixing weights);
+- Observations $x_i \mid z_i = k, \mu \sim \mathcal{N}(\mu_k,\, \sigma^2 I_d)$ with $\sigma^2$ known.
+
+The latent variables are $\theta = (\mu, z)$ with $\mu = (\mu_1, \ldots, \mu_K)$ and $z = (z_1, \ldots, z_n)$.
+
+**Mean-field family.** Take a two-block factorization: one block for the means, one for the assignments.
+
+$$q(\mu, z) \;=\; q(\mu) \, q(z), \qquad q(\mu) = \prod_{k=1}^K q(\mu_k), \qquad q(z) = \prod_{i=1}^n q(z_i).$$
+
+The within-block factorizations across $k$ and $i$ are not additional assumptions — they follow from the model's conditional independencies given the other block.
+
+**The CAVI updates.** Both updates follow from the conjugate exponential-family setup of §3.3.
+
+*Update for $q(z_i)$.* The complete conditional $p(z_i \mid x, \mu, z_{-i})$ depends only on $x_i$ and $\mu$. It's categorical with $p(z_i = k \mid x_i, \mu) \propto K^{-1} \mathcal{N}(x_i \mid \mu_k, \sigma^2 I)$. The natural parameter has term $-\tfrac{1}{2\sigma^2}\|x_i - \mu_k\|^2$. Taking the expectation under $q(\mu_k) = \mathcal{N}(m_k, s_k^2 I)$ and using $\mathbb{E}_{q(\mu_k)}[\|x_i - \mu_k\|^2] = \|x_i - m_k\|^2 + d \, s_k^2$ gives the *responsibility*:
+
+$$r_{ik} \;:=\; q(z_i = k) \;\propto\; \exp\!\Bigl\{ -\frac{1}{2\sigma^2} \bigl( \|x_i - m_k\|^2 + d \, s_k^2 \bigr) \Bigr\},$$
+
+normalized so $\sum_k r_{ik} = 1$. The variance-correction term $d \, s_k^2$ *softens* the responsibilities relative to the EM hard-assignment limit: posterior uncertainty about $\mu_k$ pulls the soft assignments toward uniformity.
+
+*Update for $q(\mu_k)$.* The complete conditional $p(\mu_k \mid x, z, \mu_{-k})$ is a Gaussian — conjugate combination of the prior and the points hard-assigned to component $k$. Replacing the hard assignments with expected responsibilities under $q(z)$ gives the §2 conjugate Gaussian–Gaussian update applied to *soft-assigned* sufficient statistics:
+
+$$q(\mu_k) \;=\; \mathcal{N}(m_k,\, s_k^2 I_d), \qquad s_k^2 \;=\; \left( \frac{N_k}{\sigma^2} + \frac{1}{\tau^2} \right)^{-1}, \qquad m_k \;=\; \frac{s_k^2}{\sigma^2} \sum_{i=1}^n r_{ik} \, x_i,$$
+
+where $N_k := \sum_i r_{ik}$ is the *effective count* of points assigned to component $k$. Compare with §2: the only change is that the data is weighted by responsibilities rather than counted indicator-by-indicator. The connection to EM is now visible — CAVI's $r$-update is the soft E-step, and CAVI's $\mu$-update is a Bayesian M-step that returns the full posterior $\mathcal{N}(m_k, s_k^2 I)$ rather than just the MAP point.
+
+**The closed-form ELBO.** Every term of $\mathrm{ELBO}(q) = \mathbb{E}_q[\log p(x, z, \mu)] - \mathbb{E}_q[\log q(z, \mu)]$ has a closed form. Working through $\log p(x, z, \mu) = \log p(x \mid z, \mu) + \log p(z) + \log p(\mu)$ and the entropies:
+
+$$\mathrm{ELBO} \;=\; \underbrace{-\sum_{i,k} \frac{r_{ik}}{2\sigma^2}\bigl( \|x_i - m_k\|^2 + d \, s_k^2 \bigr)}_{\text{soft reconstruction}} \;-\; \underbrace{\sum_k \frac{\|m_k\|^2 + d \, s_k^2}{2\tau^2}}_{\text{prior penalty}} \;+\; \underbrace{H(q(z))}_{\text{assignment entropy}} \;+\; \underbrace{H(q(\mu))}_{\text{mean entropy}} \;+\; \mathrm{const},$$
+
+where $H(q(z)) = -\sum_{i,k} r_{ik} \log r_{ik}$, $H(q(\mu)) = \sum_k \tfrac{d}{2}\log(2\pi e s_k^2)$, and the constant absorbs the data-independent normalizers. Tracking this expression across CAVI sweeps is the §3.4 figure.
+
+The figure below shows CAVI applied to a synthetic 2D 2-cluster dataset designed to mirror the structure of Old Faithful eruptions (two well-separated clusters with moderate within-cluster spread). Panel (a) shows the data with a random initialization of component means; panel (b) shows the converged variational posterior, with each $m_k$ at its cluster center and the variational covariance $s_k^2 I$ as a 2-sigma ellipse; panel (c) shows the ELBO across iterations.
+
+<Figure
+  src="/images/topics/variational-inference/03_cavi_gmm.png"
+  alt="Three panels: (a) raw data with random initialization of variational means; (b) data colored by argmax responsibility with converged variational means and 2-sigma ellipses; (c) ELBO trajectory across CAVI iterations showing monotonic non-decrease"
+  caption="CAVI is concretely an algorithm — the math implements as a few lines of NumPy. The ELBO's monotonic non-decrease is a diagnostic — a non-monotonic ELBO trajectory in real code is a bug, not a feature. The variational posterior over component means concentrates much faster than the within-cluster data spread."
+/>
+
+The convergence pattern is characteristic of CAVI on mixtures: the ELBO climbs rapidly in the first few sweeps as the responsibilities sort the points, then plateaus as the component means refine. Mixture posteriors are multimodal — any permutation of the component labels gives an equivalent posterior, and CAVI converges to one of those modes. §5 returns to the consequence that under mean-field, the component-mean variances $s_k^2$ are systematically smaller than under the full Bayesian posterior, because the mean-field assumption ignores the posterior coupling between $\mu_k$ and $z$.
+
+## 4. Stochastic and black-box VI
+
+The CAVI setup of §3 — closed-form coordinate updates derived from conjugate-exponential-family structure — is the right tool for a specific class of models, and a wrong tool everywhere else. Two stresses that modern Bayesian workflows routinely encounter break it. The first is *scale*: when the dataset is large enough that even a single full-batch pass is expensive, the linear-in-$n$ cost of every CAVI sweep makes the method impractical. The second is *non-conjugacy*: when the likelihood and prior do not align in a way that produces closed-form complete conditionals, §3.3's "expectation inside the natural parameter" trick has nothing to operate on, and the CAVI update $q_j^* \propto \exp \mathbb{E}_{q_{-j}}[\log p(x, \theta)]$ has no analytic form.
+
+This section assembles the two responses. *Stochastic variational inference* (Hoffman et al. 2013) addresses scale by computing CAVI updates from minibatches under a Robbins–Monro step-size schedule. *Black-box variational inference* (Ranganath, Gerrish, and Blei 2014) and the *reparameterization gradient* (Kingma and Welling 2014; Rezende, Mohamed, and Wierstra 2014) address non-conjugacy by recasting ELBO maximization as stochastic gradient ascent on a parametric variational family — and the reparameterization gradient is now the dominant computational device of modern VI, the substrate of every variational autoencoder, Bayesian neural network, and deep generative model. The §4.5 worked example applies the reparameterization gradient to Bayesian logistic regression on the Iris dataset using JAX.
+
+### 4.1 Where CAVI breaks
+
+**Big data.** A CAVI sweep on the §3 worked example — $n = 270$, $K = 2$, $d = 2$ — costs roughly $nKd \approx 10^3$ floating-point operations per iteration. For the corpus-scale topic models that motivated SVI ($n = 10^7$ documents, $K = 100$ topics, $d = 10^5$ vocabulary terms), the same $nKd$ scaling produces $10^{14}$ operations per sweep, and convergence can require hundreds of sweeps. The cost is not in any single update — each update is closed-form — but in the linear-in-$n$ scaling of every CAVI iteration. Wall-clock time runs to hours or days before the first ELBO estimate stabilizes. The standard remedy in optimization is to replace full-batch gradients with unbiased minibatch estimates and to rely on stochastic approximation theory for convergence. The §4.2 SVI machinery transfers that idea to CAVI's natural-gradient form.
+
+**Non-conjugacy.** Bayesian logistic regression is the simplest example. With Bernoulli likelihood $y_i \mid x_i, \theta \sim \mathrm{Ber}(\sigma(x_i^\top \theta))$ and Gaussian prior $\theta \sim \mathcal{N}(0, \tau^2 I)$, the complete log-joint is
+
+$$\log p(\mathcal{D}, \theta) \;=\; \sum_{i=1}^n \bigl[y_i\,x_i^\top \theta - \log(1 + e^{x_i^\top \theta})\bigr] - \frac{\|\theta\|^2}{2\tau^2} + \mathrm{const},$$
+
+which is not in the same exponential family as the prior — the $\log(1 + e^{x_i^\top \theta})$ term is not quadratic in $\theta$. Mean-field CAVI on a Gaussian variational family $q(\theta) = \mathcal{N}(\mu, \mathrm{diag}(\sigma^2))$ would require $\mathbb{E}_q[\log(1 + e^{x_i^\top \theta})]$ in closed form, and that expectation has no analytic expression. Model-specific workarounds exist — local-variational bounds (Jaakkola and Jordan 2000), Laplace-style expansions around the variational mean — but each non-conjugate likelihood needs its own analysis, and no general recipe scales across the modeling landscape. The §§4.3–4.4 black-box machinery is general: any model where we can evaluate $\log p(x, \theta)$ at a sampled $\theta$ admits a stochastic gradient estimator for the ELBO.
+
+### 4.2 Stochastic VI for big data
+
+Hoffman, Blei, Wang, and Paisley (2013) extended CAVI to the minibatch regime through two observations: that CAVI's coordinate update is a *natural gradient* step on the ELBO, and that natural gradients in conditionally conjugate models admit unbiased minibatch estimators.
+
+The natural gradient takes seriously that $q(\theta; \eta)$ lives on a manifold of probability distributions rather than in the Euclidean space of natural parameters. The Euclidean gradient $\nabla_\eta \mathrm{ELBO}$ asks how the ELBO changes as $\eta$ moves a unit step in coordinate space; the *natural gradient* $\tilde\nabla_\eta \mathrm{ELBO} := F(\eta)^{-1} \nabla_\eta \mathrm{ELBO}$, where $F(\eta) = \mathbb{E}_q[\nabla_\eta \log q \cdot \nabla_\eta \log q^\top]$ is the Fisher information of $q(\theta; \eta)$, asks how the ELBO changes as $q(\theta; \eta)$ moves a unit step in *KL distance*. The natural gradient is the right object whenever the parameter space's Euclidean geometry is misleading — which it always is for probability distributions.
+
+<TheoremBlock type="proposition" number={2} title="Hoffman et al. 2013">
+For a conditionally conjugate exponential-family model, with mean-field $q$ in the same exponential family as the complete conditional and $\eta_j$ the natural parameter of $q_j$, the natural gradient of the ELBO with respect to $\eta_j$ (holding $q_{-j}$ fixed) is
+
+$$\tilde\nabla_{\eta_j} \mathrm{ELBO} \;=\; \mathbb{E}_{q_{-j}}\!\bigl[\eta_j(\theta_{-j}, x)\bigr] \;-\; \eta_j.$$
+</TheoremBlock>
+
+The result is operationally direct: the natural gradient *points from the current natural parameter to the CAVI target*. A natural-gradient ascent step with rate $\rho$ is a damped CAVI update,
+
+$$\eta_j^{(t+1)} \;=\; (1 - \rho)\,\eta_j^{(t)} \;+\; \rho \cdot \mathbb{E}_{q_{-j}}\!\bigl[\eta_j(\theta_{-j}, x)\bigr],$$
+
+and CAVI itself is the special case $\rho = 1$ — a one-shot natural-gradient step that overshoots a damped trajectory but converges at every iteration.
+
+The minibatching step is now mechanical. The CAVI target $\mathbb{E}_{q_{-j}}[\eta_j(\theta_{-j}, x)]$ in conjugate exponential-family models has the form $\eta_j^{(0)} + \sum_{i=1}^n s_i$ where $\eta_j^{(0)}$ is the prior natural parameter and $s_i$ is a per-datapoint sufficient-statistic contribution. Replacing the full sum with a rescaled minibatch sum,
+
+$$\widehat{\mathbb{E}_{q_{-j}}[\eta_j]} \;=\; \eta_j^{(0)} \;+\; \frac{n}{|B|}\sum_{i \in B} s_i,$$
+
+gives an unbiased estimator of the CAVI target. Stochastic natural-gradient ascent with this estimator and a Robbins–Monro learning-rate schedule ($\sum_t \rho_t = \infty$, $\sum_t \rho_t^2 < \infty$, typically $\rho_t = (t + \tau)^{-\kappa}$ for $\kappa \in (0.5, 1]$) converges to a local maximum of the ELBO. SVI scales the workhorse CAVI machinery from research-scale to corpus-scale models — LDA on Wikipedia-sized corpora, hierarchical Dirichlet processes on millions of documents, factorial hidden Markov models on long time series — and remains the right tool for any conjugate exponential-family model that doesn't fit in memory. It is *not* the right tool for non-conjugate models, where the natural gradient itself is not closed-form.
+
+### 4.3 Black-box VI: the score-function gradient
+
+For non-conjugate models, we need a gradient estimator that requires only the ability to (i) sample from $q_\phi$ and (ii) evaluate $\log p(x, \theta)$ at a sampled $\theta$. Ranganath, Gerrish, and Blei (2014) showed that the *log-derivative trick* — also known as the *REINFORCE estimator* in reinforcement learning (Williams 1992) and the *likelihood-ratio estimator* in stochastic optimization — provides exactly this.
+
+Let $q_\phi$ be a parametric variational family with parameters $\phi \in \mathbb{R}^P$, and write $\mathcal{L}(\phi) := \mathrm{ELBO}(q_\phi) = \mathbb{E}_{q_\phi}[\log p(x, \theta) - \log q_\phi(\theta)]$.
+
+<TheoremBlock type="theorem" number={3} title="Score-function gradient">
+Assume $q_\phi(\theta)$ is differentiable in $\phi$ for each $\theta$ and that the dominated-convergence conditions hold. Then
+
+$$\nabla_\phi \mathcal{L}(\phi) \;=\; \mathbb{E}_{q_\phi}\!\Bigl[\bigl(\log p(x, \theta) - \log q_\phi(\theta)\bigr)\,\nabla_\phi \log q_\phi(\theta)\Bigr].$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Differentiate under the integral sign, apply $\nabla_\phi q_\phi = q_\phi \nabla_\phi \log q_\phi$ (the *log-derivative trick*), and split the result into two pieces:
+
+$$\nabla_\phi \mathcal{L}(\phi) \;=\; \int\bigl[\nabla_\phi q_\phi(\theta)\bigr]\bigl[\log p(x, \theta) - \log q_\phi(\theta)\bigr]\,d\theta \;-\; \int q_\phi(\theta)\,\nabla_\phi \log q_\phi(\theta)\,d\theta.$$
+
+The first term, after substituting $\nabla_\phi q_\phi = q_\phi \nabla_\phi \log q_\phi$, equals $\mathbb{E}_{q_\phi}[(\log p - \log q_\phi) \nabla_\phi \log q_\phi]$. The second term equals $\mathbb{E}_{q_\phi}[\nabla_\phi \log q_\phi] = \int \nabla_\phi q_\phi = \nabla_\phi \int q_\phi = \nabla_\phi 1 = 0$, the standard identity that the expected score is zero. So only the first term survives. $\square$
+</TheoremBlock>
+
+The estimator is universal in a clean sense: it requires only that we can sample from $q_\phi$ and evaluate both $\log p(x, \theta)$ and $\nabla_\phi \log q_\phi(\theta)$. The model can be arbitrarily non-conjugate, hierarchical, deep — the score-function gradient still applies. Replacing the expectation with $S$ Monte Carlo samples gives the unbiased estimator
+
+$$\widehat{\nabla_\phi \mathcal{L}}_{\mathrm{SF}}(\phi) \;=\; \frac{1}{S}\sum_{s=1}^S \bigl(\log p(x, \theta^{(s)}) - \log q_\phi(\theta^{(s)})\bigr)\,\nabla_\phi \log q_\phi(\theta^{(s)}), \qquad \theta^{(s)} \stackrel{\mathrm{iid}}{\sim} q_\phi.$$
+
+Universality has a cost. The estimator's variance scales with the variance of the integrand $(\log p - \log q_\phi)$ under $q_\phi$, and that variance is large whenever the variational distribution is far from the posterior — exactly the regime we expect at the start of optimization. Variance-reduction techniques (control variates, Rao–Blackwellization, the "score-function with baselines" recipe of Ranganath et al.) reduce practical variance by one to two orders of magnitude, but a comparison with the §4.4 reparameterization estimator still typically favors reparameterization when available. The score-function gradient remains the right tool for *discrete* variational families (where reparameterization fails because gradients cannot pass through a sampling-from-discrete operation) and is the gradient estimator under the hood of Pyro's `TraceGraph_ELBO` and similar discrete-VI implementations.
+
+### 4.4 The reparameterization gradient and ADVI
+
+When the variational family admits a *differentiable sampling path* — when we can write $\theta = g(\epsilon, \phi)$ with $\epsilon$ drawn from a fixed base distribution $q_0$ that does *not* depend on $\phi$ — there is a much lower-variance gradient estimator. The canonical example: $q_\phi(\theta) = \mathcal{N}(\theta \mid \mu, \mathrm{diag}(\sigma^2))$ with $\phi = (\mu, \log \sigma)$ admits the sampling path
+
+$$\theta \;=\; \mu \,+\, \sigma \odot \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I).$$
+
+For any $\phi = (\mu, \log \sigma)$, the right-hand side has the right distribution, and the dependence on $\phi$ is through $g$ rather than through $q_0$.
+
+<TheoremBlock type="theorem" number={4} title="Reparameterization (pathwise) gradient">
+Suppose $\theta = g(\epsilon, \phi)$ with $\epsilon \sim q_0$ (independent of $\phi$), $\theta \sim q_\phi$, $g$ differentiable in $\phi$ for each $\epsilon$, and $f$ a function such that $\mathbb{E}_{q_0}\|\nabla_\phi f(g(\epsilon, \phi))\| < \infty$. Then
+
+$$\nabla_\phi \mathbb{E}_{q_\phi}[f(\theta)] \;=\; \mathbb{E}_{q_0}\!\bigl[\nabla_\phi f(g(\epsilon, \phi))\bigr].$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By the change-of-variables theorem and independence of $\epsilon$ from $\phi$,
+
+$$\mathbb{E}_{q_\phi}[f(\theta)] \;=\; \mathbb{E}_{q_0}\!\bigl[f(g(\epsilon, \phi))\bigr] \;=\; \int f(g(\epsilon, \phi))\,q_0(\epsilon)\,d\epsilon.$$
+
+The right-hand side has $\phi$ only inside $f \circ g$, not in the measure. Differentiating under the integral sign — the dominated-convergence integrability assumption is what licenses this — gives $\int \nabla_\phi f(g(\epsilon, \phi))\,q_0(\epsilon)\,d\epsilon = \mathbb{E}_{q_0}[\nabla_\phi f(g(\epsilon, \phi))]$. $\square$
+</TheoremBlock>
+
+Applied to the ELBO with $f(\theta) = \log p(x, \theta) - \log q_\phi(\theta)$ and the Gaussian reparameterization $\theta = \mu + \sigma \odot \epsilon$:
+
+$$\nabla_\phi \mathcal{L}(\phi) \;=\; \mathbb{E}_{\epsilon \sim \mathcal{N}(0, I)}\!\Bigl[\nabla_\phi \bigl(\log p(x, g(\epsilon, \phi)) - \log q_\phi(g(\epsilon, \phi))\bigr)\Bigr],$$
+
+and the chain rule unpacks $\nabla_\phi \log p(x, g(\epsilon, \phi)) = \nabla_\theta \log p(x, \theta)\big|_{\theta = g(\epsilon, \phi)} \cdot \nabla_\phi g(\epsilon, \phi)$. The score-function estimator weights the *value* $\log p(x, \theta)$ against the score $\nabla_\phi \log q_\phi$; the reparameterization estimator passes the *gradient* $\nabla_\theta \log p(x, \theta)$ through the model itself. Empirically, the second has variance one to several orders of magnitude lower than the first for typical neural-network and conjugate-Gaussian targets — the sample-by-sample variance of $\log p(x, \theta)$ is much larger than the variance of its gradient. The §4.5 worked example renders the variance comparison numerically.
+
+**ADVI: automatic differentiation variational inference.** Kucukelbir, Tran, Ranganath, Gelman, and Blei (2017) packaged the reparameterization gradient into a recipe that applies *automatically* to any model expressible in a probabilistic programming language. The recipe has three ingredients:
+
+1. *Constrained-to-unconstrained transform.* Many parameters live on constrained manifolds — variances $\sigma^2 > 0$, simplex weights $\sum_k \pi_k = 1$, correlation matrices in $[-1, 1]^{d \times d}$. Apply a smooth bijection $T$ that maps the constrained space to $\mathbb{R}^d$ (log for positive reals, stick-breaking for the simplex, the Cholesky-correlation transform for correlation matrices). Bayesian inference on the unconstrained space adds a Jacobian correction $\log |\det \nabla T^{-1}|$ to the log-prior.
+2. *Variational family on the unconstrained space.* The default is mean-field Gaussian, $q_\phi(\zeta) = \mathcal{N}(\zeta \mid \mu, \mathrm{diag}(\sigma^2))$ in unconstrained coordinates $\zeta$; full-rank Gaussian, $q_\phi(\zeta) = \mathcal{N}(\zeta \mid \mu, LL^\top)$ with $L$ a lower-triangular Cholesky factor, is the immediate generalization.
+3. *Reparameterization gradient + autodiff.* The ELBO's gradient is computed via Theorem 4, with $\nabla_\theta \log p$ supplied by automatic differentiation through the model.
+
+ADVI is what is under the hood of Stan's `advi`, PyMC's `fit(method='advi')`, NumPyro's `SVI` with `Trace_ELBO`, and Pyro's variational machinery. The §4.5 example is essentially a hand-rolled ADVI implementation in JAX — a five-line variational family, $\mathcal{O}(50)$-line training loop — that produces the same gradients these frameworks compute internally.
+
+### 4.5 Worked example: Bayesian logistic regression
+
+We close §4 with reparameterization-gradient VI for Bayesian logistic regression on the Iris versicolor-vs-virginica classification problem ($n = 100$, $d = 2$ features: petal length and petal width, plus a bias term). The model is
+
+$$y_i \mid x_i, \beta \,\sim\, \mathrm{Ber}\bigl(\sigma(\beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2})\bigr), \qquad \beta = (\beta_0, \beta_1, \beta_2) \,\sim\, \mathcal{N}(0, 25 \cdot I_3),$$
+
+with a weak Gaussian prior. The variational family is mean-field Gaussian, $q_\phi(\beta) = \prod_{j=0}^{2} \mathcal{N}(\beta_j \mid \mu_j, \sigma_j^2)$, parametrized by $\phi = (\mu, \log \sigma) \in \mathbb{R}^6$, with reparameterization $\beta = \mu + \sigma \odot \epsilon$, $\epsilon \sim \mathcal{N}(0, I_3)$.
+
+The implementation has three pieces. The *MC ELBO* is the negated training objective, evaluated with $S$ Monte Carlo samples per gradient step. The *reparameterization gradient* is `jax.grad` of the MC ELBO with respect to $\phi$; JAX's autodiff handles the chain rule through $g(\epsilon, \phi) = \mu + \sigma \odot \epsilon$ and through the model's log-joint without any manual derivative work. The *training loop* runs 1000 Adam steps with learning rate 0.05; convergence is tracked through the MC ELBO, which fluctuates from sample to sample but trends upward and stabilizes after a few hundred iterations.
+
+We benchmark against a *Laplace approximation*: find the MAP $\beta^*$ by gradient ascent on the log-posterior, then approximate the posterior as $\mathcal{N}(\beta^*, [-\nabla^2 \log p(\beta^* \mid \mathcal{D})]^{-1})$. On a log-concave posterior with $n = 100$ data points, Laplace is sharp enough to serve as a reference for the variational marginals. (HMC would be sharper and is the canonical reference; we use Laplace here for runtime — HMC on Bayesian logistic regression takes much longer than the 60-second §4 budget allows.)
+
+The §4 figure has three panels. Panel (a) compares the per-coordinate gradient variance of the score-function estimator and the reparameterization estimator at the *converged* variational parameters; the reparameterization estimator's variance is typically one to two orders of magnitude lower. Panel (b) shows the MC ELBO trajectory across the 1000 Adam steps. Panel (c) overlays the marginal variational densities $\mathcal{N}(\mu_j, \sigma_j^2)$ for $j = 0, 1, 2$ on the Laplace marginals, showing that ADVI's mean-field Gaussian recovers the marginal locations and approximate scales of the Laplace reference even though the underlying posterior has off-diagonal correlation that mean-field cannot represent. (§5 returns to that residual error.)
+
+<Figure
+  src="/images/topics/variational-inference/04_reparam_vi_logreg.png"
+  alt="Three panels: (a) per-coordinate gradient variance comparison between score-function and reparameterization estimators on a log scale; (b) MC ELBO trajectory across 1000 Adam steps; (c) variational marginal densities overlaid on Laplace marginals for the three regression coefficients"
+  caption="The reparameterization gradient is empirically lower-variance than the score-function gradient by a wide margin — this is what makes ADVI practical at scale. Mean-field ADVI recovers marginal locations, with structural error concentrated in the marginal scales — the section 5 motivation for richer variational families."
+/>
+
+## 5. Beyond mean-field: structured VI and normalizing flows
+
+The §3–§4 machinery treats every block of the variational factorization as independent of every other block. That structural assumption pays off in algorithmic simplicity — closed-form CAVI updates, separable ELBO entropies, single-coordinate gradient steps — and costs us in approximation quality whenever the true posterior has correlation structure that the factorization throws away. This section quantifies the cost (§5.1), introduces the immediate fix (§5.2), develops the rich-family approach via *normalizing flows* (§5.3), and runs all three approaches on a 2D banana-shaped target where the mean-field assumption is visibly inadequate (§5.4).
+
+### 5.1 The structural error of mean-field
+
+The cleanest demonstration of mean-field's structural error is a closed-form result on Gaussian targets. The statement says: when we project a correlated multivariate Gaussian onto its mean-field family under reverse KL, every marginal variance comes out *at most* as large as the true marginal — strictly smaller when the corresponding coordinate is correlated with the others.
+
+<TheoremBlock type="theorem" number={5} title="Mean-field underestimates marginal variance — Gaussian case">
+Let $p(\theta) = \mathcal{N}(0, \Sigma)$ on $\mathbb{R}^d$ with $\Sigma$ positive definite, and let $\mathcal{Q}_{\mathrm{MF}} = \{\prod_{j=1}^d \mathcal{N}(\theta_j \mid \mu_j, s_j^2)\}$ be the mean-field Gaussian family. The reverse-KL projection $q^* = \arg\min_{q \in \mathcal{Q}_{\mathrm{MF}}} \mathrm{KL}(q \,\|\, p)$ has $\mu_j^* = 0$ and
+
+$$s_j^{*2} \;=\; \frac{1}{(\Sigma^{-1})_{jj}} \;=\; \Sigma_{jj} \,-\, \Sigma_{j, -j}\,\Sigma_{-j, -j}^{-1}\,\Sigma_{-j, j} \;\le\; \Sigma_{jj},$$
+
+with equality if and only if $\theta_j$ is independent of $\theta_{-j}$ under $p$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write $S := \mathrm{diag}(s_1^2, \ldots, s_d^2)$. The KL divergence between two zero-mean Gaussians is
+
+$$\mathrm{KL}\bigl(\mathcal{N}(\mu, S)\,\|\,\mathcal{N}(0, \Sigma)\bigr) \;=\; \tfrac{1}{2}\bigl[\,\mathrm{tr}(\Sigma^{-1} S) \,+\, \mu^\top \Sigma^{-1} \mu \,-\, d \,+\, \log|\Sigma| \,-\, \log|S|\,\bigr].$$
+
+The dependence on $\mu$ is through the positive-definite quadratic $\mu^\top \Sigma^{-1} \mu$, minimized at $\mu^* = 0$. Substituting $\mu = 0$ and using $\mathrm{tr}(\Sigma^{-1} S) = \sum_j (\Sigma^{-1})_{jj}\, s_j^2$ and $\log|S| = \sum_j \log s_j^2$:
+
+$$\mathrm{KL} \;=\; \tfrac{1}{2}\!\left[\,\sum_j (\Sigma^{-1})_{jj}\,s_j^2 \,-\, \sum_j \log s_j^2 \,+\, \log|\Sigma| \,-\, d\,\right].$$
+
+Setting $\partial \mathrm{KL} / \partial s_j^2 = 0$:
+
+$$\tfrac{1}{2}\bigl[(\Sigma^{-1})_{jj} - 1/s_j^2\bigr] \,=\, 0 \quad\Longrightarrow\quad s_j^{*2} \,=\, 1 \,/\, (\Sigma^{-1})_{jj},$$
+
+which is the precision-matched factorization. To see that $s_j^{*2} \le \Sigma_{jj}$, partition $\Sigma$ around index $j$ as $\Sigma = \begin{pmatrix} \Sigma_{jj} & \Sigma_{j, -j} \\ \Sigma_{-j, j} & \Sigma_{-j, -j} \end{pmatrix}$, with $\Sigma_{jj}$ the scalar diagonal entry, $\Sigma_{j, -j}$ a $1 \times (d-1)$ row, and $\Sigma_{-j, -j}$ the $(d-1) \times (d-1)$ submatrix obtained by deleting row and column $j$. The Schur complement gives the $j$-th diagonal entry of the inverse:
+
+$$(\Sigma^{-1})_{jj} \;=\; \bigl(\Sigma_{jj} \,-\, \Sigma_{j, -j}\,\Sigma_{-j, -j}^{-1}\,\Sigma_{-j, j}\bigr)^{-1},$$
+
+so
+
+$$s_j^{*2} \;=\; \Sigma_{jj} \,-\, \underbrace{\Sigma_{j, -j}\,\Sigma_{-j, -j}^{-1}\,\Sigma_{-j, j}}_{=:\,c_j}.$$
+
+Because $\Sigma$ is positive definite, so is its principal submatrix $\Sigma_{-j, -j}$, hence $\Sigma_{-j, -j}^{-1}$ is positive definite, hence the quadratic form $c_j = \Sigma_{j, -j}\,\Sigma_{-j, -j}^{-1}\,\Sigma_{-j, j} \ge 0$, with equality iff $\Sigma_{j, -j} = 0$. The latter condition is exactly $\mathrm{Cov}(\theta_j, \theta_{-j}) = 0$, equivalent to $\theta_j \perp \theta_{-j}$ under the joint Gaussian. $\square$
+</TheoremBlock>
+
+The reading: when we coerce a correlated Gaussian into a product of independent Gaussian marginals, each marginal variance shrinks from $\Sigma_{jj}$ (the true marginal) to $1/(\Sigma^{-1})_{jj}$ (the *conditional* variance of $\theta_j$ given $\theta_{-j}$ at zero, since for a Gaussian $\mathrm{Var}(\theta_j \mid \theta_{-j}) = 1/(\Sigma^{-1})_{jj}$). Mean-field VI confuses the marginal with the conditional, and the conditional is always tighter.
+
+The §1 panel (b) figure was a special case of this theorem: a 2D Gaussian with correlation $\rho = 0.85$, where the diagonal-Gaussian projection shrinks each marginal variance by a factor of $1 - \rho^2 = 0.2775$. The §3 GMM and §4 logistic-regression posteriors are not Gaussian, so Theorem 5 doesn't apply *literally*; but the qualitative phenomenon — mean-field VI's reverse-KL projection systematically underestimates posterior uncertainty along correlated directions — extends to general posteriors with empirical regularity (Turner and Sahani 2011), without admitting a comparably clean closed form.
+
+The consequence for downstream inference is operational: a credible interval read off a mean-field posterior is *narrower* than the corresponding interval from MCMC, often by a factor large enough to materially change conclusions about whether a parameter is "significantly" different from zero. The §5.4 banana experiment makes this visible at scale, and §6 returns to it as one of VI's headline limitations.
+
+### 5.2 Full-rank Gaussian VI
+
+The simplest fix lifts the mean-field constraint while keeping the variational family parametric. Replace
+
+$$q_\phi(\theta) \,=\, \prod_j \mathcal{N}(\theta_j \mid \mu_j, \sigma_j^2) \quad\text{with}\quad q_\phi(\theta) \,=\, \mathcal{N}(\theta \mid \mu, LL^\top),$$
+
+where $L \in \mathbb{R}^{d \times d}$ is lower triangular (the Cholesky factor of the variational covariance), parametrized so its diagonal is positive — the standard recipe is $L_{jj} = e^{\ell_j}$ for unconstrained $\ell_j \in \mathbb{R}$. The full-rank family is the broadest Gaussian variational family: it can represent any Gaussian distribution on $\mathbb{R}^d$, including all correlation structures.
+
+The §4 reparameterization recipe extends without modification. The sampling path is $\theta = \mu + L\epsilon$ with $\epsilon \sim \mathcal{N}(0, I_d)$, and the log-density is
+
+$$\log q_\phi(\theta) \,=\, -\sum_j \ell_j \,-\, \tfrac{1}{2}\|L^{-1}(\theta - \mu)\|^2 \,-\, \tfrac{d}{2}\log(2\pi),$$
+
+with $\log|\det L| = \sum_j \ell_j$ from the triangular form. The ELBO gradient is `jax.grad` of the MC ELBO; nothing changes. The cost is the parameter count: $d + d(d+1)/2 = O(d^2)$ rather than $O(d)$, which is fine for moderate $d$ (hundreds) and prohibitive for high-dimensional latent spaces (millions, as in deep generative models). For Bayesian models with up to thousands of parameters — Bayesian logistic regression, Gaussian processes, mixed-effects models with moderate random-effect dimension — full-rank ADVI is the reasonable default, and Stan, PyMC, and NumPyro all expose it as a one-line option.
+
+When the true posterior is approximately Gaussian — for instance, when the Bernstein–von Mises theorem applies, and $n$ is large enough that the posterior concentrates around the MLE — full-rank VI exactly recovers the right covariance. The Laplace approximation in §4.5 is the special case where the variational mean is fixed at the MAP, and the variational covariance is fixed at the inverse-Hessian; full-rank VI jointly optimizes both and produces the same answer in the large-$n$ limit, sometimes with better small-$n$ behavior because the variational objective is global rather than local.
+
+When the true posterior is *not* approximately Gaussian — multimodal, banana-shaped, funnel-shaped, heavy-tailed — even full-rank Gaussian fails, because no Gaussian can curve, branch, or split. The §5.4 banana posterior is the canonical visual demonstration; the §5.3 normalizing-flow machinery is the response.
+
+### 5.3 Normalizing flows
+
+A *normalizing flow* is a parametric family of invertible, differentiable maps $T_\phi: \mathbb{R}^d \to \mathbb{R}^d$. Composed with a tractable base distribution $q_0$ on $\mathbb{R}^d$ (typically standard Gaussian), it produces a variational distribution $q_\phi$ on $\mathbb{R}^d$ whose density is given by the change-of-variable formula.
+
+<TheoremBlock type="definition" number={3} title="Normalizing-flow variational family">
+Let $q_0$ be a fixed density on $\mathbb{R}^d$ and $T_\phi : \mathbb{R}^d \to \mathbb{R}^d$ a parametric family of invertible, $C^1$ maps with Jacobian $J_{T_\phi}(\epsilon) = \partial T_\phi / \partial \epsilon$. The *normalizing-flow family* is
+
+$$\mathcal{Q}_{\mathrm{flow}} \,=\, \bigl\{q_\phi \,:\, \theta \sim q_\phi \iff \theta = T_\phi(\epsilon),\, \epsilon \sim q_0\bigr\},$$
+
+with density
+
+$$q_\phi(\theta) \,=\, q_0\bigl(T_\phi^{-1}(\theta)\bigr) \cdot \bigl|\det J_{T_\phi}\bigl(T_\phi^{-1}(\theta)\bigr)\bigr|^{-1}.$$
+</TheoremBlock>
+
+For VI, we never need to evaluate $q_\phi(\theta)$ at an arbitrary $\theta$. The reparameterization recipe — sample $\epsilon \sim q_0$, push forward to $\theta = T_\phi(\epsilon)$, evaluate $\log q_\phi(\theta)$ at *this* $\theta$ — gives
+
+$$\log q_\phi(\theta) \,=\, \log q_0(\epsilon) \,-\, \log\bigl|\det J_{T_\phi}(\epsilon)\bigr|,$$
+
+which only requires the *forward* Jacobian determinant, never the inverse map. The ELBO under a flow variational family is
+
+$$\mathrm{ELBO}(q_\phi) \,=\, \mathbb{E}_{\epsilon \sim q_0}\!\left[\log p\bigl(x, T_\phi(\epsilon)\bigr) \,-\, \log q_0(\epsilon) \,+\, \log\bigl|\det J_{T_\phi}(\epsilon)\bigr|\right],$$
+
+and the reparameterization gradient (Theorem 4) applies directly: differentiate with respect to $\mathbb{E}_{q_0}$, sum over MC samples, and ascend with Adam.
+
+The whole game in flow design is the Jacobian determinant. A general $T_\phi$ has a dense $d \times d$ Jacobian whose determinant costs $O(d^3)$ to compute — prohibitive for any non-trivial $d$. Productive flow architectures engineer $T_\phi$ so $\det J_{T_\phi}$ is *triangular*, *diagonal*, or otherwise cheap.
+
+**Coupling layers** (Dinh, Sohl-Dickstein, and Bengio 2017, "Real NVP"). Split the input into two halves, $\epsilon = (\epsilon_a, \epsilon_b)$. Define
+
+$$T_\phi(\epsilon_a, \epsilon_b) \,=\, \bigl(\epsilon_a,\, \epsilon_b \odot \exp(s_\phi(\epsilon_a)) + t_\phi(\epsilon_a)\bigr),$$
+
+where $s_\phi, t_\phi : \mathbb{R}^{d/2} \to \mathbb{R}^{d/2}$ are arbitrary neural networks (no invertibility constraint required, since they appear only as multiplicative scale and additive shift). The Jacobian is block-triangular:
+
+$$J_{T_\phi}(\epsilon) \,=\, \begin{pmatrix} I_{d/2} & 0 \\ \star & \mathrm{diag}\bigl(\exp(s_\phi(\epsilon_a))\bigr) \end{pmatrix},$$
+
+so $\log|\det J_{T_\phi}(\epsilon)| = \sum_{j} s_\phi(\epsilon_a)_j$ — linear in $d$. Stacking $K$ coupling layers with alternating partitions (where each half passes through) gives a flexible flow with a cumulative Jacobian that remains linear in $d$ per evaluation.
+
+**Autoregressive flows** (Kingma, Salimans, Jozefowicz et al. 2016, "IAF"; Papamakarios, Pavlakou, and Murray 2017, "MAF"). Each output coordinate depends only on the previous ones: $T_\phi(\epsilon)_j = h_\phi(\epsilon_j; \epsilon_{<j})$. The Jacobian is triangular by construction. IAF runs the autoregressive direction *forward* (cheap to sample, expensive to evaluate density at arbitrary $\theta$, fine for VI, which only needs the forward direction); MAF runs it *backward* (cheap density evaluation, expensive sampling, better suited to density estimation).
+
+Continuous-time flows (Chen et al. 2018, "Neural ODEs"), residual flows, and spline flows further extend the toolkit. The complete taxonomy of normalizing-flow architectures, their invertibility classes, and their tradeoffs is the subject of the planned **Normalizing Flows** *(coming soon)* topic in T3; we treat them here only as a *variational family* and forward-link for the architectural detail.
+
+### 5.4 Worked example: a banana posterior
+
+A clean visual demonstration of all three families pits them against a 2D non-Gaussian target with strong nonlinear dependence. We take the target
+
+$$\log p(z_1, z_2) \,=\, -\tfrac{1}{8} z_1^2 \,-\, \tfrac{1}{2}\bigl(z_2 + \tfrac{1}{2} z_1^2\bigr)^2 \,+\, \mathrm{const},$$
+
+which produces a banana-shaped density curving downward — the canonical hard target for VI demos because (i) it is non-Gaussian, (ii) it has strong nonlinear dependence between $z_1$ and $z_2$, and (iii) it is unimodal, so the failure modes are about *shape* rather than mode collapse.
+
+We fit three variational families to this target by reparameterization-gradient ascent on the (unnormalized) ELBO with Adam:
+
+- *Mean-field Gaussian*: $q(z) = \mathcal{N}(z_1 \mid \mu_1, \sigma_1^2)\,\mathcal{N}(z_2 \mid \mu_2, \sigma_2^2)$, four parameters.
+- *Full-rank Gaussian*: $q(z) = \mathcal{N}(z \mid \mu, LL^\top)$ with lower-triangular $L$, five parameters.
+- *Normalizing flow*: four alternating coupling layers, each with a small MLP ($1 \to 8 \to 2$ for the scale-and-shift), about 130 parameters.
+
+The §5 figure has four panels in a 2×2 layout. Panels (a)–(c) show samples from each fitted variational distribution overlaid on contours of the target. The reader should see: (a) mean-field samples scattered as an axis-aligned isotropic blob, missing the curvature entirely; (b) full-rank samples forming a tilted ellipse that captures the linear correlation but cannot bend; (c) flow samples tracing the banana's curve. Panel (d) shows the ELBO trajectories on a common axis: the flow's ELBO climbs higher than full-rank, which climbs higher than mean-field. Since the target is normalized, all three ELBOs are bounded above by zero, and the gap from zero at convergence equals the residual KL between the fitted $q^*$ and the target — a direct read-out of how much structural error each family carries.
+
+<Figure
+  src="/images/topics/variational-inference/05_beyond_mean_field.png"
+  alt="Four panels in a 2x2 layout: (a) mean-field Gaussian samples on banana target showing axis-aligned blob; (b) full-rank Gaussian samples showing tilted ellipse; (c) normalizing-flow samples tracing the banana curve; (d) ELBO trajectories with flow highest, full-rank middle, mean-field lowest"
+  caption="Variational-family expressiveness is not binary. Mean-field, full-rank Gaussian, and normalizing flows form a strict hierarchy. The structural-error theorem of section 5.1 has an empirical correlate — the residual KL at convergence — that the ELBO trajectories make directly comparable."
+/>
+
+The flow's gain is qualitative: it can represent the curve. The full-rank vs. mean-field gap is quantitative — the linear correlation full-rank captures and mean-field misses. Both kinds of structural error are recovered by Theorem 5's mechanism: the mean-field family has too few degrees of freedom to track the target's geometry, and the residual KL measures exactly how much.
+
+## 6. Connections and limits
+
+Variational inference sits at a junction. Backward, it inherits the divergence machinery developed in [KL divergence](/topics/kl-divergence) and the Bayesian-computation framing developed across the formalstatistics Bayes track. Forward, it is the substrate of half a dozen planned T5 topics — Bayesian neural networks, normalizing flows as standalone density estimators, probabilistic programming, sparse Bayesian priors, meta-learning, and variational Bayes for model selection. Sideways, it shares deep structural ties with optimization (the ELBO is a free-energy minimization), with information theory (Fano-type lower bounds appear in mutual-information VI), and with the geometry of probability distributions (the natural gradient of §4.2 is the Fisher metric on the space of $q_\phi$). This section orients the topic among its neighbors, then lays out the assumptions and pathologies that bound where VI is the right tool and where it isn't.
+
+### 6.1 Within formalML
+
+[**KL divergence**](/topics/kl-divergence). The substrate. The reverse-KL projection that defines VI's optimization target, the mode-seeking versus mode-covering asymmetry that explains §1's pathological collapse on multimodal targets, and the variational representations of f-divergences that underpin discriminator-based VI variants — all of it lives in the `kl-divergence` topic. Readers arriving at VI without that background should expect Theorem 1's evidence decomposition to feel less natural than it should.
+
+[**Convex analysis**](/topics/convex-analysis). The ELBO is concave in $q$ on its full support (the space of all distributions absolutely continuous with respect to $p(x, \cdot)$) — a consequence of KL's joint convexity in its arguments. On parametric variational families, the concavity in $\phi$ is generally lost, which is why §3.4's mixture-model CAVI converges only locally and why every §4 example uses Adam rather than a Newton-style global solver. The machinery of convex analysis — Fenchel duality, the Bregman-divergence framing of mirror descent — is what gives §4.2 natural gradient its theoretical grounding (mirror descent on the negative entropy is exactly natural-gradient ascent on the parametric family).
+
+[**Gradient descent**](/topics/gradient-descent). The §4 black-box and reparameterization estimators all feed into stochastic gradient ascent, and every convergence guarantee available for VI is a convergence guarantee for SGD on a particular (generically non-convex) objective. The Robbins–Monro step-size schedule under which §4.2's stochastic VI is consistent is the same one that underlies SGD for convex stochastic objectives.
+
+[**Information geometry**](/topics/information-geometry). The natural gradient of §4.2 is the gradient on the statistical manifold of $q_\phi$, with the Fisher information $F(\phi)$ as the metric tensor. Information-geometric perspectives also clarify why mean-field VI's structural error from §5.1 is *intrinsic*, not algorithmic: the mean-field family is a low-dimensional submanifold of the full distribution space, and the reverse-KL projection onto it is the orthogonal projection in the Fisher–Rao metric, with all the rigidity that orthogonal projection implies.
+
+**Forward links to planned T5 topics.** VI is the substrate, in different ways, of:
+
+- **Bayesian Neural Networks** *(coming soon)*. Mean-field weight-space VI is the original recipe (Hinton and van Camp 1993; Graves 2011; Blundell et al. 2015); the §4.4 reparameterization gradient makes it tractable for deep networks. The structural-error theorem of §5.1 motivates the modern shift toward more expressive variational posteriors (full-rank in lower dimensions, normalizing flows in higher dimensions).
+- **Normalizing Flows** *(coming soon)*. §5.3 introduced flows as a *variational family*. The dedicated topic develops them as standalone density estimators, develops the full architectural taxonomy (coupling, autoregressive, continuous-time, residual, spline), and treats the inverse direction — flows for sampling from data distributions in deep generative modeling.
+- **Probabilistic Programming** *(coming soon)*. Stan, PyMC, and NumPyro all expose ADVI as a one-line option; the §4.4 recipe is what lives under the hood. The PPL topic treats the constrained-to-unconstrained transforms, the automatic differentiation pipeline, and the inference compiler that turns a model declaration into a runnable VI inference engine.
+- **Variational Bayes for Model Selection** *(coming soon)*. The ELBO is a *free* lower bound on $\log p(x)$, so a higher ELBO means a higher (lower bound on the) log-evidence, which means a better model fit in the Bayes-factor sense. VBMS develops this into a full model-comparison framework — the variational equivalent of the marginal-likelihood–based Bayes-factor methods covered in formalstatistics's [Bayesian Model Comparison and BMA](https://www.formalstatistics.com/topics/bayesian-model-comparison-and-bma).
+- **Sparse Bayesian Priors** *(coming soon)*. Horseshoe, regularized horseshoe, spike-and-slab, and R2-D2 priors all admit VI inference, with HMC-friendly reparameterizations that also double as ADVI-friendly. The §5 expressiveness hierarchy is exactly what's at stake: mean-field VI on a horseshoe prior badly underestimates the heavy-tailed posterior on the small-magnitude coefficients; full-rank or flow-based VI recovers it.
+- **Meta-Learning** *(coming soon)*. Neural Processes (Garnelo et al. 2018) are amortized VI: the variational parameters $\phi$ are themselves the output of an encoder network conditioned on a context set. The §4.4 reparameterization recipe is what makes amortized inference end-to-end differentiable.
+
+### 6.2 Cross-site connections
+
+[**Bayesian Computation and MCMC**](https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc) (formalstatistics). The companion topic. MCMC and VI are the two responses to the intractable evidence of §1.1, with complementary strengths: MCMC is asymptotically exact but slow and requires convergence diagnostics; VI is fast and deterministic but commits to a family that bounds achievable approximation quality. Modern Bayesian workflows often run both — VI for fast iteration during model development and MCMC for final inference once the model is settled. §6.3 below returns to the comparison in detail.
+
+[**Hierarchical Bayes and Partial Pooling**](https://www.formalstatistics.com/topics/hierarchical-bayes-and-partial-pooling) (formalstatistics). Mean-field and structured VI scale partial-pooling models beyond the size at which full HMC is feasible. The Hoffman et al. (2013) stochastic-VI paper that introduced §4.2 was motivated by latent Dirichlet allocation, a hierarchical Bayesian model. The §3 worked example's Bayesian GMM is the simplest hierarchical model VI handles; richer ones — multilevel regression with crossed random effects, hierarchical Dirichlet processes, factorial HMMs — all admit conjugate-CAVI or SVI treatment when the conjugacy structure is preserved at every level.
+
+[**Multivariate Distributions**](https://www.formalstatistics.com/topics/multivariate-distributions) (formalstatistics). The default variational family in modern VI is the multivariate Normal. The mean-field version factors as a product of univariate Normals; the full-rank version of §5.2 uses the Cholesky parametrization $\Sigma = LL^\top$. The reparameterization trick of §4.4 is the multivariate-Normal sampling formula $\theta = \mu + L\epsilon$ promoted to a differentiable computation graph.
+
+[**Random Variables and Conditional Distributions**](https://www.formalstatistics.com/topics/random-variables) (formalstatistics). VI approximates the conditional distribution $p(\theta \mid x)$ by minimizing reverse KL between density functions. The conditional-PDF framework is what makes the §2 evidence decomposition $\log p(x) = \mathrm{ELBO}(q) + \mathrm{KL}(q \,\|\, p(\cdot \mid x))$ a meaningful identity rather than a formal one — it depends on $p(\theta \mid x)$ being a well-defined density relative to which $q$ is absolutely continuous.
+
+[**Sufficient Statistics and Exponential Families**](https://www.formalstatistics.com/topics/sufficient-statistics) (formalstatistics). §3.3's closed-form CAVI for conjugate exponential-family models depends on the natural-parameter-and-sufficient-statistic structure that this formalstatistics topic develops. The "expectation inside the natural parameter" recipe of Proposition 1 is operationally how the §3.4 GMM and every other structurally similar model — LDA, factorial HMMs, conjugate hierarchical regression — get their CAVI updates.
+
+[**Lebesgue Integral**](https://www.formalcalculus.com/topics/lebesgue-integral) (formalcalculus). The §2 ELBO derivation rests on Jensen's inequality applied to a Lebesgue integral: $\log p(x) = \log \mathbb{E}_q[p(x, \theta)/q(\theta)] \ge \mathbb{E}_q[\log p(x, \theta)/q(\theta)]$. The integral identity is what makes the bound work for continuous-$\theta$ models; the discrete case is structurally identical with sums replacing integrals.
+
+[**The Jacobian and Multivariate Chain Rule**](https://www.formalcalculus.com/topics/jacobian) (formalcalculus). §5.3's normalizing-flow change-of-variable formula is a Jacobian-determinant computation. The architectural choices that make flows scalable — coupling layers, autoregressive flows — are choices about the Jacobian's structure (block-triangular, triangular by autoregressive ordering) so that its determinant is cheap.
+
+### 6.3 Honest limits
+
+VI's failure modes are structural, well-understood, and worth keeping in front of the reader rather than tucked into a footnote.
+
+**Posterior variance is systematically underestimated.** Theorem 5 made this exact for Gaussian targets and mean-field families; the qualitative phenomenon extends to non-Gaussian targets and richer families, with the magnitude of underestimation shrinking as the family grows in expressiveness but not vanishing for any parametric family. The operational consequence: a 95% credible interval read off a VI posterior is *narrower* than the corresponding HMC-based interval, often by a factor that materially changes inference. For exploratory data analysis or fast-iteration model development, this is acceptable; for inference whose conclusions hinge on whether a parameter is significantly nonzero, it is not.
+
+**Mode-seeking on multimodal posteriors.** §1.3's panel (c) showed reverse-KL VI collapsing onto one mode of a bimodal target. The collapse is generic across any unimodal variational family on a multimodal target and persists even for normalizing flows of moderate complexity. The mixture-model GMM of §3.4 is multimodal in a *different* sense — the posterior is invariant to permutations of the component labels, so all modes are equivalent, and CAVI converges to one of them harmlessly. But genuine *physical* multimodality (e.g., bimodal Bayesian regression posteriors arising from genuine identifiability failure) is a setting where VI silently gives wrong answers, and only MCMC will catch the second mode.
+
+**The no-free-lunch tradeoff with MCMC.** A practical heuristic: VI is cheap, biased, and useful for iteration and large-scale models that MCMC cannot fit. MCMC is expensive, asymptotically unbiased, and the right reference for any conclusion that needs to be defended. The decision is rarely binary — most modern Bayesian workflows use VI for development and rapid iteration, then run MCMC once the model is settled, with the MCMC posterior as the inferential ground truth and the VI posterior as a fast diagnostic check. Variational-Bayes model selection (Topic VBMS, forthcoming) inverts this for model *comparison*: there, the VI bias is acceptable in exchange for being able to score thousands of candidate models in the time HMC would take to score one.
+
+**ELBO is not a model-quality metric.** A higher ELBO on a fixed model means a tighter $q^*$ to that model's posterior. It does *not* mean the model fits the data better, the posterior is more concentrated around a useful $\theta$, or the resulting predictions are more accurate. ELBO comparisons across *different* models — different priors, different likelihoods, different parametrizations — are valid for model selection (subject to the usual caveats), but ELBO comparisons across *training runs of the same model* tell us only about optimization, not about anything statistical. Predictive checks (posterior predictive p-values, cross-validation, held-out log-likelihood) remain the right diagnostics for model quality.
+
+**Implementation is not as automatic as PPL marketing suggests.** The §4.4 ADVI recipe is automatic in the sense that the gradient calculation is automatic, but the choice of variational family, the choice of reparameterization (Gaussian, flow, low-rank-plus-diagonal), the optimizer hyperparameters, the convergence criteria, and the diagnostics for whether the resulting $q^*$ is a *useful* approximation rather than a degenerate one — none of these are automatic. Stan's Pareto-smoothed importance-sampling diagnostic ($\hat k$, Yao et al. 2018) catches the worst pathologies, but VI in production still requires the same kind of hand-tuning that MCMC does.
+
+The fundamental tradeoff has not changed since Jordan, Ghahramani, Jaakkola, and Saul (1999) introduced VI to mainstream machine learning: variational inference replaces an intractable problem (the integral defining $p(x)$) with a tractable one (an optimization on a chosen family) at the cost of a structural approximation error whose magnitude is controlled by the family. Pick the family carefully, use the §6.3 diagnostics to catch the failures the family doesn't accommodate, and VI is the workhorse of modern Bayesian computation.
