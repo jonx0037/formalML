@@ -194,6 +194,9 @@ Add the reciprocal pointer back to:
 - **formalStatistics/order-statistics-and-quantiles** declares `formalcalculusPrereqs` → `multivariable-integration` (prereqs)
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The joint-density derivation in §29.2 is a Jacobian change-of-variables calculation over the ordered simplex. Rényi's proof (§29.3) uses the same machinery on the spacings map._
+- **formalML/statistical-depth** declares `formalcalculusPrereqs` → `multivariable-integration` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The integrals $F(H)$ for halfspaces $H \subseteq \mathbb{R}^d$ and $F(B)$ for the functional bands of §5.3 are concrete instances of multivariable integration assumed throughout §§2–5. The convexit…_
 
 ## When `formalcalculus/ordinary-differential-equations` ships
 
@@ -921,14 +924,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/bayesian-model-comparison-and-bma** declares `formalmlConnections` → `stacking-and-predictive-ensembles` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Stacking is the M-open alternative to BMA: optimize predictive weights directly rather than derive them from marginal likelihoods. Critical when no candidate model is true. §27.10 Rem 26 sets up th…_
-
-## When `formalml/statistical-depth` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/order-statistics-and-quantiles** declares `formalmlConnections` → `statistical-depth` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Tukey / Mahalanobis / halfspace depths — multivariate generalizations of the quantile function. §29.10 Rem 22 pointer; forthcoming on formalml._
 
 ## When `formalml/statistical-learning-theory` ships
 
