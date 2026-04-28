@@ -194,7 +194,7 @@ export function componentwiseMedian(X: Point2D[]): Point2D {
   return [median1D(xs), median1D(ys)];
 }
 
-function median1D(sorted: number[]): number {
+function median1D(sorted: ArrayLike<number>): number {
   const n = sorted.length;
   if (n === 0) return 0;
   if (n % 2 === 1) return sorted[(n - 1) >> 1];
@@ -251,8 +251,11 @@ export function tukeyDepth2D(query: Point2D, X: Point2D[], eps = 1e-10): number 
 
   let minCount = nNz;
   let j = 0;
+  const PI_EPS = Math.PI - 1e-12;
+  const twoNNz = 2 * nNz;
   for (let i = 0; i < nNz; i++) {
-    while (j < 2 * nNz && a[j] < a[i] + Math.PI - 1e-12) j++;
+    const threshold = a[i] + PI_EPS;
+    while (j < twoNNz && a[j] < threshold) j++;
     const count = j - i;
     if (count < minCount) minCount = count;
     if (nNz - count < minCount) minCount = nNz - count;
@@ -328,8 +331,8 @@ export function mahalanobisDepth(query: Point2D, params: MahalanobisParams): num
  * matches notebook §3.3 / §4.5.
  */
 export function projectionDepth(
-  query: number[],
-  X: number[][],
+  query: ArrayLike<number>,
+  X: ReadonlyArray<ArrayLike<number>>,
   K = 200,
   dirSeed = 0,
 ): number {
@@ -341,11 +344,12 @@ export function projectionDepth(
   const gauss = gaussianSampler(rng);
 
   const projX = new Float64Array(n);
+  // Reuse the direction buffer across all K iterations.
+  const u = new Float64Array(d);
   let maxOutlyingness = 0;
 
   for (let k = 0; k < K; k++) {
-    // Draw a fresh unit direction u ∈ S^{d-1}.
-    const u = new Array(d);
+    // Draw a fresh unit direction u ∈ S^{d-1} into the reused buffer.
     let nrm = 0;
     for (let dd = 0; dd < d; dd++) {
       const g = gauss();
@@ -366,10 +370,14 @@ export function projectionDepth(
       projX[i] = p;
     }
 
-    // Median and MAD of the projected sample.
-    const sorted = Array.from(projX).sort((a, b) => a - b);
+    // Median and MAD of the projected sample. Native Float64Array sort is
+    // ~3× faster than Array.from(...).sort((a, b) => a - b) because it
+    // bypasses the JS comparator and the typed-array → array conversion.
+    const sorted = projX.slice().sort();
     const med = median1D(sorted);
-    const absDev = sorted.map((v) => Math.abs(v - med)).sort((a, b) => a - b);
+    const absDev = new Float64Array(n);
+    for (let i = 0; i < n; i++) absDev[i] = Math.abs(sorted[i] - med);
+    absDev.sort();
     let mad = median1D(absDev);
     if (mad < 1e-12) mad = 1e-12;
 
@@ -380,7 +388,9 @@ export function projectionDepth(
 }
 
 /**
- * Convenience wrapper for 2D queries — accepts `Point2D` directly.
+ * Convenience wrapper for 2D queries — accepts `Point2D` directly. No
+ * intermediate allocation: `Point2D[]` is structurally an
+ * `ArrayLike<number>[]`, so `projectionDepth` consumes it in place.
  */
 export function projectionDepth2D(
   query: Point2D,
@@ -388,8 +398,100 @@ export function projectionDepth2D(
   K = 200,
   dirSeed = 0,
 ): number {
-  const X2 = X.map(([x, y]) => [x, y]);
-  return projectionDepth([query[0], query[1]], X2, K, dirSeed);
+  return projectionDepth(query, X, K, dirSeed);
+}
+
+/**
+ * Precomputed per-direction stats for fast projection-depth queries on a
+ * fixed sample. Use when the sample is fixed and many queries are issued
+ * (e.g., a contour-grid scan): `prepareProjectionDepth` does the O(K · n
+ * log n) work once, and `projectionDepthWith` then answers each query in
+ * O(K · d) — no per-query sort.
+ */
+export interface ProjectionDepthCache {
+  d: number;
+  K: number;
+  /** Unit directions packed row-major as a (K · d) Float64Array. */
+  directions: Float64Array;
+  /** Per-direction median of the projected sample. */
+  medians: Float64Array;
+  /** Per-direction MAD of the projected sample (clamped at 1e-12). */
+  mads: Float64Array;
+}
+
+export function prepareProjectionDepth(
+  X: ReadonlyArray<ArrayLike<number>>,
+  K = 200,
+  dirSeed = 0,
+): ProjectionDepthCache {
+  const n = X.length;
+  if (n === 0) {
+    return { d: 0, K, directions: new Float64Array(0), medians: new Float64Array(K), mads: new Float64Array(K) };
+  }
+  const d = X[0].length;
+  const rng = mulberry32(dirSeed);
+  const gauss = gaussianSampler(rng);
+
+  const directions = new Float64Array(K * d);
+  const medians = new Float64Array(K);
+  const mads = new Float64Array(K);
+  const projX = new Float64Array(n);
+  const absDev = new Float64Array(n);
+
+  for (let k = 0; k < K; k++) {
+    let nrm = 0;
+    const off = k * d;
+    for (let dd = 0; dd < d; dd++) {
+      const g = gauss();
+      directions[off + dd] = g;
+      nrm += g * g;
+    }
+    nrm = Math.sqrt(nrm);
+    if (nrm < 1e-12) {
+      // Degenerate direction; fall back to e_1 so the entry stays well-defined.
+      directions[off] = 1;
+      for (let dd = 1; dd < d; dd++) directions[off + dd] = 0;
+    } else {
+      for (let dd = 0; dd < d; dd++) directions[off + dd] /= nrm;
+    }
+
+    for (let i = 0; i < n; i++) {
+      let p = 0;
+      const Xi = X[i];
+      for (let dd = 0; dd < d; dd++) p += Xi[dd] * directions[off + dd];
+      projX[i] = p;
+    }
+
+    const sorted = projX.slice().sort();
+    const med = median1D(sorted);
+    medians[k] = med;
+    for (let i = 0; i < n; i++) absDev[i] = Math.abs(sorted[i] - med);
+    absDev.sort();
+    let mad = median1D(absDev);
+    if (mad < 1e-12) mad = 1e-12;
+    mads[k] = mad;
+  }
+  return { d, K, directions, medians, mads };
+}
+
+/**
+ * Fast projection-depth query against a precomputed cache. Cost: O(K · d).
+ */
+export function projectionDepthWith(
+  query: ArrayLike<number>,
+  cache: ProjectionDepthCache,
+): number {
+  const { d, K, directions, medians, mads } = cache;
+  if (K === 0) return 1;
+  let maxOutlyingness = 0;
+  for (let k = 0; k < K; k++) {
+    const off = k * d;
+    let projQ = 0;
+    for (let dd = 0; dd < d; dd++) projQ += query[dd] * directions[off + dd];
+    const o = Math.abs(projQ - medians[k]) / mads[k];
+    if (o > maxOutlyingness) maxOutlyingness = o;
+  }
+  return 1 / (1 + maxOutlyingness);
 }
 
 // -----------------------------------------------------------------------------
@@ -455,9 +557,11 @@ export function depthContourGrid(
 
   const xs = new Float64Array(gridSize);
   const ys = new Float64Array(gridSize);
+  const xStep = (xmax - xmin) / (gridSize - 1);
+  const yStep = (ymax - ymin) / (gridSize - 1);
   for (let i = 0; i < gridSize; i++) {
-    xs[i] = xmin + ((xmax - xmin) * i) / (gridSize - 1);
-    ys[i] = ymin + ((ymax - ymin) * i) / (gridSize - 1);
+    xs[i] = xmin + i * xStep;
+    ys[i] = ymin + i * yStep;
   }
 
   const Z = new Float64Array(gridSize * gridSize);

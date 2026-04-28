@@ -7,7 +7,8 @@ import {
   depthContourGrid,
   fitMahalanobis,
   mahalanobisDepth,
-  projectionDepth2D,
+  prepareProjectionDepth,
+  projectionDepthWith,
   sampleBanana,
   sampleGaussian,
   spatialDepth,
@@ -122,6 +123,10 @@ export default function DepthFunctionComparison() {
   const mahalParams = useMemo(() => fitMahalanobis(sample), [sample]);
   // Precompute simplicial triples once per sample.
   const triples = useMemo(() => buildTriples(SAMPLE_N), []);
+  // Precompute projection-depth direction cache once per sample. The grid
+  // scan would otherwise re-draw and re-sort for every query (~28² × K = 156k
+  // sort calls); the cache reduces that to a one-time K · n log n upfront.
+  const projectionCache = useMemo(() => prepareProjectionDepth(sample, 200, 62), [sample]);
 
   // Tukey contour grid — always rendered on the left.
   const tukeyGrid = useMemo<DepthGrid>(
@@ -138,7 +143,7 @@ export default function DepthFunctionComparison() {
         fn = (q) => mahalanobisDepth(q, mahalParams);
         break;
       case 'projection':
-        fn = (q) => projectionDepth2D(q, sample, 200, 62);
+        fn = (q) => projectionDepthWith(q, projectionCache);
         break;
       case 'spatial':
         fn = (q) => spatialDepth(q, sample);
@@ -148,7 +153,7 @@ export default function DepthFunctionComparison() {
         break;
     }
     return depthContourGrid(sample, fn, gridSize, 1.2);
-  }, [sample, depthKey, mahalParams, triples]);
+  }, [sample, depthKey, mahalParams, triples, projectionCache]);
 
   const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
   const panelW = containerWidth <= 0
@@ -263,13 +268,13 @@ function paintPanel(
   const x1 = grid.xs[grid.xs.length - 1];
   const y0 = grid.ys[0];
   const y1 = grid.ys[grid.ys.length - 1];
-  const ncols = grid.ncols;
-  const nrows = grid.nrows;
+  const dx = (x1 - x0) / (grid.ncols - 1);
+  const dy = (y1 - y0) / (grid.nrows - 1);
   const path = d3.geoPath().projection(
     d3.geoTransform({
       point(gx: number, gy: number) {
-        const x = xScale(x0 + (x1 - x0) * (gx / (ncols - 1)));
-        const y = yScale(y0 + (y1 - y0) * (gy / (nrows - 1)));
+        const x = xScale(x0 + gx * dx);
+        const y = yScale(y0 + gy * dy);
         (this as unknown as { stream: d3.GeoStream }).stream.point(x, y);
       },
     }),

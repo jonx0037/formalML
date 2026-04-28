@@ -196,7 +196,7 @@ Add the reciprocal pointer back to:
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The joint-density derivation in §29.2 is a Jacobian change-of-variables calculation over the ordered simplex. Rényi's proof (§29.3) uses the same machinery on the spacings map._
 - **formalML/statistical-depth** declares `formalcalculusPrereqs` → `multivariable-integration` (prereqs)
   - Reciprocal field on the new topic: `formalmlConnections`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The integrals $F(H)$ for halfspaces $H \subseteq \mathbb{R}^d$ and $F(B)$ for the functional bands of §5.3 are concrete instances of multivariable integration assumed throughout §§2–5. The convexit…_
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Halfspace mass $F(H)$ and functional-band mass $F(B)$ are concrete multivariable integrals; the §§2–5 derivations and Proposition 1's convexity proof both sit in this ambient setting._
 
 ## When `formalcalculus/ordinary-differential-equations` ships
 

@@ -64,9 +64,11 @@ function exactHalfspaceDepth3D(query: number[], X: number[][]): number {
       const nz = dx[i] * dy[j] - dy[i] * dx[j];
       const nrm = Math.sqrt(nx * nx + ny * ny + nz * nz);
       if (nrm < 1e-12) continue;
-      // Project all diffs onto the unit normal; count points with proj ≥ 0
-      // vs. proj ≤ 0 (closed halfspaces). The minimum complementary-count is
-      // the halfspace-depth count.
+      // Project all diffs onto the unit normal and count closed-halfspace
+      // memberships in each direction. Boundary points (|p| < tol) lie on
+      // both closed halfspaces, so they are counted in both `cPos` and
+      // `cNeg` — the smaller of the two counts is the Tukey-depth count
+      // for this candidate hyperplane.
       let cPos = 0;
       let cNeg = 0;
       const inv = 1 / nrm;
@@ -75,8 +77,8 @@ function exactHalfspaceDepth3D(query: number[], X: number[][]): number {
         if (p >= -1e-10) cPos++;
         if (p <= 1e-10) cNeg++;
       }
-      const c = Math.max(cPos, cNeg);
-      if (n - c < minCount) minCount = n - c;
+      const c = Math.min(cPos, cNeg);
+      if (c < minCount) minCount = c;
     }
   }
   return minCount / n;

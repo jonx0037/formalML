@@ -40,7 +40,7 @@ const SAMPLE_LABELS: Record<SampleKey, string> = {
 
 const SAMPLE_DESCRIPTIONS: Record<SampleKey, string> = {
   A: 'iid bivariate Gaussian; all four §1 centres agree near the origin.',
-  B: 'bivariate Cauchy with the same scale matrix; the population mean does not exist.',
+  B: 'bivariate Cauchy with the same scale matrix; the population mean does not exist. Far points outside ‖x‖ < 30 are clipped from the display so the axes stay readable, but every sample point still counts toward the depth and contours.',
   C: '90% Gaussian + 10% outliers at (8, 8) — sample mean drifts; depth median stays put.',
 };
 
@@ -120,15 +120,15 @@ export default function DepthContourExplorer() {
       const x1 = grid.xs[grid.xs.length - 1];
       const y0 = grid.ys[0];
       const y1 = grid.ys[grid.ys.length - 1];
-      const ncols = grid.ncols;
-      const nrows = grid.nrows;
+      const dx = (x1 - x0) / (grid.ncols - 1);
+      const dy = (y1 - y0) / (grid.nrows - 1);
       const contourPath = d3
         .geoPath()
         .projection(
           d3.geoTransform({
             point(gx: number, gy: number) {
-              const x = xScale(x0 + (x1 - x0) * (gx / (ncols - 1)));
-              const y = yScale(y0 + (y1 - y0) * (gy / (nrows - 1)));
+              const x = xScale(x0 + gx * dx);
+              const y = yScale(y0 + gy * dy);
               (this as unknown as { stream: d3.GeoStream }).stream.point(x, y);
             },
           }),

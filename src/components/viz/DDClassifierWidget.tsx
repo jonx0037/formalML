@@ -76,10 +76,12 @@ export default function DDClassifierWidget() {
     const yMax = Math.max(...allPetals.map((p) => p[1])) + 0.2;
 
     const gridPreds = new Uint8Array(GRID_RES * GRID_RES);
+    const xStep = (xMax - xMin) / (GRID_RES - 1);
+    const yStep = (yMax - yMin) / (GRID_RES - 1);
     for (let i = 0; i < GRID_RES; i++) {
-      const y = yMin + ((yMax - yMin) * i) / (GRID_RES - 1);
+      const y = yMin + i * yStep;
       for (let j = 0; j < GRID_RES; j++) {
-        const x = xMin + ((xMax - xMin) * j) / (GRID_RES - 1);
+        const x = xMin + j * xStep;
         const q: Point2D = [x, y];
         const d0 = tukeyDepth2D(q, IRIS_VERSICOLOR);
         const d1 = tukeyDepth2D(q, IRIS_VIRGINICA);
