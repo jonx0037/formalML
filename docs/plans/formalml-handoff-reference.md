@@ -55,12 +55,13 @@ references:                                 # Required. Array of citation object
     title: "Book Title"
     authors: "Surname"                      #   or "Surname1, Surname2 & Surname3"
     year: 2016
+    url: "https://doi.org/..."              #   REQUIRED. DOI, proceedings URL, or arXiv.
     note: "Chapter or section relevance"
   - type: "paper"
     title: "Paper Title"
     authors: "Surname1, Surname2 & Surname3"
     year: 2011
-    url: "https://doi.org/..."              #   Papers should include DOI/URL.
+    url: "https://doi.org/..."              #   REQUIRED. DOI, proceedings URL, or arXiv.
     note: "Brief relevance note"
 formalcalculusPrereqs:                      # Optional. Cross-site backward edges to formalcalculus.com.
   - topic: "jacobian"                       #   `topic` is the slug on formalcalculus (no extension).
@@ -423,6 +424,7 @@ These are real discrepancies found during implementation. Each one wasted time o
 | Cross-site frontmatter | Missing `formalcalculusPrereqs` / `formalstatisticsPrereqs` | Required for all ML Methodology topics; auto-validated by `pnpm audit:cross-site` | Missing reciprocals on sister sites — breaks the audit |
 | Track placement | Brief proposes `gaussian-processes` in T2 Supervised | Strategic doc §3.5 places it in T5 Bayesian ML | Wrong navigation grouping |
 | Standalone slug for cross-cutting concept | Brief proposes `cross-validation` as own topic | Strategic doc §7.3 names-section policy: lives inside `conformal-prediction` / `high-dimensional-regression` | Duplicate content, slug never minted |
+| References missing URLs | Brief listed references without `url` fields | Every reference needs a DOI, proceedings URL, or arXiv link | 46 refs across 5 T4 topics shipped without links — batch fix required |
 
 ### How to prevent these in future briefs
 
@@ -431,6 +433,8 @@ These are real discrepancies found during implementation. Each one wasted time o
 3. **Specify data module patterns explicitly** — state whether exports should be lazy or eager.
 4. **Don't include UI for unimplemented features** — if polynomial kernel isn't ready, don't spec the radio button.
 5. **Include the exact `notebookPath`** with the subdirectory, not just the filename.
+6. **Every reference must have a `url` field** — DOI for journal articles/books, proceedings URL for conferences, arXiv as last resort. Verify before handing off to Claude Code.
+7. **Update `docs/formalml-content-metrics.xlsx`** when shipping — add the topic row, update domain summary, flag gaps.
 
 ---
 
@@ -566,6 +570,10 @@ When composing a new handoff brief, use this structure:
 ## 8. Images
 - List of images from the notebook to copy to `public/images/topics/{slug}/`.
 - Filenames and what each depicts.
+
+## 9. Content Metrics
+- Update `docs/formalml-content-metrics.xlsx` with this topic's row (see §13 of the reference doc).
+- Confirm all references have `url` fields (Refs Missing URL = 0).
 ```
 
 ---
@@ -590,3 +598,48 @@ Returns `{ ref, width, height }`. Attach `ref` to a container `<div>` to get its
 ### Shared types — `src/components/viz/shared/types.ts`
 
 `Point2D`, `PersistenceInterval`, `Simplex`, `DAGNode`, `DAGEdge`, `MapperParams`, `MapperResult`, etc.
+
+---
+
+## 13. Content Metrics Spreadsheet
+
+`docs/formalml-content-metrics.xlsx` tracks per-topic quality metrics. It has three sheets:
+
+### Topic Detail (18 columns)
+
+| Column | Description |
+|--------|-------------|
+| Domain | Domain key (e.g., `nonparametric-ml`) |
+| Topic | Display title |
+| Difficulty | `foundational` / `intermediate` / `advanced` |
+| Words | Body word count (excluding imports, HTML, math) |
+| Sections | Count of `##` headings |
+| Overview? | Has an Overview section (`Yes`/`No`) |
+| Formal Framework? | Has a Formal Framework section (`Yes`/`No`) |
+| Code Section? | Has a Code/Computational section (`Yes`/`No`) |
+| Viz Imported? | Has `client:` directives (`Yes`/`No`) |
+| Connections? | Has `connections` frontmatter entries (`Yes`/`No`) |
+| Python Blocks | Count of `` ```python `` code blocks |
+| TheoremBlocks | Count of `<TheoremBlock` usages |
+| Display Eqs | Count of `$$...$$` display equations |
+| Inline Math | Count of `$...$` inline math expressions |
+| Refs Total | Total number of reference entries |
+| Refs w/ URL | References that have a `url` field |
+| Refs Missing URL | References without a `url` field (should be 0) |
+| Section Names | Comma-separated list of `##` heading titles |
+
+### Domain Summary
+
+Aggregates per domain: topic count, average/min/max words, average sections, count of topics below quality thresholds, total refs missing URL.
+
+### Gap Analysis
+
+Flags topics with: content too short (<3k words), too few sections (<7), missing code section. Each row includes the topic name, domain, issue description, priority, and notes.
+
+### When to update
+
+Update the spreadsheet whenever a new topic ships. The Claude Code implementation template includes this as a required step before the final PR.
+
+### Reference URL requirement
+
+Every entry in the `references` frontmatter array must have a `url` field. Use DOI links (`https://doi.org/...`) for journal articles and books with DOIs, proceedings URLs for conference papers, or arXiv links as a last resort. The "Refs Missing URL" column in the spreadsheet should always be 0 for every topic.

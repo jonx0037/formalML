@@ -160,6 +160,14 @@ import Figure from '../../components/ui/Figure.astro';
 
 Bare markdown `![alt](path)` images still render correctly (mobile-safe via global CSS), but prefer `<Figure>` when a caption adds value. Migrate legacy images into `src/assets/topics/` opportunistically as topics are revisited.
 
+### References
+
+Every entry in the `references` frontmatter array **must** have a `url` field — a DOI link (`https://doi.org/...`) for journal articles and books with DOIs, a proceedings URL for conference papers (NeurIPS, ICML, etc.), or an arXiv link as a last resort. The layout renders references with URLs as clickable links and those without as plain text; missing URLs are a content gap, not a style choice.
+
+### Content metrics spreadsheet
+
+`docs/formalml-content-metrics.xlsx` tracks per-topic metrics (word count, section count, theorem blocks, reference counts with/without URLs, etc.) across three sheets: **Topic Detail**, **Domain Summary**, and **Gap Analysis**. When a new topic ships, add its row to Topic Detail, update the Domain Summary for its domain, and add any gap-analysis entries (e.g., `<3k words`, `<7 sections`, missing code section). The spreadsheet is the single source of truth for content-quality tracking — do not let it drift from the published topics.
+
 ### Curriculum graph
 
 - Topic metadata and prerequisite DAG defined in `src/data/curriculum-graph.json`
