@@ -549,7 +549,7 @@ export function gevNegLogLik(theta: GEVParams, data: Float64Array): number {
  * heuristic: σ₀ = std·√6/π, μ₀ = median, ξ₀ = 0.1 (matches notebook Cell 10).
  */
 export function gevMle(data: Float64Array): GEVMleResult {
-  const sorted = Array.from(data).sort((a, b) => a - b);
+  const sorted = data.slice().sort();
   const median =
     sorted.length % 2 === 0
       ? 0.5 * (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2])
@@ -581,7 +581,7 @@ export function gevMle(data: Float64Array): GEVMleResult {
  */
 export function gevPwm(data: Float64Array): GEVParams {
   const B = data.length;
-  const M = Array.from(data).sort((a, b) => a - b);
+  const M = data.slice().sort();
 
   let b0 = 0;
   for (const v of M) b0 += v / B;
@@ -700,7 +700,7 @@ export function profileLogLikXi(
   for (const v of data) varSum += (v - mean) * (v - mean);
   const sd = Math.sqrt(varSum / Math.max(1, data.length - 1));
   const sigma0 = (sd * Math.sqrt(6)) / Math.PI;
-  const sorted = Array.from(data).sort((a, b) => a - b);
+  const sorted = data.slice().sort();
   const median =
     sorted.length % 2 === 0
       ? 0.5 * (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2])
@@ -823,7 +823,7 @@ export function hillEstimator(
   data: Float64Array,
   kVec: Int32Array,
 ): Float64Array {
-  const sorted = Array.from(data).sort((a, b) => a - b);
+  const sorted = data.slice().sort();
   const n = sorted.length;
   const logSorted = sorted.map((v) => (v > 0 ? Math.log(v) : Number.NEGATIVE_INFINITY));
   const out = new Float64Array(kVec.length);
@@ -848,7 +848,7 @@ export function pickandsEstimator(
   data: Float64Array,
   kVec: Int32Array,
 ): Float64Array {
-  const sorted = Array.from(data).sort((a, b) => a - b);
+  const sorted = data.slice().sort();
   const n = sorted.length;
   const log2 = Math.log(2);
   const out = new Float64Array(kVec.length);
@@ -881,7 +881,7 @@ export function dedhEstimator(
   data: Float64Array,
   kVec: Int32Array,
 ): Float64Array {
-  const sorted = Array.from(data).sort((a, b) => a - b);
+  const sorted = data.slice().sort();
   const n = sorted.length;
   const logSorted = sorted.map((v) => (v > 0 ? Math.log(v) : Number.NEGATIVE_INFINITY));
   const out = new Float64Array(kVec.length);

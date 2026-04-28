@@ -63,6 +63,10 @@ export default function HillPlotExplorer() {
   const [k, setK] = useState(100);
 
   // ── Generate sample + evaluate all three estimators on shared k-grid ──
+  // Sample once per (parent, seed); estimator traces evaluate at the
+  // K_GRID_STEP-spaced grid that the cursor slider snaps to. Cursor reads
+  // out of the precomputed traces by index — no re-sampling or re-fitting
+  // on slider drag, which keeps interaction smooth at N = 10,000.
   const traces = useMemo(() => {
     const rng = mulberry32(seed);
     const data = sampleParent(parent, N_SAMPLE, rng);
@@ -82,17 +86,15 @@ export default function HillPlotExplorer() {
     return { kArr, hill, pickands, dedh };
   }, [parent, seed]);
 
-  // ── Estimator values at the cursor k ─────────────────────────────
-  const cursorValues = useMemo(() => {
-    const rng = mulberry32(seed);
-    const data = sampleParent(parent, N_SAMPLE, rng);
-    const kArr = new Int32Array([k]);
-    return {
-      hill: hillEstimator(data, kArr)[0],
-      pickands: pickandsEstimator(data, kArr)[0],
-      dedh: dedhEstimator(data, kArr)[0],
-    };
-  }, [parent, seed, k]);
+  // ── Estimator values at the cursor k (O(1) lookup into traces) ──
+  // The slider's step is locked to K_GRID_STEP, so every k lands exactly on
+  // a trace evaluation point.
+  const cursorIdx = Math.max(0, Math.min(traces.kArr.length - 1, Math.round((k - K_MIN) / K_GRID_STEP)));
+  const cursorValues = {
+    hill: traces.hill[cursorIdx],
+    pickands: traces.pickands[cursorIdx],
+    dedh: traces.dedh[cursorIdx],
+  };
 
   const truthXi = trueXi(parent);
 
@@ -273,7 +275,7 @@ export default function HillPlotExplorer() {
         <label className="flex flex-1 items-center gap-2 text-[var(--color-text-secondary)] min-w-[260px]">
           <span className="font-mono w-4">k</span>
           <input
-            type="range" min={K_MIN} max={K_MAX_DEFAULT} step={1}
+            type="range" min={K_MIN} max={K_MAX_DEFAULT} step={K_GRID_STEP}
             value={k} onChange={(e) => setK(parseInt(e.target.value, 10))}
             className="flex-1 accent-[var(--color-accent)]"
           />

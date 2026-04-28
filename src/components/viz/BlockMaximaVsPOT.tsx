@@ -93,9 +93,10 @@ export default function BlockMaximaVsPOT() {
       }
     }
 
-    // POT (right panel) — same samples, exceedances above τ-quantile
-    const sortedDesc = Array.from(samples).sort((a, b) => a - b);
-    const u = sortedDesc[Math.floor(tau * sortedDesc.length)];
+    // POT (right panel) — same samples, exceedances above τ-quantile.
+    // (a, b) => a - b sorts ASCENDING; the τ-quantile is the τ-fraction-from-the-bottom index.
+    const sortedAsc = samples.slice().sort();
+    const u = sortedAsc[Math.floor(tau * sortedAsc.length)];
     const exceedances: number[] = [];
     for (const v of samples) if (v > u) exceedances.push(v - u);
     const Nu = exceedances.length;
@@ -159,7 +160,7 @@ export default function BlockMaximaVsPOT() {
       // the histogram is visible — heavy-tailed parents (Pareto, t₃) put a
       // few outliers far above the bulk, which would otherwise compress the
       // histogram against the y-axis.
-      const sortedBlocks = Array.from(fits.blocks).sort((a, b) => a - b);
+      const sortedBlocks = fits.blocks.slice().sort();
       const dataMin = sortedBlocks[0] ?? 0;
       const dataMax = sortedBlocks[Math.floor(0.95 * sortedBlocks.length)] ?? 1;
       const pad = 0.1 * (dataMax - dataMin || 1);
@@ -226,7 +227,7 @@ export default function BlockMaximaVsPOT() {
 
       // Clip x-axis to the 95th percentile of exceedances (same rationale as
       // the left panel — heavy-tailed parents produce a few large outliers).
-      const sortedExc = Array.from(fits.exceedances).sort((a, b) => a - b);
+      const sortedExc = fits.exceedances.slice().sort();
       const dataMax = sortedExc[Math.floor(0.95 * sortedExc.length)] ?? 1;
       const xScale = d3.scaleLinear().domain([0, dataMax * 1.05]).range([0, w]);
       const yScale = d3.scaleLinear().domain([0, yMaxPot]).range([h, 0]);
