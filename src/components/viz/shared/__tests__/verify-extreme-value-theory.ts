@@ -7,7 +7,8 @@
 // and asserts the result lies in the expected range.
 //
 // Run with: pnpm verify:extreme-value-theory
-// Exits non-zero on first failure-cluster. Designed to be CI-friendly.
+// Accumulates failures and exits non-zero at the end if any checks fail.
+// Designed to be CI-friendly.
 //
 // Tolerances follow the brief's §13 testing checklist:
 //   - ±1% relative for deterministic quantities (Gumbel theoretical moments,

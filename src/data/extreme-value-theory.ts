@@ -464,9 +464,14 @@ function finiteDiffHessian(
 }
 
 /**
- * Invert a small (n=2 or n=3) symmetric positive-definite matrix.
- * Returns a flattened row-major n*n Float64Array. Falls back to a diagonal
- * approximation if Cholesky fails (degenerate cases at the support boundary).
+ * Invert a small (n=2 or n=3) symmetric positive-definite matrix using the
+ * standard closed-form (cofactor / determinant) formulas. Returns a flattened
+ * row-major n*n Float64Array. If the matrix is numerically singular
+ * (|det| < 1e-14 — typically only at GEV/GPD support boundaries where the
+ * Hessian is ill-conditioned), falls back to a positive-diagonal-only
+ * approximation so callers still get finite (if conservative) standard errors.
+ * No Cholesky factorization is attempted at this size — the closed form is
+ * faster and numerically adequate for n ≤ 3.
  */
 function invertSPD(M: Float64Array, n: number): Float64Array {
   const out = new Float64Array(n * n);
@@ -929,7 +934,17 @@ export function potVar(
   alpha: number,
 ): number {
   const { xi, beta } = theta;
+  // Guard against invalid regimes per §5.6's "n(1-α)/N_u must lie in (0,1)"
+  // condition. p ≥ 1 means the target quantile is below the threshold's tail
+  // probability — the GPD approximation is not the right tool there; use the
+  // empirical CDF directly. p ≤ 0 means α was passed outside (0, 1).
+  if (!(Nu > 0) || !(n > 0) || !(alpha > 0) || !(alpha < 1) || beta <= 0) {
+    return Number.NaN;
+  }
   const p = (n * (1 - alpha)) / Nu;
+  if (!(p > 0) || !(p < 1)) {
+    return Number.NaN;
+  }
   if (Math.abs(xi) < XI_NEAR_ZERO) {
     return u - beta * Math.log(p);
   }
@@ -964,7 +979,13 @@ export function potVarSeDelta(
   alpha: number,
 ): number {
   const { xi, beta } = theta;
+  if (!(Nu > 0) || !(n > 0) || !(alpha > 0) || !(alpha < 1) || beta <= 0) {
+    return Number.NaN;
+  }
   const p = (n * (1 - alpha)) / Nu;
+  if (!(p > 0) || !(p < 1)) {
+    return Number.NaN;
+  }
   let dxi: number, dbeta: number;
   if (Math.abs(xi) < XI_NEAR_ZERO) {
     dxi = 0;
@@ -989,6 +1010,8 @@ export function potVarSeDelta(
 // Lazy-cached canned datasets for the §4 / §5 worked-example panels.
 // Per handoff-reference §4: expensive computations are lazy-initialized so
 // they don't block first-paint. Each cache key is a (preset, N, seed) tuple.
+// Cache is a small LRU — repeated Resample clicks (which monotonically bump
+// the seed) would otherwise retain every prior Float64Array indefinitely.
 // -----------------------------------------------------------------------------
 
 interface RawSampleCacheEntry {
@@ -998,6 +1021,7 @@ interface RawSampleCacheEntry {
   samples: Float64Array;
 }
 
+const RAW_SAMPLE_CACHE_MAX = 16;
 const rawSampleCache: RawSampleCacheEntry[] = [];
 
 export function getRawSamples(
@@ -1005,14 +1029,27 @@ export function getRawSamples(
   N: number,
   seed: number = 42,
 ): Float64Array {
-  const hit = rawSampleCache.find(
+  const hitIdx = rawSampleCache.findIndex(
     (e) => e.preset === preset && e.N === N && e.seed === seed,
   );
-  if (hit) return hit.samples;
+  if (hitIdx >= 0) {
+    // Move-to-end (most-recently-used) so the LRU eviction targets cold entries.
+    const [hit] = rawSampleCache.splice(hitIdx, 1);
+    rawSampleCache.push(hit);
+    return hit.samples;
+  }
   const rng = mulberry32(seed);
   const samples = sampleParent(preset, N, rng);
   rawSampleCache.push({ preset, N, seed, samples });
+  if (rawSampleCache.length > RAW_SAMPLE_CACHE_MAX) {
+    rawSampleCache.shift(); // drop oldest
+  }
   return samples;
+}
+
+/** Test / debug hook — drop all cached sample arrays (frees their backing memory). */
+export function clearRawSampleCache(): void {
+  rawSampleCache.length = 0;
 }
 
 export function getBlockMaxima(

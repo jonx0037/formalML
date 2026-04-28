@@ -62,38 +62,47 @@ export default function HillPlotExplorer() {
   const [seed, setSeed] = useState(42);
   const [k, setK] = useState(100);
 
-  // ── Generate sample + evaluate all three estimators on shared k-grid ──
-  // Sample once per (parent, seed); estimator traces evaluate at the
-  // K_GRID_STEP-spaced grid that the cursor slider snaps to. Cursor reads
-  // out of the precomputed traces by index — no re-sampling or re-fitting
-  // on slider drag, which keeps interaction smooth at N = 10,000.
+  // ── Generate sample once per (parent, seed); evaluate two estimator grids ──
+  // Sample once per (parent, seed). Two evaluation grids are computed:
+  //   - kArr (K_GRID_STEP spacing): used for plotting the trace polylines
+  //     so the SVG path doesn't carry ~5000 vertices per estimator.
+  //   - cursorKArr (every integer in [K_MIN, K_MAX_DEFAULT]): used for the
+  //     cursor readout, so slider drags are O(1) lookup-only.
+  // Both grids share the same underlying sorted sample inside each estimator,
+  // so the upfront cost is dominated by three Float64Array.slice().sort() calls.
+  // Hill / DEdH need positive observations (Hill takes log directly). For
+  // Normal-parent samples the bulk is positive at large k (the upper-order
+  // statistics are positive once we're past the 50th percentile), so this
+  // works in practice. For data with mass on the negative axis (t₃), Hill
+  // returns NaN where log(X_(n-i+1)) is undefined.
   const traces = useMemo(() => {
     const rng = mulberry32(seed);
     const data = sampleParent(parent, N_SAMPLE, rng);
-    // Hill / DEdH need positive observations (Hill takes log directly). For
-    // Normal-parent samples the bulk is positive at large k (the upper-order
-    // statistics are positive once we're past the 50th percentile), so this
-    // works in practice. For data with mass on the negative axis (t₃), Hill
-    // returns NaN where log(X_(n-i+1)) is undefined.
-    const kVec: number[] = [];
+
+    const plotKVec: number[] = [];
     for (let kVal = K_MIN; kVal <= K_MAX_DEFAULT; kVal += K_GRID_STEP) {
-      kVec.push(kVal);
+      plotKVec.push(kVal);
     }
-    const kArr = new Int32Array(kVec);
+    const kArr = new Int32Array(plotKVec);
     const hill = hillEstimator(data, kArr);
     const pickands = pickandsEstimator(data, kArr);
     const dedh = dedhEstimator(data, kArr);
-    return { kArr, hill, pickands, dedh };
+
+    const cursorKArr = new Int32Array(K_MAX_DEFAULT - K_MIN + 1);
+    for (let i = 0; i < cursorKArr.length; i++) cursorKArr[i] = K_MIN + i;
+    const cursorHill = hillEstimator(data, cursorKArr);
+    const cursorPickands = pickandsEstimator(data, cursorKArr);
+    const cursorDedh = dedhEstimator(data, cursorKArr);
+
+    return { kArr, hill, pickands, dedh, cursorHill, cursorPickands, cursorDedh };
   }, [parent, seed]);
 
-  // ── Estimator values at the cursor k (O(1) lookup into traces) ──
-  // The slider's step is locked to K_GRID_STEP, so every k lands exactly on
-  // a trace evaluation point.
-  const cursorIdx = Math.max(0, Math.min(traces.kArr.length - 1, Math.round((k - K_MIN) / K_GRID_STEP)));
+  // ── Estimator values at the cursor k (O(1) lookup into integer-k grids) ──
+  const cursorIdx = Math.max(0, Math.min(K_MAX_DEFAULT - K_MIN, Math.round(k) - K_MIN));
   const cursorValues = {
-    hill: traces.hill[cursorIdx],
-    pickands: traces.pickands[cursorIdx],
-    dedh: traces.dedh[cursorIdx],
+    hill: traces.cursorHill[cursorIdx],
+    pickands: traces.cursorPickands[cursorIdx],
+    dedh: traces.cursorDedh[cursorIdx],
   };
 
   const truthXi = trueXi(parent);
@@ -275,7 +284,7 @@ export default function HillPlotExplorer() {
         <label className="flex flex-1 items-center gap-2 text-[var(--color-text-secondary)] min-w-[260px]">
           <span className="font-mono w-4">k</span>
           <input
-            type="range" min={K_MIN} max={K_MAX_DEFAULT} step={K_GRID_STEP}
+            type="range" min={K_MIN} max={K_MAX_DEFAULT} step={1}
             value={k} onChange={(e) => setK(parseInt(e.target.value, 10))}
             className="flex-1 accent-[var(--color-accent)]"
           />

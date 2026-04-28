@@ -136,7 +136,11 @@ export default function BlockMaximaVsPOT() {
   const yMaxBlock = useMemo(() => {
     if (!fits.gevFit) return 1;
     const t = fits.gevFit.theta;
-    const peak = Math.max(...Array.from(fits.blocks).map((b) => gevPdf(b, t.xi, t.mu, t.sigma)));
+    let peak = -Infinity;
+    for (const b of fits.blocks) {
+      const density = gevPdf(b, t.xi, t.mu, t.sigma);
+      if (density > peak) peak = density;
+    }
     return peak * 1.3;
   }, [fits.gevFit, fits.blocks]);
 
