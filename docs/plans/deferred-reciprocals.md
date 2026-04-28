@@ -144,6 +144,14 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Ridge's closed-form $(\mathbf{X}^\top\mathbf{X} + \lambda\mathbf{I})^{-1}\mathbf{X}^\top\mathbf{y}$ uses the standard quadratic-form derivative $\partial(\mathbf{x}^\top\mathbf{A}\mathbf{x})/\parti…_
 
+## When `formalcalculus/measure-theoretic-probability` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/extreme-value-theory** declares `formalcalculusPrereqs` → `measure-theoretic-probability` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The weak-convergence framework that all of §§2–3 lean on lives there: convergence-in-distribution as weak convergence of probability measures, the Portmanteau theorem (used explicitly in the Khintc…_
+
 ## When `formalcalculus/multivariable-calculus` ships
 
 Add the reciprocal pointer back to:
@@ -447,17 +455,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/maximum-likelihood** declares `formalmlConnections` → `expectation-maximization` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _EM iteratively maximizes a lower bound on the log-likelihood for latent-variable models (mixtures, HMMs). Each M-step is an MLE of the complete-data log-likelihood._
-
-## When `formalml/extreme-value-theory` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/empirical-processes** declares `formalmlConnections` → `extreme-value-theory` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Fisher–Tippett–Gnedenko asymptotics for the maximum $X_{(n)}$ and the generalized Pareto; forward-pointed from Topic 29 §29.10 Rem 18, orthogonal to §32 but listed here for completeness of the form…_
-- **formalStatistics/order-statistics-and-quantiles** declares `formalmlConnections` → `extreme-value-theory` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Fisher–Tippett–Gnedenko trichotomy for the limit of properly normalized $X_{(n)}$. Topic 29 covers $\hat\xi_p$ at interior $p$; EVT covers $\hat\xi_p$ as $p \to 1$. §29.10 Rem 18 pointer; forthcomi…_
 
 ## When `formalml/feature-engineering` ships
 
