@@ -94,13 +94,13 @@ export function linspace(start: number, stop: number, n: number): number[] {
 }
 
 /** §1 evaluation grid — 200 points in [-3, 3]. */
-export const x_grid_s1 = (): number[] => linspace(-3.0, 3.0, 200);
+export const xGridS1 = (): number[] => linspace(-3.0, 3.0, 200);
 
 /** §2 evaluation grid — 300 points in [-3, 3]. */
-export const x_grid_s2 = (): number[] => linspace(-3.0, 3.0, 300);
+export const xGridS2 = (): number[] => linspace(-3.0, 3.0, 300);
 
 /** §3, §4, §5 evaluation grid — 300 points in [-3.5, 3.5]. */
-export const x_grid_s345 = (): number[] => linspace(-3.5, 3.5, 300);
+export const xGridS345 = (): number[] => linspace(-3.5, 3.5, 300);
 
 /** §1 panel (a) polynomial centers / RBF centers — 6 fixed centers in [-3, 3]. */
 export const RBF_CENTERS: ReadonlyArray<number> = [-3, -1.8, -0.6, 0.6, 1.8, 3];

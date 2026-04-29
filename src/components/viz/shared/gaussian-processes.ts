@@ -97,7 +97,9 @@ export function gaussianSampler(rng: () => number): () => number {
 // Conventions:
 //   - Matrices stored as `number[][]` (row-major, jagged 2D arrays).
 //   - All allocations happen inside helpers so callers don't need to pre-size.
-//   - Functions accept and return new matrices; never mutate inputs.
+//   - Helpers generally return new matrices and do not mutate inputs unless
+//     explicitly documented otherwise (e.g. `addDiagonal`, which mutates in
+//     place to avoid copying when the caller already owns a fresh matrix).
 // -----------------------------------------------------------------------------
 
 /** Construct an n×n identity matrix scaled by `s`. */
@@ -1053,13 +1055,10 @@ export function gpPredictNystrom(
   const Knm = kernelFn(XTrain, XInducing);     // shape (n, m)
   const Ktm = kernelFn(XTest, XInducing);      // shape (n_test, m)
 
-  // Kmm + jitter I, Cholesky for solves
-  const Amm = Kmm.map((row) => row.slice());
-  addDiagonal(Amm, jitter);
-  const Lmm = choleskyFactor(Amm);
-
   // Compute α_m = (σ_n² K_mm + K_nm^T K_nm)^{-1} K_nm^T y  via Cholesky on
-  // M = σ_n² K_mm + K_nm^T K_nm.
+  // M = σ_n² K_mm + K_nm^T K_nm — the Woodbury form used directly here.
+  // (No separate K_mm Cholesky is needed; the rank-m surrogate's α_m is the
+  // unique solution of the regularized normal equations on M.)
   // K_nm^T y has shape (m,)
   const KnmT_y = new Array<number>(m).fill(0);
   for (let j = 0; j < m; j++) {

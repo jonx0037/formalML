@@ -282,9 +282,13 @@ const kernelSE_06 = (X1: number[], X2: number[]) =>
   // (iv) Predictive at known test points — exact-match against extracted notebook outputs
   const Xt = linspace(-3.5, 3.5, 300);
   const { mean, sd } = gpPredict(X_sparse, y_sparse, Xt, kernelSE_06, SIGMA_N_TRUE);
-  // x=0.0 corresponds to index 150 (since 0 = -3.5 + (7/299) * 150 = -3.5 + 3.5117...; closest is index 150)
-  // Let me use explicit Xt-based lookup:
-  const idx0 = Xt.findIndex((x) => Math.abs(x) < 7 / 299 / 2);
+  // x = 0 is not sampled exactly for an even-sized linspace centered at 0;
+  // pick the closest grid point by minimum |x| instead of an interval test
+  // (the strict `<` form can return -1 when the closest points sit at ±dx/2).
+  const idx0 = Xt.reduce(
+    (best, x, i) => (Math.abs(x) < Math.abs(Xt[best]) ? i : best),
+    0,
+  );
   const idxLeft = 0;
   const idxRight = 299;
   ok(

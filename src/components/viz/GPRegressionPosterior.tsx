@@ -217,8 +217,14 @@ export default function GPRegressionPosterior() {
     [w, mean, sd, samples, Xtrain, Ytrain, xTest, nTrain, showSamples],
   );
 
-  // Read-outs at fixed test points (matches notebook §3 (iv) verification anchors)
-  const idx0 = useMemo(() => xTest.findIndex((x) => Math.abs(x) < 7 / (N_TEST - 1) / 2), [xTest]);
+  // Read-outs at the grid point closest to x = 0 (the notebook's §3 (iv) anchor).
+  // Use min-|x| reduce instead of an interval `<` test — for an even-sized
+  // linspace centered at 0, the closest points sit at ±dx/2, so a strict
+  // `findIndex` test can return -1 and crash the read-out formatting.
+  const idx0 = useMemo(
+    () => xTest.reduce((best, x, i) => (Math.abs(x) < Math.abs(xTest[best]) ? i : best), 0),
+    [xTest],
+  );
   const muAt0 = mean[idx0];
   const sdAt0 = sd[idx0];
 
