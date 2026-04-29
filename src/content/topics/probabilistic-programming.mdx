@@ -1,0 +1,590 @@
+---
+title: "Probabilistic Programming"
+subtitle: "The PPL abstraction in PyMC, NumPyro, and Stan: trace-based joint log-densities, automatic constrained-to-unconstrained reparameterization, and inference dispatch from NUTS to ADVI to MAP through the eight-schools workflow"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "variational-inference"
+formalstatisticsPrereqs:
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "§1.1's conjugate Beta-Binomial computation and §5.1's hierarchical prior specification both lean on the prior–likelihood–posterior decomposition that bayesian-foundations-and-prior-selection develops in detail. PP automates the posterior computation that topic does by hand."
+  - topic: "bayesian-computation-and-mcmc"
+    site: "formalstatistics"
+    relationship: "§4.2 sketches NUTS operationally and defers convergence theory and detailed-balance proofs to bayesian-computation-and-mcmc. The leapfrog integrator, dual-averaging step-size adaptation, and divergent-transition concept used in §5.2's funnel diagnosis are all developed there."
+  - topic: "hierarchical-bayes-and-partial-pooling"
+    site: "formalstatistics"
+    relationship: "§5's eight-schools example IS a hierarchical model with partial pooling. The hierarchical-bayes-and-partial-pooling topic develops the partial-pooling theory — when the hierarchical structure improves estimates over no-pooling and complete-pooling alternatives, and how partial pooling shrinks group-level estimates toward the hyperprior mean."
+formalcalculusPrereqs:
+  - topic: "change-of-variables"
+    site: "formalcalculus"
+    relationship: "§3.1's change-of-variables theorem for densities (Theorem 2) is a direct application of the multivariable change-of-variables formula for integrals. The Jacobian determinant calculation and the substitution argument used in the proof are taught there in pure-calculus form."
+  - topic: "jacobian"
+    site: "formalcalculus"
+    relationship: "§3 computes Jacobians for the log, logit, and stick-breaking transforms throughout. The Jacobian-as-linearization view and the determinant interpretation as local volume scaling — both essential for understanding why the Jacobian factor appears in (3.1) — are the substrate developed in that topic."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "bayesian-ml"
+  - "probabilistic-programming"
+  - "pymc"
+  - "numpyro"
+  - "stan"
+  - "hmc"
+  - "nuts"
+  - "advi"
+  - "map"
+  - "hierarchical-models"
+  - "bayesian-workflow"
+  - "machine-learning"
+domain: "bayesian-ml"
+videoId: null
+notebookPath: "notebooks/probabilistic-programming/01_probabilistic_programming.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/probabilistic-programming.mdx"
+datePublished: 2026-04-29
+estimatedReadTime: 55
+abstract: "A probabilistic programming language is an answer to a structural problem in Bayesian inference: in practice, the modeling step and the inference step have come to be entangled. Running HMC requires the joint log-density and its gradient on unconstrained space; running mean-field VI requires deriving the variational updates; running Metropolis–Hastings requires a proposal kernel. The PPL move is to cleanly separate the two — the user writes only the generative model, and the language manufactures the joint log-density, the gradients, and the constrained-to-unconstrained reparameterizations the inference engines need. We motivate the PPL abstraction by computing a Beta–Binomial posterior algebraically and then declaring the same model in PyMC; name the three engine-derived objects (joint log-density, automatic gradient, execution trace) and contrast PyMC's PyTensor symbolic graph with NumPyro's effect-handler messengers and Stan's compiled C++; develop the change-of-variables theorem for the constrained-to-unconstrained transforms HMC needs and walk through the log, logit, and stick-breaking transforms PPLs use most often; dispatch the same generative model to NUTS, ADVI, and MAP from a single PyMC model spec on Iris; and walk the full Bayesian workflow on Rubin's eight-schools dataset, including the centered-vs-non-centered reparameterization that turns a divergence-littered fit into a clean one. The topic closes with the regimes where PP breaks down — large data, intractable likelihoods, high-dimensional latents, discrete latents, multimodal posteriors — and pointers to the planned T5 topics that pick up where PP runs out of road."
+connections:
+  - topic: "variational-inference"
+    relationship: "§4.3's ADVI dispatch reuses the variational-objective and reparameterization-gradient machinery developed in variational-inference. The mean-field Gaussian family ADVI fits is exactly the family discussed there; the structural cost (axis-aligned ellipses, marginal-variance underestimation under correlation) shows up visibly in §4.5's Iris dispatch comparison."
+  - topic: "gaussian-processes"
+    relationship: "GPs are the conjugate-Gaussian-likelihood case where closed-form posterior inference is available without a sampler. PyMC and NumPyro both expose GP modules (`pm.gp`, `numpyro.contrib.gp`) that wrap the closed-form expressions in the PPL idiom — the same three-line interface that handles the Beta–Binomial in §1 handles the GP regression posterior on the same footing."
+  - topic: "kl-divergence"
+    relationship: "§4.3's ADVI minimizes reverse KL between the variational family and the posterior, exactly the projection developed in kl-divergence. Mean-field's mode-seeking pathology — visible as the axis-aligned ADVI ellipse in §4.5 — is one face of reverse-KL's mode-seeking asymmetry."
+  - topic: "gradient-descent"
+    relationship: "ADVI's optimization (stochastic gradient ascent on the ELBO) and MAP's optimization (L-BFGS on the joint log-density) both reduce to the gradient-descent machinery developed there. PP makes the same `compile_logp` callable available to either optimizer without the user touching gradient code."
+references:
+  - type: "book"
+    title: "Pattern Recognition and Machine Learning"
+    authors: "Bishop"
+    year: 2006
+    url: "https://link.springer.com/book/9780387310732"
+    note: "Chapters 10 (variational inference) and 11 (sampling methods) supply the algorithmic substrate PP automates (Springer)."
+  - type: "paper"
+    title: "The Use of Multiple Measurements in Taxonomic Problems"
+    authors: "Fisher"
+    year: 1936
+    url: "https://doi.org/10.1111/j.1469-1809.1936.tb02137.x"
+    note: "The Iris dataset used in §4's logistic-regression dispatch comparison (Annals of Eugenics)."
+  - type: "book"
+    title: "Bayesian Data Analysis"
+    authors: "Gelman, Carlin, Stern, Dunson, Vehtari & Rubin"
+    year: 2013
+    url: "https://doi.org/10.1201/b16018"
+    note: "BDA3 — the standard reference for the Bayesian workflow §5 walks through (Chapman and Hall/CRC)."
+  - type: "paper"
+    title: "Estimation in Parallel Randomized Experiments"
+    authors: "Rubin"
+    year: 1981
+    url: "https://doi.org/10.3102/10769986006004377"
+    note: "The original eight-schools dataset and hierarchical model used in §5 (Journal of Educational Statistics)."
+  - type: "paper"
+    title: "A Conceptual Introduction to Hamiltonian Monte Carlo"
+    authors: "Betancourt"
+    year: 2017
+    url: "https://arxiv.org/abs/1701.02434"
+    note: "The standard pedagogical treatment of HMC. §4.2 is a 30-second sketch; this is the long version (arXiv)."
+  - type: "paper"
+    title: "Hamiltonian Monte Carlo for Hierarchical Models"
+    authors: "Betancourt & Girolami"
+    year: 2015
+    url: "https://arxiv.org/abs/1312.0906"
+    note: "The centered-vs-non-centered reparameterization paper — the §5 funnel-diagnosis story comes from here (Chapman and Hall/CRC)."
+  - type: "paper"
+    title: "Inference from Iterative Simulation Using Multiple Sequences"
+    authors: "Gelman & Rubin"
+    year: 1992
+    url: "https://doi.org/10.1214/ss/1177011136"
+    note: "The original $\\hat{R}$ paper. §4.2's potential-scale-reduction-factor diagnostic is from here (Statistical Science)."
+  - type: "paper"
+    title: "The No-U-Turn Sampler: Adaptively Setting Path Lengths in Hamiltonian Monte Carlo"
+    authors: "Hoffman & Gelman"
+    year: 2014
+    url: "https://jmlr.org/papers/v15/hoffman14a.html"
+    note: "The NUTS paper. §4.2's no-U-turn criterion and dual-averaging step-size adaptation are from here (JMLR)."
+  - type: "paper"
+    title: "Auto-Encoding Variational Bayes"
+    authors: "Kingma & Welling"
+    year: 2014
+    url: "https://arxiv.org/abs/1312.6114"
+    note: "The reparameterization-trick paper. §4.3's ADVI sketch invokes the gradient estimator developed here (ICLR)."
+  - type: "paper"
+    title: "Automatic Differentiation Variational Inference"
+    authors: "Kucukelbir, Tran, Ranganath, Gelman & Blei"
+    year: 2017
+    url: "https://jmlr.org/papers/v18/16-107.html"
+    note: "The ADVI paper. §4.3 is a 30-second sketch of the algorithm developed here (JMLR)."
+  - type: "paper"
+    title: "MCMC Using Hamiltonian Dynamics"
+    authors: "Neal"
+    year: 2011
+    url: "https://doi.org/10.1201/b10905"
+    note: "The standard book chapter on HMC. §4.2 leans on Neal's exposition (Handbook of Markov Chain Monte Carlo)."
+  - type: "paper"
+    title: "A General Framework for the Parametrization of Hierarchical Models"
+    authors: "Papaspiliopoulos, Roberts & Sköld"
+    year: 2007
+    url: "https://doi.org/10.1214/088342307000000014"
+    note: "The non-centered parameterization in its general form. §5.3's three-line rewrite is one instance of the framework developed here (Statistical Science)."
+  - type: "paper"
+    title: "Rank-Normalization, Folding, and Localization: An Improved $\\hat{R}$ for Assessing Convergence of MCMC"
+    authors: "Vehtari, Gelman, Simpson, Carpenter & Bürkner"
+    year: 2021
+    url: "https://doi.org/10.1214/20-BA1221"
+    note: "The modern $\\hat{R}$ — what ArviZ actually computes. §4.2's diagnostic discussion uses this version (Bayesian Analysis)."
+  - type: "paper"
+    title: "Pathfinder: Parallel Quasi-Newton Variational Inference"
+    authors: "Zhang, Carpenter, Gelman & Vehtari"
+    year: 2022
+    url: "https://jmlr.org/papers/v23/21-0889.html"
+    note: "Pathfinder — a fast variational alternative competitive with ADVI on well-behaved posteriors (JMLR)."
+  - type: "paper"
+    title: "Stan: A Probabilistic Programming Language"
+    authors: "Carpenter, Gelman, Hoffman, Lee, Goodrich, Betancourt, Brubaker, Guo, Li & Riddell"
+    year: 2017
+    url: "https://doi.org/10.18637/jss.v076.i01"
+    note: "The Stan paper. §2.4's compiled-C++ contrast leans on the architecture described here (Journal of Statistical Software)."
+  - type: "paper"
+    title: "Composable Effects for Flexible and Accelerated Probabilistic Programming in NumPyro"
+    authors: "Phan, Pradhan & Jankowiak"
+    year: 2019
+    url: "https://arxiv.org/abs/1912.11554"
+    note: "The NumPyro paper. §2.2's effect-handler trace abstraction is exactly NumPyro's design (arXiv)."
+  - type: "paper"
+    title: "Probabilistic Programming in Python Using PyMC3"
+    authors: "Salvatier, Wiecki & Fonnesbeck"
+    year: 2016
+    url: "https://doi.org/10.7717/peerj-cs.55"
+    note: "The PyMC paper. §2.2's PyTensor symbolic-graph approach is what this paper introduced (PeerJ Computer Science)."
+  - type: "book"
+    title: "Stan Reference Manual, version 2.34"
+    authors: "Stan Development Team"
+    year: 2024
+    url: "https://mc-stan.org/docs/reference-manual/"
+    note: "The Stan transform-table reference. §3.2's stick-breaking simplex transform follows §10.7 here verbatim."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+
+## Overview
+
+A probabilistic programming language (PPL) is an answer to a structural problem in Bayesian inference: in practice, the modeling step and the inference step have come to be entangled. Running a Gibbs sampler requires full conditionals; running mean-field VI requires deriving the variational updates; running HMC requires the joint log-density and its gradient on unconstrained space. Each of these requires us to do nontrivial calculus on the *specific model* before we can run the *generic algorithm*. The PPL move is to cleanly separate the two: the user writes only the generative model, and the language manufactures the joint log-density, the gradients, and the constrained-to-unconstrained reparameterizations the inference engines need.
+
+This topic develops the substrate. §1 motivates the PPL abstraction by computing a Beta–Binomial posterior algebraically and then declaring the same model in PyMC. §2 names the three engine-derived objects (joint log-density, automatic gradient, execution trace) and contrasts PyMC's PyTensor graph view with NumPyro's effect-handler trace and Stan's compiled C++. §3 develops the change-of-variables theorem for the constrained-to-unconstrained transforms HMC needs. §4 dispatches the same generative model to NUTS, ADVI, and MAP and reads the diagnostics. §5 walks the end-to-end Bayesian workflow on Rubin's eight-schools dataset, including the centered-vs-non-centered reparameterization story. §6 closes with the regimes where PP breaks down and the planned T5 topics that pick up where PP runs out of road.
+
+This is the third topic of T5 Bayesian & Probabilistic ML, after [Variational Inference](/topics/variational-inference) (the projection-based response to intractable posteriors) and [Gaussian Processes](/topics/gaussian-processes) (the conjugate-with-a-trick response to function-space inference). PP closes the Bayesian-machinery arc by lifting the modeling step into an executable DSL — the same three-line interface that handles the Beta–Binomial in §1 will handle hierarchical models, GLMs, mixture models, and time-series state-space models without per-model derivation work.
+
+## 1. From explicit Bayes to declarative Bayes
+
+Bayesian inference is a recipe with two parts. We declare a generative model — a prior over parameters and a likelihood that turns parameters into observed data — and then we compute the posterior over the parameters given the data. The first part is *modeling*: it asks the analyst to commit to assumptions about how the world produced the data. The second part is *inference*: it's an integral, $p(\theta \mid y) = p(y \mid \theta)\,p(\theta) / \int p(y \mid \theta)\,p(\theta)\,d\theta$, and outside a small list of conjugate pairs it has no closed form.
+
+Probabilistic programming languages are an answer to a structural problem with this recipe: in practice the modeling step and the inference step have come to be entangled. To run a Gibbs sampler we need full conditionals; to run Metropolis–Hastings we need a proposal kernel; to run mean-field VI we need to derive the variational updates. Each of these requires us to do nontrivial calculus on the *specific model* before we can run the *generic algorithm*. The PPL move is to cleanly separate the two: the user writes only the model, and the language manufactures the joint log-density, the gradients, and the reparameterizations the inference engines need.
+
+This section makes the move concrete. §1.1 sets up a conjugate Bayesian model — Beta–Binomial — and computes the posterior algebraically, leaning on the prior–likelihood–posterior decomposition from <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-foundations-and-prior-selection" site="formalstatistics" topic="Bayesian Foundations and Prior Selection" />. §1.2 declares the same model in PyMC and lets the engine recover the same posterior numerically; the side-by-side comparison is the entire point. §1.3 names the three engine-derived objects that make the recovery possible: the joint log-density, the reparameterization onto unconstrained space, and the execution trace.
+
+### 1.1 The conjugate playground: Beta–Binomial by hand
+
+Let $\theta \in (0, 1)$ be the head probability of a possibly-biased coin. Place a Beta prior on $\theta$:
+$$p(\theta) \;=\; \mathrm{Beta}(\theta \mid \alpha, \beta) \;=\; \frac{\theta^{\alpha - 1}\,(1 - \theta)^{\beta - 1}}{B(\alpha, \beta)},$$
+where $B(\alpha, \beta) = \int_0^1 t^{\alpha - 1} (1 - t)^{\beta - 1}\,dt$ is the Beta function and $\alpha, \beta > 0$ are hyperparameters summarizing prior belief in heads-vs-tails. Flip the coin $n$ times independently and observe $k$ heads. The likelihood is binomial:
+$$p(y \mid \theta) \;=\; \binom{n}{k} \theta^k (1 - \theta)^{n - k}.$$
+Bayes' rule gives the posterior up to its normalizing constant:
+$$p(\theta \mid y) \;\propto\; p(y \mid \theta)\,p(\theta) \;\propto\; \theta^{(\alpha + k) - 1} (1 - \theta)^{(\beta + n - k) - 1},$$
+where the combinatorial factor and the Beta normalizing constant are absorbed into the proportionality because they don't depend on $\theta$. The right-hand side is the kernel of a Beta distribution with parameters $\alpha' = \alpha + k$, $\beta' = \beta + n - k$, so the posterior must be exactly that Beta:
+$$p(\theta \mid y) \;=\; \mathrm{Beta}(\theta \mid \alpha + k,\; \beta + n - k).$$
+This is the entire workflow in conjugate-land: prior parameters in, posterior parameters out, no integral computed and no sampler invoked. With $\alpha = \beta = 2$, $n = 20$ flips, and $k = 14$ heads, the posterior is $\mathrm{Beta}(16,\, 8)$, with mean $16/24 \approx 0.667$ and a 95% credible interval (computed by inverting the Beta CDF) of approximately $(0.475,\, 0.831)$.
+
+That this works depends on a happy algebraic accident: the binomial likelihood and the Beta prior have the same functional form in $\theta$, so when we multiply them the form is preserved. Outside a short list of conjugate pairs — Gaussian–Gaussian, Gamma–Poisson, Dirichlet–multinomial — the denominator integral has no closed form, and direct evaluation of $p(\theta \mid y)$ requires either Monte Carlo or optimization.
+
+### 1.2 The same model, declared
+
+Now we hand the same problem to PyMC. The user-side code is three lines: declare a Beta prior, declare a Binomial likelihood with `observed=14` to mark $y$ as data rather than a sampled variable, and call `pm.sample` to run NUTS:
+
+```python
+with pm.Model() as model:
+    theta = pm.Beta("theta", alpha=2.0, beta=2.0)
+    y = pm.Binomial("y", n=20, p=theta, observed=14)
+    idata = pm.sample(draws=1000, tune=1000, chains=2)
+```
+
+The histogram of post-warmup posterior draws of $\theta$ should match the analytical $\mathrm{Beta}(16,\, 8)$ density to within Monte Carlo error of order $1/\sqrt{2000} \approx 0.022$ — panel (b) of Figure 1 below is a sanity check that this is what we get.
+
+Notice everything we *didn't* do. We didn't compute the Jacobian of the Beta-to-unconstrained reparameterization NUTS needs. We didn't differentiate the joint log-density. We didn't tune the leapfrog step size or the dual-averaging schedule. We didn't write a Metropolis acceptance ratio. The model spec — three lines — was the entire user-side artifact, and the PPL produced everything else.
+
+For this conjugate problem the PPL is doing more work than the analytical formula needs. The point isn't that PPLs are necessary here — they aren't. The point is that *the same three-line interface* will work when we change the model in ways that destroy conjugacy, and almost any realistic model destroys conjugacy.
+
+<Figure
+  src="/images/topics/probabilistic-programming/01_conjugate_vs_declared.png"
+  alt="Three-panel figure: panel (a) the analytical Beta–Binomial — Beta(2,2) prior, normalized binomial likelihood, and Beta(16,8) posterior with the posterior mean marked; panel (b) the declared PyMC model — histogram of the 2000 post-warmup NUTS draws of theta overlaid with the analytical Beta(16,8) density; panel (c) the trace plot of theta across the chains showing stationary mixing."
+  caption="Figure 1. The conjugate Beta–Binomial computed three ways. (a) The analytical posterior — prior, likelihood, posterior in closed form. (b) The same posterior recovered by NUTS from a three-line PyMC model declaration; the histogram tracks the analytical density to within Monte Carlo error. (c) The chain trace, certifying that the sampler producing (b) is well-behaved."
+/>
+
+### 1.3 What separates a probabilistic program from a simulator
+
+A simulator is a piece of code that, when run, generates a sample from some distribution. A probabilistic program is a simulator plus three more capabilities, each of which the rest of the topic unpacks:
+
+1. **Log-density tracing.** The engine can run the program and, instead of just emitting samples, emit the joint log-density $\log p(\theta, y)$ as a function of the sampled variables. This is what lets us evaluate $\log p(\theta \mid y)$ up to an additive constant for any candidate $\theta$ — the input that NUTS, ADVI, and MAP all need. (Treated in §2.)
+2. **Observation conditioning.** The engine can mark some variables as *observed* — $y = 14$ in the example above — at which point it stops sampling them and instead accumulates their log-density into the joint. This is the operational meaning of "conditioning on data": the program no longer simulates $y$; it scores how plausible the observed value of $y$ is under each candidate parameter. (Also treated in §2.)
+3. **Constrained-to-unconstrained reparameterization.** The variable $\theta \in (0, 1)$ lives on a bounded interval, but HMC/NUTS run on unconstrained $\mathbb{R}^d$. The engine reparameterizes $\theta$ via $\eta = \mathrm{logit}(\theta) \in \mathbb{R}$, computes the Jacobian correction, and presents an unconstrained log-density to the sampler. (Treated in §3.)
+
+These three capabilities — and the fact that the engine derives them automatically from the generative model — are what makes the difference between a Python simulator and a probabilistic program.
+
+## 2. Anatomy of a probabilistic program
+
+The PPL recovery in §1.2 looked magical — three lines of model spec, no derivations, and out came a posterior. This section unpacks the magic. A probabilistic program produces three engine-derived objects from the generative model: the joint log-density, its automatic gradient, and the execution trace that ties the first two together. Naming these objects and watching how the engine constructs them is the substance of §2.
+
+We work with a slightly larger running example than §1's Beta–Binomial. Let $y_1, \ldots, y_N$ be $N = 10$ real-valued observations and consider the two-parameter model
+$$\mu \sim \mathcal{N}(0,\, 10^2), \qquad \log\sigma \sim \mathcal{N}(0,\, 1), \qquad y_i \mid \mu, \sigma \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(\mu, \sigma^2),$$
+where we have parameterized the likelihood scale by $\log\sigma$ so the latent space is unconstrained $\mathbb{R}^2$ — keeping the §3 transform discussion separate from §2's tracing discussion. §2.1 names the joint log-density and shows how it factorizes over the program's data-flow graph. §2.2 shows the same density computed two ways: by walking a NumPyro effect-handler trace, and by evaluating a PyMC compiled-graph callable. §2.3 explains observation conditioning as a trace operation. §2.4 closes with Stan's compiled-C++ contrast — the same abstraction with a different implementation strategy.
+
+### 2.1 The joint log-density factorizes over the program
+
+A probabilistic program defines a directed acyclic graph (DAG) of named random variables: each `sample` site introduces a latent variable conditional on its parents, and each `observe` site introduces an observed variable conditional on its parents. The chain rule for joint distributions on a DAG gives a clean factorization.
+
+<TheoremBlock type="theorem" number={1} title="Joint density factorization">
+Let $z_1, \ldots, z_L$ be the random variables encountered during one execution of a probabilistic program in topological order, and let $\mathrm{pa}(z_\ell)$ denote the parents of $z_\ell$ in the program's data-flow graph. The joint density factorizes as
+$$p(z_1, \ldots, z_L) \;=\; \prod_{\ell = 1}^{L} p(z_\ell \mid \mathrm{pa}(z_\ell)). \quad\quad (2.1)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply the chain rule for joint densities iteratively in topological order:
+$$p(z_1, \ldots, z_L) \;=\; \prod_{\ell = 1}^{L} p(z_\ell \mid z_1, \ldots, z_{\ell - 1}).$$
+The DAG structure asserts that $z_\ell$ is conditionally independent of its non-descendants given $\mathrm{pa}(z_\ell)$. The set $\{z_1, \ldots, z_{\ell - 1}\}$, being the predecessors in topological order, contains no descendants of $z_\ell$ and so is partitioned into $\mathrm{pa}(z_\ell)$ and non-descendant non-parents. Conditional independence collapses the second group out of the conditioning set, leaving $p(z_\ell \mid z_1, \ldots, z_{\ell - 1}) = p(z_\ell \mid \mathrm{pa}(z_\ell))$. The product then matches (2.1). $\square$
+</TheoremBlock>
+
+For our running model, $L = 3$ named sites — $\mu$, $\log\sigma$, and $y$ (the observation node carrying the full $N$-vector) — with $\mathrm{pa}(\mu) = \mathrm{pa}(\log\sigma) = \emptyset$ and $\mathrm{pa}(y) = \{\mu, \log\sigma\}$. The log of (2.1) gives
+$$\log p(\mu, \log\sigma, y) \;=\; \log p(\mu) + \log p(\log\sigma) + \sum_{i = 1}^{N} \log p(y_i \mid \mu, \sigma). \quad\quad (2.2)$$
+Each summand is a closed-form Normal log-pdf the engine can evaluate from primitive operations; the sum is what the inference engines (NUTS, ADVI, MAP) plug into. Panel (a) of Figure 2 plots this log-density as a heatmap on $(\mu, \log\sigma)$ space; panel (b) decomposes a 1D slice through the heatmap into its prior and likelihood components, exactly as the trace dictionary stores them.
+
+### 2.2 The trace abstraction: two implementation strategies
+
+The factorization in (2.1) tells us *what* to compute. Two distinct implementation strategies do the actual computation.
+
+**NumPyro: effect-handler trace.** At every `numpyro.sample("name", dist, ...)` call, NumPyro invokes a *messenger* — a Python context manager — that intercepts the call and dispatches based on which handlers are active. Without any handler, the call samples a value and returns it. With a `seed` handler, the call uses a deterministic JAX PRNG key. With a `condition({"name": value})` handler, the call returns the supplied value rather than sampling. With a `trace` handler, every `sample` call is recorded into a dictionary mapping site name to a four-field record: `{"type": "sample", "value": ..., "fn": <distribution>, "is_observed": bool}`. A single execution of the program under a stack of `trace + condition + seed` handlers produces a complete record from which the joint log-density follows by accumulating `tr[name]["fn"].log_prob(tr[name]["value"]).sum()` across all sites. The trace is the operational form of the factorization in (2.1).
+
+**PyMC: PyTensor symbolic graph.** PyMC takes a different approach. The `with pm.Model() as model:` context manager builds, behind the scenes, a PyTensor symbolic computation graph whose nodes correspond to the named random variables. At graph-build time, each `pm.Distribution("name", ...)` call registers a node and a log-prob expression. After the context exits, `model.compile_logp()` *compiles* the symbolic graph into a callable Python function that, given a dictionary of parameter values, returns the joint log-density as a single float. The compile step is one-time; the resulting callable runs in C-speed inner loops via PyTensor's backend (defaulting to NumPy with optional Numba/JAX backends). PyMC's callable computes (2.1) every time it's invoked, but the work of *deriving* the callable from the model spec happens once during compilation.
+
+The two strategies differ in *when* the program is interpreted — once per execution under handlers (NumPyro), or once at compile time with the resulting graph reused (PyMC) — but both compute the same mathematical object. The cross-engine sanity check in panel (c) of Figure 2 verifies this empirically: at $100$ random points in $(\mu, \log\sigma)$ space, the NumPyro-trace log-density and the PyMC-compiled log-density agree to machine precision.
+
+<Figure
+  src="/images/topics/probabilistic-programming/02_anatomy_traces.png"
+  alt="Three-panel figure: panel (a) heatmap of the joint log-density of the running Normal–Normal model on (mu, log-sigma) space with contour lines and an MAP marker; panel (b) a 1D slice through panel (a) decomposing the joint log-density into prior and likelihood components; panel (c) a scatter showing the log-density evaluated at 100 random points by three engines (by-hand SciPy, NumPyro trace, PyMC compiled callable) all agreeing on the y=x reference line."
+  caption="Figure 2. Anatomy of the trace. (a) The joint log-density landscape — what the trace computes. (b) The additive decomposition the trace exposes — prior and likelihood as separate summands. (c) Three engines (by-hand SciPy, NumPyro effect-handler trace, PyMC compiled graph) agreeing on the same log-density value at 100 random points to machine precision."
+/>
+
+### 2.3 Observation conditioning is a trace operation
+
+What does `observed=y_data` actually do? Operationally, it's a switch on the trace handler: at an observed site, the engine *replaces* the sampling step with a likelihood-evaluation step. The site still contributes its log-prob to the joint, but the contribution is computed at the supplied data value rather than at a sampled value.
+
+In NumPyro: `numpyro.sample("y", dist.Normal(mu, sigma), obs=y_data)` is the syntactic marker. At trace time, the messenger sees `obs is not None` and stores `{"type": "sample", "value": y_data, "is_observed": True, ...}` in the trace dict. The log-prob accumulator treats observed and unobserved sites identically — both contribute `fn.log_prob(value).sum()`. The only difference is that the observed value comes from the user, not from a draw.
+
+In PyMC: passing `observed=y_data` to a distribution constructor flags the variable as data-rather-than-parameter at graph-build time. The `compile_logp()` callable does not accept the observed variable in its input dict; the observed value is baked into the compiled graph as a constant.
+
+This is the operational meaning of "conditioning on data" in the context of PPLs: the program, run in its unconditioned form, would simulate $y$; under the observation handler, it scores the supplied $y$ against the model. Bayes' rule never appears explicitly in the engine code — it falls out of (2.2) once we identify the latent variables (whose values vary as we explore the posterior) and the observed variables (whose values are fixed at the data).
+
+### 2.4 Stan's compiled-C++ contrast
+
+Stan takes the PyMC strategy further: rather than compiling a Python-callable graph, it compiles the model to standalone C++. A Stan program is a text file in Stan's domain-specific syntax, with `data`, `parameters`, and `model` blocks declaring the observed inputs, the latent variables, and the joint log-density (via `target += ...` accumulator statements):
+
+```stan
+data {
+  int<lower=1> N;
+  vector[N] y;
+}
+parameters {
+  real mu;
+  real log_sigma;
+}
+model {
+  mu ~ normal(0, 10);
+  log_sigma ~ normal(0, 1);
+  y ~ normal(mu, exp(log_sigma));
+}
+```
+
+The Stan transpiler reads the `model` block, generates C++ source that computes the joint log-density and its gradient via reverse-mode automatic differentiation (Stan's templated `var` type), and compiles the C++ to a binary. The binary exposes a log-density-and-gradient function that NUTS, ADVI, and L-BFGS all call. Stan's compile step is heavier than PyMC's — a full C++ compilation versus PyTensor's lighter graph compilation — which is why we don't run live Stan models in this notebook; the compile time alone exceeds our 60-second budget.
+
+The three implementations — NumPyro's runtime handler trace, PyMC's PyTensor symbolic graph, Stan's compiled C++ — produce the same mathematical object: an evaluable joint log-density with an automatic gradient. The choice between them is engineering, not mathematics. NumPyro's handler approach makes program semantics explicit and supports complex control flow (recursion, dynamic shapes) most naturally. PyMC's graph approach gives intermediate compile cost with good interactive iteration. Stan's compiled approach is the most performant per evaluation and the most rigid about model structure. In §4 we'll dispatch the same model to PyMC's NUTS and to NumPyro's NUTS and watch the same posterior emerge from both.
+
+## 3. Constrained-to-unconstrained transforms
+
+The three engine-derived objects of §2 — joint log-density, gradient, execution trace — are enough to run gradient-based inference *if* the latent variables already live in unconstrained $\mathbb{R}^d$. They don't, in general. A Beta variable lives in $(0, 1)$. A scale parameter lives in $(0, \infty)$. A correlation matrix lives in a positive-definite cone. A simplex variable lives on the standard simplex. None of these admit unconstrained gradient steps without leaving the constraint set.
+
+The PPL fix is automatic reparameterization: every constrained random variable is silently mapped via a smooth invertible transform $T$ to an unconstrained space, the change-of-variables formula adjusts the log-density to compensate, and inference runs on the unconstrained representation. The user writes `pm.Beta("theta", 2, 2)` and the engine works internally with $\eta = \mathrm{logit}(\theta) \in \mathbb{R}$, adding $\log(\theta(1 - \theta))$ to the log-density to absorb the Jacobian factor.
+
+§3.1 states and proves the change-of-variables theorem for densities — the single result that makes the entire mechanism work. §3.2 walks through the three transforms PPLs use most often: positive-real via the `log` transform, bounded interval via `logit`, and simplex via stick-breaking. The first two get full Jacobian computations; the third is large enough that we state the result and reference the standard derivation. §3.3 explains why HMC needs unconstrained representation operationally and shows how PyMC, NumPyro, and Stan implement the transform table.
+
+### 3.1 The change-of-variables theorem
+
+<TheoremBlock type="theorem" number={2} title="Change of variables for densities">
+Let $X$ be a random variable on $\mathcal{C} \subseteq \mathbb{R}^d$ with density $p_X$ (with respect to Lebesgue measure on $\mathcal{C}$). Let $T : \mathcal{C} \to \mathbb{R}^d$ be a smooth bijection with smooth inverse $T^{-1}$, and let $Y = T(X)$. Then $Y$ has density
+$$p_Y(y) \;=\; p_X(T^{-1}(y)) \cdot \bigl|\det J_{T^{-1}}(y)\bigr| \;=\; \frac{p_X(x)}{|\det J_T(x)|}, \qquad x = T^{-1}(y),$$
+where $J_T(x) = \partial T / \partial x$ is the Jacobian matrix of $T$ at $x$. Equivalently,
+$$\log p_Y(y) \;=\; \log p_X(x) \;+\; \log\bigl|\det J_{T^{-1}}(y)\bigr| \;=\; \log p_X(x) \;-\; \log\bigl|\det J_T(x)\bigr|. \quad\quad (3.1)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any measurable set $A \subseteq \mathbb{R}^d$ in the image of $T$,
+$$\Pr(Y \in A) \;=\; \Pr(X \in T^{-1}(A)) \;=\; \int_{T^{-1}(A)} p_X(x)\, dx.$$
+Apply the multivariable change of variables for integrals: substitute $x = T^{-1}(y)$, so that $dx = |\det J_{T^{-1}}(y)|\, dy$:
+$$\Pr(Y \in A) \;=\; \int_A p_X(T^{-1}(y))\, |\det J_{T^{-1}}(y)|\, dy.$$
+Since this holds for every measurable $A$ in the image of $T$, we identify the integrand as the density of $Y$:
+$$p_Y(y) \;=\; p_X(T^{-1}(y))\, |\det J_{T^{-1}}(y)|.$$
+The second equality in the theorem statement follows from the chain-rule identity $J_{T^{-1}}(y) = J_T(x)^{-1}$ (with $x = T^{-1}(y)$), so $|\det J_{T^{-1}}(y)| = 1 / |\det J_T(x)|$. Taking logs gives (3.1). $\square$
+</TheoremBlock>
+
+The two equivalent forms in (3.1) appear in different PPL implementations. The "$+\log|\det J_{T^{-1}}|$" form is convenient when the engine starts on the unconstrained side and is generating the constrained version (as in the user-side `pm.Normal("eta", 0, 1)` + deterministic `theta = pm.Deterministic("theta", pm.math.sigmoid(eta))` idiom). The "$-\log|\det J_T|$" form is convenient when the engine starts on the constrained side and is generating the unconstrained version automatically — which is what happens for every constrained variable PyMC and NumPyro touch. Both forms are equivalent up to a sign convention on what "the transform" is taken to be.
+
+### 3.2 Three transforms in the wild
+
+#### Positive-real $\to \mathbb{R}$ via the log transform
+
+For $X > 0$, take $T(x) = \log x$ and $T^{-1}(y) = e^y$. The Jacobian is scalar: $J_{T^{-1}}(y) = e^y$, so $|\det J_{T^{-1}}(y)| = e^y = x$, and (3.1) gives
+$$\log p_Y(y) \;=\; \log p_X(e^y) \;+\; y.$$
+The "$+ y$" — equivalently, "$+ \log x$" — is the Jacobian correction.
+
+*Worked example: half-normal.* If $X \sim \mathrm{HalfNormal}(\sigma)$ with density $p_X(x) = \frac{2}{\sigma \sqrt{2\pi}} \exp(-x^2 / (2\sigma^2))$ for $x > 0$, then
+$$\log p_Y(y) \;=\; \log\frac{2}{\sigma \sqrt{2\pi}} \;-\; \frac{e^{2y}}{2\sigma^2} \;+\; y.$$
+This density is well-defined on all of $\mathbb{R}$. It integrates to 1 — by construction; that's what the Jacobian factor enforces — and it has tails decaying like $-e^{2y} / (2\sigma^2)$ for $y \to +\infty$ and like $y$ for $y \to -\infty$. We verify the unit-integral property numerically in panel (b) of Figure 3 below.
+
+#### Bounded interval $(0, 1) \to \mathbb{R}$ via the logit transform
+
+For $X \in (0, 1)$, take $T(x) = \mathrm{logit}(x) = \log(x / (1 - x))$ and $T^{-1}(y) = \sigma(y) = 1 / (1 + e^{-y})$. The derivative of the inverse is
+$$\frac{d}{dy}\sigma(y) \;=\; \sigma(y) (1 - \sigma(y)) \;=\; x (1 - x),$$
+so $|\det J_{T^{-1}}(y)| = x(1 - x)$, and (3.1) gives
+$$\log p_Y(y) \;=\; \log p_X(x) \;+\; \log x \;+\; \log(1 - x).$$
+The "$+ \log x + \log(1 - x)$" is the Jacobian correction.
+
+*Worked example: Beta.* If $X \sim \mathrm{Beta}(\alpha, \beta)$ with density $p_X(x) = x^{\alpha - 1}(1 - x)^{\beta - 1} / B(\alpha, \beta)$, the unconstrained log-density is
+$$\log p_Y(y) \;=\; (\alpha - 1)\log x + (\beta - 1)\log(1 - x) - \log B(\alpha, \beta) + \log x + \log(1 - x)$$
+$$\phantom{\log p_Y(y)} \;=\; \alpha \log\sigma(y) + \beta \log\sigma(-y) - \log B(\alpha, \beta), \quad\quad (3.2)$$
+using $1 - \sigma(y) = \sigma(-y)$. The pushforward (3.2) is a smooth bell-curve on $\mathbb{R}$ for any $\alpha, \beta > 0$. Its mode is at $y^* = \log(\alpha / \beta)$ — found by setting the derivative of (3.2) to zero, which gives $\alpha \sigma(-y) = \beta \sigma(y)$, i.e., $e^{-y} = \beta / \alpha$. Notice that this differs from the mode of $X$ on the constrained space, which is $x^* = (\alpha - 1) / (\alpha + \beta - 2)$ (the standard mode of a Beta density). The two modes are not related by $T$: $T(x^*) \neq y^*$ in general. This is a feature of nonlinear reparameterization — modes are not reparameterization-invariant. (Posterior means are also not reparameterization-invariant: $\mathbb{E}[T(X)] \neq T(\mathbb{E}[X])$ unless $T$ is affine.)
+
+Panel (c) of Figure 3 verifies (3.2) by histogramming the §1 NUTS draws of $\theta \sim \mathrm{Beta}(16, 8)$ on the logit-transformed scale and overlaying the analytical pushforward density. The agreement is the operational confirmation that PyMC's NUTS — which sampled the unconstrained representation under the hood — produced draws whose constrained-side post-image matches the analytical conjugate posterior.
+
+#### Simplex $\Delta^{K-1} \to \mathbb{R}^{K-1}$ via stick-breaking
+
+For $\boldsymbol{x} \in \Delta^{K-1} = \{ \boldsymbol{x} \in \mathbb{R}_+^K : \sum_{k=1}^K x_k = 1 \}$, the standard PPL transform is Stan's stick-breaking parameterization. Map $\boldsymbol{y} \in \mathbb{R}^{K-1}$ to $\boldsymbol{x} \in \Delta^{K-1}$ by
+$$z_k \;=\; \sigma\bigl(y_k + \log(K - k)\bigr), \quad x_k \;=\; z_k \prod_{j < k}(1 - z_j) \;\;\text{for } k < K, \quad x_K \;=\; \prod_{j < K}(1 - z_j),$$
+where the $\log(K - k)$ shift centers the transform at the simplex centroid (i.e., at $\boldsymbol{y} = \boldsymbol{0}$, the corresponding $\boldsymbol{x} = (1/K, \ldots, 1/K)$). The Jacobian $J_{T^{-1}}$ is lower-triangular, with diagonal entries
+$$\frac{\partial x_k}{\partial y_k} \;=\; z_k\,(1 - z_k)\, \prod_{j < k}(1 - z_j),$$
+so its determinant is the product of these diagonals. The full derivation appears in Stan's Reference Manual (Stan Development Team 2024, §10.7); we use the result operationally without reproving it.
+
+The simplex transform shows that the engine's transform table is not always a one-line affair — for the simplex, $K - 1$ Jacobian terms get added to the log-density. PyMC's `simplex_transform`, NumPyro's `StickBreakingTransform`, and Stan's `simplex` declaration all implement essentially the same mapping under the hood.
+
+<Figure
+  src="/images/topics/probabilistic-programming/03_change_of_variables.png"
+  alt="Three-panel figure: panel (a) Beta(2,2) and its logit-pushforward on a dual axis (constrained theta on top, unconstrained y on bottom); panel (b) HalfNormal(1) and its log-pushforward on dual axes; panel (c) the unconstrained-side histogram of §1's Beta(16,8) NUTS draws under logit overlaid with the analytical pushforward density."
+  caption="Figure 3. The Jacobian correction made observable. (a) Beta(2,2) and its logit-pushforward — the same distribution, two parameterizations, related by the change-of-variables formula. (b) HalfNormal(1) and its log-pushforward — the heavy left tail is the operational signature of the log transform. (c) §1's NUTS draws, which the user sees as constrained $\theta$ values, were actually generated by sampling $y = \mathrm{logit}(\theta)$ on $\mathbb{R}$; the histogram is what NUTS actually saw."
+/>
+
+### 3.3 What the engine does, and why HMC needs it
+
+HMC and NUTS simulate Hamiltonian dynamics in the parameter space, taking discrete leapfrog steps that mix gradient evaluations of the log-density with momentum updates. Two operational facts make unconstrained representation essential:
+
+1. **Boundary crossings break the dynamics.** A leapfrog step from $\theta = 0.99$ with positive momentum can land at $\theta = 1.05$, outside the support of a Beta. The log-density is undefined there, the gradient is undefined, and the proposal is either rejected outright or — worse — produces a NaN that poisons the chain. Reparameterizing to $y = \mathrm{logit}(\theta)$ moves the boundary to infinity and removes this failure mode entirely.
+
+2. **The unconstrained Hessian sets the step size.** NUTS's dual-averaging step-size adaptation tunes a single scalar $\epsilon$ to match the local curvature of the log-density. On constrained spaces, that curvature spikes near the boundary — a $\mathrm{Beta}(2, 2)$ has finite log-density derivative in the interior but its derivative diverges at $\theta \to 0$ or $\theta \to 1$. The unconstrained representation flattens these spikes (the Jacobian terms cancel the boundary singularities), giving a smoother target that adaptive HMC can tune to a single $\epsilon$.
+
+The PPL implementation is a transform table indexed by distribution support:
+
+- **PyMC** registers a `default_transform` per distribution class: `Interval` for Beta and Uniform, `LogTransform` for HalfNormal and Gamma, `LogOddsTransform` for Bernoulli probabilities, `SimplexTransform` for Dirichlet, `CholeskyCovTransform` for LKJ. The transform is applied automatically; users override with `transform=None` if they want to supply their own.
+- **NumPyro** dispatches via the distribution's `support` attribute: `dist.constraints.unit_interval` triggers `SigmoidTransform`, `dist.constraints.positive` triggers `ExpTransform`, `dist.constraints.simplex` triggers `StickBreakingTransform`, and so on.
+- **Stan** uses static type declarations: `real<lower=0>` triggers the `log` transform, `real<lower=0, upper=1>` triggers `logit`, `simplex[K]` triggers stick-breaking, `cov_matrix[K]` triggers Cholesky-LKJ. The transforms are baked into the generated C++ at compile time.
+
+In all three, the user writes a model on constrained space, and the engine's NUTS / ADVI / MAP / Pathfinder runs on the unconstrained representation with the Jacobian-corrected log-density. The user never sees the unconstrained variables unless they explicitly ask for them — `idata.posterior` contains constrained samples, and the unconstrained sister-arrays (e.g., `theta_interval__`) are stripped from the user-facing output by default.
+
+## 4. Inference dispatch: NUTS, ADVI, and MAP
+
+The previous three sections built the substrate — the program-as-density abstraction, the trace machinery, the constrained-to-unconstrained transforms — that lets a PPL evaluate $\log p(\theta, y)$ and $\nabla_\theta \log p(\theta, y)$ at any candidate $\theta \in \mathbb{R}^d$. With those primitives in hand, *any* gradient-based inference algorithm can run on any model the user writes. This section makes the dispatch claim concrete: take a single Bayesian logistic regression model on Iris and fit it three different ways without changing the model spec.
+
+The three engines are **NUTS** (the No-U-Turn Sampler — exact MCMC up to discretization error), **ADVI** (Automatic Differentiation Variational Inference — mean-field Gaussian variational approximation), and **MAP** (maximum a posteriori — point estimate at the mode). NUTS gives the gold-standard posterior at the highest cost; ADVI gives an approximate posterior at intermediate cost; MAP gives a single point at minimal cost. The three exist on a Pareto front of fidelity vs. compute, and the PPL exposes all three from the same model declaration.
+
+We treat each method's *internal mechanics* lightly here. NUTS's convergence theory and detailed-balance proofs live in <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="Bayesian Computation and MCMC" />; ADVI's ELBO derivation and the reparameterization gradient live in [Variational Inference](/topics/variational-inference). What we focus on here is the *PPL-level* observation that none of those internals matter for the user: the same `pm.fit(method="advi")` and `pm.sample()` calls work for any model.
+
+§4.1 sets up the running example: Bayesian logistic regression on the Iris versicolor-vs-virginica subset, using petal length and petal width as features. §4.2 walks through NUTS operationally — what no-U-turn means, what dual-averaging does, what divergent transitions signal. §4.3 does the same for ADVI: mean-field Gaussian family, ELBO objective, reparameterization gradient. §4.4 covers MAP via L-BFGS optimization. §4.5 fits the model three times and reads off the diagnostics.
+
+### 4.1 The running example: Bayesian logistic regression on Iris
+
+Iris (Fisher 1936) is a 150-row dataset with three plant species and four measurements per plant. We restrict to the *versicolor*-vs-*virginica* binary subset (classes 1 and 2; 100 rows total) and use the two most discriminative features: petal length and petal width. Both are continuous and roughly Gaussian within each class. The classes overlap mildly — versicolor's largest petals are smaller than virginica's smallest — making this a non-trivial but tractable classification problem.
+
+The Bayesian logistic regression model declares an intercept $\alpha$, two slope coefficients $\beta_1, \beta_2$, and a Bernoulli likelihood:
+$$\alpha \sim \mathcal{N}(0, 5^2), \quad \beta_j \sim \mathcal{N}(0, 5^2)\;\;(j = 1, 2), \quad y_i \mid \alpha, \boldsymbol{\beta}, \boldsymbol{x}_i \sim \mathrm{Bernoulli}(\sigma(\alpha + \boldsymbol{\beta}^\top \boldsymbol{x}_i)),$$
+where $\sigma$ is the logistic function $\sigma(z) = 1 / (1 + e^{-z})$ (which doubles as the logit-inverse from §3) and $\boldsymbol{x}_i \in \mathbb{R}^2$ is the standardized feature vector for example $i$. Standardizing the features (zero mean, unit standard deviation) puts the slope coefficients on a comparable scale and makes the $\mathcal{N}(0, 5^2)$ prior appropriately diffuse.
+
+The latent space is 3-dimensional and unconstrained — none of $\alpha, \beta_1, \beta_2$ have constraints, so §3's transform machinery doesn't activate. This keeps the dispatch comparison clean: any difference between the three methods comes from the inference algorithm, not from the constraint handling.
+
+### 4.2 NUTS in 30 seconds
+
+The No-U-Turn Sampler (Hoffman & Gelman 2014) is the dominant default sampler in modern PPLs. It generates posterior samples via Hamiltonian Monte Carlo (HMC), simulating Hamiltonian dynamics with the negative log-density playing the role of potential energy; the gradient $\nabla_\theta \log p(\theta, y)$ from §2 is exactly the force field. HMC produces highly uncorrelated samples by following long trajectories that traverse the posterior efficiently — but vanilla HMC requires two hyperparameters: a leapfrog step size $\epsilon$ and a trajectory length $L$. NUTS's "no-U-turn" innovation is to choose $L$ adaptively: at each iteration, it doubles the trajectory length until the trajectory makes a U-turn (the position vector and the momentum vector point in opposing directions), then samples uniformly from the trajectory. Dual-averaging step-size adaptation tunes $\epsilon$ during a warmup phase to hit a target acceptance rate (default 0.8 in PyMC, 0.95 in Stan).
+
+Two diagnostics matter for NUTS:
+
+- **Potential-scale-reduction factor $\hat{R}$** measures inter-chain agreement. We run multiple chains from different starting points and compare the variance of within-chain means to the variance of the pooled samples; $\hat{R} \to 1$ as chains converge to the same distribution. PyMC and ArviZ flag $\hat{R} > 1.01$ as concerning. Companion: **effective sample size (ESS)**, which counts how many *uncorrelated* draws the chain is worth — a small ESS means high autocorrelation and unreliable Monte Carlo estimates.
+- **Divergent transitions.** Discrete leapfrog steps approximate continuous Hamiltonian dynamics; in regions of high curvature (the funnel region of a hierarchical model, for example), the leapfrog approximation breaks down and the integrator's energy diverges. PyMC counts these "divergent transitions" and reports them. Even a handful of divergences ($> 0$) signals that the posterior has geometry NUTS is struggling to traverse, and the user should investigate before trusting the output.
+
+The full convergence theory — when does HMC converge, at what rate, on what classes of distributions — is the subject of <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="Bayesian Computation and MCMC" />. Here we just call `pm.sample(...)` and read the diagnostics off the resulting `idata`.
+
+### 4.3 ADVI in 30 seconds
+
+Automatic Differentiation Variational Inference (Kucukelbir et al. 2017) is the variational engine that ships with every modern PPL. It does three things mechanically:
+
+1. **Reparameterize.** Map the constrained latent variables onto unconstrained $\mathbb{R}^d$ using §3's transform table.
+2. **Posit a mean-field Gaussian variational family.** Approximate the posterior on unconstrained space by $q(\boldsymbol{\eta}) = \prod_d \mathcal{N}(\eta_d \mid \mu_d, \tau_d^2)$, parameterized by a mean and log-standard-deviation per dimension.
+3. **Optimize the ELBO via stochastic-gradient ascent with the reparameterization trick.** At each step, draw $\boldsymbol{\eta} \sim q$, evaluate the ELBO $\mathbb{E}_q[\log p(\boldsymbol{\eta}, y)] + H(q)$ via Monte Carlo, and update $(\boldsymbol{\mu}, \boldsymbol{\tau})$ along the gradient.
+
+The reparameterization trick — $\boldsymbol{\eta} = \boldsymbol{\mu} + \boldsymbol{\tau} \odot \boldsymbol{\epsilon}$ with $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \boldsymbol{I})$ — moves the randomness outside the gradient, letting reverse-mode autodiff differentiate through the sampling step. This is the same machinery developed in detail in [Variational Inference](/topics/variational-inference) §4.
+
+ADVI is faster than NUTS by a factor that depends on model size and ELBO convergence speed — typically 5–50× for small models, 100–1000× for big ones. Its cost is structural: the mean-field Gaussian family is the simplest possible variational family, and posteriors with strong cross-correlations between parameters or with non-Gaussian shapes (multimodality, heavy tails, funnels) get distorted by it. The ADVI fit and the NUTS fit will agree to within sampling noise on well-behaved unimodal posteriors and disagree visibly on pathological ones.
+
+The ADVI diagnostic is the **ELBO trajectory** (or, equivalently, the loss trajectory if the optimizer is minimizing $-\mathrm{ELBO}$): a stable, monotonically decreasing loss curve that flattens at a plateau is what we want; a still-decreasing curve at the end of training is a signal to keep going.
+
+### 4.4 MAP in 30 seconds
+
+The maximum a posteriori (MAP) estimate is the mode of the posterior:
+$$\hat{\theta}_{\mathrm{MAP}} \;=\; \arg\max_\theta \log p(\theta, y).$$
+In a PPL, MAP reduces to a single call to a numerical optimizer (PyMC defaults to L-BFGS) that maximizes the same `compile_logp` callable from §2. There's no sampling, no variational family, no warmup — just a deterministic optimization that returns a single point.
+
+MAP is fast. It's also lossy: the entire posterior is collapsed to a point, with no uncertainty estimate. For Gaussian posteriors the MAP is the mean (which is also the mode); for asymmetric posteriors it's the mode but neither the mean nor the median; for multimodal posteriors it's whichever mode the optimizer happened to land in. MAP is what classical penalized-likelihood methods compute when you write `LogisticRegression(C=...)` in scikit-learn — the penalty is a Gaussian prior in disguise, and the regularized solution is the MAP estimate. The PPL gives MAP as a sanity-check option and as a fast initial point for the more expensive methods.
+
+### 4.5 The dispatch comparison
+
+The same model declared in §4.1 is fitted three ways. Figure 4 below shows: (a) the joint posterior over $(\beta_1, \beta_2)$ — NUTS draws as a scatter, ADVI's mean-field Gaussian as a 95%-credible ellipse, MAP as a single star; (b) the ADVI loss trajectory across optimization iterations, showing convergence; (c) the marginal posterior for $\beta_1$ from each method.
+
+For this problem (a tractable 3-parameter logistic regression with 100 well-separated rows), the three methods agree closely. NUTS converges with $\hat{R} \approx 1.00$ and zero divergences. ADVI's mean-field marginals are slightly tighter than NUTS's — mean-field underestimates marginal variance when parameters are correlated, and here the petal-length and petal-width slopes have a mild negative correlation that ADVI's diagonal covariance ignores — and the ADVI ellipse in panel (a) is conspicuously axis-aligned compared to the tilted NUTS scatter. MAP lies essentially at the NUTS posterior mean. The agreement is not coincidence: Iris with continuous features and a moderately informative prior produces a near-Gaussian posterior, exactly the regime where all three methods converge to the same answer at very different costs.
+
+The pedagogical takeaway is twofold. First, the dispatch *works*: writing the model once and fitting it three ways gave us three matching answers, with no model-specific derivation. Second, the methods are not interchangeable — they're a Pareto front. NUTS gives uncertainty quantification and is exact up to discretization; ADVI gives uncertainty quantification but is structurally limited by the variational family; MAP gives no uncertainty quantification but is the cheapest. The right choice depends on what the analysis needs. §5 will encounter a model where the three methods *don't* all agree, and the disagreement will tell us something useful about the posterior.
+
+<Figure
+  src="/images/topics/probabilistic-programming/04_dispatch_comparison.png"
+  alt="Three-panel figure: panel (a) joint posterior of beta_1 vs beta_2 — NUTS draws as a tilted scatter, ADVI's axis-aligned 95% ellipse, MAP as a star at the center; panel (b) the ADVI -ELBO loss trajectory on a log-scaled x-axis showing fast early progress then a plateau; panel (c) marginal posterior for beta_1 — NUTS histogram, ADVI Gaussian density, MAP vertical line."
+  caption="Figure 4. The dispatch comparison on Bayesian logistic regression. (a) NUTS (blue scatter) recovers a tilted joint posterior with mild $\\beta_1$–$\\beta_2$ correlation; ADVI's mean-field Gaussian (orange ellipse) factorizes the correlation away — the ellipse is axis-aligned by construction. MAP (purple star) lies at the joint mode. (b) ADVI loss trajectory — a stable plateau is the convergence signal. (c) Marginal posterior for $\\beta_1$ from each method. For this near-Gaussian posterior the three methods agree closely; the ADVI marginal is mildly tighter (mean-field underestimates marginal variance under correlation)."
+/>
+
+## 5. The Bayesian workflow on eight schools
+
+The dispatch in §4 worked because the posterior was tame — a near-Gaussian, well-conditioned, single-mode logistic regression. Real models often aren't tame. Hierarchical models in particular have a notorious geometry: when partial-pooling weakens, the posterior pinches into a *funnel* whose curvature defeats fixed-step-size HMC. This section walks through the iconic example — Rubin's (1981) eight-schools dataset — and uses it to demonstrate the full Bayesian workflow that PPLs make accessible: declare the model, run a prior predictive check to verify the prior is sensible, fit by NUTS, diagnose, *reparameterize the model when diagnostics flag a problem*, refit, and finish with a posterior predictive check.
+
+The reparameterization beat is the substantive content. The "centered vs. non-centered" parameterization story is one of the most-cited PPL workflow lessons, because it's a case where the user has to know enough about the sampler's geometry to rewrite the model in an equivalent form NUTS can handle. The two parameterizations *define the same joint distribution* — they describe the same generative process and produce the same posterior on the user-facing parameters $\theta_j$ — but they offer NUTS different geometries to traverse. PPLs make the rewrite a one-line code change, which is a non-trivial part of why this workflow lesson is teachable at all.
+
+§5.1 introduces the eight-schools data and the standard hierarchical model, with a prior predictive check that puts the prior on a calibration loop. §5.2 fits the *centered* parameterization with NUTS and watches divergent transitions cluster in the funnel region. §5.3 rewrites the model in *non-centered* form — algebraically equivalent, geometrically different — and refits cleanly. §5.4 closes with a posterior predictive check that reads the fitted model back against the observed data.
+
+### 5.1 The data, the model, and a prior predictive check
+
+Rubin (1981) reported the results of an experimental study of "Scholastic Aptitude Test" coaching at $J = 8$ schools. Each school ran a randomized controlled trial of a coaching program; for each school we observe an estimated treatment effect $y_j$ (the difference in mean test-score gains between coached and control students at school $j$) and the standard error $\sigma_j$ of that estimate, computed from the within-school sample sizes and variability:
+
+| School | A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|---|
+| $y_j$ | 28 | 8 | -3 | 7 | -1 | 1 | 18 | 12 |
+| $\sigma_j$ | 15 | 10 | 16 | 11 | 9 | 11 | 10 | 18 |
+
+The standard hierarchical model treats each school's true effect $\theta_j$ as a draw from a population-level distribution with unknown mean $\mu$ and standard deviation $\tau$:
+$$\mu \sim \mathcal{N}(0, 5^2), \quad \tau \sim \mathrm{HalfNormal}(5), \quad \theta_j \mid \mu, \tau \sim \mathcal{N}(\mu, \tau^2), \quad y_j \mid \theta_j \sim \mathcal{N}(\theta_j, \sigma_j^2).$$
+The likelihood treats $\sigma_j$ as known (from the school-level standard errors). Inference produces a joint posterior over $(\mu, \tau, \theta_1, \ldots, \theta_8)$ — ten unknowns total. The hyperprior on $\tau$ is the partial-pooling lever: small $\tau$ pools the school-level estimates aggressively toward $\mu$, large $\tau$ pools weakly. The full Bayesian story behind this pooling is in <ExternalLink href="https://www.formalstatistics.com/topics/hierarchical-bayes-and-partial-pooling" site="formalstatistics" topic="Hierarchical Bayes and Partial Pooling" />.
+
+**Prior predictive check.** Before running inference, the workflow demands a sanity check on the prior: simulate $y$-vectors from the prior and verify they're consistent with the kind of data we expect to see. For a coaching study, $y_j$ measures a test-score gain in points. If the prior generates values like $y_j = 500$, the prior is too diffuse and we should retighten before fitting; if the prior generates values like $y_j = 0.01$, the prior is too tight. PyMC's `pm.sample_prior_predictive` does this with no extra modeling work — the engine reverses the trace machinery from §2 and generates draws from the prior $p(\theta)$ and the prior predictive $p(y) = \int p(y \mid \theta)\,p(\theta)\,d\theta$.
+
+Panel (a) of Figure 5 below overlays 50 prior-predictive draws against the observed $y_j$ vector. The prior generates $y$-values mostly in the range $[-30, 30]$, comfortably containing the observed range $[-3, 28]$. The prior is appropriate without being uninformative — it doesn't *insist* on small effects, but it doesn't license arbitrarily large ones either.
+
+### 5.2 The centered fit and the funnel
+
+The model spec above is the *centered* parameterization: each $\theta_j$ is declared as a draw from $\mathcal{N}(\mu, \tau^2)$, with $\theta_j$, $\mu$, $\tau$ all simultaneously latent. This is the natural way to write the model — it matches the generative story directly. We fit it with NUTS at default settings.
+
+The diagnostics flag trouble. The chain runs and produces samples, but the divergent-transition counter is non-zero — several hundred divergences across 1000 post-warmup draws (the verified notebook reports 285). The $\hat{R}$ for $\tau$ is $> 1.01$. The effective sample size for $\tau$ is small, often a few hundred against the nominal 1000 draws. Something is wrong.
+
+The geometric diagnosis is the **funnel**. The conditional distribution $\theta_j \mid \mu, \tau$ has standard deviation $\tau$. When $\tau$ is small, $\theta_j$ is pinched tightly around $\mu$; when $\tau$ is large, $\theta_j$ is loose. As a result, the joint density $p(\theta_j, \log\tau, \mu)$ has a *funnel* shape: wide at the top ($\log\tau$ large), tight at the bottom ($\log\tau \to -\infty$). The funnel's curvature changes rapidly with $\log\tau$, and the leapfrog integrator's fixed step size $\epsilon$ — even after dual-averaging adaptation — cannot adapt locally. In the wide region, $\epsilon$ is appropriately tuned; in the narrow region, $\epsilon$ is far too large, the leapfrog steps overshoot, the integrator's energy diverges, and PyMC flags a divergent transition.
+
+Panel (b) of Figure 5 plots the centered fit's draws of $(\theta_1, \log\tau)$ as a scatter, with the divergent transitions highlighted in red. The funnel shape is unmistakable: the wide top has dense sampling, the narrow bottom has sparse sampling, and the divergences cluster precisely at the transition between the two — exactly where the integrator's step size mismatches the local curvature.
+
+The pedagogical point: divergent transitions are not a sampler bug. They're a *signal* that the parameterization the user wrote down has a geometry NUTS struggles with. The fix is on the user's side, not the sampler's. (Increasing `target_accept` toward 1 reduces $\epsilon$ globally, which mitigates divergences at the cost of slower exploration; this is a workaround, not a structural fix.)
+
+### 5.3 The non-centered reparameterization
+
+The standard fix is the *non-centered* parameterization. Rather than declare $\theta_j \sim \mathcal{N}(\mu, \tau^2)$ directly, introduce a standard-Normal auxiliary $z_j \sim \mathcal{N}(0, 1)$ and define $\theta_j = \mu + \tau \cdot z_j$ as a deterministic transformation of the latents. The user-side code change is three lines:
+
+```python
+# centered (struggles with the funnel):
+theta = pm.Normal("theta", mu=mu, sigma=tau, shape=J)
+
+# non-centered (clean fit):
+z = pm.Normal("z", 0, 1, shape=J)
+theta = pm.Deterministic("theta", mu + tau * z)
+```
+
+The two models declare the same joint distribution. To see this, integrate $z_j$ out of the non-centered prior: $\theta_j = \mu + \tau \cdot z_j$ with $z_j \sim \mathcal{N}(0, 1)$ implies $\theta_j \mid \mu, \tau \sim \mathcal{N}(\mu, \tau^2)$, exactly the centered prior on $\theta_j$. The two models are *probabilistically equivalent*.
+
+But they are not *geometrically equivalent* from NUTS's perspective. In the centered parameterization, NUTS samples $(\mu, \tau, \theta_1, \ldots, \theta_J)$ jointly, and the joint posterior has the funnel. In the non-centered parameterization, NUTS samples $(\mu, \tau, z_1, \ldots, z_J)$ jointly, and *under the prior* the $z_j$ are independent of $(\mu, \tau)$. After conditioning on data, the $z_j$ are weakly correlated with $\tau$ — but the joint $(z_j, \log\tau)$ posterior is a roughly rectangular blob, not a funnel. NUTS traverses it without difficulty.
+
+Panel (c) of Figure 5 plots the non-centered fit's draws of $(z_1, \log\tau)$ — the parameter NUTS actually saw — and the contrast with panel (b) is the punchline: the funnel is gone. The post-hoc $\theta_j = \mu + \tau z_j$ values reproduce the same marginal posterior on $\theta_j$ that the centered fit produces (they have to — the models are probabilistically equivalent), but the geometry NUTS navigated to compute that posterior is rectangular rather than funnel-shaped.
+
+The non-centered fit's diagnostics are clean: zero divergences, $\hat{R} \approx 1.00$ for all parameters, full-strength effective sample size. The reparameterization is purely a user-side change to the model code; the engine's behavior is identical. This is the gift of the PPL abstraction: the rewrite is a 3-line code edit, and the engine's machinery happily runs on the rewritten model with no further intervention.
+
+### 5.4 The posterior predictive check
+
+The fit is done. Before trusting it, we run a **posterior predictive check** (PPC): generate replicated datasets $y^{\mathrm{rep}}$ from the posterior predictive distribution
+$$p(y^{\mathrm{rep}} \mid y) \;=\; \int p(y^{\mathrm{rep}} \mid \theta)\,p(\theta \mid y)\,d\theta,$$
+and compare them to the observed $y$. If the model is well-specified, the observed $y$ should look like a typical draw from $y^{\mathrm{rep}}$. If it doesn't, the model is mis-specified somewhere, and the prose typically traces the mismatch back to a specific modeling assumption.
+
+PyMC's `pm.sample_posterior_predictive` computes the posterior predictive draws by reversing the trace machinery: for each posterior draw of $(\mu, \tau, \theta_j)$, sample a fresh $y_j^{\mathrm{rep}} \sim \mathcal{N}(\theta_j, \sigma_j^2)$. The result is a 2D array of shape (chain, draw, school) containing posterior predictive replicates.
+
+Panel (d) of Figure 5 shows the PPC overlay: for each school $j$, the posterior predictive distribution of $y_j^{\mathrm{rep}}$ is shown as a violin (kernel density estimate of the predictive draws), with the observed $y_j$ marked as a single black dot. If the model is well-specified, each black dot lands within the bulk of its corresponding violin. For eight schools, the observed values lie within the bulk of the predictive distributions for all eight — the model is calibrated. School A (with $y_A = 28$, the largest observed effect) lies further into the right tail of its violin than the other schools, hinting at mild over-shrinkage from partial pooling, but nothing pathological.
+
+A failed PPC tells us about the model. A common pattern: posterior predictive draws are systematically too narrow or too tight, indicating the likelihood doesn't capture the true data dispersion. Another: the PPC reproduces the marginal mean of $y$ but mismatches the tails, indicating that the Gaussian likelihood assumption is incorrect and a heavier-tailed likelihood (Student-$t$) might be more appropriate. The PPC turns "is my model good?" from a vague worry into a specific diagnostic question.
+
+The eight-schools workflow is now complete. We declared a model, ran a prior predictive check (panel a), fit it twice — first in a parameterization NUTS struggled with (panel b), then in an algebraically-equivalent rewrite that NUTS handled cleanly (panel c) — and verified the fit with a posterior predictive check (panel d). The whole loop is the Bayesian workflow the PPL was designed to enable: declarative modeling, multiple inference engines accessible from one model spec, runnable diagnostics at every step, and the freedom to rewrite the model when the diagnostics demand it.
+
+<Figure
+  src="/images/topics/probabilistic-programming/05_workflow_eight_schools.png"
+  alt="Four-panel grid: panel (a) prior predictive overlay of 50 prior y-vectors with observed y_j marked as black dots and ±sigma_j error bars; panel (b) the centered fit's joint scatter of (theta_1, log-tau) showing the characteristic funnel shape with divergent transitions clustered at the funnel's neck in red; panel (c) the non-centered fit's joint scatter of (z_1, log-tau) — a roughly rectangular blob with no funnel and no divergences; panel (d) per-school posterior predictive violins with observed y_j overlaid as black dots."
+  caption="Figure 5. The Bayesian workflow on eight schools. (a) Prior predictive check — 50 prior $y$-draws cover the observed range comfortably. (b) Centered fit — the funnel in $(\\theta_1, \\log\\tau)$ space, with divergent transitions clustered at the neck. (c) Non-centered fit — the same posterior, now seen by NUTS as a rectangular $(z_1, \\log\\tau)$ blob with zero divergences. (d) Posterior predictive check — observed values fall within the bulk of their predictive violins for all eight schools."
+/>
+
+## 6. Limits, alternatives, and connections
+
+A working PPL is a remarkable artifact: it lifts Bayesian inference from a per-model derivation exercise to a declarative-programming problem. Three lines of model spec and three more for `pm.sample` produce a posterior. Five lines of model spec and one more for `pm.sample_posterior_predictive` produce a calibrated predictive distribution. The same three lines of model spec, fed to `pm.fit(method="advi")` instead of `pm.sample`, produce an approximate posterior in seconds rather than minutes. The PPL has done what every good abstraction does: it's let us forget about the implementation while we do the modeling.
+
+It's not a universal solvent. PPLs work brilliantly on small-to-medium hierarchical models, GLMs, mixture models, time-series state-space models, and most moderately-sized custom Bayesian models — the bread-and-butter of applied Bayesian work. They struggle on large-data regimes, on intractable likelihoods, on high-dimensional latent variables, and on models with discrete latent structure. This section names the regimes where PP shines and the regimes where it doesn't, and points to the tools that take over when PP runs out of road.
+
+### 6.1 Where PP shines
+
+The PPL sweet spot is the regime where the user has more domain knowledge to encode than computational resources to spend. Specifically:
+
+- **Hierarchical models** with up to a few thousand parameters and the partial-pooling structure §5 demonstrated. The eight-schools example scales to thousands of schools without a structural change to the model spec; only the runtime changes.
+- **Generalized linear models and their Bayesian extensions** — logistic, Poisson, multinomial, ordinal, censored, robust. The §4 Iris example was Bayesian logistic regression; swapping to Poisson regression is a one-symbol change.
+- **Mixture models and latent-class models** for clustering and density estimation, where the discrete cluster assignment is marginalized out in the likelihood. PyMC's and NumPyro's `pm.Mixture` / `dist.Mixture` primitives handle the marginalization automatically.
+- **State-space models** — linear-Gaussian, switching, hidden-Markov, autoregressive. Stan is particularly strong here; PyMC's coverage is improving steadily.
+- **Bayesian model comparison** via predictive performance (LOO-CV, WAIC). ArviZ provides these on top of any PyMC fit.
+
+In all of these, the workflow we walked through in §5 — declare, prior PC, fit, diagnose, refit if needed, posterior PC — runs cleanly with the PPL as substrate.
+
+### 6.2 Where PP breaks down
+
+Five structural failure modes:
+
+- **Large-data regimes.** HMC's gradient evaluation requires a full pass through the data per leapfrog step. For $N \gg 10^5$ observations, even one HMC iteration takes too long for the sampler to be practical. The standard response is **stochastic-gradient MCMC** (SG-MCMC) — replace the full-data gradient with a mini-batch estimate, accept the resulting bias, and explore the posterior with a stochastic Langevin or stochastic Hamiltonian dynamic. This is the subject of `stochastic-gradient-mcmc` *(coming soon)*.
+- **Intractable likelihoods.** When $p(y \mid \theta)$ has no closed form — as in many simulator-based models in epidemiology, ecology, and physics — the engine cannot evaluate the joint log-density and the §2 trace machinery breaks. The standard responses are *approximate Bayesian computation* (ABC), *simulation-based inference* (SBI; e.g., neural posterior estimation), and *likelihood-free Bayesian methods*. None of these fit naturally into a PPL.
+- **High-dimensional latent variables.** When the latent dimension exceeds a few thousand — image-scale models, large neural networks — HMC's per-iteration cost grows superlinearly and ADVI's mean-field assumption becomes structurally inadequate. Bayesian neural networks live in this regime; the responses are *Laplace approximation* at the MAP, *MC-dropout* as an implicit variational approximation, *deep ensembles* as a non-Bayesian uncertainty proxy, and *Stein variational gradient descent*. This is the subject of `bayesian-neural-networks` *(coming soon)*.
+- **Discrete latent variables.** HMC and ADVI both rely on continuous gradients. Models with discrete latents — variable selection, model averaging, latent-class models that don't admit closed-form marginalization — require either Gibbs sampling or auxiliary-variable tricks. PyMC's `pm.NUTS` falls back to Metropolis or Gibbs for discrete variables, but performance degrades. Stan's response is to require the user to marginalize discrete latents analytically before passing to the sampler.
+- **Multimodal posteriors.** HMC can get stuck in a single basin. Tempered transitions, parallel tempering, and *sequential Monte Carlo* (SMC) are the responses. PyMC has `pm.sample_smc` for this; it runs much slower than NUTS but handles multimodality.
+
+The honest summary: a PPL is great at the workflow we walked through in §§1–5, and it's not the right tool for at least four well-defined regimes outside that workflow. Knowing when to reach for a PPL — and when to reach for SG-MCMC, ABC, Laplace, or SMC instead — is part of becoming a competent Bayesian modeler.
+
+### 6.3 Connections to neighboring topics
+
+Within formalML's T5 Bayesian & Probabilistic ML track:
+
+- [Variational Inference](/topics/variational-inference) is upstream: §4.3's ADVI relies on the variational-objective and reparameterization-gradient machinery developed there.
+- [Gaussian Processes](/topics/gaussian-processes) is a sibling: the conjugate-Gaussian-likelihood case where closed-form posterior inference is available without a PPL. PyMC and NumPyro both expose GP modules (`pm.gp`, `numpyro.contrib.gp`) that wrap the closed-form expressions in the PPL idiom.
+- **Bayesian Neural Networks** *(coming soon)* is downstream: when latent dimensions get into the thousands and ADVI breaks structurally, the PP workflow needs the heavier machinery developed there.
+- **Sparse Bayesian Priors** *(coming soon)* is a natural follow-up: horseshoe and regularized-horseshoe priors are notoriously HMC-hostile in their naive parameterizations, and the §5 reparameterization story extends to them.
+- **Meta-Learning** and **Stochastic-Gradient MCMC** *(both coming soon)* are responses to the failure modes in §6.2.
+
+Across to formalstatistics:
+
+- <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-foundations-and-prior-selection" site="formalstatistics" topic="Bayesian Foundations and Prior Selection" /> develops the prior–likelihood–posterior decomposition the PPL automates.
+- <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="Bayesian Computation and MCMC" /> supplies the HMC/NUTS theory PP defers to.
+- <ExternalLink href="https://www.formalstatistics.com/topics/hierarchical-bayes-and-partial-pooling" site="formalstatistics" topic="Hierarchical Bayes and Partial Pooling" /> develops why partial-pooling models like §5's eight-schools work, and what the partial-pooling regime gives us over no-pooling and complete-pooling.
+
+PP is the bridge between the Bayesian theory the formalstatistics topics develop and the modern Bayesian-ML applications the rest of the formalML T5 track will build on.

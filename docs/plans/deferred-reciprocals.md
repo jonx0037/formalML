@@ -789,17 +789,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PCA is the eigendecomposition of the sample covariance matrix. The eigenvectors are the principal directions, and the eigenvalues are the explained variances. The MVN geometry from §7 makes this co…_
 
-## When `formalml/probabilistic-programming` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-computation-and-mcmc** declares `formalmlConnections` → `probabilistic-programming` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Stan, PyMC, NumPyro — domain-specific languages that compile user-specified models into NUTS samplers. Topic 26 motivates; formalml explores the compiler stack. §26.10 Rem 33._
-- **formalStatistics/bayesian-foundations-and-prior-selection** declares `formalmlConnections` → `probabilistic-programming` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Probabilistic programming languages (Stan, PyMC, NumPyro) automate the posterior computation Topic 25 does by hand — users specify prior × likelihood, the language handles sampling via HMC/NUTS. To…_
-
 ## When `formalml/probability-spaces` ships
 
 Add the reciprocal pointer back to:
