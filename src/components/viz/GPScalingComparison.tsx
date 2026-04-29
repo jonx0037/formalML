@@ -4,7 +4,7 @@ import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   gaussianSampler,
-  gpPredict,
+  gpPredictDiag,
   gpPredictNystrom,
   gpPredictSVGP,
   kernelByName1D,
@@ -81,7 +81,7 @@ export default function GPScalingComparison() {
   const exact: MethodResult | null = useMemo(() => {
     if (!showExact) return null;
     const t0 = performance.now();
-    const r = gpPredict(Xtrain, Ytrain, xTest, kernelFn, SIGMA_N_TRUE);
+    const r = gpPredictDiag(Xtrain, Ytrain, xTest, kernelFn, SIGMA_N_TRUE);
     const t1 = performance.now();
     return { mean: r.mean, sd: r.sd, fitTimeMs: t1 - t0 };
   }, [showExact, Xtrain, Ytrain, xTest, kernelFn]);

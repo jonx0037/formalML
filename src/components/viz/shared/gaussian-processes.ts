@@ -554,6 +554,61 @@ export function gpPredict(
 }
 
 /**
+ * Diagonal-only GP regression predictive distribution.
+ *
+ * Same as `gpPredict` but skips the O(m^2) materialization of the full m×m
+ * predictive covariance matrix and the O(m^2) test-test kernel `K_**`.
+ * Returns `{mean, sd, L}` only — pointwise standard deviation suffices for
+ * ±2σ band rendering, which is what most viz components need.
+ *
+ * Cost: O(n^3 + n^2 m + nm) — same Cholesky and forward solve as `gpPredict`,
+ * but the cov→sd step drops from O(m^2 n) to O(mn) and the test-test kernel
+ * drops from O(m^2) entries to O(m) diagonal calls.
+ */
+export function gpPredictDiag(
+  XTrain: number[],
+  yTrain: number[],
+  XTest: number[],
+  kernelFn: (X1: number[], X2: number[]) => number[][],
+  sigmaN: number,
+  jitter = 1e-8,
+): { mean: number[]; sd: number[]; L: number[][] } {
+  const n = XTrain.length;
+  const m = XTest.length;
+  const K = kernelFn(XTrain, XTrain);
+  const KStar = kernelFn(XTrain, XTest); // shape (n, m)
+
+  const A = K.map((row) => row.slice());
+  addDiagonal(A, sigmaN * sigmaN + jitter);
+  const L = choleskyFactor(A);
+
+  const beta = solveLowerTriangular(L, yTrain);
+  const alpha = solveUpperTriangularT(L, beta);
+
+  const mean = new Array<number>(m).fill(0);
+  for (let j = 0; j < m; j++) {
+    let s = 0;
+    for (let i = 0; i < n; i++) s += KStar[i][j] * alpha[i];
+    mean[j] = s;
+  }
+
+  // V = L^{-1} K_* (n × m); pointwise variance is K_**[j,j] - ‖V[:,j]‖²
+  const V = solveLowerTriangularMatrix(L, KStar);
+  const sd = new Array<number>(m);
+  for (let j = 0; j < m; j++) {
+    // K_**[j,j] = k(XTest[j], XTest[j]) — single-point kernel call avoids
+    // materializing the full m×m K_**.
+    const xj = [XTest[j]];
+    const kjj = kernelFn(xj, xj)[0][0];
+    let v2 = 0;
+    for (let k = 0; k < n; k++) v2 += V[k][j] * V[k][j];
+    sd[j] = Math.sqrt(Math.max(kjj - v2, 0));
+  }
+
+  return { mean, sd, L };
+}
+
+/**
  * Joint posterior samples from N(post_mean, post_cov) via Cholesky.
  * Returns an array of `nSamples` paths, each of length `m`.
  */
@@ -781,16 +836,27 @@ export interface LBFGSResult {
  * unbounded. `f` returns `{nll, grad}` jointly.
  *
  * `m` is the L-BFGS memory size; default 10 is enough for d=3.
+ *
+ * The optional `fVal` callback returns NLL only; when provided, the line
+ * search uses it instead of `f` so failed backtracking steps don't pay the
+ * O(n^3) cost of computing the analytic gradient. The full `f` is only
+ * called once the line search has accepted a step.
  */
 export function lbfgs(
   f: (x: number[]) => { nll: number; grad: number[] },
   x0: number[],
-  options?: { maxIter?: number; gradTol?: number; memory?: number },
+  options?: {
+    maxIter?: number;
+    gradTol?: number;
+    memory?: number;
+    fVal?: (x: number[]) => number;
+  },
 ): LBFGSResult {
   const maxIter = options?.maxIter ?? 100;
   const gradTol = options?.gradTol ?? 1e-6;
   const m = options?.memory ?? 10;
   const d = x0.length;
+  const fVal = options?.fVal ?? ((x: number[]) => f(x).nll);
 
   let x = x0.slice();
   let { nll, grad } = f(x);
@@ -828,12 +894,13 @@ export function lbfgs(
     // Search direction
     const dir = r.map((ri) => -ri);
 
-    // Armijo backtracking
+    // Armijo backtracking. Use the cheap value-only callback during the
+    // search; we only need the gradient once a step is accepted.
     const c1 = 1e-4;
     const fxg = dot(grad, dir);
     let step = 1;
     let xNew = x.map((xi, j) => xi + step * dir[j]);
-    let { nll: fNew, grad: gNew } = f(xNew);
+    let fNew = fVal(xNew);
     let backtrack = 0;
     while (
       (!Number.isFinite(fNew) || fNew > nll + c1 * step * fxg) &&
@@ -841,10 +908,17 @@ export function lbfgs(
     ) {
       step *= 0.5;
       xNew = x.map((xi, j) => xi + step * dir[j]);
-      ({ nll: fNew, grad: gNew } = f(xNew));
+      fNew = fVal(xNew);
       backtrack++;
     }
     if (backtrack >= 30) break;
+
+    // Step accepted. Now compute the gradient at xNew (full f-call).
+    const fGradResult = f(xNew);
+    const gNew = fGradResult.grad;
+    // Use the gradient-call's NLL — it should match fNew within numerical
+    // precision; preferring it keeps NLL and grad mutually consistent.
+    fNew = fGradResult.nll;
 
     // Update memory: s_k = x_new - x; y_k = grad_new - grad
     const sk = xNew.map((xn, j) => xn - x[j]);
@@ -916,7 +990,13 @@ export function fitSEMarginalLikelihood(
         return { nll: r2.nll, grad: r2.grad };
       },
       init.slice(),
-      { maxIter: 120, gradTol: 1e-6 },
+      {
+        maxIter: 120,
+        gradTol: 1e-6,
+        // Cheap value-only path for the line search — skips the analytic
+        // gradient's O(n^3) inverse on failed backtracking steps.
+        fVal: (x) => negLogMarginalSE([x[0], x[1], x[2]], X, y),
+      },
     );
     const x: [number, number, number] = [result.x[0], result.x[1], result.x[2]];
     restarts.push({
@@ -1026,28 +1106,29 @@ export function gpPredictSVGP(
 ): { mean: number[]; sd: number[] } {
   const n = XTrain.length;
   const m = XInducing.length;
+  const mTest = XTest.length;
   const Kmm = kernelFn(XInducing, XInducing);
   const Knm = kernelFn(XTrain, XInducing); // (n, m)
   const Ktm = kernelFn(XTest, XInducing);  // (m_test, m)
-  const KttDiag = (() => {
-    const Ktt = kernelFn(XTest, XTest);
-    return Ktt.map((row, i) => row[i]);
-  })();
 
-  // Σ = (K_mm + σ_n^{-2} K_mn K_nm)^{-1} K_mm  — Titsias Eq. 8 with closed form
-  // m_q = σ_n^{-2} Σ K_mn y
-  // q(u) = N(u; m_q, K_mm Σ K_mm)
-  // Predictive: f_test ~ N(K_test_m K_mm^{-1} m_q,
-  //                        K_test_test - K_test_m K_mm^{-1} K_m_test
-  //                              + K_test_m K_mm^{-1} K_mm Σ K_mm K_mm^{-1} K_m_test)
-  //
-  // We use the simpler equivalent form (Hensman et al. 2013, Eq. 8–10):
-  //   Σ_inv = K_mm + σ_n^{-2} K_mn K_nm
-  //   μ_q   = σ_n^{-2} K_mm Σ_inv^{-1} K_mn y
-  //   K_uu^{-1} K_um  for predictive — done via Cholesky chain.
+  // Diagonal of K_** via single-point kernel calls — O(m_test) instead of O(m_test^2).
+  const KttDiag = new Array<number>(mTest);
+  for (let i = 0; i < mTest; i++) {
+    const xi = [XTest[i]];
+    KttDiag[i] = kernelFn(xi, xi)[0][0];
+  }
+
+  // Hensman et al. 2013, Eq. 8–10:
+  //   Σ_inv = K_mm + σ_n^{-2} K_nm^T K_nm
+  //   q(u) = N(u; m_q, K_mm Σ_inv^{-1} K_mm)
+  //   m_q  = σ_n^{-2} K_mm Σ_inv^{-1} K_nm^T y
+  //   Predictive μ_t = K_tm K_mm^{-1} m_q
+  //                  = K_tm K_mm^{-1} K_mm Σ_inv^{-1} (K_nm^T y / σ_n²)
+  //                  = K_tm a,    with  a = Σ_inv^{-1} (K_nm^T y / σ_n²)
+  //   Predictive σ_t² = K_tt - K_tm K_mm^{-1} K_mt + K_tm Σ_inv^{-1} K_mt
+  // (function-level variance; callers add σ_n² for observation-level intervals).
 
   const sn2 = sigmaN * sigmaN;
-  // Σ_inv = K_mm + (1/σ_n²) K_nm^T K_nm
   const SigmaInv: number[][] = [];
   for (let i = 0; i < m; i++) SigmaInv.push(new Array<number>(m).fill(0));
   for (let i = 0; i < m; i++) {
@@ -1070,53 +1151,44 @@ export function gpPredictSVGP(
   const beta1 = solveLowerTriangular(Lsig, KnmT_y);
   const a = solveUpperTriangularT(Lsig, beta1);
 
-  // K_mm a — call this u_post; gives the predictive coefficients.
-  const u = new Array<number>(m).fill(0);
-  for (let i = 0; i < m; i++) {
-    let s = 0;
-    for (let j = 0; j < m; j++) s += Kmm[i][j] * a[j];
-    u[i] = s;
-  }
-
-  // Cholesky of K_mm + jitter I for K_mm^{-1} K_um chains
+  // Cholesky of K_mm + jitter I for the K_mm^{-1} K_mt term in the variance.
   const Kmm_jit = Kmm.map((row) => row.slice());
   addDiagonal(Kmm_jit, jitter);
   const LmmK = choleskyFactor(Kmm_jit);
 
-  // Predictive mean: μ_t = K_tm K_mm^{-1} u
-  const mean = new Array<number>(XTest.length).fill(0);
-  // K_mm^{-1} u
-  const beta2 = solveLowerTriangular(LmmK, u);
-  const KmmInv_u = solveUpperTriangularT(LmmK, beta2);
-  for (let i = 0; i < XTest.length; i++) {
+  // Predictive mean: μ_t = K_tm K_mm^{-1} (K_mm a) = K_tm a — the round trip
+  // through K_mm^{-1} cancels K_mm exactly, so we use `a` directly.
+  const mean = new Array<number>(mTest).fill(0);
+  for (let i = 0; i < mTest; i++) {
     let s = 0;
-    for (let j = 0; j < m; j++) s += Ktm[i][j] * KmmInv_u[j];
+    for (let j = 0; j < m; j++) s += Ktm[i][j] * a[j];
     mean[i] = s;
   }
 
-  // Predictive variance:
-  //   σ_t² = K_tt - K_tm K_mm^{-1} K_mt
-  //          + K_tm K_mm^{-1} (K_mm Σ K_mm) K_mm^{-1} K_mt
-  //   With Σ = K_mm Σ_inv^{-1} K_mm (from Titsias derivation), simplifying:
-  //   σ_t² = K_tt - K_tm K_mm^{-1} K_mt + K_tm Σ_inv^{-1} K_mt
-  // Plus the irreducible σ_n² noise term added by callers if they want
-  // observation-level predictive intervals. We return the *function-level* sd.
-  const sd = new Array<number>(XTest.length).fill(0);
-  for (let i = 0; i < XTest.length; i++) {
-    // K_mm^{-1} K_m,t_i
-    const Kmt_i = new Array<number>(m);
-    for (let j = 0; j < m; j++) Kmt_i[j] = Ktm[i][j];
-    const b1 = solveLowerTriangular(LmmK, Kmt_i);
-    const KmmInv_Kmt = solveUpperTriangularT(LmmK, b1);
+  // Predictive variance, batched. Build K_mt = K_tm^T (m × m_test), then
+  //   V_mm  = L_mmK^{-1} K_mt   →  diag(K_tm K_mm^{-1} K_mt)[i]  = ‖V_mm[:,i]‖²
+  //   V_sig = L_sig^{-1} K_mt   →  diag(K_tm Σ_inv^{-1} K_mt)[i] = ‖V_sig[:,i]‖²
+  // One matrix solve per term, instead of m_test independent vector solves.
+  const Kmt: number[][] = [];
+  for (let j = 0; j < m; j++) {
+    const row = new Array<number>(mTest);
+    for (let i = 0; i < mTest; i++) row[i] = Ktm[i][j];
+    Kmt.push(row);
+  }
+  const Vmm = solveLowerTriangularMatrix(LmmK, Kmt);  // m × m_test
+  const Vsig = solveLowerTriangularMatrix(Lsig, Kmt); // m × m_test
+
+  const sd = new Array<number>(mTest).fill(0);
+  for (let i = 0; i < mTest; i++) {
     let term1 = 0;
-    for (let j = 0; j < m; j++) term1 += Ktm[i][j] * KmmInv_Kmt[j];
-    // Σ_inv^{-1} K_m,t_i
-    const b2 = solveLowerTriangular(Lsig, Kmt_i);
-    const SigInv_Kmt = solveUpperTriangularT(Lsig, b2);
     let term2 = 0;
-    for (let j = 0; j < m; j++) term2 += Ktm[i][j] * SigInv_Kmt[j];
+    for (let j = 0; j < m; j++) {
+      term1 += Vmm[j][i] * Vmm[j][i];
+      term2 += Vsig[j][i] * Vsig[j][i];
+    }
     const variance = KttDiag[i] - term1 + term2;
-    sd[i] = Math.sqrt(Math.max(variance + sigmaN * sigmaN, 0));
+    // Function-level standard deviation, matching `gpPredict` and `rffPredict`.
+    sd[i] = Math.sqrt(Math.max(variance, 0));
   }
 
   return { mean, sd };

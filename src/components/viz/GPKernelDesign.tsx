@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  gpPredict,
+  gpPredictDiag,
   kernelByName1D,
   paletteGP,
 } from './shared/gaussian-processes';
@@ -70,7 +70,7 @@ export default function GPKernelDesign() {
     for (const def of KERNEL_DEFS) {
       if (!active[def.id]) continue;
       const kfn = kernelByName1D(def.id, { sigmaF: SIGMA_F_TRUE, lengthscale: ell });
-      const r = gpPredict(Xtrain, Ytrain, xTest, kfn, SIGMA_N_TRUE);
+      const r = gpPredictDiag(Xtrain, Ytrain, xTest, kfn, SIGMA_N_TRUE);
       out.push({ id: def.id, color: def.color, mean: r.mean, sd: r.sd });
     }
     return out;

@@ -4,7 +4,7 @@ import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   fitSEMarginalLikelihood,
-  gpPredict,
+  gpPredictDiag,
   kernelByName1D,
   mulberry32,
   negLogMarginalSE,
@@ -109,7 +109,7 @@ export default function GPMarginalLikelihood() {
     const ell = Math.pow(10, logEll);
     const sn = Math.pow(10, logSn);
     const kfn = kernelByName1D('se', { sigmaF: SIGMA_F_TRUE, lengthscale: ell });
-    return gpPredict(Xtrain, Ytrain, xTest, kfn, sn);
+    return gpPredictDiag(Xtrain, Ytrain, xTest, kfn, sn);
   }, [logEll, logSn, Xtrain, Ytrain, xTest]);
 
   // Optimizer trigger — runs 5-restart L-BFGS and records each restart's
