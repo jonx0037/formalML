@@ -1,0 +1,657 @@
+---
+title: "Gaussian Processes"
+subtitle: "Function-space priors over regression functions: kernel-driven posteriors, marginal-likelihood hyperparameter learning, and three responses to the O(n^3) Cholesky bottleneck"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "spectral-theorem"
+  - "pca-low-rank"
+  - "variational-inference"
+formalstatisticsPrereqs:
+  - topic: "multivariate-distributions"
+    site: "formalstatistics"
+    relationship: "GPs are infinite-dimensional multivariate Normals; §3.2's conditioning lemma and §5.1's marginal-likelihood derivation both reduce to multivariate-Normal density and conjugacy work that lives there."
+  - topic: "continuous-distributions"
+    site: "formalstatistics"
+    relationship: "The univariate-Gaussian density and Gaussian–Gaussian convolution identity are invoked throughout §3 (predictive marginals at single test inputs) and §5.1 (the marginal-likelihood derivation collapses two independent Gaussians into one)."
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "The §1 parametric Bayesian regression starting point is the conjugate-Gaussian update from prior-selection; §5.2's Bayesian Occam's razor is one instance of the model-evidence framework."
+  - topic: "random-variables"
+    site: "formalstatistics"
+    relationship: "GPs are stochastic processes defined by their finite-dimensional joints; §2.2's Kolmogorov-consistency proof bridges from those joints to a probability measure on path space via the extension theorem."
+formalcalculusPrereqs:
+  - topic: "lebesgue-integral"
+    site: "formalcalculus"
+    relationship: "The §2.4 Karhunen-Loève expansion expresses a centered GP as an L^2-convergent series of independent Gaussians; the §5.1 marginal-likelihood derivation invokes Gaussian–Gaussian convolution, a Lebesgue-integral identity at base."
+tags:
+  - "bayesian-ml"
+  - "gaussian-processes"
+  - "kernel-methods"
+  - "bayesian-regression"
+  - "marginal-likelihood"
+  - "kernel-design"
+  - "sparse-approximations"
+  - "inducing-points"
+  - "random-fourier-features"
+  - "machine-learning"
+domain: "bayesian-ml"
+videoId: null
+notebookPath: "notebooks/gaussian-processes/01_gaussian_processes.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/gaussian-processes.mdx"
+datePublished: 2026-04-28
+estimatedReadTime: 65
+abstract: "A Gaussian process is a probability distribution over functions: every finite collection of function values is jointly multivariate Normal, with covariances determined by a kernel. The function-space view it makes possible — place the prior on the function, not on the parameters — is the canonical Bayesian regression model and the second pillar of the T5 Bayesian ML track. We motivate the move from parametric Bayesian regression (whose finite-rank covariance caps the function class at the basis dimension) to kernel-defined function-space priors with no such cap; verify that positive-definite kernels yield internally consistent finite-dimensional joints via the Kolmogorov extension theorem; derive the closed-form conjugate-Gaussian regression posterior in one application of multivariate-Normal conditioning; survey the kernel zoo (squared-exponential, Matérn family, periodic, ARD) and the inductive bias each kernel encodes; turn the kernel hyperparameters from quantities we set by hand into quantities we learn from the marginal likelihood (with analytic gradients via the Jacobi formula and multi-restart L-BFGS-B); and close with the O(n³) Cholesky bottleneck and three structural responses — Nyström, sparse variational GPs (Titsias 2009), and random Fourier features. GPs are the substrate of Bayesian optimization, the infinite-width limit of Bayesian neural networks, and the conceptual scaffold for thinking about uncertainty in regression."
+connections:
+  - topic: "variational-inference"
+    relationship: "The SVGP construction of §6.2 wraps GP inference in the variational machinery: the ELBO of variational-inference is the exact objective Titsias 2009 maximizes, with the inducing-point augmentation embedded directly into the variational family."
+  - topic: "spectral-theorem"
+    relationship: "The Mercer expansion of §2.4 is the spectral theorem for self-adjoint compact integral operators applied to the kernel-as-operator framing; eigenvalue decay (exponential for analytic kernels, polynomial for Matérn) controls Nyström's convergence rate and RFF's required feature count."
+  - topic: "pca-low-rank"
+    relationship: "The Nyström approximation of §6.1 is principal-component analysis of the kernel matrix; Drineas-Mahoney's sampling theory and the subspace-projection bounds developed in pca-low-rank are the rigorous foundation of Nyström's error analysis."
+  - topic: "kl-divergence"
+    relationship: "The KL term in the SVGP ELBO is reverse KL between two Gaussians, with a closed-form via the standard multivariate-Normal KL identity. Reverse-KL's mode-seeking pathology means SVGP can underestimate inducing-point posterior variance when the marginal-likelihood landscape is multimodal."
+references:
+  - type: "book"
+    title: "Gaussian Processes for Machine Learning"
+    authors: "Rasmussen & Williams"
+    year: 2006
+    url: "https://gaussianprocess.org/gpml/"
+    note: "The canonical GP textbook. §3 follows its derivation closely; §4.3 composition rules and §5.3 hyperparameter optimization track the GPML treatment (MIT Press)."
+  - type: "paper"
+    title: "Introduction to Gaussian Processes"
+    authors: "MacKay"
+    year: 1998
+    url: "https://www.inference.org.uk/mackay/gpB.pdf"
+    note: "Pedagogical introduction. The periodic kernel of §2.3 is MacKay's. §5.2 Bayesian Occam's razor framing originates here (NATO ASI Series F)."
+  - type: "book"
+    title: "Interpolation of Spatial Data: Some Theory for Kriging"
+    authors: "Stein"
+    year: 1999
+    url: "https://doi.org/10.1007/978-1-4612-1494-6"
+    note: "The canonical reference for kernel smoothness in spatial statistics. The §4 argument for Matérn-5/2 as the working default originates here (Springer)."
+  - type: "paper"
+    title: "A Statistical Approach to Some Basic Mine Valuation Problems on the Witwatersrand"
+    authors: "Krige"
+    year: 1951
+    url: "https://journals.co.za/doi/10.10520/AJA0038223X_4792"
+    note: "The original kriging paper — what GP regression is called in geostatistics. §3.3 mentions kriging variance as the geostatistics name for predictive variance (J. Chem. Metall. Mining Soc. SA)."
+  - type: "book"
+    title: "Pattern Recognition and Machine Learning"
+    authors: "Bishop"
+    year: 2006
+    url: "https://doi.org/10.1007/978-0-387-45528-0"
+    note: "Chapter 6 covers kernel methods; §6.4 develops GPs in the form §3 takes here. Standard ML-track companion (Springer)."
+  - type: "paper"
+    title: "A Unifying View of Sparse Approximate Gaussian Process Regression"
+    authors: "Quiñonero-Candela & Rasmussen"
+    year: 2005
+    url: "https://jmlr.org/papers/v6/quinonero-candela05a.html"
+    note: "The taxonomy of sparse GP approximations §6 surveys. Identifies the §6.1 Nyström variance pathology and motivates §6.2's variational-GP response (JMLR)."
+  - type: "paper"
+    title: "Variational Learning of Inducing Variables in Sparse Gaussian Processes"
+    authors: "Titsias"
+    year: 2009
+    url: "https://proceedings.mlr.press/v5/titsias09a.html"
+    note: "The original SVGP paper. §6.2's ELBO is Eq. 5–8 of this paper; the closed-form q(u) for conjugate Gaussian likelihoods is the §6 code's reference (AISTATS)."
+  - type: "paper"
+    title: "Gaussian Processes for Big Data"
+    authors: "Hensman, Fusi & Lawrence"
+    year: 2013
+    url: "https://arxiv.org/abs/1309.6835"
+    note: "Mini-batch SGD for SVGP, scaling GPs to n ~ 10^6. §6.2 mentions this as the production version of the Titsias construction (UAI)."
+  - type: "paper"
+    title: "Random Features for Large-Scale Kernel Machines"
+    authors: "Rahimi & Recht"
+    year: 2007
+    url: "https://papers.nips.cc/paper/2007/hash/013a006f03dbc5392effeb8f18fda755-Abstract.html"
+    note: "The original RFF paper. §6.3 follows its Bochner-theorem construction and the D^{-1/2} approximation-error decay (NeurIPS)."
+  - type: "paper"
+    title: "On the Nyström Method for Approximating a Gram Matrix for Improved Kernel-Based Learning"
+    authors: "Drineas & Mahoney"
+    year: 2005
+    url: "https://jmlr.org/papers/v6/drineas05a.html"
+    note: "Rate-of-convergence theory for the Nyström approximation; the bound §6.1 alludes to (JMLR)."
+  - type: "book"
+    title: "Bayesian Learning for Neural Networks"
+    authors: "Neal"
+    year: 1996
+    url: "https://doi.org/10.1007/978-1-4612-0745-0"
+    note: "The infinite-width-NN-as-GP correspondence §6.4 forward-references; the original derivation that an i.i.d.-prior wide BNN converges to a GP at initialization (Springer LNS 118)."
+  - type: "paper"
+    title: "Practical Bayesian Optimization of Machine Learning Algorithms"
+    authors: "Snoek, Larochelle & Adams"
+    year: 2012
+    url: "https://papers.nips.cc/paper/2012/hash/05311655a15b75fab86956663e1819cd-Abstract.html"
+    note: "The canonical modern application of GPs as a BO surrogate; §6.4 forward-link (NeurIPS)."
+  - type: "paper"
+    title: "Deep Kernel Learning"
+    authors: "Wilson, Hu, Salakhutdinov & Xing"
+    year: 2016
+    url: "https://proceedings.mlr.press/v51/wilson16.html"
+    note: "Neural-network feature extractor + GP head; the deep-kernel approach §6.4 forward-references (AISTATS)."
+  - type: "paper"
+    title: "Neural Processes"
+    authors: "Garnelo, Schwarz, Rosenbaum, Viola, Rezende, Eslami & Teh"
+    year: 2018
+    url: "https://arxiv.org/abs/1807.01622"
+    note: "Amortized GPs via encoder-decoder networks; the meta-learning relative §6.4 forward-references (ICML Workshop)."
+  - type: "paper"
+    title: "Neural Tangent Kernel: Convergence and Generalization in Neural Networks"
+    authors: "Jacot, Gabriel & Hongler"
+    year: 2018
+    url: "https://papers.nips.cc/paper/2018/hash/5a4be1fa34e62bb8a6ec6b91d2462f5a-Abstract.html"
+    note: "The NTK regime of infinite-width gradient-descent training; §6.4 forward-link to the NN-as-GP-via-training correspondence (NeurIPS)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import GPFunctionSpaceLift from '../../components/viz/GPFunctionSpaceLift.tsx';
+import GPKernelZoo from '../../components/viz/GPKernelZoo.tsx';
+import GPRegressionPosterior from '../../components/viz/GPRegressionPosterior.tsx';
+import GPKernelDesign from '../../components/viz/GPKernelDesign.tsx';
+import GPMarginalLikelihood from '../../components/viz/GPMarginalLikelihood.tsx';
+import GPScalingComparison from '../../components/viz/GPScalingComparison.tsx';
+
+## Overview
+
+A Gaussian process is a probability distribution over functions, specified by a mean and a kernel, with the property that every finite collection of function values is jointly multivariate Normal. The function-space view it makes possible — *place the prior on the function, not on the parameters* — is the canonical Bayesian regression model and the second pillar of the T5 Bayesian & Probabilistic ML track, building on the variational machinery of [Variational Inference](/topics/variational-inference). Given a kernel, the posterior over function values at any test inputs is a closed-form multivariate Normal computable from kernel evaluations alone, with calibrated uncertainty for free in the conjugate-Gaussian-likelihood case.
+
+This topic develops the substrate. §1 motivates the move from parametric Bayesian regression to function-space priors. §2 fixes the GP definition and verifies that positive-definite kernels yield internally consistent finite-dimensional joints. §3 derives the conjugate-Gaussian regression posterior in closed form via multivariate-Normal conditioning. §4 surveys the kernel zoo and the inductive bias each kernel encodes. §5 turns the kernel hyperparameters from quantities we set by hand into quantities we learn from the marginal likelihood. §6 closes with the $O(n^3)$ Cholesky bottleneck and three structural responses — Nyström, sparse variational GPs, and random Fourier features — plus connections to the rest of formalML and forward-link topics on the T5 roadmap.
+
+## 1. From parametric Bayes to function-space priors
+
+Bayesian regression starts with a parametric model. Pick a fixed basis $\boldsymbol\phi(\mathbf{x}) = (\phi_1(\mathbf{x}), \ldots, \phi_D(\mathbf{x}))^\top$ — polynomials, splines, RBFs at fixed centers — write the regression function as a linear combination $f(\mathbf{x}) = \mathbf{w}^\top \boldsymbol\phi(\mathbf{x})$, place a Gaussian prior on the weights $\mathbf{w} \in \mathbb{R}^D$, and the posterior is the standard conjugate-Gaussian update from <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-foundations-and-prior-selection" site="formalstatistics" topic="Bayesian Foundations" />. The procedure is clean and closed-form. Its weakness is structural: by committing to a fixed $D$-dimensional basis up front, we have committed to a $D$-dimensional family of regression functions, and no amount of data will let $f$ wander outside it.
+
+Gaussian processes lift that commitment. Rather than choosing a basis and a prior over its coefficients, place the prior directly on the function $f$ — a probability distribution over a far richer space — and never name a basis at all. This section makes the move precise. §1.1 unpacks the parametric starting point and observes a fact that motivates everything that follows: parametric Bayesian regression *already* puts a Gaussian distribution on functions. §1.2 shows what's wrong with that distribution — its covariance has a built-in low-rank constraint that the basis dimension cannot exceed. §1.3 reads the constraint as a permission slip: skip the basis, choose the covariance directly, and the function-space prior we get is exactly a Gaussian process.
+
+### 1.1 Bayesian linear regression already puts a Gaussian prior on functions
+
+Let $\mathbf{x} \in \mathcal{X}$ denote an input — we will mostly take $\mathcal{X} = \mathbb{R}$ or $\mathbb{R}^d$ in this topic — and let $\boldsymbol\phi : \mathcal{X} \to \mathbb{R}^D$ be a fixed feature map. Two running examples: the cubic polynomial map $\boldsymbol\phi(x) = (1, x, x^2, x^3)^\top$, and an RBF basis at fixed centers $c_1, \ldots, c_K$ with width $\omega > 0$, $\boldsymbol\phi(x)_k = \exp\!\bigl(-(x - c_k)^2 / (2\omega^2)\bigr)$. The Bayesian linear-regression model is
+$$f(\mathbf{x}) \;=\; \mathbf{w}^\top \boldsymbol\phi(\mathbf{x}), \qquad y_i \;=\; f(\mathbf{x}_i) + \varepsilon_i, \qquad \varepsilon_i \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(0, \sigma_n^2),$$
+with a Gaussian prior on the coefficients $\mathbf{w} \sim \mathcal{N}(\mathbf{0}, \boldsymbol\Sigma_w)$ and Gaussian observation noise of variance $\sigma_n^2 > 0$. We use $\sigma_n$ for *noise* throughout the topic and reserve $\sigma_f$ for kernel signal variance once it appears in §2.
+
+The prior on $\mathbf{w}$ induces a prior on $f$. Evaluating $f$ at any single input $\mathbf{x}^*$ gives $f(\mathbf{x}^*) = \mathbf{w}^\top \boldsymbol\phi(\mathbf{x}^*)$, a linear functional of the Gaussian random vector $\mathbf{w}$, so it is itself a Gaussian random variable with mean zero and variance $\boldsymbol\phi(\mathbf{x}^*)^\top \boldsymbol\Sigma_w \boldsymbol\phi(\mathbf{x}^*)$. The same calculation applies *jointly* to any finite collection of inputs $\mathbf{x}_1^*, \ldots, \mathbf{x}_n^*$: stack the function values into $\mathbf{f}^* = (f(\mathbf{x}_1^*), \ldots, f(\mathbf{x}_n^*))^\top \in \mathbb{R}^n$ and the feature evaluations into $\boldsymbol\Phi^* \in \mathbb{R}^{n \times D}$ with rows $\boldsymbol\phi(\mathbf{x}_i^*)^\top$. Then $\mathbf{f}^* = \boldsymbol\Phi^* \mathbf{w}$, a linear map of the Gaussian $\mathbf{w}$, jointly Gaussian:
+$$\mathbf{f}^* \;\sim\; \mathcal{N}\!\bigl(\mathbf{0},\; \boldsymbol\Phi^* \boldsymbol\Sigma_w (\boldsymbol\Phi^*)^\top\bigr).$$
+Reading the entries: $\mathbb{E}[f(\mathbf{x})] = 0$ and
+$$\mathrm{Cov}\bigl[f(\mathbf{x}),\, f(\mathbf{x}')\bigr] \;=\; \boldsymbol\phi(\mathbf{x})^\top \boldsymbol\Sigma_w \boldsymbol\phi(\mathbf{x}').$$
+
+This is the function-space view of parametric Bayes. The prior on $\mathbf{w}$ — a distribution over a $D$-dimensional weight vector — is equivalent to a particular distribution over functions, characterized by the property that the joint distribution of $(f(\mathbf{x}_1), \ldots, f(\mathbf{x}_n))$ at *any* finite set of inputs is multivariate Normal with the covariance just displayed. We never had to leave the space of weight vectors to do calculations, but as a pure mathematical object, the prior over $f$ is what the model has put on the table.
+
+### 1.2 The covariance is finite-rank by construction
+
+The function-space prior we just wrote down has a structural property worth staring at. Define the bivariate function $k_\phi(\mathbf{x}, \mathbf{x}') = \boldsymbol\phi(\mathbf{x})^\top \boldsymbol\Sigma_w \boldsymbol\phi(\mathbf{x}')$. For any finite collection of inputs $\mathbf{x}_1, \ldots, \mathbf{x}_n$, the implied $n \times n$ covariance matrix factors as $\mathbf{K} = \boldsymbol\Phi \boldsymbol\Sigma_w \boldsymbol\Phi^\top$, where $\boldsymbol\Phi \in \mathbb{R}^{n \times D}$ has rows $\boldsymbol\phi(\mathbf{x}_i)^\top$. The rank of a product of matrices is bounded by the rank of any factor, so
+$$\mathrm{rank}(\mathbf{K}) \;\le\; D.$$
+Whenever we evaluate at $n > D$ inputs, the implied $n$-dimensional Gaussian over $(f(\mathbf{x}_1), \ldots, f(\mathbf{x}_n))$ is *degenerate* — its support is a $D$-dimensional affine subspace of $\mathbb{R}^n$, and at least $n - D$ of its eigenvalues are exactly zero. The function-space prior knows that all values of $f$ collapse onto a $D$-dimensional surface no matter how many points we look at it from.
+
+This is the structural cost of having committed to a finite basis. In a low-data regime ($n < D$), we won't notice — the covariance is full-rank on the points we have. In a moderate-data regime ($n \approx D$), the model is right at the edge of capacity and is prone to interpolating noise. In a large-data regime ($n \gg D$), the function class is too small to host the truth, and the posterior concentrates on the closest member of the $D$-dimensional family no matter how badly that member misses. Adding basis functions is the obvious response, but it pushes the choice elsewhere: how many, where centered, of what width. The model designer pays in basis selection what they save in inference.
+
+### 1.3 The function-space view: place the prior on $f$ directly
+
+Reading §1.1–§1.2 more carefully, we notice something useful. The function-space prior on $f$ is fully characterized — for the purposes of any computation we will ever do — by the bivariate function $k_\phi(\mathbf{x}, \mathbf{x}') = \mathrm{Cov}[f(\mathbf{x}), f(\mathbf{x}')]$ and the mean function $\mu(\mathbf{x}) = \mathbb{E}[f(\mathbf{x})] = 0$. We never store an entire function in memory; we only ever evaluate it at finitely many inputs. So the operational specification of a prior over functions only needs to provide, for any finite collection of inputs, a joint distribution over the function values. The Gaussian-process move drops the feature map.
+
+A *Gaussian process* is a distribution over functions $f : \mathcal{X} \to \mathbb{R}$ specified by a mean function $\mu : \mathcal{X} \to \mathbb{R}$ and a *kernel* $k : \mathcal{X} \times \mathcal{X} \to \mathbb{R}$, with the property that for any finite collection of inputs $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathcal{X}$, the joint distribution of $(f(\mathbf{x}_1), \ldots, f(\mathbf{x}_n))$ is multivariate Normal with mean vector $\boldsymbol\mu_i = \mu(\mathbf{x}_i)$ and covariance matrix $\mathbf{K}_{ij} = k(\mathbf{x}_i, \mathbf{x}_j)$. We will write $f \sim \mathrm{GP}(\mu, k)$ and (throughout this topic, unless otherwise noted) take $\mu \equiv 0$ for simplicity. The $D$-dimensional basis is gone. The kernel is the only thing we choose.
+
+What changes? Two things, both consequential.
+
+**The kernel need not be finite-rank.** The kernel $k_\phi$ from a parametric model is bilinear in a $D$-dimensional feature representation, so as a kernel matrix on $n$ inputs its rank is capped at $D$. Many natural kernels — the squared-exponential $k(\mathbf{x}, \mathbf{x}') = \sigma_f^2 \exp\!\bigl(-\|\mathbf{x} - \mathbf{x}'\|^2 / (2\ell^2)\bigr)$, the Matérn family, the periodic kernel — have no such cap. As kernel matrices on $n$ inputs they are generically full-rank, and the function-space prior they induce is correspondingly richer.
+
+**Validity now requires an argument.** The parametric model gave us the function-space prior for free, because its construction (sample $\mathbf{w}$, plug into $f(\mathbf{x}) = \mathbf{w}^\top \boldsymbol\phi(\mathbf{x})$) builds a single random function whose finite-dimensional marginals automatically agree. The GP construction goes the other way: it specifies the finite-dimensional marginals first and asks whether *some* random function has them as its marginals. Whether such a function exists, and whether the marginals are mutually consistent — for example, the marginal of the joint over $(f(\mathbf{x}_1), f(\mathbf{x}_2))$ obtained by integrating out $f(\mathbf{x}_2)$ must equal the directly-specified marginal of $f(\mathbf{x}_1)$ — is the content of the *Kolmogorov extension theorem*. §2 makes this precise and uses it to verify that any positive-definite kernel does in fact define a Gaussian process.
+
+Figure 1 below shows what the move buys us. Reading the columns left to right is the structural lift the rest of this topic exploits.
+
+<Figure
+  src="/images/topics/gaussian-processes/01_function_space_motivation.png"
+  alt="Three panels in a 1×3 layout, each plotting 5 prior samples on the same input range [-3, 3] and y-range [-4, 4]. (a) polynomial basis with D=4 — five cubic polynomials with random coefficients, the family visibly four-dimensional. (b) RBF basis with K=6 fixed centers and width 0.7 — five sums of localized bumps. (c) GP prior with squared-exponential kernel and lengthscale 0.7 — five flexible samples whose horizontal lengthscale is ℓ but whose functional form is unconstrained, neither basis from (a) nor (b) could produce these draws."
+  caption="Panel (a) plots five samples from the parametric prior with a degree-3 polynomial basis: every sample is a cubic polynomial, and the family is visibly four-dimensional. Panel (b) plots five samples from a six-RBF-basis prior with fixed centers; the family is six-dimensional and the samples are sums of bumps. Panel (c) plots five samples from a Gaussian-process prior with a squared-exponential kernel of lengthscale ℓ = 0.7; the samples have no cap on functional complexity and wander in ways neither finite basis can produce."
+/>
+
+<GPFunctionSpaceLift client:visible />
+
+The question §2 takes up is what it means, formally, to place a probability distribution on a space of functions in the first place — and which kernels qualify. §3 develops the closed-form posterior given data. §4 surveys the kernels that do most of the practical work. §5 turns the kernel hyperparameters from quantities we set by hand into quantities we *learn* from the marginal likelihood. §6 closes with the $O(n^3)$ bottleneck that comes free with the construction and three responses to it.
+
+## 2. Gaussian processes as priors over functions
+
+§1 closed with a definition we have not yet earned: a Gaussian process is a distribution over functions specified by a mean and a kernel, with the property that every finite collection of function values is jointly Gaussian. Two questions are open. *Which* bivariate functions $k(\mathbf{x}, \mathbf{x}')$ qualify as kernels? And, given a kernel, does an actual probability distribution over functions exist whose finite-dimensional marginals match the prescription? §2.1 fixes the formal definition. §2.2 identifies the answer to both questions — *positive-definiteness* — and proves that PD kernels yield internally consistent finite-dimensional joints, so by the Kolmogorov extension theorem a Gaussian process exists. §2.3 surveys three canonical kernels with prior-samples pictures, deferring the full design discussion to §4. §2.4 sketches the spectral / Mercer view that justifies §1.3's "infinite-dimensional" claim.
+
+### 2.1 The definition
+
+<TheoremBlock type="definition" number={1} title="Gaussian process">
+Let $\mathcal{X}$ be a set, $\mu : \mathcal{X} \to \mathbb{R}$ a function (the *mean function*), and $k : \mathcal{X} \times \mathcal{X} \to \mathbb{R}$ a function (the *kernel* or *covariance function*). A real-valued stochastic process $\{f(\mathbf{x}) : \mathbf{x} \in \mathcal{X}\}$ is a *Gaussian process* with mean $\mu$ and kernel $k$, written $f \sim \mathrm{GP}(\mu, k)$, if for every finite collection of inputs $S = \{\mathbf{x}_1, \ldots, \mathbf{x}_n\} \subset \mathcal{X}$, the random vector $\mathbf{f}_S = (f(\mathbf{x}_1), \ldots, f(\mathbf{x}_n))^\top$ is multivariate Normal,
+$$\mathbf{f}_S \;\sim\; \mathcal{N}(\boldsymbol\mu_S,\, \mathbf{K}_{S,S}),$$
+with mean vector $(\boldsymbol\mu_S)_i = \mu(\mathbf{x}_i)$ and *kernel matrix* $(\mathbf{K}_{S,S})_{ij} = k(\mathbf{x}_i, \mathbf{x}_j)$.
+</TheoremBlock>
+
+The notation deserves explicit unpacking. The *index set* $\mathcal{X}$ is whatever space the inputs live in — $\mathbb{R}$ for time series, $\mathbb{R}^d$ for tabular data, a graph or string set in more exotic applications. A *stochastic process* indexed by $\mathcal{X}$ is, formally, a collection of real-valued random variables on a common probability space; informally, a single random function $f : \mathcal{X} \to \mathbb{R}$ whose value at each input is a random variable. The Gaussian-process definition is a constraint on the *family* of finite-dimensional joint distributions of the process — the full distribution over functions is implied, not directly named. Whether the implied distribution actually exists for a given choice of $\mu$ and $k$ is the §2.2 question.
+
+Throughout this topic — except in §5 where the mean function is briefly relevant for hyperparameter learning — we will take $\mu \equiv 0$. The zero-mean simplification costs nothing in generality: any GP with non-zero mean function $\mu$ is the sum of a deterministic function $\mu$ and a centered GP with the same kernel, and most computations reduce to the centered case after subtracting $\mu$.
+
+### 2.2 Positive-definite kernels and consistency
+
+For Definition 1 to make sense, the kernel matrix $\mathbf{K}_{S,S}$ must be a valid covariance matrix — symmetric and positive semi-definite — for every finite $S$. The condition on the kernel that achieves this has a name.
+
+<TheoremBlock type="definition" number={2} title="Positive-definite kernel">
+A function $k : \mathcal{X} \times \mathcal{X} \to \mathbb{R}$ is a *positive-definite kernel* if it is symmetric — $k(\mathbf{x}, \mathbf{x}') = k(\mathbf{x}', \mathbf{x})$ for all $\mathbf{x}, \mathbf{x}' \in \mathcal{X}$ — and for every finite collection $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathcal{X}$ and every coefficient vector $\mathbf{c} = (c_1, \ldots, c_n)^\top \in \mathbb{R}^n$,
+$$\sum_{i,j=1}^n c_i\, c_j\, k(\mathbf{x}_i, \mathbf{x}_j) \;\geq\; 0.$$
+</TheoremBlock>
+
+This is exactly the condition that the kernel matrix $\mathbf{K}_{S,S}$ is symmetric positive semi-definite for every finite $S$, which is exactly the condition for $\mathcal{N}(\boldsymbol\mu_S, \mathbf{K}_{S,S})$ to be a well-defined multivariate Normal distribution. The strict-PD case adds equality only at $\mathbf{c} = \mathbf{0}$, which makes every $\mathbf{K}_{S,S}$ strictly PD and is what we tacitly assume in §3 when we invert kernel matrices.
+
+PD-ness of each individual matrix is necessary, but it is not obviously *sufficient* for a Gaussian process to exist — we also need the family of multivariate Normals defined across all finite $S$ to be internally consistent. Specifically, if $S' \subset S$ and we write down the joint over $S'$ both directly via the kernel and indirectly by marginalizing the joint over $S$, the two answers must match. They do.
+
+<TheoremBlock type="proposition" number={1} title="Consistency of finite-dimensional joints">
+Let $k$ be a symmetric positive-definite kernel on $\mathcal{X}$ and $\mu : \mathcal{X} \to \mathbb{R}$ any mean function. The family of multivariate Normal distributions $\{\mathcal{N}(\boldsymbol\mu_S, \mathbf{K}_{S,S}) : S \subset \mathcal{X} \text{ finite}\}$ satisfies the two Kolmogorov consistency conditions:
+
+1. *Permutation invariance.* For any finite $S = \{\mathbf{x}_1, \ldots, \mathbf{x}_n\}$ and any permutation $\pi$ of $\{1, \ldots, n\}$, the joint distribution of the permuted vector $(f(\mathbf{x}_{\pi(1)}), \ldots, f(\mathbf{x}_{\pi(n)}))$ is the directly-specified joint over the relabeled inputs.
+2. *Marginalization.* For any finite $S \subset \mathcal{X}$ and any input $\mathbf{x}^* \in \mathcal{X}$, the marginal of the joint over $S \cup \{\mathbf{x}^*\}$ onto the components indexed by $S$ equals the directly-specified joint over $S$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For (1), let $P_\pi \in \mathbb{R}^{n \times n}$ be the permutation matrix with $(P_\pi)_{ij} = 1$ if $j = \pi(i)$ and $0$ otherwise. The permuted random vector is $\mathbf{f}_{\pi(S)} = P_\pi \mathbf{f}_S$, which is a linear function of the Gaussian $\mathbf{f}_S \sim \mathcal{N}(\boldsymbol\mu_S, \mathbf{K}_{S,S})$ and is therefore Gaussian itself. Its mean vector is $P_\pi \boldsymbol\mu_S$, with $i$-th entry $\mu(\mathbf{x}_{\pi(i)})$ — which is exactly $(\boldsymbol\mu_{\pi(S)})_i$. Its covariance matrix is $P_\pi \mathbf{K}_{S,S} P_\pi^\top$, with $(i,j)$ entry equal to $k(\mathbf{x}_{\pi(i)}, \mathbf{x}_{\pi(j)})$ — which is exactly $(\mathbf{K}_{\pi(S),\pi(S)})_{ij}$. So the relabeled vector has distribution $\mathcal{N}(\boldsymbol\mu_{\pi(S)}, \mathbf{K}_{\pi(S),\pi(S)})$.
+
+For (2), assume without loss of generality that $\mathbf{x}^* \notin S$. Write the joint over $S \cup \{\mathbf{x}^*\}$ in block form with the $S$-block in the top position:
+$$\begin{pmatrix} \mathbf{f}_S \\ f(\mathbf{x}^*) \end{pmatrix} \;\sim\; \mathcal{N}\!\left(\begin{pmatrix} \boldsymbol\mu_S \\ \mu(\mathbf{x}^*) \end{pmatrix},\; \begin{pmatrix} \mathbf{K}_{S,S} & \mathbf{k}_{S,*} \\ \mathbf{k}_{*,S} & k_{**} \end{pmatrix}\right).$$
+The marginal density of $\mathbf{f}_S$ is obtained by integrating out $f(\mathbf{x}^*)$ from the joint Gaussian density. A direct calculation — write the joint density, complete the square in $f(\mathbf{x}^*)$, recognize the resulting integral as a univariate Gaussian normalizing constant, and collect the $\mathbf{f}_S$-dependent terms — gives
+$$\mathbf{f}_S \;\sim\; \mathcal{N}(\boldsymbol\mu_S,\, \mathbf{K}_{S,S}).$$
+The off-diagonal block $\mathbf{k}_{S,*}$ and the diagonal entry $k_{**}$ both disappear from the marginal, leaving the $S$-block of the covariance unchanged. The general fact — marginalizing a multivariate Normal onto a block of components yields a multivariate Normal whose covariance is the corresponding principal submatrix — is the standard Gaussian marginal/conditional formula and is the same fact we will reuse in §3. The resulting marginal matches the directly-specified joint over $S$. $\square$
+</TheoremBlock>
+
+The Kolmogorov extension theorem now bridges from consistency to existence: any consistent family of finite-dimensional distributions extends uniquely to a probability measure on the path space $\mathbb{R}^\mathcal{X}$. We will not prove the extension theorem itself — that's measure-theoretic machinery rightly developed in <ExternalLink href="https://www.formalstatistics.com/topics/random-variables" site="formalstatistics" topic="Random Variables" /> — but we use its conclusion: a positive-definite kernel together with a mean function determines a Gaussian process.
+
+The converse direction is immediate. Every kernel that arises from a Gaussian process is positive-definite, because the implied kernel matrix $\mathbf{K}_{S,S}$ is the covariance matrix of a real-valued random vector $\mathbf{f}_S - \boldsymbol\mu_S$ and is therefore symmetric PSD. So PD kernels and centered Gaussian processes are in one-to-one correspondence — picking a kernel and picking a centered GP are the same act.
+
+### 2.3 A first kernel zoo
+
+We will not attempt a full kernel-design treatment here — that's §4. But three kernels recur often enough to introduce now, both because §3's derivation needs a concrete example to compute against and because the prior-samples picture they generate (Figure 2 below) drives home the point that the kernel choice is the main design knob in a GP model.
+
+**Squared-exponential (or RBF, or Gaussian) kernel.** The most-used kernel in the GP literature, defined for $\mathbf{x}, \mathbf{x}' \in \mathbb{R}^d$ by
+$$k_{\mathrm{SE}}(\mathbf{x}, \mathbf{x}') \;=\; \sigma_f^2 \exp\!\left(-\frac{\|\mathbf{x} - \mathbf{x}'\|^2}{2\,\ell^2}\right).$$
+Two hyperparameters: the *signal variance* $\sigma_f^2 > 0$ (the marginal variance $\mathrm{Var}[f(\mathbf{x})] = k_{\mathrm{SE}}(\mathbf{x}, \mathbf{x}) = \sigma_f^2$) and the *lengthscale* $\ell > 0$ (the input-distance over which $f$ varies appreciably). Samples are infinitely differentiable.
+
+**Matérn-$\nu$ kernel.** A one-parameter family parametrized by *smoothness* $\nu > 0$. The two practical instantiations have closed-form expressions; let $r = \|\mathbf{x} - \mathbf{x}'\|$ and write
+$$k_{\mathrm{Mat32}}(\mathbf{x}, \mathbf{x}') \;=\; \sigma_f^2 \!\left(1 + \frac{\sqrt{3}\, r}{\ell}\right) \exp\!\left(-\frac{\sqrt{3}\, r}{\ell}\right), \qquad k_{\mathrm{Mat52}}(\mathbf{x}, \mathbf{x}') \;=\; \sigma_f^2 \!\left(1 + \frac{\sqrt{5}\, r}{\ell} + \frac{5 r^2}{3 \ell^2}\right) \exp\!\left(-\frac{\sqrt{5}\, r}{\ell}\right).$$
+Samples from a Matérn-$\nu$ GP are $\lceil \nu \rceil - 1$ times mean-square differentiable; the limit $\nu \to \infty$ recovers the squared-exponential. §4 develops the full Matérn family.
+
+**Periodic kernel.** For one-dimensional inputs, the *periodic kernel* of MacKay 1998 is
+$$k_{\mathrm{per}}(x, x') \;=\; \sigma_f^2 \exp\!\left(-\frac{2 \sin^2\!\bigl(\pi |x - x'| / p\bigr)}{\ell^2}\right),$$
+with an additional *period* hyperparameter $p > 0$. Samples are exactly $p$-periodic.
+
+Verifying that each is positive-definite uses *Bochner's theorem*: a stationary kernel on $\mathbb{R}^d$ is PD iff it is the inverse Fourier transform of a non-negative finite Borel measure (the *spectral density* of the kernel). For the squared-exponential the spectral density is itself Gaussian; for Matérn-$\nu$ it is Student's-$t$-shaped; for the periodic kernel it is a discrete measure on integer multiples of $1/p$. We invoke Bochner without proof and treat the three kernels' positive-definiteness as established.
+
+<Figure
+  src="/images/topics/gaussian-processes/02_prior_samples_gallery.png"
+  alt="Three panels in a 1×3 layout, each with 5 prior samples from a different kernel on input range [-3, 3], y-range [-3.5, 3.5]. (a) squared-exponential, ℓ=0.7 — smooth wandering curves. (b) Matérn-3/2, ℓ=0.7 — same lengthscale, visibly rougher samples (once mean-square differentiable). (c) Periodic, ℓ=1.0, p=1.5 — every sample exactly 1.5-periodic with harmonic content controlled by ℓ."
+  caption="Panel (a) shows squared-exponential samples — smooth wandering curves whose mean horizontal lengthscale is about ℓ. Panel (b) shows Matérn-3/2 samples with the same ℓ — visibly rougher, with the once-differentiable corners that distinguish Matérn-3/2 from squared-exponential. Panel (c) shows periodic samples with ℓ=1.0 and p=1.5 — every sample is exactly 1.5-periodic, with the harmonic content controlled by ℓ. The kernel is the inductive bias."
+/>
+
+<GPKernelZoo client:visible />
+
+### 2.4 The infinite-dimensional view
+
+§1.3 made an informal claim that GP priors are *infinite-dimensional* in a way the parametric model is not. The spectral / Mercer view of kernels makes the claim formal. Treat the kernel $k$ as the kernel of an integral operator $T_k$ acting on functions $g$ via
+$$(T_k g)(\mathbf{x}) \;=\; \int_\mathcal{X} k(\mathbf{x}, \mathbf{x}')\, g(\mathbf{x}')\, d\rho(\mathbf{x}'),$$
+for some reference measure $\rho$ on $\mathcal{X}$. Mercer's theorem — the spectral theorem for compact self-adjoint operators applied here — says that under mild regularity conditions on $k$ and $\mathcal{X}$, the operator $T_k$ has a spectral decomposition with non-negative eigenvalues $\lambda_1 \geq \lambda_2 \geq \cdots \geq 0$ and orthonormal eigenfunctions $\psi_1, \psi_2, \ldots$, giving the kernel expansion
+$$k(\mathbf{x}, \mathbf{x}') \;=\; \sum_{i=1}^\infty \lambda_i\, \psi_i(\mathbf{x})\, \psi_i(\mathbf{x}').$$
+The connection to the parametric model is then the *Karhunen-Loève expansion*: a centered GP with kernel $k$ has the equivalent series representation
+$$f(\mathbf{x}) \;=\; \sum_{i=1}^\infty \sqrt{\lambda_i}\, Z_i\, \psi_i(\mathbf{x}), \qquad Z_i \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(0, 1),$$
+with the series converging in $L^2$. Reading this carefully: the GP *is* a parametric Bayesian regression model — but one with countably infinitely many features $\psi_i$ and weight prior variances $\lambda_i$. The §1.2 finite-rank obstruction is gone exactly because there are infinitely many features with positive prior variance; the rank cap moves from $D$ to $\infty$.
+
+The Mercer expansion is also the spectral lens through which §6's *Nyström approximation* works: truncating the eigenexpansion at the top $m$ eigenvalues produces a rank-$m$ kernel approximation, equivalent to the parametric model with $D = m$ features. The connection to formalML's [PCA and Low-Rank Approximation](/topics/pca-low-rank) is direct: Nyström is principal-component analysis of the kernel matrix, with the truncation error controlled by the discarded tail $\sum_{i=m+1}^\infty \lambda_i$.
+
+This subsection is a sketch, not a proof. The full theorem is the spectral theorem for self-adjoint compact operators on a Hilbert space, which we point to via formalML's [Spectral Theorem](/topics/spectral-theorem) topic. For our purposes the Mercer expansion is conceptual scaffolding: the right answer to "what does it mean for a GP to be infinite-dimensional?" is that the implied feature representation is the eigenbasis of the kernel operator, with countably infinitely many features.
+
+## 3. Conjugate GP regression
+
+§1 motivated the move to function-space priors; §2 verified that positive-definite kernels actually define such priors. Now we put a GP prior to work. Given a kernel $k$, training inputs $X$, noisy observations $\mathbf{y}$, and test inputs $X^*$, what is the posterior distribution over $f$ at the test inputs? The answer is a closed-form multivariate Normal — the operational reason GPs are attractive — and the derivation is one careful application of the multivariate-Normal conditioning formula. §3.1 sets up the joint distribution. §3.2 proves the conditioning lemma in the form we need and reads the GP regression posterior off as a corollary. §3.3 unpacks what the formula is telling us. §3.4 runs it on a synthetic 1D problem. §3.5 closes with the $O(n^3)$ Cholesky bottleneck that motivates §6.
+
+### 3.1 The setup
+
+The data are $\mathcal{D} = \{(\mathbf{x}_i, y_i)\}_{i=1}^n$ with inputs $\mathbf{x}_i \in \mathcal{X}$ and noisy real-valued observations
+$$y_i \;=\; f(\mathbf{x}_i) + \varepsilon_i, \qquad \varepsilon_i \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(0, \sigma_n^2),$$
+with the latent function $f \sim \mathrm{GP}(0, k)$. The noise is *Gaussian* — non-Gaussian likelihoods break conjugacy — and *additive and homoscedastic*.
+
+Stack training inputs into the index set $X = \{\mathbf{x}_1, \ldots, \mathbf{x}_n\}$ and observations into $\mathbf{y} = (y_1, \ldots, y_n)^\top$. The latent function values at training inputs are $\mathbf{f} = (f(\mathbf{x}_1), \ldots, f(\mathbf{x}_n))^\top$, related to $\mathbf{y}$ by $\mathbf{y} = \mathbf{f} + \boldsymbol\varepsilon$ with $\boldsymbol\varepsilon \sim \mathcal{N}(\mathbf{0}, \sigma_n^2 \mathbf{I}_n)$. Test inputs $X^*$ have function values $\mathbf{f}^* \in \mathbb{R}^m$. Three kernel matrices appear: the $n \times n$ training-kernel $\mathbf{K}$, the $n \times m$ cross-kernel $\mathbf{K}_*$, and the $m \times m$ test-kernel $\mathbf{K}_{**}$.
+
+The §2 GP definition says the joint of $(\mathbf{f}, \mathbf{f}^*)$ is multivariate Normal; the observations $\mathbf{y} = \mathbf{f} + \boldsymbol\varepsilon$ inherit Gaussianity, and $\mathbf{f}^*$ is independent of $\boldsymbol\varepsilon$, so the joint of $(\mathbf{y}, \mathbf{f}^*)$ is Gaussian as well:
+$$\begin{pmatrix} \mathbf{y} \\ \mathbf{f}^* \end{pmatrix} \;\sim\; \mathcal{N}\!\left(\mathbf{0},\; \begin{pmatrix} \mathbf{K} + \sigma_n^2 \mathbf{I}_n & \mathbf{K}_* \\ \mathbf{K}_*^\top & \mathbf{K}_{**} \end{pmatrix}\right). \qquad (\dagger)$$
+
+The posterior $p(\mathbf{f}^* \mid \mathbf{y})$ is the conditional of $\mathbf{f}^*$ given $\mathbf{y}$ in this joint. Because the joint is multivariate Normal, the conditional is multivariate Normal as well, with mean and covariance given by the standard Gaussian-conditioning formula.
+
+### 3.2 The conditioning lemma and the GP regression posterior
+
+<TheoremBlock type="lemma" number={1} title="Multivariate-Normal conditioning">
+Let $\mathbf{a} \in \mathbb{R}^p$ and $\mathbf{b} \in \mathbb{R}^q$ be jointly multivariate Normal:
+$$\begin{pmatrix} \mathbf{a} \\ \mathbf{b} \end{pmatrix} \;\sim\; \mathcal{N}\!\left(\begin{pmatrix} \boldsymbol\mu_a \\ \boldsymbol\mu_b \end{pmatrix},\; \begin{pmatrix} \boldsymbol\Sigma_{aa} & \boldsymbol\Sigma_{ab} \\ \boldsymbol\Sigma_{ba} & \boldsymbol\Sigma_{bb} \end{pmatrix}\right),$$
+with $\boldsymbol\Sigma_{aa}$ invertible. Then the conditional distribution of $\mathbf{b}$ given $\mathbf{a}$ is multivariate Normal:
+$$\mathbf{b} \mid \mathbf{a} \;\sim\; \mathcal{N}\!\bigl(\boldsymbol\mu_b + \boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1}(\mathbf{a} - \boldsymbol\mu_a),\; \boldsymbol\Sigma_{bb} - \boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1} \boldsymbol\Sigma_{ab}\bigr).$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Centering eliminates the means: write $\tilde{\mathbf{a}} = \mathbf{a} - \boldsymbol\mu_a$ and $\tilde{\mathbf{b}} = \mathbf{b} - \boldsymbol\mu_b$. Define a *residual* random vector by subtracting from $\tilde{\mathbf{b}}$ its best linear predictor in $\tilde{\mathbf{a}}$:
+$$\mathbf{r} \;:=\; \tilde{\mathbf{b}} \,-\, M\, \tilde{\mathbf{a}}, \qquad M \;:=\; \boldsymbol\Sigma_{ba}\, \boldsymbol\Sigma_{aa}^{-1}.$$
+The pair $(\tilde{\mathbf{a}}, \mathbf{r})$ is a linear function of the joint Gaussian $(\tilde{\mathbf{a}}, \tilde{\mathbf{b}})$, so it is jointly Gaussian. Compute the cross-covariance of $\mathbf{r}$ with $\tilde{\mathbf{a}}$:
+$$\mathrm{Cov}(\mathbf{r}, \tilde{\mathbf{a}}) \;=\; \mathrm{Cov}(\tilde{\mathbf{b}}, \tilde{\mathbf{a}}) - M\, \mathrm{Cov}(\tilde{\mathbf{a}}, \tilde{\mathbf{a}}) \;=\; \boldsymbol\Sigma_{ba} - \boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1} \boldsymbol\Sigma_{aa} \;=\; \mathbf{0}.$$
+The residual $\mathbf{r}$ is uncorrelated with $\tilde{\mathbf{a}}$. For *jointly* Gaussian random vectors, uncorrelatedness implies independence (the joint density factors when the cross-covariance block is zero — see <ExternalLink href="https://www.formalstatistics.com/topics/multivariate-distributions" site="formalstatistics" topic="Multivariate Distributions" /> for the careful treatment). So $\mathbf{r}$ is independent of $\tilde{\mathbf{a}}$.
+
+Compute $\mathbf{r}$'s mean and covariance. The mean is zero (both inputs are centered). For the covariance, use the bilinearity of $\mathrm{Cov}$:
+$$\mathrm{Cov}(\mathbf{r}) \;=\; \mathrm{Cov}(\tilde{\mathbf{b}}) - M\, \boldsymbol\Sigma_{ab} - \boldsymbol\Sigma_{ba}\, M^\top + M\, \boldsymbol\Sigma_{aa}\, M^\top \;=\; \boldsymbol\Sigma_{bb} - \boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1} \boldsymbol\Sigma_{ab},$$
+where the last equality uses $M^\top = \boldsymbol\Sigma_{aa}^{-1} \boldsymbol\Sigma_{ab}$ and simplifies the resulting expression. Thus $\mathbf{r} \sim \mathcal{N}(\mathbf{0},\; \boldsymbol\Sigma_{bb} - \boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1} \boldsymbol\Sigma_{ab})$ and is independent of $\tilde{\mathbf{a}}$.
+
+Express $\tilde{\mathbf{b}}$ in terms of the residual:
+$$\tilde{\mathbf{b}} \;=\; \mathbf{r} + M\, \tilde{\mathbf{a}} \;=\; \mathbf{r} + \boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1} \tilde{\mathbf{a}}.$$
+Conditioning on $\tilde{\mathbf{a}}$, the second term becomes a constant, and $\mathbf{r}$ — independent of $\tilde{\mathbf{a}}$ — has the same distribution as before conditioning. So
+$$\tilde{\mathbf{b}} \mid \tilde{\mathbf{a}} \;\sim\; \mathcal{N}\!\bigl(\boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1} \tilde{\mathbf{a}},\; \boldsymbol\Sigma_{bb} - \boldsymbol\Sigma_{ba} \boldsymbol\Sigma_{aa}^{-1} \boldsymbol\Sigma_{ab}\bigr).$$
+Translating back to the original variables and adding $\boldsymbol\mu_b$ to the conditional mean gives the claim. $\square$
+</TheoremBlock>
+
+The lemma's mean formula is the classical *linear minimum-mean-square-error predictor* of $\mathbf{b}$ given $\mathbf{a}$ — the *Wiener filter* in time-series language, the *kriging predictor* in spatial statistics. The covariance formula is the *Schur complement* of $\boldsymbol\Sigma_{aa}$ in $\boldsymbol\Sigma$.
+
+Specializing to GP regression is a substitution. Set $\mathbf{a} = \mathbf{y}$, $\mathbf{b} = \mathbf{f}^*$, both means zero, and read the covariance blocks off the joint $(\dagger)$.
+
+<TheoremBlock type="theorem" number={1} title="GP regression posterior">
+Under the GP-regression model of §3.1, the posterior distribution of the latent function values $\mathbf{f}^*$ at test inputs $X^*$ given the training observations $\mathbf{y}$ is multivariate Normal:
+$$\mathbf{f}^* \mid \mathbf{y}, X, X^* \;\sim\; \mathcal{N}(\boldsymbol\mu_*,\, \boldsymbol\Sigma_*),$$
+with predictive mean
+$$\boldsymbol\mu_* \;=\; \mathbf{K}_*^\top \,(\mathbf{K} + \sigma_n^2 \mathbf{I}_n)^{-1}\, \mathbf{y}$$
+and predictive covariance
+$$\boldsymbol\Sigma_* \;=\; \mathbf{K}_{**} \,-\, \mathbf{K}_*^\top \,(\mathbf{K} + \sigma_n^2 \mathbf{I}_n)^{-1}\, \mathbf{K}_*.$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply Lemma 1 to the joint $(\dagger)$ from §3.1. The hypothesis that $\boldsymbol\Sigma_{aa} = \mathbf{K} + \sigma_n^2 \mathbf{I}_n$ is invertible holds for any $\sigma_n^2 > 0$: the matrix is symmetric positive definite because $\mathbf{K}$ is positive semi-definite as a kernel matrix, and adding $\sigma_n^2 \mathbf{I}_n$ shifts every eigenvalue up by $\sigma_n^2 > 0$. Substituting $\boldsymbol\Sigma_{aa} = \mathbf{K} + \sigma_n^2 \mathbf{I}_n$, $\boldsymbol\Sigma_{ba} = \mathbf{K}_*^\top$, $\boldsymbol\Sigma_{ab} = \mathbf{K}_*$, $\boldsymbol\Sigma_{bb} = \mathbf{K}_{**}$ into the lemma gives the theorem. $\square$
+</TheoremBlock>
+
+A short corollary handles predictions of *noisy observations* at test inputs: if $\mathbf{y}^* = \mathbf{f}^* + \boldsymbol\varepsilon^*$ with $\boldsymbol\varepsilon^* \sim \mathcal{N}(\mathbf{0}, \sigma_n^2 \mathbf{I}_m)$, then $\mathbf{y}^* \mid \mathbf{y} \sim \mathcal{N}(\boldsymbol\mu_*, \boldsymbol\Sigma_* + \sigma_n^2 \mathbf{I}_m)$ — same mean, variance inflated by the irreducible noise.
+
+### 3.3 Reading the formula
+
+The closed-form posterior packs a lot into one line of algebra.
+
+**The predictive mean is a kernel-weighted combination of the training observations.** Define $\boldsymbol\alpha := (\mathbf{K} + \sigma_n^2 \mathbf{I}_n)^{-1} \mathbf{y} \in \mathbb{R}^n$. Then the predictive mean at any single test input $\mathbf{x}^*$ is
+$$\mu_*(\mathbf{x}^*) \;=\; \sum_{i=1}^n \alpha_i\, k(\mathbf{x}_i, \mathbf{x}^*),$$
+a linear combination of kernel evaluations between $\mathbf{x}^*$ and each training input. Once $\boldsymbol\alpha$ is computed (one $O(n^3)$ Cholesky), predictions at any new $\mathbf{x}^*$ require only the $n$-dimensional cross-kernel vector and one inner product. This is the *representer-theorem flavor* of GP regression: the posterior mean function lies in the span of kernel sections at the training inputs.
+
+**The predictive variance subtracts a "knowledge" term from the prior variance.** At a single test input,
+$$\sigma_*^2(\mathbf{x}^*) \;=\; k(\mathbf{x}^*, \mathbf{x}^*) \,-\, \mathbf{k}_*^\top (\mathbf{K} + \sigma_n^2 \mathbf{I}_n)^{-1} \mathbf{k}_*.$$
+The first term is the *prior* variance at $\mathbf{x}^*$. The second term is a quadratic form in a positive-definite matrix (non-negative) representing the variance reduction the data provide. In the *no-data* limit ($n = 0$), the second term vanishes. In the *low-noise* limit at a training point ($\sigma_n \to 0$), the two terms cancel and the predictive variance shrinks to zero — we have observed the function value exactly. In between, the predictive variance is small near the data and reverts to the prior variance as $\mathbf{x}^*$ moves far from the training inputs.
+
+**The predictive variance does not depend on the observations $\mathbf{y}$.** It depends only on the *locations* of the training inputs and the kernel. This is a feature of the conjugate-Gaussian-likelihood case (it breaks for non-Gaussian likelihoods) and it makes *active learning* with GPs clean: the next training input can be chosen at the location of maximum predictive variance, independently of any future observation. The geostatistics literature has developed this idea under the name *kriging variance* since the 1960s.
+
+### 3.4 Worked example: 1D regression with the squared-exponential kernel
+
+A synthetic 1D problem makes the formula visible. Take the truth $f_{\mathrm{true}}(x) = \sin(x) + 0.3 \sin(3x)$ on $[-3, 3]$ — a smooth function with two distinct frequency components. Observe at $n$ training inputs with Gaussian noise $\sigma_n = 0.15$. Use the squared-exponential kernel with $\sigma_f = 1.0$ and $\ell = 0.6$ — values chosen by hand here to match the truth's roughest scale; §5 will turn $(\sigma_f, \ell, \sigma_n)$ into hyperparameters we *learn*.
+
+Figure 3 shows three panels. Panel (a) — sparse data ($n = 6$): posterior mean (blue solid), $\pm 2 \sigma_*$ band (light blue), truth (red dashed), training points (black markers). The band pinches to near-$\sigma_n$ width at training points and widens dramatically in the gaps and outside the training range. The mean tracks the truth where data are present and reverts to zero where they are not. Panel (b) — same data with five posterior samples drawn jointly from $\mathbf{f}^* \mid \mathbf{y}$. Each sample agrees with the others at training points (within noise) and diverges in the gaps by an amount calibrated by the band width. Panel (c) — dense data ($n = 30$): the credible band collapses uniformly to the irreducible $\sigma_n$-scale.
+
+Panel (b) is the panel that makes the GP framing visceral. The posterior is not a band around a curve; it is a *probability distribution over functions*, and the band is a marginal summary of that distribution.
+
+<Figure
+  src="/images/topics/gaussian-processes/03_gp_regression_posterior.png"
+  alt="Three panels in a 1×3 layout, all sharing x-axis [-3.5, 3.5] and y-axis [-2.2, 2.2]. (a) sparse training (n=6): posterior mean blue solid, ±2σ band light blue shaded, truth red dashed, six black training markers. Band pinches at training points, widens in gaps. (b) same data with five posterior samples in different colors overlaid. (c) dense training (n=30): band collapses uniformly to σ_n width."
+  caption="At n=6 the band pinches near training points and reverts to the prior in the gaps; at n=30 the band collapses uniformly to the irreducible σ_n-noise level. Panel (b)'s five samples are five plausible truths drawn jointly from the posterior — coherent functions, not pointwise marginal draws."
+/>
+
+<GPRegressionPosterior client:visible />
+
+The §3 verification confirms four numerical claims that Theorem 1 implies and the figure illustrates: (i) far from training data the predictive variance equals the prior variance $\sigma_f^2$ to machine precision; (ii) at a training point the predictive mean is close to the observation, with discrepancy of order $\sigma_n$ (MAE = 0.0129 on the §3 sparse data); (iii) in the $\sigma_n \to 0$ limit the predictive mean at a training point matches the observation to numerical precision (MAE ≈ 1e-8); (iv) Cholesky timing scales cubically — the bottleneck §3.5 takes up next.
+
+### 3.5 Computational cost: the $O(n^3)$ Cholesky bottleneck
+
+The closed-form posterior of Theorem 1 has a number staring at us: $n^3$. The standard recipe is the *Cholesky factorization*. Compute $\mathbf{L}\mathbf{L}^\top = \mathbf{K} + \sigma_n^2 \mathbf{I}_n$, where $\mathbf{L}$ is the lower-triangular Cholesky factor (existing and unique with positive diagonal because the matrix is symmetric positive definite). Cholesky factorization costs $\tfrac{1}{3} n^3 + O(n^2)$ flops — half the cost of LU factorization, with markedly better numerical stability than direct inversion. Once $\mathbf{L}$ is in hand, the predictive mean comes from two triangular solves and the predictive covariance from one triangular solve plus an outer product; total $O(n^3 + n^2 m + n m^2)$.
+
+The bottleneck is the $O(n^3)$ Cholesky on the training-kernel matrix. In practice this puts a soft ceiling on standard "exact" GPs of about $n \approx 10{,}000$ — beyond that, the cubic scaling makes wall-clock time prohibitive, the $O(n^2)$ memory footprint of storing $\mathbf{K}$ approaches a workstation's RAM, and conditioning issues require ever-larger jitter. Three structural responses — Nyström approximation, sparse variational GPs, random Fourier features — are the subject of §6.
+
+## 4. Kernel design and the inductive bias
+
+§3 took the kernel as given. But the kernel is the only design choice in a GP model — change the kernel and you change every prior expectation about the function, every notion of "similar inputs," every smoothness assumption. §4.1 reads the kernel geometrically. §4.2 develops the Matérn family with smoothness as a tunable parameter. §4.3 surveys the working zoo and the additive/multiplicative composition rules. §4.4 introduces *automatic relevance determination*. §4.5 packages the choices into a small decision tree.
+
+### 4.1 Stationarity, isotropy, and the lengthscale
+
+A kernel $k(\mathbf{x}, \mathbf{x}')$ is *stationary* if it depends on the inputs only through their difference: $k(\mathbf{x}, \mathbf{x}') = \tilde k(\mathbf{x} - \mathbf{x}')$. It is *isotropic* if it depends only through the Euclidean distance: $k(\mathbf{x}, \mathbf{x}') = \kappa(\|\mathbf{x} - \mathbf{x}'\|)$. Isotropic implies stationary; the converse fails (the periodic kernel is stationary but not isotropic in $d > 1$).
+
+For an isotropic kernel, the *lengthscale* $\ell > 0$ is the input-distance over which the kernel decays from its maximum $\sigma_f^2$ to a small fraction of it. At input distances much smaller than $\ell$, function values are nearly perfectly correlated, and at distances much larger than $\ell$, they are nearly independent. The lengthscale sets the scale of the function's variation; equivalently, it controls how aggressively the GP extrapolates from training data.
+
+We can read the lengthscale's effect on the posterior from §3.3's predictive-mean formula: each training point $\mathbf{x}_i$ contributes a Gaussian bump of width $\ell$ centered at $\mathbf{x}_i$, and the predictive mean is the sum of these weighted bumps. A small $\ell$ gives narrow bumps and conservative extrapolation. A large $\ell$ gives wide bumps and aggressive extrapolation. §5 turns $\ell$ into a learning problem: pick it to maximize the marginal likelihood, which has a characteristic peak where $\ell$ matches the data's correlation scale.
+
+### 4.2 The Matérn family and the smoothness parameter
+
+The squared-exponential kernel produces samples that are infinitely differentiable in mean-square. Real-world phenomena are rarely so smooth. The Matérn family interpolates between the squared-exponential's analytic smoothness and a much rougher Brownian-motion-like roughness, with a single tunable parameter $\nu > 0$ controlling the smoothness level.
+
+<TheoremBlock type="definition" number={3} title="Matérn-ν kernel">
+For $\nu > 0$, $\ell > 0$, $\sigma_f > 0$, and inputs $\mathbf{x}, \mathbf{x}' \in \mathbb{R}^d$, the *Matérn-$\nu$ kernel* is
+$$k_{\mathrm{Mat\nu}}(\mathbf{x}, \mathbf{x}') \;=\; \sigma_f^2 \, \frac{2^{1-\nu}}{\Gamma(\nu)}\!\left(\frac{\sqrt{2\nu}\, r}{\ell}\right)^\nu \! K_\nu\!\!\left(\frac{\sqrt{2\nu}\, r}{\ell}\right), \qquad r = \|\mathbf{x} - \mathbf{x}'\|,$$
+where $\Gamma$ is the gamma function and $K_\nu$ is the modified Bessel function of the second kind of order $\nu$. The kernel is positive-definite on $\mathbb{R}^d$ for every $\nu > 0$ (standard proof via Bochner's theorem and the Matérn spectral density $\hat k(\boldsymbol\omega) \propto (1 + \|\boldsymbol\omega\|^2 \ell^2 / (2\nu))^{-(\nu + d/2)}$).
+</TheoremBlock>
+
+The general formula is unwieldy and almost never used directly. The half-integer cases simplify to the closed forms we wrote down in §2.3:
+$$k_{\mathrm{Mat32}} \;=\; \sigma_f^2 \!\left(1 + \frac{\sqrt{3}\, r}{\ell}\right) \exp\!\left(-\frac{\sqrt{3}\, r}{\ell}\right), \qquad k_{\mathrm{Mat52}} \;=\; \sigma_f^2 \!\left(1 + \frac{\sqrt{5}\, r}{\ell} + \frac{5 r^2}{3 \ell^2}\right) \exp\!\left(-\frac{\sqrt{5}\, r}{\ell}\right).$$
+A third half-integer case, $\nu = 1/2$, recovers the *exponential kernel* $k = \sigma_f^2 \exp(-r/\ell)$ — the kernel of a stationary Ornstein-Uhlenbeck process. The limit $\nu \to \infty$ recovers the squared-exponential.
+
+A Matérn-$\nu$ GP has samples that are $\lceil \nu \rceil - 1$ times mean-square differentiable. So Matérn-1/2 samples are continuous but nowhere-differentiable; Matérn-3/2 samples are once-differentiable; Matérn-5/2 samples are twice-differentiable; SE samples are infinitely differentiable. Stein 1999 makes the case that for most modeling tasks Matérn-5/2 is the right default. The GP literature has largely converged on Matérn-5/2 as the working default.
+
+The smoothness parameter $\nu$ itself is rarely treated as a continuous hyperparameter — the marginal-likelihood landscape in $\nu$ is flat for the smoothness range that matters in practice, and the half-integer cases are computationally cheap. The standard workflow is to pick $\nu \in \{1/2, 3/2, 5/2\}$ by domain knowledge and optimize $(\ell, \sigma_f, \sigma_n)$ continuously.
+
+Figure 4 demonstrates the smoothness ladder. Panel (a) overlays prior samples from Matérn-1/2, Matérn-3/2, Matérn-5/2, and squared-exponential at the same lengthscale — the visual transition from rough to smooth is unmistakable. Panel (b) shows what happens to the regression posterior on the §3 data when we vary the kernel. Panel (c) shows the lengthscale axis for a fixed kernel (squared-exponential), with $\ell \in \{0.2, 0.6, 1.5\}$: small $\ell$ produces a wiggly mean that interpolates noise, large $\ell$ produces a too-smooth mean, intermediate $\ell$ is the qualitatively-right answer.
+
+<Figure
+  src="/images/topics/gaussian-processes/04_kernel_design.png"
+  alt="Three panels in a 1×3 layout. (a) smoothness ladder: prior samples from Matérn-1/2, Matérn-3/2, Matérn-5/2, and squared-exponential at fixed ℓ=0.7, transitioning visibly from jagged to smooth. (b) regression posterior with the four kernels on the §3 sparse data; the predictive mean shape varies between kernels especially in gaps. (c) SE posterior at three lengthscales ℓ ∈ {0.2, 0.6, 1.5}, showing wiggly-overfit / right / over-smooth respectively."
+  caption="Smaller ν gives rougher samples; larger ℓ gives slower variation. The kernel choice axis is orthogonal to the lengthscale axis. Too-small ℓ overfits, too-large underfits, and the marginal likelihood of §5 finds the sweet spot automatically."
+/>
+
+<GPKernelDesign client:visible />
+
+### 4.3 The working zoo and kernel composition
+
+Beyond the squared-exponential and Matérn families, four other kernels appear in practical work:
+
+**Linear kernel.** $k_{\mathrm{lin}}(\mathbf{x}, \mathbf{x}') = \sigma_f^2\, \mathbf{x}^\top \mathbf{x}'$. Non-stationary. GP samples are straight lines through the origin with random slope. Rarely used standalone but earns its place as a building block.
+
+**Periodic kernel.** Defined on one-dimensional inputs (multidimensional generalizations exist but are less common); useful for time series with known seasonality.
+
+**White-noise kernel.** $k_{\mathrm{wn}}(\mathbf{x}, \mathbf{x}') = \sigma_f^2 \mathbf{1}[\mathbf{x} = \mathbf{x}']$. Adds a $\sigma_f^2$ "spike" to the diagonal. As a *kernel component* in additive composition it lets us model multiple variance components.
+
+**Constant kernel.** $k_{\mathrm{const}}(\mathbf{x}, \mathbf{x}') = c$. Encodes a global random-intercept term.
+
+The reason this short list is enough is *kernel composition*. The space of positive-definite kernels is closed under three operations.
+
+<TheoremBlock type="proposition" number={2} title="Kernel composition rules">
+Let $k_1$ and $k_2$ be positive-definite kernels on $\mathcal{X}$, and let $c \geq 0$. Then:
+
+1. $c\, k_1$ is positive-definite.
+2. $k_1 + k_2$ is positive-definite.
+3. $k_1 \cdot k_2$ is positive-definite.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For (1) and (2), the kernel matrices satisfy $(c\,k_1)_{S,S} = c\, (k_1)_{S,S}$ and $(k_1 + k_2)_{S,S} = (k_1)_{S,S} + (k_2)_{S,S}$. The first is PSD because $c \geq 0$ and $(k_1)_{S,S}$ is PSD; the second is PSD because the sum of two PSD matrices is PSD ($\mathbf{c}^\top (\mathbf{K}_1 + \mathbf{K}_2)\mathbf{c} = \mathbf{c}^\top \mathbf{K}_1 \mathbf{c} + \mathbf{c}^\top \mathbf{K}_2 \mathbf{c} \geq 0$).
+
+For (3) — the *Schur product theorem* — the kernel matrix is the elementwise (Hadamard) product. Write the spectral decompositions $(k_1)_{S,S} = \sum_i \lambda_i \mathbf{u}_i \mathbf{u}_i^\top$ and $(k_2)_{S,S} = \sum_j \mu_j \mathbf{v}_j \mathbf{v}_j^\top$ with $\lambda_i, \mu_j \geq 0$. The Hadamard product expands as
+$$(k_1)_{S,S} \odot (k_2)_{S,S} \;=\; \sum_{i,j} \lambda_i \mu_j\, (\mathbf{u}_i \odot \mathbf{v}_j)(\mathbf{u}_i \odot \mathbf{v}_j)^\top,$$
+using the elementary identity $(\mathbf{a}\mathbf{a}^\top) \odot (\mathbf{b}\mathbf{b}^\top) = (\mathbf{a} \odot \mathbf{b})(\mathbf{a} \odot \mathbf{b})^\top$. The right-hand side is a non-negative combination of rank-1 PSD matrices, and is therefore PSD. $\square$
+</TheoremBlock>
+
+The composition rules are powerful in practice. The classical example is *seasonal trend decomposition* of atmospheric CO$_2$:
+$$k_{\mathrm{CO}_2}(t, t') \;=\; \underbrace{k_{\mathrm{SE}}}_{\text{long-term trend}} + \underbrace{k_{\mathrm{SE}} \cdot k_{\mathrm{per}}}_{\text{seasonal cycle}} + \underbrace{k_{\mathrm{Mat32}}}_{\text{medium-term irregularity}} + \underbrace{k_{\mathrm{wn}}}_{\text{noise}},$$
+each component carrying its own lengthscale and amplitude. Rasmussen and Williams 2006 (§5.4.3) develops this exact decomposition in detail.
+
+### 4.4 Automatic relevance determination
+
+When inputs are multidimensional, the squared-exponential of §2.3 used a single scalar lengthscale for every coordinate. Different features are measured in different units, vary on different scales, and have different relevance. The fix is to give each input coordinate its own lengthscale — the *anisotropic* or *automatic-relevance-determination* (ARD) squared-exponential:
+$$k_{\mathrm{SE-ARD}}(\mathbf{x}, \mathbf{x}') \;=\; \sigma_f^2 \exp\!\left(-\frac{1}{2}\sum_{j=1}^d \frac{(x_j - x_j')^2}{\ell_j^2}\right), \qquad \ell_1, \ldots, \ell_d > 0.$$
+The "automatic relevance determination" name comes from the fact that an *irrelevant* coordinate $j$ pushes its lengthscale $\ell_j$ to a large value during marginal-likelihood optimization. Inspecting the trained $\ell_j$ values is then a feature-importance diagnostic. The §4 ARD demonstration on synthetic 2D data with one relevant + one irrelevant feature recovers $\ell_1 \approx 1$ for the relevant dimension and $\ell_2 \approx 33{,}000$ for the irrelevant one — the ratio is the diagnostic signal.
+
+ARD generalizes naturally from squared-exponential to the Matérn family (replace $r = \|\mathbf{x} - \mathbf{x}'\|$ with the Mahalanobis distance) and is the canonical multidimensional kernel parametrization in modern GP libraries.
+
+### 4.5 Choosing a kernel: a small decision tree
+
+1. **Smoothness.** If the truth is genuinely smooth, use squared-exponential. If smoothness is finite or unknown — the realistic default — use Matérn-5/2. Matérn-3/2 for once-differentiable functions; Matérn-1/2 for Brownian-motion-like processes.
+2. **Periodicity.** If the data have known period $p$, include a periodic kernel component. For *quasi-periodic* phenomena, multiply periodic by squared-exponential ($k_{\mathrm{per}} \cdot k_{\mathrm{SE}}$).
+3. **Multidimensional inputs.** Use the ARD form by default. Inspect optimized lengthscales as a feature-relevance diagnostic.
+4. **Multiple variance components.** Use kernel addition. A trend + seasonality + irregularity + noise decomposition is the standard structured-time-series template.
+5. **Linear baseline.** When in doubt, include $k_{\mathrm{lin}}$ as an additive component.
+
+§5 takes the kernel as fixed (in functional form) and makes the hyperparameters into things we *learn* from the marginal likelihood.
+
+## 5. Learning hyperparameters from the marginal likelihood
+
+§4 introduced the kernel hyperparameters and treated them as quantities we set by hand. The standard fix is to *learn* the hyperparameters from data by maximizing the *marginal likelihood* — the probability the training data are assigned by the GP model with those hyperparameters, after the latent function $f$ has been integrated out. §5.1 derives the marginal-likelihood formula. §5.2 reads it as a model-selection criterion (Bayesian Occam's razor). §5.3 develops the gradient-based optimization. §5.4 returns to the §3 example and recovers $(\sigma_f, \ell, \sigma_n)$ from data.
+
+### 5.1 The marginal likelihood
+
+Stack the kernel hyperparameters into $\boldsymbol\eta = (\sigma_f, \ell, \sigma_n)$. The marginal likelihood is
+$$p(\mathbf{y} \mid X, \boldsymbol\eta) \;=\; \int p(\mathbf{y} \mid \mathbf{f}, \sigma_n^2)\, p(\mathbf{f} \mid X, \boldsymbol\eta)\, d\mathbf{f}.$$
+Both factors are Gaussian; the integral is a Gaussian convolution and is closed-form.
+
+<TheoremBlock type="proposition" number={3} title="Marginal likelihood for GP regression">
+For the GP regression model of §3 with kernel hyperparameters $\boldsymbol\eta$, the log marginal likelihood of the training data is
+$$\log p(\mathbf{y} \mid X, \boldsymbol\eta) \;=\; -\frac{1}{2}\, \mathbf{y}^\top \mathbf{A}_\eta^{-1} \mathbf{y} \;-\; \frac{1}{2}\,\log \det \mathbf{A}_\eta \;-\; \frac{n}{2}\,\log(2\pi),$$
+where $\mathbf{A}_\eta := \mathbf{K}(\boldsymbol\eta) + \sigma_n^2 \mathbf{I}_n$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write $\mathbf{y} = \mathbf{f} + \boldsymbol\varepsilon$ with $\mathbf{f} \sim \mathcal{N}(\mathbf{0}, \mathbf{K})$ independent of $\boldsymbol\varepsilon \sim \mathcal{N}(\mathbf{0}, \sigma_n^2 \mathbf{I}_n)$. The sum of two independent Gaussian vectors is itself Gaussian with covariance equal to the sum of the covariances (see <ExternalLink href="https://www.formalstatistics.com/topics/multivariate-distributions" site="formalstatistics" topic="Multivariate Distributions" />). So $\mathbf{y} \sim \mathcal{N}(\mathbf{0}, \mathbf{A}_\eta)$, and the log density of a multivariate Normal evaluated at $\mathbf{y}$ gives the formula. $\square$
+</TheoremBlock>
+
+The formula has three terms. **Data fit:** $-\tfrac{1}{2}\, \mathbf{y}^\top \mathbf{A}_\eta^{-1} \mathbf{y}$. **Complexity penalty:** $-\tfrac{1}{2}\, \log \det \mathbf{A}_\eta$. **Constant:** $-\tfrac{n}{2}\,\log(2\pi)$. The Cholesky factorization of $\mathbf{A}_\eta = \mathbf{L}\mathbf{L}^\top$ makes the formula computable. The data-fit term factors as $\boldsymbol\beta^\top \boldsymbol\beta = \|\boldsymbol\beta\|^2$ where $\boldsymbol\beta = \mathbf{L}^{-1} \mathbf{y}$; the log-determinant factors as $2 \sum_{i=1}^n \log L_{ii}$. So one $O(n^3)$ Cholesky gives both terms — same cost as a single GP prediction.
+
+### 5.2 Occam's razor in the marginal likelihood
+
+The data-fit and complexity-penalty terms trade off in a way that gives GP regression an automatic model-selection mechanism — what MacKay 1992 christened the *Bayesian Occam's razor*.
+
+**Small $\ell$ (rough functions).** $\mathbf{K}$ is close to $\sigma_f^2 \mathbf{I}_n$ — nearly diagonal. $\log \det \mathbf{A}_\eta$ is large in magnitude (very negative complexity penalty), and the model can explain *any* data, so the data-fit term is also large in magnitude — but the complexity penalty wins. *Verdict:* the model is too flexible.
+
+**Large $\ell$ (very smooth functions).** $\mathbf{K}$ has all entries close to $\sigma_f^2$ — rank-1-plus-noise. The complexity penalty is small but the model can essentially only produce constant functions, so the data-fit term is poor. *Verdict:* too rigid.
+
+**Intermediate $\ell$.** Both terms are moderate. *Verdict:* the marginal likelihood prefers this regime, and the optimum recovers the data-correct lengthscale.
+
+This is *Occam's razor for free* — the marginal likelihood automatically prefers the simplest model that adequately explains the data, without explicit regularization or held-out validation. The mechanism is purely Bayesian: integrating $f$ out of the joint puts probability mass on the data only to the extent that the model places probability on outputs near $\mathbf{y}$. The marginal-likelihood-as-evidence framing connects directly to *Bayesian model comparison* (formalstatistics's <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-model-comparison-and-bma" site="formalstatistics" topic="Bayesian Model Comparison and BMA" />).
+
+The empirical-Bayes view: maximizing the marginal likelihood with respect to $\boldsymbol\eta$ is *type-II maximum likelihood*. Full hierarchical-Bayes — putting a prior on $\boldsymbol\eta$ and using HMC — is more principled but computationally expensive (each HMC step is one $O(n^3)$ Cholesky), and in moderately-sized data regimes the marginal-likelihood landscape is concentrated enough that point estimation suffices.
+
+### 5.3 Gradient-based optimization
+
+Maximizing the marginal likelihood is a numerical optimization problem in $\boldsymbol\eta$. The landscape is non-convex — multiple local maxima exist for non-trivial kernels. Standard recipes: (i) compute analytic gradients (closed-form, much faster than finite differences); (ii) optimize in *log-parameter space* so positivity constraints on $\sigma_f, \ell, \sigma_n > 0$ are automatic; (iii) run multiple restarts from random initializations.
+
+The analytic gradient is one application of the matrix-derivative identity $\partial_t \mathbf{A}^{-1} = -\mathbf{A}^{-1} (\partial_t \mathbf{A}) \mathbf{A}^{-1}$ and the Jacobi formula $\partial_t \log \det \mathbf{A} = \mathrm{tr}(\mathbf{A}^{-1} \partial_t \mathbf{A})$.
+
+<TheoremBlock type="proposition" number={4} title="Marginal-likelihood gradient">
+With $\mathbf{A}_\eta = \mathbf{K}(\boldsymbol\eta) + \sigma_n^2 \mathbf{I}_n$ and $\boldsymbol\alpha = \mathbf{A}_\eta^{-1} \mathbf{y}$, the partial derivative of the log marginal likelihood with respect to a hyperparameter $\eta_k$ is
+$$\frac{\partial}{\partial \eta_k}\, \log p(\mathbf{y} \mid X, \boldsymbol\eta) \;=\; \frac{1}{2}\, \mathrm{tr}\!\left[\bigl(\boldsymbol\alpha \boldsymbol\alpha^\top - \mathbf{A}_\eta^{-1}\bigr)\, \frac{\partial \mathbf{A}_\eta}{\partial \eta_k}\right].$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The log marginal likelihood has three terms: data fit $-\tfrac12 \mathbf{y}^\top \mathbf{A}_\eta^{-1} \mathbf{y}$, complexity penalty $-\tfrac12 \log \det \mathbf{A}_\eta$, and a constant. Differentiating the data-fit term:
+$$\frac{\partial}{\partial \eta_k}\!\left[-\tfrac12 \mathbf{y}^\top \mathbf{A}_\eta^{-1} \mathbf{y}\right] \;=\; \tfrac12\, \mathbf{y}^\top \mathbf{A}_\eta^{-1} \frac{\partial \mathbf{A}_\eta}{\partial \eta_k} \mathbf{A}_\eta^{-1} \mathbf{y} \;=\; \tfrac12\, \mathrm{tr}\!\left[\boldsymbol\alpha \boldsymbol\alpha^\top \frac{\partial \mathbf{A}_\eta}{\partial \eta_k}\right],$$
+using $\partial \mathbf{A}^{-1}/\partial \eta_k = -\mathbf{A}^{-1} (\partial \mathbf{A}/\partial \eta_k) \mathbf{A}^{-1}$ and trace cyclicity $\mathbf{a}^\top \mathbf{B} \mathbf{a} = \mathrm{tr}(\mathbf{a} \mathbf{a}^\top \mathbf{B})$. Differentiating the complexity-penalty term via the Jacobi formula:
+$$\frac{\partial}{\partial \eta_k}\!\left[-\tfrac12 \log \det \mathbf{A}_\eta\right] \;=\; -\tfrac12\, \mathrm{tr}\!\left[\mathbf{A}_\eta^{-1} \frac{\partial \mathbf{A}_\eta}{\partial \eta_k}\right].$$
+Combining:
+$$\frac{\partial}{\partial \eta_k}\, \log p(\mathbf{y} \mid X, \boldsymbol\eta) \;=\; \tfrac12\, \mathrm{tr}\!\left[\bigl(\boldsymbol\alpha \boldsymbol\alpha^\top - \mathbf{A}_\eta^{-1}\bigr) \frac{\partial \mathbf{A}_\eta}{\partial \eta_k}\right]. \qquad \square$$
+</TheoremBlock>
+
+The cost of one gradient evaluation is $O(n^3)$ for the Cholesky plus $O(n^2)$ per hyperparameter for the trace term — same as one function evaluation. Each L-BFGS-B step costs one Cholesky; a typical optimization run is $30$–$100$ Choleskys.
+
+The non-convexity requires care. Two pathologies recur. The *flat-likelihood pathology*: when $n$ is small, multiple distant $(\sigma_f, \ell)$ combinations can produce comparable marginal likelihoods. The *signal-noise confounding pathology*: at optima where $\sigma_f$ is small and $\sigma_n$ large, the model attributes all variation to noise; vice versa otherwise. The mitigation is multi-restart optimization: 5–10 random log-space initializations, optimize each to convergence, retain the best.
+
+### 5.4 Worked example: recovering hyperparameters from data
+
+Returning to the §3 worked example with $n = 30$ training points (the dense set). The data-generating hyperparameters were $\sigma_f = 1.0$, $\ell = 0.6$, $\sigma_n = 0.15$. The §5 question is: with no knowledge of the truth, can the marginal likelihood recover them from the data alone?
+
+Figure 5 has three panels. Panel (a) — marginal-likelihood landscape: a 2D heatmap of $\log p(\mathbf{y} \mid X, \boldsymbol\eta)$ as a function of $(\log \ell, \log \sigma_n)$ at the optimal $\hat \sigma_f$ obtained by profiling. The peak is unambiguous; the contours show the characteristic banana shape with $\ell$ and $\sigma_n$ partially confounded. Panel (b) — recovered posterior with marginal-likelihood-optimized hyperparameters: nearly identical to the §3 hand-set posterior. Panel (c) — optimization curves for five random restarts: all five converge to the same neighborhood despite different starting points.
+
+<Figure
+  src="/images/topics/gaussian-processes/05_marginal_likelihood_optimization.png"
+  alt="Three panels in a 1×3 layout. (a) marginal-likelihood landscape: 2D viridis heatmap over (log ℓ, log σ_n) at profiled σ_f, with recovered optimum red star and true generating values black plus. (b) recovered GP posterior on dense data using MLE-optimized hyperparameters — predictive mean blue, ±2σ band light blue, truth red dashed. (c) optimization curves: five random-restart L-BFGS-B trajectories of log marginal likelihood vs iteration, all converging to the same neighborhood near 2.25."
+  caption="The peak is unambiguous on this problem; the contours show the characteristic banana shape with ℓ and σ_n partially confounded along a soft ridge. The marginal-likelihood-optimized hyperparameters reproduce the §3 hand-set posterior closely. The five L-BFGS-B restarts all converge to the same neighborhood despite different starting points."
+/>
+
+<GPMarginalLikelihood client:visible />
+
+The recovered hyperparameters are approximately $(\hat \sigma_f, \hat \ell, \hat \sigma_n) \approx (0.66, 0.68, 0.11)$ — within $\sim 25\%$ of the true generating values $(1.0, 0.6, 0.15)$, the right ballpark given the small sample size. With more data ($n = 100$ or $n = 1000$), the optimum sharpens and the recovered values converge to the true ones, as the consistency theory of type-II MLE predicts.
+
+The §5 workflow is the standard recipe for fitting a GP in practice: pick a kernel form (§4), maximize the marginal likelihood for hyperparameters (§5), use the resulting posterior for prediction (§3). For moderate $n$ this is the entire pipeline. When $n$ grows large enough that the $O(n^3)$ Cholesky becomes prohibitive, §6 offers three structural responses.
+
+## 6. Scaling, neighbors, and limits
+
+§3 ended with the $O(n^3)$ Cholesky bottleneck; §5's marginal-likelihood optimization is dozens of full Choleskys per fit, multiplying the bottleneck across the optimization loop. For exact GP regression on a single CPU, the practical ceiling is around $n \approx 10{,}000$ — beyond that, both wall-clock time and the $O(n^2)$ memory footprint become prohibitive, and conditioning degrades to the point where ever-larger jitter is needed. The literature has developed several structural responses; this section surveys three. §6.1 covers the *Nyström approximation* (the spectral baseline, earning its place via the [PCA and Low-Rank Approximation](/topics/pca-low-rank) prerequisite). §6.2 covers *sparse variational GPs* (the modern workhorse, earning its place via the [Variational Inference](/topics/variational-inference) prerequisite). §6.3 covers *random Fourier features*. §6.4–§6.6 lay out neighbors and limits.
+
+### 6.1 Nyström approximation
+
+The Mercer expansion of §2.4 wrote a kernel as $k(\mathbf{x}, \mathbf{x}') = \sum_{i=1}^\infty \lambda_i \psi_i(\mathbf{x}) \psi_i(\mathbf{x}')$. Truncating at the top $m$ eigenvalues gives a rank-$m$ kernel approximation. The *Nyström approximation* is the practical version: pick $m \ll n$ *inducing inputs* $Z = \{\mathbf{z}_1, \ldots, \mathbf{z}_m\}$ (random subsample of $X$, or $k$-means clustering of $X$), define the inducing-block $\mathbf{K}_{mm}$, the cross-block $\mathbf{K}_{nm}$, and the training-block $\mathbf{K}$, and replace $\mathbf{K}$ with the rank-$m$ surrogate
+$$\hat{\mathbf{K}} \;:=\; \mathbf{K}_{nm}\, \mathbf{K}_{mm}^{-1}\, \mathbf{K}_{nm}^\top.$$
+Equivalently — the connection to [PCA and Low-Rank Approximation](/topics/pca-low-rank) — $\hat{\mathbf{K}}$ is the projection of $\mathbf{K}$ onto the column space of $\mathbf{K}_{nm}$. The truncation error is controlled by the discarded tail of the kernel-operator spectrum, which decays exponentially for analytic kernels and polynomially for the Matérn family; Drineas-Mahoney 2005 makes this precise.
+
+Predictions through Nyström use $\hat{\mathbf{K}}$ in place of $\mathbf{K}$ with a Woodbury-identity simplification:
+$$\hat{\boldsymbol\mu}_* \;=\; \mathbf{K}_{*m}\,(\mathbf{K}_{mm} + \mathbf{K}_{nm}^\top \mathbf{K}_{nm} / \sigma_n^2)^{-1}\, \mathbf{K}_{nm}^\top \mathbf{y} / \sigma_n^2.$$
+Cost: $O(nm^2 + m^3)$ per fit, $O(nm)$ memory.
+
+The structural cost is that Nyström is a *kernel-matrix* approximation, not a *probabilistic-model* approximation. The implied modified GP has a degenerate kernel matrix and produces over-confident predictive variance. For predictions where uncertainty calibration matters, Nyström's variance is unreliable. Quiñonero-Candela and Rasmussen 2005 develop this critique in detail; SVGP was developed in response.
+
+### 6.2 Sparse variational GPs (SVGP)
+
+The modern answer is to wrap the inducing-point construction in the variational machinery of [Variational Inference](/topics/variational-inference). The construction is due to Titsias 2009; mini-batch SGD by Hensman et al. 2013 scales it to $n \sim 10^6$.
+
+Augment the model with $\mathbf{u} = (f(\mathbf{z}_1), \ldots, f(\mathbf{z}_m))^\top$. The variational family is parametrized over $\mathbf{u}$ alone: $q(\mathbf{u}) = \mathcal{N}(\mathbf{u} \mid \mathbf{m}, \mathbf{S})$, with $q(\mathbf{f}, \mathbf{u}) = p(\mathbf{f} \mid \mathbf{u})\, q(\mathbf{u})$. This factorization embeds the inducing-point assumption directly into the variational family. The ELBO becomes
+$$\mathrm{ELBO}(\mathbf{m}, \mathbf{S}, \boldsymbol\eta, Z) \;=\; \sum_{i=1}^n \mathbb{E}_{q(f_i)}\!\left[\log p(y_i \mid f_i)\right] \;-\; \mathrm{KL}\bigl(q(\mathbf{u})\, \|\, p(\mathbf{u})\bigr),$$
+with the data-fit term factorizing across training points (one univariate Gaussian expectation per point), allowing mini-batch stochastic gradients. Per-step cost: $O(nm^2 + m^3)$ full-batch, $O(bm^2 + m^3)$ at mini-batch size $b$.
+
+The variational predictive distribution is *calibrated*: overly-confident predictions are penalized by the KL term, and the construction generalizes immediately to non-Gaussian likelihoods (Bernoulli for classification, Poisson for counts) by replacing the data-fit term with the appropriate expected log-likelihood. SVGP is the substrate of essentially all modern scalable-GP work.
+
+### 6.3 Random Fourier features
+
+The third response sidesteps inducing points entirely. *Random Fourier features* (Rahimi-Recht 2007) approximate a stationary kernel by an explicit finite-dimensional inner product. Bochner's theorem says a stationary kernel is the inverse Fourier transform of a non-negative spectral density $p(\boldsymbol\omega)$:
+$$\tilde k(\boldsymbol\delta) \;=\; \int p(\boldsymbol\omega)\, \cos(\boldsymbol\omega^\top \boldsymbol\delta)\, d\boldsymbol\omega.$$
+Treating $p(\boldsymbol\omega)$ as a probability density, Monte Carlo estimation gives
+$$k(\mathbf{x}, \mathbf{x}') \;\approx\; \boldsymbol\phi(\mathbf{x})^\top \boldsymbol\phi(\mathbf{x}'), \qquad \boldsymbol\phi(\mathbf{x})_i = \sqrt{\frac{2 \sigma_f^2}{D}} \cos(\boldsymbol\omega_i^\top \mathbf{x} + b_i),$$
+with $\boldsymbol\omega_i \sim p(\boldsymbol\omega)$ and $b_i \sim \mathrm{Uniform}(0, 2\pi)$. For squared-exponential, $p(\boldsymbol\omega) = \mathcal{N}(\mathbf{0}, \mathbf{I}/\ell^2)$. With features in hand, the problem becomes Bayesian linear regression on $\boldsymbol\phi(\mathbf{x})$ — exactly the §1 parametric model that motivated GPs in the first place, except now the features are randomly sampled to approximate a target kernel rather than chosen by hand.
+
+Cost: $O(nD^2 + D^3)$. Error decays as $D^{-1/2}$. For tasks with moderate kernel hyperparameters, $D \approx 500$–$5000$ recovers near-exact predictive accuracy at training-set sizes that exact GP cannot touch.
+
+The interactive component below sweeps all three approximations against the exact GP baseline at $n = 200$ training points (scaled down from the brief's $n = 1500$ for browser-side computation). Slide $m$ to watch Nyström and SVGP converge to the exact GP as $m \to n$; toggle methods on/off to compare predictive bands; read fit-time off the per-method labels.
+
+<GPScalingComparison client:visible />
+
+### 6.4 Within formalML
+
+GPs sit at the junction of several formalML topics.
+
+**[PCA and Low-Rank Approximation](/topics/pca-low-rank).** The Nyström approximation of §6.1 is principal-component analysis applied to the kernel matrix.
+
+**[Spectral Theorem](/topics/spectral-theorem).** The Mercer expansion of §2.4 is the spectral theorem for self-adjoint compact integral operators. Eigenvalue decay (exponential for analytic kernels, polynomial for Matérn) controls Nyström's convergence rate and RFF's required feature count.
+
+**[Variational Inference](/topics/variational-inference).** The SVGP construction of §6.2 is variational inference applied to GPs. The ELBO of `variational-inference` is the exact objective Titsias 2009 maximizes.
+
+**[KL Divergence](/topics/kl-divergence).** The KL term in the SVGP ELBO is reverse KL between two Gaussians, with a closed-form via the multivariate-Normal KL identity.
+
+**Forward links to planned T5 topics.** GPs are the substrate, in different ways, of:
+
+- **Bayesian Neural Networks** *(coming soon)*. The infinite-width limit of a BNN with i.i.d. Gaussian weight priors converges to a Gaussian process (Neal 1996), with a kernel that depends on the activation function and the layer-wise prior variances.
+- **Neural Tangent Kernel** *(coming soon)*. In the infinite-width-and-zero-learning-rate limit of gradient-descent training, the resulting predictive function is *exactly* a GP with a specific kernel (Jacot et al. 2018) computable in closed form.
+- **Meta-Learning** *(coming soon)*. Neural Processes (Garnelo et al. 2018) are amortized GPs: the variational posterior over $\mathbf{u}$ is the output of an encoder network conditioned on a context set.
+- **Bayesian Optimization** *(coming soon, planned T8)*. The GP is the surrogate model in nearly every modern Bayesian optimization framework.
+- **Deep Kernel Learning** *(planned T5)*. Wilson et al. 2016 proposed a neural network as a feature extractor whose output is fed into a GP kernel.
+
+### 6.5 Cross-site connections
+
+**formalstatistics.** The multivariate-Normal density and Gaussian-Gaussian conjugacy that drive §3's closed-form posterior are the substrate of every formalstatistics Bayesian-conjugate-prior treatment. The marginal likelihood of §5 is exactly the *evidence* in Bayesian model comparison, and type-II MLE is the empirical-Bayes specialization of the full hierarchical-Bayes treatment. Fully-Bayesian inference over GP hyperparameters via HMC is the natural extension and is precisely what <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="Bayesian Computation and MCMC" /> covers.
+
+**formalcalculus.** Bochner's theorem of §6.3 is harmonic analysis grounded in the Fourier transform machinery of formalcalculus. The Jacobi formula $\partial \log \det \mathbf{A} / \partial t = \mathrm{tr}(\mathbf{A}^{-1} \partial \mathbf{A} / \partial t)$ that drives §5.3's gradient is a multivariable-calculus identity that appears across statistics and ML.
+
+### 6.6 Limits and what GPs can't do
+
+GPs are an extremely capable function-space prior, but they have structural limits worth knowing about up front.
+
+**Computational scaling, even with approximations.** Exact GPs are $O(n^3)$, capped near $n \approx 10^4$. Sparse approximations push this to $n \sim 10^6$ at the cost of a structural-modeling assumption (the function is well-summarized by $m$ inducing points). None approach the $10^9$-training-point scale of modern deep-learning regression.
+
+**Input dimensionality.** Standard GP kernels suffer from the curse of dimensionality. The "effective" training-set size for prediction at any test input drops with dimension. Practical GP regression past $d \approx 20$–$50$ requires either a learned feature representation (deep kernel learning), an additive-kernel structural prior, or a different model class.
+
+**Non-Gaussian likelihoods.** Conjugacy fails for Bernoulli, Poisson, Student-$t$, and most other useful likelihoods. Approximate inference is required — Laplace, expectation propagation, or variational. The §6.2 SVGP machinery is the modern recipe.
+
+**Kernel choice as inductive bias.** A wrong kernel choice gives wrong predictions, and the marginal likelihood does not protect against gross misspecification. Marginal-likelihood comparison between candidate kernels is the standard mitigation.
+
+**Stationarity assumptions.** Most practical kernels are stationary. Many real-world functions are not. Non-stationary GP kernels exist but require extra machinery.
+
+**No causal structure.** The GP's "prior over functions" has no notion of cause and effect. A GP fit to observational data cannot answer counterfactual questions any better than the observational regression it represents.
+
+GPs are, despite all this, the workhorse function-space prior for moderate-scale ML, the canonical Bayesian regression model, the natural surrogate for Bayesian optimization, and the conceptual scaffold for understanding the infinite-width-network correspondence. The function-space view they introduce — *place the prior on the function, not on the parameters* — has become the default framing for thinking about uncertainty in regression, even in settings where the underlying machinery is not literally a GP.

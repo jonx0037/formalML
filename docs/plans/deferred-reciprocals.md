@@ -483,20 +483,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Fourier neural operators learn mappings between L²(ℝᵈ) spaces. The completeness (Riesz-Fischer) and inner product structure of L² are prerequisites for their well-definedness._
 
-## When `formalml/gaussian-processes` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-foundations-and-prior-selection** declares `formalmlConnections` → `gaussian-processes` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _GPs are the infinite-dimensional generalization of Topic 25's finite-dimensional Bayesian framework: the prior is over functions rather than parameters, and the posterior is a conditional MVN (Topi…_
-- **formalStatistics/continuous-distributions** declares `formalmlConnections` → `gaussian-processes` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Normal distribution is the marginal of every finite collection of GP outputs. The GP prior is an infinite-dimensional Gaussian._
-- **formalStatistics/multivariate-distributions** declares `formalmlConnections` → `gaussian-processes` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _A GP defines a joint MVN over function values at any finite set of inputs. The conditional MVN formula from §4 IS the GP prediction formula — conditional mean = posterior mean, conditional covarian…_
-
 ## When `formalml/generalization-bounds` ships
 
 Add the reciprocal pointer back to:
