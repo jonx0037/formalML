@@ -43,6 +43,10 @@ pnpm build                                          # Production build (runs pag
 pnpm preview                                        # Preview production build
 pnpm verify:nonparametric-ml                        # Numerical regression tests for src/components/viz/shared/nonparametric-ml.ts vs notebook printed outputs
 pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md, docs/plans/cross-site-audit-report.md, and docs/plans/audit-output/*.json — don't hand-edit those files.
+
+# Notebook Python — each topic ships its own .venv
+cd notebooks/<topic-slug> && .venv/bin/python <script>.py                                  # Run a notebook-local Python script (no project-wide venv)
+cd notebooks/<topic-slug> && nohup .venv/bin/python <script>.py </dev/null >out.log 2>err.log &   # Detached for long PyMC/BART precomputes (~6–15 min); </dev/null avoids stdin blocking
 ```
 
 ## Preview before publish (non-negotiable)
@@ -126,7 +130,17 @@ The cross-site infrastructure is documented in detail in [docs/plans/cross-site-
 - Shared color scales in `viz/shared/colorScales.ts`
 - Shared types in `viz/shared/types.ts`
 - Use `.style()` for CSS custom properties in D3 SVG elements (not `.attr("style", ...)`)
-- Hydration: `client:visible` defers React mount until the component scrolls into view. Until then `useResizeObserver` returns `width = 0` and `useD3` paints nothing. When testing via `preview_eval`, scroll the viz into view (`el.scrollIntoView({block: 'center'})`) before inspecting children.
+- Hydration: `client:visible` defers React mount until the component scrolls into view. Until then `useResizeObserver` returns `width = 0` and `useD3` paints nothing. When testing via `preview_eval`, scroll the viz into view (`el.scrollIntoView({block: 'center'})`) before inspecting children. Some headless tools never fire IntersectionObserver — to verify content programmatically, select the `<astro-island>` element (e.g., `const isl = document.querySelector('astro-island')`), dynamically import the bundle (`isl.getAttribute('component-url')`) and the Astro client renderer (`isl.getAttribute('renderer-url')`), and call `renderer(isl)(Comp, '{}', {}, { client: 'visible' })`.
+
+**Shared API quick reference:**
+
+- `useResizeObserver<HTMLDivElement>()` — no runtime arguments; destructure `{ ref, width, height }`. Don't pass an existing ref.
+- `useD3((svg) => …, deps)` — returns the ref to attach to `<svg>`. Errors thrown inside the callback are caught and logged as `[useD3] Render failed:`; check the console for that exact prefix (trailing colon included) when an SVG renders empty.
+- `gpPredict(XTrain, yTrain, XTest, kernelFn, sigmaN, jitter?)` from `gaussian-processes.ts` — `kernelFn: (X1, X2) => number[][]` is a function (not an options object). Result has `mean`, `cov`, `sd`, `L` — no `variance` field; use `sd[i]^2 + sigmaN^2` for predictive variance.
+
+**Sample-data dual-location:** when a viz fetches precomputed JSON at runtime (e.g., `fetch('/sample-data/<slug>/pareto_k_n100.json')` — concrete filename, not a glob; `fetch` won't resolve `*.json`), the file must live in **both** `src/data/sampleData/<slug>/` (tracked, target of the precompute script) **and** `public/sample-data/<slug>/` (Astro serves only `public/`). Copy after every regen. Long-term this should be automated — either as a `postbuild` step in the precompute script (`shutil.copytree(..., dirs_exist_ok=True)`) or as a `pnpm sync:sample-data` package script — but the manual copy is the documented current state until that lands.
+
+**GP LOO closed form:** for any future Gaussian-process LOO computation, prefer Rasmussen & Williams (2006) eq. 5.12–5.13 — single Cholesky factorization plus `choleskyInverse` from `gaussian-processes.ts` — over a refit-per-point loop. Python reference: `notebooks/.../serialize_for_viz.py::gp_marginal_loo_pointwise`. TS reference: `bayesian-ml-stacking.ts::looLogPredictiveGP`. The naive refit version is O(n⁴) and freezes the browser at n ≥ ~150.
 
 ### Images & figures
 
@@ -172,9 +186,13 @@ import Figure from '../../components/ui/Figure.astro';
 
 Bare markdown `![alt](path)` images still render correctly (mobile-safe via global CSS), but prefer `<Figure>` when a caption adds value. Migrate legacy images into `src/assets/topics/` opportunistically as topics are revisited.
 
+**Topic figure path (in practice):** all five recently-shipped topics use `public/images/topics/<slug>/0N_*.png` with a string `src`. The `src/assets/topics/` imported-asset pattern documented above is the documented forward-direction but not yet adopted; match the existing topics unless you're migrating one.
+
 ### References
 
 Every entry in the `references` frontmatter array **must** have a `url` field — a DOI link (`https://doi.org/...`) for journal articles and books with DOIs, a proceedings URL for conference papers (NeurIPS, ICML, etc.), or an arXiv link as a last resort. The layout renders references with URLs as clickable links and those without as plain text; missing URLs are a content gap, not a style choice.
+
+The `type` field is a strict enum: `paper | book | course | blog | video`. Use `book` for book chapters / edited volumes; `paper` for journal articles, working papers, arXiv preprints, and conference proceedings; `course` for lecture notes; `blog` for working web posts; `video` for talks. Anything else (e.g., `incollection`) fails content-collection schema validation at build time.
 
 ### Content metrics spreadsheet
 
