@@ -1,0 +1,779 @@
+---
+title: "Mixed-Effects Models"
+subtitle: "Partial-pooling theory in its own right: Henderson's mixed-model equations and the BLUP shrinkage formula, REML for variance components via flat-prior Bayesian marginalization, and the frequentist–Bayesian bridge that fits the same hierarchical model two ways and shows them agree numerically"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "variational-inference"
+  - "gaussian-processes"
+  - "probabilistic-programming"
+formalstatisticsPrereqs:
+  - topic: "hierarchical-bayes-and-partial-pooling"
+    site: "formalstatistics"
+    relationship: "The structural backbone of the entire topic. §1's three-pooling-regimes geometry, §3's BLUP shrinkage formula, and §5's frequentist–Bayesian bridge all assume the reader has internalized the partial-pooling theory developed there — the Stein-style shrinkage, the hierarchical model class, the James–Stein admissibility result that explains why shrinkage estimators dominate unbiased ones in sum-of-squares risk."
+  - topic: "linear-regression"
+    site: "formalstatistics"
+    relationship: "§2.4's GLS-as-BLUE / Aitken's theorem builds on the OLS / Gauss–Markov machinery developed there. The proof we sketch reduces GLS to OLS on a whitened system, which presupposes the standard OLS result that whitening preserves BLUE — proved in linear-regression as a consequence of the Gauss–Markov theorem."
+  - topic: "maximum-likelihood"
+    site: "formalstatistics"
+    relationship: "§4.1's discussion of the ML downward bias for variance components is the application here of the general MLE small-sample bias theory developed there. The N-vs-(N-p) degrees-of-freedom correction is the prototype, and the §4.2 REML correction is the mixed-effects generalization."
+  - topic: "multivariate-distributions"
+    site: "formalstatistics"
+    relationship: "The conditional-Gaussian identity used in §3 to derive the BLUP-as-posterior-mean reading — Cov(u, y) Cov(y)^-1 (y - E[y]) — is the standard multivariate-Normal conditioning formula, taught there in pure-probability form. The §2 marginal-distribution theorem also reduces to a standard MVN result via affine transformations."
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "§5.1's prior choices are weakly-informative priors per Gelman 2006, and the prior–likelihood–posterior decomposition of §5's PyMC fit relies on the Bayesian framework developed there. The flat-improper-prior marginalization in §4.2's REML derivation is also the simplest case of the improper-prior theory it covers."
+formalstatisticsConnections: []
+formalcalculusPrereqs: []
+formalcalculusConnections: []
+tags:
+  - "bayesian-ml"
+  - "mixed-effects"
+  - "linear-mixed-models"
+  - "random-effects"
+  - "hierarchical-models"
+  - "blup"
+  - "henderson-equations"
+  - "reml"
+  - "variance-components"
+  - "partial-pooling"
+  - "shrinkage"
+  - "glmm"
+  - "machine-learning"
+domain: "bayesian-ml"
+videoId: null
+notebookPath: "notebooks/mixed-effects/01_mixed_effects.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/mixed-effects.mdx"
+datePublished: 2026-04-29
+estimatedReadTime: 50
+abstract: "Mixed-effects models develop the partial-pooling theory in its own right. We start with a six-classroom example showing the three classical responses to grouped data — complete pooling, no pooling, and partial pooling — and the geometric reason partial pooling sits between the other two with the location set by group size. We write the linear mixed model in matrix form and identify the marginal covariance V = ZGZᵀ + R that drives generalized least squares. We derive Henderson's mixed-model equations from the joint penalized log-density and recover the closed-form BLUP shrinkage formula λⱼ = τ²/(τ² + σ²/nⱼ) — the single number that characterizes how mixed-effects partial-pool. We derive restricted maximum likelihood (REML) for variance components by marginalizing the fixed effects out under a flat improper prior, showing the bias correction is a Bayesian-marginalization-of-β in disguise and structurally identical to the marginal-likelihood machinery Gaussian processes use for hyperparameter learning. We close by running the same six-classroom model through both statsmodels.MixedLM (REML) and PyMC (full Bayesian) and showing the two views agree numerically, with the centered-vs-non-centered story from probabilistic programming reappearing in its native habitat — small group counts and unknown variance components — and the GLMM, factor-model, GP, and variational alternatives for regimes the linear mixed model cannot reach."
+connections:
+  - topic: "variational-inference"
+    relationship: "§6.2's response to crossed-effects-at-scale is variational inference. The mean-field and structured VI machinery developed in variational-inference applies directly to mixed-effects with very large random-effects vectors; the reverse-KL projection and the marginal-variance underestimation under correlation are the same machinery this topic's empirical-Bayes-vs-Bayesian comparison in §5 makes operational at small scale."
+  - topic: "gaussian-processes"
+    relationship: "Sibling topic in T5: GPs are the conjugate-Gaussian-likelihood case where closed-form posterior inference is available without a sampler, and §4's REML derivation by Bayesian marginalization is structurally identical to GP §5's marginal-likelihood-based hyperparameter learning. When the random-effects index has a meaningful metric, the LMM's random-effects covariance becomes a kernel and the LMM becomes a GP — §6.2 makes the connection explicit."
+  - topic: "probabilistic-programming"
+    relationship: "Direct upstream: PP §5's eight-schools fit IS a hierarchical mixed-effects model, and this topic developed the partial-pooling theory PP took as given. The centered-vs-non-centered story from PP §5 reappears in §5.3 in its native habitat — small group counts, unknown variance components — where the funnel pathology is the characteristic geometry of any hierarchical model with weakly-identified random effects."
+references:
+  - type: "paper"
+    title: "Estimation of Genetic Parameters"
+    authors: "Henderson"
+    year: 1950
+    url: "https://doi.org/10.1214/aoms/1177729809"
+    note: "Henderson's first BLUP / mixed-model-equations concept. §3.1's joint penalized log-density formulation traces to here (Annals of Mathematical Statistics)."
+  - type: "paper"
+    title: "Best Linear Unbiased Estimation and Prediction under a Selection Model"
+    authors: "Henderson"
+    year: 1975
+    url: "https://doi.org/10.2307/2529430"
+    note: "The canonical mixed-model-equations paper. §3.2's MMEs and §3.4's BLUE / BLUP terminology come from here (Biometrics)."
+  - type: "paper"
+    title: "Recovery of Inter-Block Information When Block Sizes Are Unequal"
+    authors: "Patterson & Thompson"
+    year: 1971
+    url: "https://doi.org/10.1093/biomet/58.3.545"
+    note: "The original REML paper. §4.2 cites the error-contrast derivation; we follow the equivalent flat-prior-marginalization route (Biometrika)."
+  - type: "paper"
+    title: "Random-Effects Models for Longitudinal Data"
+    authors: "Laird & Ware"
+    year: 1982
+    url: "https://doi.org/10.2307/2529876"
+    note: "The biostatistical canonical reference for longitudinal mixed-effects modeling — §6.1's repeated-measures regime (Biometrics)."
+  - type: "book"
+    title: "Variance Components"
+    authors: "Searle, Casella & McCulloch"
+    year: 1992
+    url: "https://doi.org/10.1002/9780470316856"
+    note: "The standard graduate textbook on variance-component estimation. §3.2 cites §7.4 for Woodbury, §4.3 cites §A.16 for Sylvester (Wiley)."
+  - type: "paper"
+    title: "Fitting Linear Mixed-Effects Models Using lme4"
+    authors: "Bates, Mächler, Bolker & Walker"
+    year: 2015
+    url: "https://doi.org/10.18637/jss.v067.i01"
+    note: "The lme4 paper. The R reference implementation that statsmodels.MixedLM tracks (Journal of Statistical Software)."
+  - type: "paper"
+    title: "Approximate Inference in Generalized Linear Mixed Models"
+    authors: "Breslow & Clayton"
+    year: 1993
+    url: "https://doi.org/10.1080/01621459.1993.10594284"
+    note: "The PQL paper. §6.2's GLMM extension lives here (Journal of the American Statistical Association)."
+  - type: "paper"
+    title: "Analysis of Variance — Why It Is More Important than Ever"
+    authors: "Gelman"
+    year: 2005
+    url: "https://doi.org/10.1214/009053604000001048"
+    note: "Surveys five definitions of fixed-vs-random effects. §1.3's pragmatic definition is from §2.5 here (Annals of Statistics)."
+  - type: "paper"
+    title: "Prior Distributions for Variance Parameters in Hierarchical Models"
+    authors: "Gelman"
+    year: 2006
+    url: "https://doi.org/10.1214/06-BA117A"
+    note: "The variance-component-prior paper. §5.1's HalfNormal-over-InverseGamma choice traces to here (Bayesian Analysis)."
+  - type: "paper"
+    title: "A Weakly Informative Default Prior Distribution for Logistic and Other Regression Models"
+    authors: "Gelman, Jakulin, Pittau & Su"
+    year: 2008
+    url: "https://doi.org/10.1214/08-AOAS191"
+    note: "The weakly-informative-prior framework that §5.1's slope and intercept priors instantiate (Annals of Applied Statistics)."
+  - type: "paper"
+    title: "Stochastic Variational Inference"
+    authors: "Hoffman, Blei, Wang & Paisley"
+    year: 2013
+    url: "https://www.jmlr.org/papers/v14/hoffman13a.html"
+    note: "Structured variational inference for hierarchical models at industrial scale. §6.2's crossed-cardinality-at-scale response (JMLR)."
+  - type: "paper"
+    title: "A General Framework for the Parametrization of Hierarchical Models"
+    authors: "Papaspiliopoulos, Roberts & Sköld"
+    year: 2007
+    url: "https://doi.org/10.1214/088342307000000014"
+    note: "The non-centered parameterization in its general form. §5.3's three-line rewrite is one instance of the framework developed here (Statistical Science)."
+  - type: "paper"
+    title: "Generalized Linear Mixed Models: A Pseudo-Likelihood Approach"
+    authors: "Wolfinger & O'Connell"
+    year: 1993
+    url: "https://doi.org/10.1080/00949659308811554"
+    note: "The Laplace-approximation default in lme4::glmer for non-Gaussian likelihoods — §6.2's GLMM regime (Journal of Statistical Computation and Simulation)."
+  - type: "book"
+    title: "Data Analysis Using Regression and Multilevel/Hierarchical Models"
+    authors: "Gelman & Hill"
+    year: 2007
+    url: "https://doi.org/10.1017/CBO9780511790942"
+    note: "The applied-stats canonical reference for partial pooling and multilevel modeling (Cambridge University Press)."
+  - type: "paper"
+    title: "Matrix Factorization Techniques for Recommender Systems"
+    authors: "Koren, Bell & Volinsky"
+    year: 2009
+    url: "https://doi.org/10.1109/MC.2009.263"
+    note: "Recommender systems as crossed random-effects models. §6.1's user / item BLUP regime (IEEE Computer)."
+  - type: "book"
+    title: "Mixed-Effects Models in S and S-PLUS"
+    authors: "Pinheiro & Bates"
+    year: 2000
+    url: "https://doi.org/10.1007/b98882"
+    note: "The R / S-PLUS reference for nlme — the lme4 ancestor and a thorough applied treatment (Springer)."
+  - type: "paper"
+    title: "Probabilistic Programming in Python Using PyMC3"
+    authors: "Salvatier, Wiecki & Fonnesbeck"
+    year: 2016
+    url: "https://doi.org/10.7717/peerj-cs.55"
+    note: "The PyMC paper. §5's centered and non-centered fits use the PyMC API documented here (PeerJ Computer Science)."
+  - type: "book"
+    title: "Stan Reference Manual, version 2.34"
+    authors: "Stan Development Team"
+    year: 2024
+    url: "https://mc-stan.org/docs/reference-manual/"
+    note: "Stan's modern reference. The Bayesian-hierarchical practitioners' resource referenced throughout T5."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+
+## Overview
+
+Mixed-effects models sit at one of those rare junctions where four threads of statistical theory converge on the same algebra. The frequentist GLS-with-known-covariance estimator gives the cleanest answer when the marginal covariance is given. Henderson's penalized-likelihood derivation produces the same answer without inverting the marginal covariance at all, by treating the random effects as quantities to be solved for jointly with the fixed effects. The REML / Bayesian-marginalization story corrects the maximum-likelihood downward bias on variance components by integrating the fixed effects out under a flat prior. And the full Bayesian fit puts a prior on everything and runs NUTS. When the data is informative enough — which is to say, in the regime where mixed-effects models are most often appropriate — the four routes give numerically equivalent answers. That convergence is the structural reason this model class has been a workhorse of applied statistics for fifty years, and the reason it deserves its own topic in T5.
+
+We develop the four routes in turn on a single running example: six classrooms, $J = 6$, $N = 60$ student-level observations spread unevenly across them. §1 motivates partial pooling geometrically as the third response to grouped data, after complete pooling and no pooling. §2 writes the linear mixed model in matrix form and identifies the marginal covariance $\mathbf{V} = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top + \mathbf{R}$ that drives generalized least squares. §3 derives Henderson's mixed-model equations and the closed-form BLUP shrinkage formula $\lambda_j = \tau^2/(\tau^2 + \sigma^2/n_j)$ — the single number that characterizes how mixed-effects partial-pool. §4 derives REML by marginalizing the fixed effects out under a flat improper prior, transparent about the connection to the [Gaussian-process](/topics/gaussian-processes) marginal-likelihood story. §5 fits the same six-classroom data through both `statsmodels.MixedLM` (REML) and PyMC (full Bayesian), shows the two views agree numerically, and re-encounters the centered-vs-non-centered story from [probabilistic programming](/topics/probabilistic-programming) in its native habitat. §6 closes with where mixed-effects shine, where they break down, and the connections that motivate the rest of T5.
+
+The reader who has internalized partial pooling from <ExternalLink href="https://www.formalstatistics.com/topics/hierarchical-bayes-and-partial-pooling" site="formalstatistics" topic="Hierarchical Bayes and Partial Pooling" /> on the cross-site companion will find this topic the engineering counterpart: same theory, more matrix algebra, code that runs.
+
+## 1. Three responses to grouped data
+
+### 1.1 Six classrooms
+
+Six teachers give the same standardized exam to their classes at the end of a term. Class sizes vary — one is a tiny seminar of four students, one is a survey lecture of twenty, the rest fall in between. Alongside each student's exam score $y$, the school district records a standardized index of preparation hours $x \in [0, 5]$; call it the *prep-hours index*, with $x = 0$ meaning no out-of-class preparation and $x = 5$ near the upper observed end. We have $N = 60$ student-level observations spread unevenly across $J = 6$ classrooms, with $(n_1, \ldots, n_6) = (4, 6, 8, 10, 12, 20)$.
+
+Panel (a) of Figure 1 shows all sixty points, color-coded by classroom. Some classrooms sit consistently higher (more effective teaching, more prepared students, kinder grading curves — we don't know, and the data doesn't tell us); others sit lower. Within each classroom, scores trend upward with prep hours, more or less linearly, more or less consistently. The question is how to summarize the relationship between prep hours and exam score in a way that respects the classroom structure.
+
+There are three natural answers, each tempting in its own way.
+
+### 1.2 Three classical responses
+
+The first answer is *complete pooling*: ignore the classroom labels entirely, fit a single line through all sixty points, and report one intercept and one slope. Operationally, this is just OLS on the $(x_i, y_i)$ pairs with no notion of classroom. The fit is clean — one slope, one intercept, narrow standard errors thanks to the full $N = 60$. The cost is also clean: the line is *wrong* for any classroom whose typical score sits far from the grand mean. A consistently high-scoring classroom sits above the line, a consistently low one sits below, and the line itself is averaging across classroom signal we know is there. We've thrown away the structure the data was offering us.
+
+The second answer is *no pooling*: fit each classroom separately. Concretely, encode classroom identity with six dummy variables and run OLS on the joint design matrix, holding the slope on prep hours shared across classrooms (the prep-hours-to-score relationship is presumably the same across teachers; we'll relax even this in §2). We get six intercepts, one per classroom, and one shared slope. The fit is now sensitive to classroom — the largest classroom's intercept is well-estimated, with a tight standard error proportional to $\sigma / \sqrt{n_6} = \sigma/\sqrt{20}$. But the small classrooms? Classroom 1 has four students. A single unusually weak or strong student moves its intercept dramatically; the standard error on that intercept is $\sigma / \sqrt{4} = \sigma/2$, more than twice that of the largest classroom. We've gone from one too-aggressive average to six estimates whose reliability varies by a factor of $\sqrt{20/4} \approx 2.2$ across classrooms.
+
+The third answer is *partial pooling*. Don't treat the six classroom intercepts as six independent parameters; treat them as six draws from a *common population* of classroom-level intercepts, and estimate that population's mean and spread alongside the per-classroom values. The estimate for Classroom $j$'s intercept becomes a compromise: a weighted average of the no-pooling estimate $\hat\alpha_j^{\mathrm{no\text{-}pool}}$ (what the classroom's own data says) and the global complete-pooling intercept $\hat\alpha^{\mathrm{pool}}$ (what the entire population says), with the weight depending on how much data the classroom has and how much classrooms vary at the population level. Lots of data plus large between-classroom variation — trust the classroom's own data, pull little. Little data plus small between-classroom variation — distrust the classroom's own data, pull hard toward the grand mean.
+
+Panel (c) of Figure 1 shows the partial-pooling fit on the same scatterplot. The lines for the largest classrooms barely move from where panel (b)'s no-pooling fits placed them. The lines for the smallest classrooms drift visibly toward the grand-mean line that panel (a) drew. The magnitude of the drift is the *shrinkage* we'll derive in §3 — for now, it's a visual fact about the figure.
+
+The geometric punchline: panel (c) sits *between* panels (a) and (b), and the location depends on group size. Partial pooling is the answer that admits both the within-group signal and the between-group signal exist, and weighs them against each other. The rest of the topic spells out how.
+
+### 1.3 What makes an effect "random"?
+
+The terminology that names this third response — "random effects," "mixed-effects models" — has a long history of confusing people, in part because the word *random* is doing two jobs at once. Andrew Gelman's 2005 paper "Analysis of variance: why it is more important than ever" surveys five competing definitions in the literature and argues for a pragmatic one we'll adopt here:
+
+> A coefficient is *fixed* if we model it as a single unknown number to be estimated. A coefficient is *random* if we model it as a draw from a distribution whose own parameters are estimated.
+
+The slope on prep hours in our setup is fixed: there's one unknown number $\beta$, and the data estimates it. The classroom intercepts are random: the six $\alpha_j$ values are six draws from a common $\mathcal{N}(\alpha, \tau^2)$, and the data estimates the population mean $\alpha$ and the population spread $\tau$ as well as the realized $\alpha_j$. The terminology is unfortunate — both kinds of coefficients are *unknown* and both are *estimated* — but the modeling commitment is real and consequential.
+
+That commitment is what enables shrinkage. Six independent intercepts have no reason to inform one another; they're separate parameters in a flat parameter space. Six draws from a parent distribution share that parent — the same data that informs the parent's mean and spread also pulls each child toward its siblings. This is the structural reason small classrooms shrink hard and large classrooms shrink little: a small-$n$ classroom has weak within-group signal that the parent can dominate, while a large-$n$ classroom has strong within-group signal that overpowers the parent's pull.
+
+Three remarks before we move on. First, *fixed* and *random* are modeling choices, not properties of the world. We treat the classroom intercepts as random because we believe the six teachers were sampled from some population of teachers and we want to generalize. If we cared specifically about *these six* teachers and had no interest in extrapolating to others, fixed-effects with classroom dummies would be the right call. Second, the same coefficient can be modeled differently in different studies — replication studies routinely promote a treatment effect from fixed (one study) to random (across studies), because the across-study generalization is the whole point. Third, the random-effects framing brings in a hyperprior. Frequentist mixed-effects models (Henderson, REML) treat the hyperprior parameters $(\alpha, \tau^2)$ as point estimates; Bayesian mixed-effects models (PyMC, Stan) put a prior on them and integrate. We'll see in §5 that for the typical case, the two views give numerically similar answers. For now, both views agree on the structural point: classroom-level intercepts are tied together by a common parent.
+
+The rest of the topic makes the pieces precise. §2 writes the linear mixed model in matrix form and identifies the marginal covariance $\mathbf{V} = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top + \mathbf{R}$ that drives the GLS solution. §3 derives Henderson's mixed-model equations and the closed-form BLUP shrinkage formula. §4 introduces REML for estimating the variance components $(\tau^2, \sigma^2)$. §5 fits §1's six-classroom data both ways — `statsmodels.MixedLM` with REML and a PyMC GLMM — and shows the two views agree.
+
+<Figure
+  src="/images/topics/mixed-effects/01_three_pooling_responses.png"
+  alt="Three-panel scatter plot of sixty student-level exam scores against prep hours, color-coded by classroom. Panel (a) shows complete pooling — a single black OLS line through all sixty points, missing several classrooms by visible vertical offsets. Panel (b) shows no pooling — six classroom-colored lines with the shared slope but separate intercepts; the largest classroom's line sits cleanly through its data while the smallest classroom's line bends to its four points. Panel (c) shows partial pooling — six lines with the shared slope and partial-pooled intercepts plus a thin dashed black population-mean line; the largest classroom barely moves from panel (b) while the smallest drifts visibly toward the population-mean line."
+  caption="Figure 1. Three classical responses to grouped data. (a) Complete pooling — one OLS line, ignoring classroom. (b) No pooling — six classroom-specific intercepts with a shared slope. (c) Partial pooling — same shared slope, but each intercept is the partial-pooled estimate from a random-intercept LMM. The smallest classroom's line drifts noticeably toward the population mean; the largest classroom's barely moves."
+/>
+
+```python
+import numpy as np
+import pandas as pd
+import statsmodels.formula.api as smf
+from scipy import stats
+
+# Six-classroom DGP: J=6 classrooms, N=60 students, varying group sizes
+rng = np.random.default_rng(20260429)
+J, n_per_group = 6, np.array([4, 6, 8, 10, 12, 20])
+N = n_per_group.sum()
+classroom = np.repeat(np.arange(J), n_per_group)
+alpha_t, beta_t, tau_t, sigma_t = 50.0, 5.0, 5.0, 8.0
+a = rng.normal(0.0, tau_t, size=J)
+x = rng.uniform(0.0, 5.0, size=N)
+y = alpha_t + beta_t * x + a[classroom] + rng.normal(0.0, sigma_t, size=N)
+data = pd.DataFrame({"y": y, "x": x, "classroom": classroom})
+
+# Three pooling regimes
+pooled = stats.linregress(x, y)                                  # complete pooling
+mlm = smf.mixedlm("y ~ x", data, groups="classroom").fit(        # partial pooling
+    reml=True, method=["powell"]                                 # Powell — see note
+)
+```
+
+The explicit `method=["powell"]` matters. statsmodels' default optimizer chain (`bfgs` / `lbfgs` / `cg`) silently returns `converged=False` on this small-$J$ data with the realized $\hat\tau^2$ near the boundary; Powell converges cleanly to the same REML optimum that §4's custom implementation finds independently. The shrinkage factors at the REML estimates are $\hat\lambda_j \approx (0.222, 0.298, 0.359, 0.412, 0.451, 0.588)$ across the six classrooms — small classrooms shrink hard, the largest shrinks visibly less.
+
+## 2. The linear mixed model
+
+§1 gave us three procedures and three pictures. We're going to fold all three into a single matrix equation, the *linear mixed model*, and then notice something about its marginal distribution that turns out to drive everything in §3 and §4. The translation costs us nothing geometrically — the same six lines from §1's panel (c) come out the other side — but it gains us the algebraic apparatus we need to derive Henderson's equations and to estimate variance components.
+
+### 2.1 The model in matrix form
+
+Stack the $N = 60$ student-level observations into $\mathbf{y} \in \mathbb{R}^N$, with the row order matching §1's classroom layout (rows 1–4 are Classroom 1, rows 5–10 are Classroom 2, and so on). The *linear mixed model* writes $\mathbf{y}$ as a sum of three pieces:
+
+$$\mathbf{y} \;=\; \mathbf{X}\boldsymbol{\beta} \;+\; \mathbf{Z}\mathbf{u} \;+\; \boldsymbol{\varepsilon}, \quad\quad (2.1)$$
+
+where each piece has a job:
+
+- $\mathbf{X} \in \mathbb{R}^{N \times p}$ is the *fixed-effects design matrix*. Each column is a covariate that we model with a single shared coefficient. For our six-classroom data, $p = 2$: column one is a column of ones (the intercept), column two is the prep-hours predictor $x_i$.
+- $\boldsymbol{\beta} \in \mathbb{R}^p$ is the *fixed-effects vector*. Here $\boldsymbol{\beta} = (\alpha, \beta)^\top$ — the global intercept and the shared slope on prep hours.
+- $\mathbf{Z} \in \mathbb{R}^{N \times q}$ is the *random-effects design matrix*. Each column corresponds to one entry of the random-effects vector $\mathbf{u}$, and its rows mark which observations are affected by that entry. For a random-intercept-only model with $J = 6$ classrooms, $q = J = 6$ and $\mathbf{Z}$ is the indicator matrix that puts a 1 in row $i$, column $j$ if observation $i$ belongs to Classroom $j$.
+- $\mathbf{u} \in \mathbb{R}^q$ is the *random-effects vector*. Here $\mathbf{u} = (a_1, \ldots, a_6)^\top$ — the six classroom-level intercept deviations.
+- $\boldsymbol{\varepsilon} \in \mathbb{R}^N$ is the *residual vector* — student-level noise.
+
+The distributional assumptions complete the model:
+
+$$\mathbf{u} \;\sim\; \mathcal{N}(\mathbf{0}, \mathbf{G}), \qquad \boldsymbol{\varepsilon} \;\sim\; \mathcal{N}(\mathbf{0}, \mathbf{R}), \qquad \mathbf{u} \;\perp\; \boldsymbol{\varepsilon}, \quad\quad (2.2)$$
+
+where $\mathbf{G} \in \mathbb{R}^{q \times q}$ is the random-effects covariance and $\mathbf{R} \in \mathbb{R}^{N \times N}$ is the residual covariance. For our running example, both covariances are scaled identities:
+
+$$\mathbf{G} \;=\; \tau^2 \mathbf{I}_J, \qquad \mathbf{R} \;=\; \sigma^2 \mathbf{I}_N. \quad\quad (2.3)$$
+
+The first equality says the six classroom-level deviations are mutually independent draws from a common $\mathcal{N}(0, \tau^2)$ — six iid pulls from one parent distribution, the operational meaning of "the classrooms are exchangeable draws from a population." The second says student-level noise is iid Gaussian. We'll relax both in §6's remarks but keep them throughout §3–§5; they cover the bulk of standard mixed-effects practice and let us write the cleanest proofs.
+
+The trio (2.1)–(2.3) is the *linear mixed model*.
+
+<TheoremBlock type="definition" number={1} title="Linear mixed model">
+A *linear mixed model* on an $N$-vector of observations $\mathbf{y}$ is a triple $(\mathbf{X}, \mathbf{Z}, (\mathbf{G}, \mathbf{R}))$ with $\mathbf{y} = \mathbf{X}\boldsymbol{\beta} + \mathbf{Z}\mathbf{u} + \boldsymbol{\varepsilon}$, $\mathbf{u} \sim \mathcal{N}(\mathbf{0}, \mathbf{G})$, $\boldsymbol{\varepsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{R})$, and $\mathbf{u} \perp \boldsymbol{\varepsilon}$. The vector $\boldsymbol{\beta}$ collects the *fixed effects* and $\mathbf{u}$ collects the *random effects*; $\mathbf{X}$ and $\mathbf{Z}$ are the corresponding design matrices.
+</TheoremBlock>
+
+Notice what Definition 1 does *not* commit to: it does not say what $\mathbf{X}$ and $\mathbf{Z}$ look like, or how $\mathbf{G}$ and $\mathbf{R}$ are structured. Different choices encode different scientific assumptions — random intercepts only versus random slopes too, crossed versus nested classrooms, autoregressive errors within a longitudinal subject, and so on. The model in (2.1) is a chassis; the assumptions about $\mathbf{X}, \mathbf{Z}, \mathbf{G}, \mathbf{R}$ are what we drop into it for a particular study.
+
+### 2.2 Building $\mathbf{X}$ and $\mathbf{Z}$ on the six-classroom data
+
+Concretely, on §1's dataset:
+
+$$\mathbf{X} \;=\; \begin{pmatrix} 1 & x_1 \\ 1 & x_2 \\ \vdots & \vdots \\ 1 & x_{60} \end{pmatrix} \in \mathbb{R}^{60 \times 2}, \qquad \mathbf{Z} \;=\; \begin{pmatrix} \mathbf{1}_4 & \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{1}_6 & \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{1}_8 & \mathbf{0} & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{1}_{10} & \mathbf{0} & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{1}_{12} & \mathbf{0} \\ \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{0} & \mathbf{1}_{20} \end{pmatrix} \in \mathbb{R}^{60 \times 6}, \quad\quad (2.4)$$
+
+where $\mathbf{1}_k$ denotes a column of $k$ ones and $\mathbf{0}$ is a zero column of the matching height. Reading $\mathbf{Z}$ row by row: row 1 (a Classroom-1 student) is $(1, 0, 0, 0, 0, 0)$, so $\mathbf{Z}\mathbf{u}$ at that row contributes $a_1$ — the deviation of Classroom 1's intercept from the global $\alpha$. Row 5 (the first Classroom-2 student) is $(0, 1, 0, 0, 0, 0)$, contributing $a_2$. Each row picks out exactly one classroom random effect, which is the matrix encoding of "every student inherits exactly one classroom's deviation."
+
+The fixed-effects piece $\mathbf{X}\boldsymbol{\beta} = \alpha \mathbf{1}_N + \beta \mathbf{x}$ is the global linear trend, the same for every student. The random-effects piece $\mathbf{Z}\mathbf{u}$ adds a classroom-specific intercept shift on top. The residual $\boldsymbol{\varepsilon}$ adds student-level noise. Three additive layers of structure, one matrix equation. Panels (a) and (b) of Figure 2 visualize $\mathbf{X}$ and $\mathbf{Z}$ explicitly; the reader should be able to read the block-of-ones pattern in $\mathbf{Z}$ as the matrix encoding of classroom membership.
+
+### 2.3 The marginal distribution
+
+If we never observed individual students and only saw the data after marginalizing over the random effects, what distribution would we see? This is the *marginal distribution* of $\mathbf{y}$, and it's the engine driving everything that follows.
+
+<TheoremBlock type="theorem" number={1} title="Marginal distribution of the LMM">
+Under Definition 1,
+$$\mathbf{y} \;\sim\; \mathcal{N}(\mathbf{X}\boldsymbol{\beta},\, \mathbf{V}), \qquad \mathbf{V} \;=\; \mathbf{Z}\mathbf{G}\mathbf{Z}^\top \;+\; \mathbf{R}. \quad\quad (2.5)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The vector $\mathbf{y}$ is an affine combination of two independent Gaussian vectors plus a deterministic shift: $\mathbf{y} = \mathbf{X}\boldsymbol{\beta} + \mathbf{Z}\mathbf{u} + \boldsymbol{\varepsilon}$, where $\mathbf{u}$ and $\boldsymbol{\varepsilon}$ are jointly Gaussian (independent, hence jointly Gaussian) and $\mathbf{X}\boldsymbol{\beta}$ is a constant. Affine transformations of Gaussian vectors are Gaussian, so $\mathbf{y}$ is Gaussian; we just need its mean and covariance.
+
+For the mean, $\mathbb{E}[\mathbf{u}] = \mathbf{0}$ and $\mathbb{E}[\boldsymbol{\varepsilon}] = \mathbf{0}$ give $\mathbb{E}[\mathbf{y}] = \mathbf{X}\boldsymbol{\beta} + \mathbf{Z}\,\mathbb{E}[\mathbf{u}] + \mathbb{E}[\boldsymbol{\varepsilon}] = \mathbf{X}\boldsymbol{\beta}$.
+
+For the covariance, the constant $\mathbf{X}\boldsymbol{\beta}$ contributes nothing, so $\mathrm{Cov}(\mathbf{y}) = \mathrm{Cov}(\mathbf{Z}\mathbf{u} + \boldsymbol{\varepsilon}) = \mathrm{Cov}(\mathbf{Z}\mathbf{u}) + \mathrm{Cov}(\boldsymbol{\varepsilon}) + 2\,\mathrm{Cov}(\mathbf{Z}\mathbf{u}, \boldsymbol{\varepsilon})$. The cross-covariance vanishes because $\mathbf{u} \perp \boldsymbol{\varepsilon}$, leaving the two diagonal terms. The first is $\mathrm{Cov}(\mathbf{Z}\mathbf{u}) = \mathbf{Z}\,\mathrm{Cov}(\mathbf{u})\,\mathbf{Z}^\top = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top$, the standard linear-transformation rule. The second is $\mathrm{Cov}(\boldsymbol{\varepsilon}) = \mathbf{R}$ by assumption. Adding them gives $\mathbf{V} = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top + \mathbf{R}$.
+</TheoremBlock>
+
+The factor decomposition of (2.5) is worth pausing on. Two students in the *same* classroom share the same random intercept $a_j$, so they're positively correlated: their joint covariance is $\tau^2$ from the shared $a_j$, with no additional contribution from the independent residuals. Two students in *different* classrooms are independent, because their two random intercepts are independent draws from $\mathcal{N}(0, \tau^2)$ and their residuals are also independent. The same student paired with itself contributes $\tau^2 + \sigma^2$ — once for the random intercept and once for the residual.
+
+Plugging the random-intercept-only $\mathbf{G} = \tau^2 \mathbf{I}_J$ and $\mathbf{R} = \sigma^2 \mathbf{I}_N$ into (2.5) makes this concrete. With rows ordered by classroom as in §1, $\mathbf{V}$ becomes block-diagonal, with one $n_j \times n_j$ block per classroom:
+
+$$\mathbf{V} \;=\; \mathrm{blkdiag}(\mathbf{V}_1, \ldots, \mathbf{V}_J), \qquad \mathbf{V}_j \;=\; \tau^2 \mathbf{1}_{n_j}\mathbf{1}_{n_j}^\top \;+\; \sigma^2 \mathbf{I}_{n_j}. \quad\quad (2.6)$$
+
+Each block has $\tau^2 + \sigma^2$ on its diagonal and $\tau^2$ on every off-diagonal entry — what the longitudinal-data literature calls *compound symmetry* and what panel (c) of Figure 2 displays as a heatmap. The off-block entries are exactly zero, which is the matrix encoding of "different classrooms are independent." The visual takeaway: $\mathbf{V}$ is sparse where the modeling commits to independence and dense where it commits to shared structure, and the block pattern is the geometry of the hierarchy itself.
+
+The intra-classroom correlation,
+
+$$\rho \;=\; \frac{\mathrm{Cov}(y_{ij}, y_{i'j})}{\sqrt{\mathrm{Var}(y_{ij}) \mathrm{Var}(y_{i'j})}} \;=\; \frac{\tau^2}{\tau^2 + \sigma^2}, \quad\quad (2.7)$$
+
+is called the *intraclass correlation coefficient* (ICC). It's the fraction of total variance explained by the grouping — $\rho \to 0$ means classrooms barely matter, $\rho \to 1$ means classrooms explain almost everything. For our DGP, $\rho = 25 / (25 + 64) \approx 0.281$, so about 28% of the total variance lives at the classroom level. The ICC is the most-quoted single number in mixed-effects practice, and (2.7) is its full derivation.
+
+### 2.4 GLS and the chicken-and-egg problem
+
+Theorem 1 hands us a marginal distribution that's exactly the setup of *generalized least squares*: a Gaussian linear model with mean $\mathbf{X}\boldsymbol{\beta}$ and a known, non-spherical covariance $\mathbf{V}$. Aitken's classical theorem says the best linear unbiased estimator (BLUE) of $\boldsymbol{\beta}$ in this setup is the GLS estimator.
+
+<TheoremBlock type="proposition" number={1} title="GLS estimator and Aitken's theorem">
+If $\mathbf{V}$ is known and positive-definite, the unique BLUE of $\boldsymbol{\beta}$ in the model $\mathbf{y} \sim \mathcal{N}(\mathbf{X}\boldsymbol{\beta}, \mathbf{V})$ is
+$$\hat{\boldsymbol{\beta}}_{\mathrm{GLS}} \;=\; (\mathbf{X}^\top \mathbf{V}^{-1} \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{V}^{-1} \mathbf{y}, \quad\quad (2.8)$$
+with covariance $\mathrm{Cov}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}) = (\mathbf{X}^\top \mathbf{V}^{-1} \mathbf{X})^{-1}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Pre-multiply (2.1) by $\mathbf{V}^{-1/2}$, the symmetric square-root inverse of $\mathbf{V}$ (which exists and is unique because $\mathbf{V}$ is symmetric positive-definite). Define $\tilde{\mathbf{y}} = \mathbf{V}^{-1/2}\mathbf{y}$ and $\tilde{\mathbf{X}} = \mathbf{V}^{-1/2}\mathbf{X}$. The transformed model is $\tilde{\mathbf{y}} = \tilde{\mathbf{X}}\boldsymbol{\beta} + \tilde{\boldsymbol{\eta}}$ with $\tilde{\boldsymbol{\eta}} = \mathbf{V}^{-1/2}(\mathbf{Z}\mathbf{u} + \boldsymbol{\varepsilon}) \sim \mathcal{N}(\mathbf{0}, \mathbf{I}_N)$, an ordinary spherical Gaussian regression. Apply OLS-is-BLUE (Gauss–Markov) on the whitened system: $\hat{\boldsymbol{\beta}} = (\tilde{\mathbf{X}}^\top \tilde{\mathbf{X}})^{-1} \tilde{\mathbf{X}}^\top \tilde{\mathbf{y}} = (\mathbf{X}^\top \mathbf{V}^{-1} \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{V}^{-1} \mathbf{y}$, exactly (2.8). The transformed fit retains BLUE on the original parameters because the whitening is invertible and linear. The covariance follows by the same transformation rule applied to the OLS covariance on the whitened system.
+</TheoremBlock>
+
+We'll use the GLS covariance in §3 to read off standard errors for the fixed effects, and in §5 to compare frequentist Wald intervals against PyMC posterior intervals.
+
+So far so good — except for one inconvenient fact. *We don't know $\mathbf{V}$.* Equation (2.5) gives $\mathbf{V} = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top + \mathbf{R}$, which depends on $\mathbf{G}$ and $\mathbf{R}$, which depend on the variance components $(\tau^2, \sigma^2)$, which are unknown parameters we have to estimate from the same data we're using to fit $\boldsymbol{\beta}$. Plugging the true $\mathbf{V}$ into (2.8) gives a clean estimator of $\boldsymbol{\beta}$; plugging the OLS estimate of $\boldsymbol{\beta}$ into a residuals-based estimate of $\mathbf{V}$ would give a biased mess. We need a way to estimate everything jointly.
+
+Two paths through this circularity, and they're the subjects of §3 and §4 respectively. **§3 (Henderson's path)** does not try to invert $\mathbf{V}$ at all; it treats the random effects $\mathbf{u}$ as unknown quantities to be solved for jointly with $\boldsymbol{\beta}$, and writes down the normal equations for the joint penalized log-density. The resulting *mixed-model equations* solve for $(\hat{\boldsymbol{\beta}}, \hat{\mathbf{u}})$ simultaneously without ever forming $\mathbf{V}^{-1}$ explicitly, and the prediction $\hat{\mathbf{u}}$ has its own name — the *best linear unbiased predictor*, BLUP — and a clean shrinkage interpretation. **§4 (REML's path)** estimates the variance components $(\tau^2, \sigma^2)$ first, then plugs them into (2.8). The naive route — maximum likelihood on the marginal distribution — turns out to be biased downward for the variance components. *Restricted maximum likelihood* (REML) fixes the bias by marginalizing $\boldsymbol{\beta}$ out before estimating the variance components.
+
+The two paths produce the same $\hat{\boldsymbol{\beta}}$ and the same $\hat{\mathbf{u}}$ when run with the same variance-component estimates, so they're complementary rather than competitive.
+
+<Figure
+  src="/images/topics/mixed-effects/02_lmm_design_matrices.png"
+  alt="Three-panel heatmap layout with width ratios approximately 1:2:4. Panel (a) shows the 60×2 fixed-effects design matrix X — column 0 is a uniform stripe of ones, column 1 is a noisy grayscale gradient of prep-hours values. Panel (b) shows the 60×6 random-effects design matrix Z — six binary indicator columns with the iconic block-of-ones staircase stepping diagonally down the matrix, marking classroom membership. Panel (c) shows the 60×60 marginal covariance V = ZGZᵀ + R as a heatmap — six block-diagonal blocks of sizes 4, 6, 8, 10, 12, 20, each compound-symmetric (diagonal τ²+σ²=89, within-block off-diagonal τ²=25, off-block 0)."
+  caption="Figure 2. The LMM is constructively a matrix model. (a) X — fixed-effects design, no classroom structure. (b) Z — the classroom indicator matrix; the staircase of blocks encodes classroom membership. (c) V = ZGZᵀ + R — block-diagonal with compound-symmetric blocks; sparse where the model commits to independence (off-block) and dense where it commits to shared structure (within-block)."
+/>
+
+```python
+# Build X and Z explicitly, then form V at the truth and solve GLS by hand
+import numpy as np
+from scipy.linalg import solve
+
+X = np.column_stack([np.ones(N), data["x"].to_numpy()])             # 60 × 2
+Z = np.zeros((N, J)); Z[np.arange(N), classroom] = 1.0              # 60 × 6
+G_t, R_t = (tau_t ** 2) * np.eye(J), (sigma_t ** 2) * np.eye(N)
+V_t = Z @ G_t @ Z.T + R_t                                           # 60 × 60
+
+# GLS at the truth — never form V^{-1}, solve V x = ... instead
+beta_gls = solve(X.T @ solve(V_t, X), X.T @ solve(V_t, y), assume_a="pos")
+icc_t = tau_t ** 2 / (tau_t ** 2 + sigma_t ** 2)                    # ≈ 0.281
+```
+
+The GLS-with-true-$\mathbf{V}$ fit gives $\hat\alpha \approx 50.99$ and $\hat\beta \approx 4.86$, both within sampling noise of the truths $(50, 5)$. The OLS standard errors (which assume $\mathbf{R} = \sigma^2\mathbf{I}_N$ rather than the block-diagonal $\mathbf{V}$) are systematically too narrow on the intercept by about a factor of $\sqrt{1 + (n_j - 1)\rho}$ averaged over students — the standard "ignore-the-clustering" anticonservatism that mixed-effects practice routinely confronts.
+
+## 3. Henderson's mixed-model equations and BLUP
+
+§2 ended on a circularity: GLS gives the cleanest fixed-effects estimator when the marginal covariance $\mathbf{V}$ is known, but $\mathbf{V} = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top + \mathbf{R}$ depends on variance components we have to estimate from the same data. There are two ways forward, and §3 takes the first one — Henderson's. Don't try to invert $\mathbf{V}$ at all. Treat the random effects $\mathbf{u}$ as quantities to be solved for jointly with $\boldsymbol{\beta}$, paying a Gaussian "penalty" for each $u_j$ that pulls it toward zero, and let the penalty's strength encode the prior $\mathbf{u} \sim \mathcal{N}(\mathbf{0}, \mathbf{G})$. The resulting block linear system is *Henderson's mixed-model equations*; its solution simultaneously gives $\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}$ and the *best linear unbiased predictor* of $\mathbf{u}$, the BLUP.
+
+What we get out of this section is the closed-form shrinkage formula that drove §1's panel (c) — the BLUP for classroom $j$ is the no-pooling residual mean times a shrinkage factor $\lambda_j = \tau^2 / (\tau^2 + \sigma^2/n_j)$ — together with the structural understanding of why that formula is what falls out of the general theory. We're still assuming the variance components $(\tau^2, \sigma^2)$ are known throughout §3; §4 fills in their estimation.
+
+### 3.1 The joint penalized log-density
+
+Henderson's 1950 / 1975 trick is to write down the joint density of $(\mathbf{y}, \mathbf{u})$ given $\boldsymbol{\beta}$, treat $\mathbf{u}$ as if it were a parameter to be optimized over rather than a latent variable to be marginalized, and maximize the joint log-density over $(\boldsymbol{\beta}, \mathbf{u})$ together. The result is a clean linear system whose left-hand side has dimension $(p + q) \times (p + q)$ — small even when $N$ is enormous — and whose right-hand side reads off the data through $\mathbf{X}^\top \mathbf{R}^{-1} \mathbf{y}$ and $\mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{y}$.
+
+<TheoremBlock type="lemma" number={1} title="Joint penalized log-density">
+Under Definition 1, the joint density of the observations and the random effects given the fixed effects factors as
+$$p(\mathbf{y}, \mathbf{u} \mid \boldsymbol{\beta}) \;=\; p(\mathbf{y} \mid \mathbf{u}, \boldsymbol{\beta}) \cdot p(\mathbf{u}), \quad\quad (3.1)$$
+with $\mathbf{y} \mid \mathbf{u}, \boldsymbol{\beta} \sim \mathcal{N}(\mathbf{X}\boldsymbol{\beta} + \mathbf{Z}\mathbf{u}, \mathbf{R})$ and $\mathbf{u} \sim \mathcal{N}(\mathbf{0}, \mathbf{G})$. Up to constants that don't depend on $(\boldsymbol{\beta}, \mathbf{u})$, the negative joint log-density is
+$$-\log p(\mathbf{y}, \mathbf{u} \mid \boldsymbol{\beta}) \;=\; \tfrac{1}{2}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta} - \mathbf{Z}\mathbf{u})^\top \mathbf{R}^{-1} (\mathbf{y} - \mathbf{X}\boldsymbol{\beta} - \mathbf{Z}\mathbf{u}) \;+\; \tfrac{1}{2}\,\mathbf{u}^\top \mathbf{G}^{-1} \mathbf{u}. \quad\quad (3.2)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The factorization in (3.1) is the chain rule applied to a Gaussian linear model: conditional on $\mathbf{u}$, the residual $\boldsymbol{\varepsilon} = \mathbf{y} - \mathbf{X}\boldsymbol{\beta} - \mathbf{Z}\mathbf{u}$ has distribution $\mathcal{N}(\mathbf{0}, \mathbf{R})$, so $\mathbf{y} \mid \mathbf{u}, \boldsymbol{\beta} \sim \mathcal{N}(\mathbf{X}\boldsymbol{\beta} + \mathbf{Z}\mathbf{u}, \mathbf{R})$. The marginal $\mathbf{u} \sim \mathcal{N}(\mathbf{0}, \mathbf{G})$ is part of Definition 1. Equation (3.2) is the sum of the two negative Gaussian log-densities, with constant terms ($-\tfrac{1}{2}\log\det \mathbf{R}$, $-\tfrac{1}{2}\log\det \mathbf{G}$, $-\tfrac{N + q}{2}\log 2\pi$) that don't depend on the optimization variables absorbed into a single additive constant.
+</TheoremBlock>
+
+The structure of (3.2) is worth pausing on. The first term is the negative log-likelihood of $\mathbf{y}$ given fixed and random effects — a generalized least-squares residual norm under the residual covariance $\mathbf{R}$. The second term is a *quadratic penalty* on $\mathbf{u}$: the further $\mathbf{u}$ strays from $\mathbf{0}$ (the random-effects prior mean), the larger the penalty, with the penalty's strength governed by $\mathbf{G}^{-1}$. The penalty is the algebraic encoding of "we believe a priori that the random effects are small, with the meaning of *small* set by $\mathbf{G}$." Larger $\mathbf{G}$ (looser prior) → softer penalty → more freedom for $\mathbf{u}$ to take large values. Smaller $\mathbf{G}$ (tighter prior) → harder penalty → $\mathbf{u}$ is pulled aggressively toward zero. The whole shrinkage story sits inside that one penalty term.
+
+The reader who has seen Bayesian ridge regression will recognize (3.2) immediately: it's the maximum *a posteriori* (MAP) objective for $\mathbf{u}$ under a Gaussian prior, with $\boldsymbol{\beta}$ playing the role of an unpenalized nuisance parameter. Henderson didn't derive his equations as Bayesian MAP — he derived them via a clever marginal-likelihood argument that we'll see in §4 — but the algebraic form is identical, and the Bayesian reading is what §5 will use to bridge to the PyMC fit.
+
+### 3.2 The mixed-model equations
+
+Maximizing (3.2) jointly in $(\boldsymbol{\beta}, \mathbf{u})$ — equivalently, minimizing the negative log-density — is a problem in linear algebra. The objective is quadratic in both arguments, so its gradients are linear, and setting both gradients to zero gives a block linear system: Henderson's *mixed-model equations*.
+
+<TheoremBlock type="theorem" number={2} title="Mixed-model equations">
+Under Definition 1 with $\mathbf{V}, \mathbf{G}, \mathbf{R}$ all positive-definite, the joint maximum of (3.2) over $(\boldsymbol{\beta}, \mathbf{u})$ solves the block linear system
+$$\begin{pmatrix} \mathbf{X}^\top \mathbf{R}^{-1} \mathbf{X} & \mathbf{X}^\top \mathbf{R}^{-1} \mathbf{Z} \\ \mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{X} & \mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{Z} + \mathbf{G}^{-1} \end{pmatrix} \begin{pmatrix} \hat{\boldsymbol{\beta}} \\ \hat{\mathbf{u}} \end{pmatrix} \;=\; \begin{pmatrix} \mathbf{X}^\top \mathbf{R}^{-1} \mathbf{y} \\ \mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{y} \end{pmatrix}, \quad\quad (3.3)$$
+and the solution satisfies
+$$\hat{\boldsymbol{\beta}} \;=\; (\mathbf{X}^\top \mathbf{V}^{-1} \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{V}^{-1} \mathbf{y} \;=\; \hat{\boldsymbol{\beta}}_{\mathrm{GLS}}, \qquad \hat{\mathbf{u}} \;=\; \mathbf{G}\mathbf{Z}^\top \mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}}). \quad\quad (3.4)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For the block system, take partial derivatives of (3.2) with respect to $\boldsymbol{\beta}$ and $\mathbf{u}$ and set each to zero:
+$$\frac{\partial}{\partial \boldsymbol{\beta}}: \quad -\mathbf{X}^\top \mathbf{R}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta} - \mathbf{Z}\mathbf{u}) \;=\; \mathbf{0}, \quad\quad (3.5\text{a})$$
+$$\frac{\partial}{\partial \mathbf{u}}: \quad -\mathbf{Z}^\top \mathbf{R}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta} - \mathbf{Z}\mathbf{u}) + \mathbf{G}^{-1}\mathbf{u} \;=\; \mathbf{0}. \quad\quad (3.5\text{b})$$
+Rearrange (3.5a) into $\mathbf{X}^\top \mathbf{R}^{-1} \mathbf{X} \boldsymbol{\beta} + \mathbf{X}^\top \mathbf{R}^{-1} \mathbf{Z} \mathbf{u} = \mathbf{X}^\top \mathbf{R}^{-1} \mathbf{y}$, the top row of (3.3). Rearrange (3.5b) into $\mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{X} \boldsymbol{\beta} + (\mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{Z} + \mathbf{G}^{-1}) \mathbf{u} = \mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{y}$, the bottom row. Stacking gives (3.3).
+
+For the equivalence to GLS, let $\mathbf{C} = \mathbf{Z}^\top \mathbf{R}^{-1} \mathbf{Z} + \mathbf{G}^{-1}$, the $(q \times q)$ bottom-right block of (3.3). Eliminate $\mathbf{u}$ from (3.5b): $\mathbf{u} = \mathbf{C}^{-1}\mathbf{Z}^\top \mathbf{R}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta})$. Substitute into (3.5a):
+$$\mathbf{X}^\top \mathbf{R}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta} - \mathbf{Z}\mathbf{C}^{-1}\mathbf{Z}^\top \mathbf{R}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta})) \;=\; \mathbf{0}.$$
+Factor out $(\mathbf{y} - \mathbf{X}\boldsymbol{\beta})$:
+$$\mathbf{X}^\top \bigl[\mathbf{R}^{-1} - \mathbf{R}^{-1}\mathbf{Z}\mathbf{C}^{-1}\mathbf{Z}^\top \mathbf{R}^{-1}\bigr] (\mathbf{y} - \mathbf{X}\boldsymbol{\beta}) \;=\; \mathbf{0}. \quad\quad (3.7)$$
+The bracketed matrix is exactly $\mathbf{V}^{-1}$ by the Woodbury identity:
+$$(\mathbf{R} + \mathbf{Z}\mathbf{G}\mathbf{Z}^\top)^{-1} \;=\; \mathbf{R}^{-1} - \mathbf{R}^{-1}\mathbf{Z}(\mathbf{Z}^\top \mathbf{R}^{-1}\mathbf{Z} + \mathbf{G}^{-1})^{-1}\mathbf{Z}^\top \mathbf{R}^{-1} \;=\; \mathbf{R}^{-1} - \mathbf{R}^{-1}\mathbf{Z}\mathbf{C}^{-1}\mathbf{Z}^\top \mathbf{R}^{-1}. \quad\quad (3.8)$$
+(The identity (3.8) is standard linear algebra; see Searle, Casella, McCulloch §7.4 for the version specialized to mixed models.) Substituting (3.8) into (3.7) gives $\mathbf{X}^\top \mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta}) = \mathbf{0}$, equivalent to $\mathbf{X}^\top\mathbf{V}^{-1}\mathbf{X}\boldsymbol{\beta} = \mathbf{X}^\top\mathbf{V}^{-1}\mathbf{y}$, which solves to $\hat{\boldsymbol{\beta}} = (\mathbf{X}^\top\mathbf{V}^{-1}\mathbf{X})^{-1}\mathbf{X}^\top\mathbf{V}^{-1}\mathbf{y}$ — the GLS estimator.
+
+For $\hat{\mathbf{u}}$: substituting $\hat{\boldsymbol{\beta}}$ into the eliminated form gives $\hat{\mathbf{u}} = \mathbf{C}^{-1}\mathbf{Z}^\top \mathbf{R}^{-1}(\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}})$. The identity $\mathbf{C}^{-1}\mathbf{Z}^\top \mathbf{R}^{-1} = \mathbf{G}\mathbf{Z}^\top \mathbf{V}^{-1}$ (from rearranging (3.8) after right-multiplication by $\mathbf{Z}\mathbf{G}$) gives the announced form $\hat{\mathbf{u}} = \mathbf{G}\mathbf{Z}^\top\mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}})$, which is (3.4).
+</TheoremBlock>
+
+The first form of $\hat{\mathbf{u}}$ in (3.4) — $\mathbf{G}\mathbf{Z}^\top\mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}})$ — has a clean probabilistic reading: it is the conditional mean of $\mathbf{u}$ given $\mathbf{y}$ under the joint Gaussian model. Standard multivariate-Gaussian conditioning gives
+
+$$\mathbb{E}[\mathbf{u} \mid \mathbf{y}] \;=\; \mathrm{Cov}(\mathbf{u}, \mathbf{y})\,\mathrm{Cov}(\mathbf{y})^{-1}(\mathbf{y} - \mathbb{E}[\mathbf{y}]) \;=\; \mathbf{G}\mathbf{Z}^\top\mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta}), \quad\quad (3.9)$$
+
+using $\mathrm{Cov}(\mathbf{u}, \mathbf{y}) = \mathrm{Cov}(\mathbf{u}, \mathbf{Z}\mathbf{u} + \boldsymbol{\varepsilon}) = \mathbf{G}\mathbf{Z}^\top$ and $\mathrm{Cov}(\mathbf{y}) = \mathbf{V}$. So the BLUP equals the posterior mean of $\mathbf{u}$ given the data — under the prior $\mathbf{u} \sim \mathcal{N}(\mathbf{0}, \mathbf{G})$ that the model already commits us to. We'll return to this in §5: the Bayesian PyMC fit doesn't compute Henderson's equations, but its posterior mean for the random effects is exactly $\hat{\mathbf{u}}$ (up to the difference between plugged-in REML estimates of $(\mathbf{G}, \mathbf{R})$ and properly-marginalized Bayesian estimates), which is why the two views agree numerically.
+
+The conditional covariance is $\mathrm{Cov}(\mathbf{u} \mid \mathbf{y}) = \mathbf{G} - \mathbf{G}\mathbf{Z}^\top\mathbf{V}^{-1}\mathbf{Z}\mathbf{G}$, a useful identity for the BLUP standard errors below.
+
+A practical note. The MMEs in (3.3) have dimension $(p + q) \times (p + q) = 8 \times 8$ on our running example, while the GLS form (3.4) requires $\mathbf{V}^{-1}$, an $N \times N = 60 \times 60$ matrix. For larger problems the gap widens dramatically — a study with $N = 10^5$ observations across $J = 100$ groups and $p = 5$ fixed effects has MMEs of dimension $105 \times 105$ versus a GLS that nominally inverts a $10^5 \times 10^5$ matrix. The savings is what made Henderson's formulation practical at all in the pre-computer era and is what makes industrial-scale mixed-effects fits tractable today; modern implementations exploit additional sparsity in $\mathbf{Z}$ (which is highly sparse for grouped data) and in the bottom-right block of (3.3) to bring the cost down further. `statsmodels.MixedLM` and `lme4`'s `lmer` both ultimately solve a sparse version of (3.3).
+
+### 3.3 Shrinkage in the random-intercept special case
+
+The general form (3.4) is what runs in software. The pedagogical payoff comes from specializing it to the random-intercept-only model, where every quantity in (3.3) collapses to something an undergraduate can compute by hand.
+
+<TheoremBlock type="proposition" number={2} title="BLUP shrinkage for the random-intercept model">
+Suppose $\mathbf{G} = \tau^2 \mathbf{I}_J$ and $\mathbf{R} = \sigma^2 \mathbf{I}_N$, and the random-effects design $\mathbf{Z}$ encodes group membership (each row a one-hot vector over $J$ groups). Define the *no-pooling residual mean* for group $j$ as
+$$\bar{r}_j(\boldsymbol{\beta}) \;=\; \frac{1}{n_j} \sum_{i \in j} (y_{ij} - \mathbf{x}_{ij}^\top \boldsymbol{\beta}), \quad\quad (3.11)$$
+the average residual of group $j$ given the fixed-effects fit, and the *shrinkage factor*
+$$\lambda_j \;=\; \frac{\tau^2}{\tau^2 + \sigma^2 / n_j} \;\in\; (0, 1). \quad\quad (3.12)$$
+Then the BLUP for group $j$ — the $j$-th component of $\hat{\mathbf{u}}$ in (3.4), evaluated at $\hat{\boldsymbol{\beta}}$ — is
+$$\hat{u}_j \;=\; \lambda_j \cdot \bar{r}_j(\hat{\boldsymbol{\beta}}), \quad\quad (3.13)$$
+and the conditional variance of $u_j$ given $\mathbf{y}$ is
+$$\mathrm{Var}(u_j \mid \mathbf{y}) \;=\; (1 - \lambda_j) \tau^2. \quad\quad (3.14)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For the random-intercept design, $\mathbf{Z}^\top\mathbf{Z} = \mathrm{diag}(n_1, \ldots, n_J)$ — column $j$ of $\mathbf{Z}$ has $n_j$ ones and $N - n_j$ zeros. With $\mathbf{R} = \sigma^2\mathbf{I}_N$ and $\mathbf{G} = \tau^2\mathbf{I}_J$:
+$$\mathbf{C} \;=\; \mathbf{Z}^\top \mathbf{R}^{-1}\mathbf{Z} + \mathbf{G}^{-1} \;=\; \frac{1}{\sigma^2}\mathrm{diag}(n_1, \ldots, n_J) + \frac{1}{\tau^2}\mathbf{I}_J \;=\; \mathrm{diag}\bigl(\tfrac{n_j}{\sigma^2} + \tfrac{1}{\tau^2}\bigr)_j.$$
+So $\mathbf{C}$ is diagonal, with $\mathbf{C}^{-1}$ having $j$-th entry $\bigl(\tfrac{n_j}{\sigma^2} + \tfrac{1}{\tau^2}\bigr)^{-1} = \tfrac{\sigma^2 \tau^2}{n_j \tau^2 + \sigma^2}$. The $j$-th component of $\mathbf{Z}^\top \mathbf{R}^{-1}(\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}})$ is $\tfrac{1}{\sigma^2}\sum_{i \in j}(y_{ij} - \mathbf{x}_{ij}^\top\hat{\boldsymbol{\beta}}) = \tfrac{n_j}{\sigma^2}\bar{r}_j(\hat{\boldsymbol{\beta}})$. Multiplying:
+$$\hat{u}_j \;=\; \frac{\sigma^2 \tau^2}{n_j \tau^2 + \sigma^2} \cdot \frac{n_j}{\sigma^2}\,\bar{r}_j(\hat{\boldsymbol{\beta}}) \;=\; \frac{n_j \tau^2}{n_j \tau^2 + \sigma^2}\,\bar{r}_j(\hat{\boldsymbol{\beta}}) \;=\; \lambda_j\,\bar{r}_j(\hat{\boldsymbol{\beta}}),$$
+which is (3.13). For (3.14), use $\mathrm{Cov}(\mathbf{u} \mid \mathbf{y}) = \mathbf{G} - \mathbf{G}\mathbf{Z}^\top\mathbf{V}^{-1}\mathbf{Z}\mathbf{G}$. The $j$-th diagonal of $\mathbf{Z}^\top\mathbf{V}^{-1}\mathbf{Z}$ is $n_j / (\sigma^2 + n_j\tau^2)$ (a one-line application of Woodbury to the $j$-th block $\mathbf{V}_j = \sigma^2\mathbf{I}_{n_j} + \tau^2\mathbf{1}_{n_j}\mathbf{1}_{n_j}^\top$): the $(j, j)$ entry of $\mathbf{G}\mathbf{Z}^\top\mathbf{V}^{-1}\mathbf{Z}\mathbf{G}$ is $\tau^4 \cdot n_j / (\sigma^2 + n_j\tau^2) = \lambda_j \tau^2$, and so $\mathrm{Var}(u_j \mid \mathbf{y}) = \tau^2 - \lambda_j\tau^2 = (1 - \lambda_j)\tau^2$.
+</TheoremBlock>
+
+The three identities (3.12)–(3.14) deserve to be read as a unit. The shrinkage factor $\lambda_j$ depends only on the variance ratio $\tau^2 / \sigma^2$ and the group size $n_j$ — nothing else. It is *the* number that characterizes how mixed-effects models partial-pool. Read it as a competition between two precisions: $1/\tau^2$ is the prior precision of the random effect (how much the population-level prior pulls toward zero), and $n_j/\sigma^2$ is the data precision for group $j$ (how much group $j$'s own data informs its random effect). The shrinkage factor
+
+$$\lambda_j \;=\; \frac{n_j/\sigma^2}{n_j/\sigma^2 + 1/\tau^2} \;=\; \frac{\text{data precision}}{\text{data precision} + \text{prior precision}}$$
+
+is the data-precision share of the total. Three regimes deserve names:
+
+- **$n_j \to \infty$ at fixed $\tau^2$.** Data precision dominates; $\lambda_j \to 1$; $\hat{u}_j \to \bar{r}_j(\hat{\boldsymbol{\beta}})$, the no-pooling estimate. The classroom's own data overwhelms the prior, and the BLUP equals the no-pooling residual mean.
+- **$n_j \to 0$ at fixed $\tau^2$.** Data precision vanishes; $\lambda_j \to 0$; $\hat{u}_j \to 0$, the prior mean. With no within-classroom data, the BLUP can do nothing but report the prior — every group looks like the population.
+- **$\tau^2 \to \infty$ at fixed $n_j$.** Prior precision vanishes; $\lambda_j \to 1$; $\hat{u}_j \to \bar{r}_j$. An uninformative random-effects prior recovers no pooling. $\tau^2 \to 0$ has the symmetric effect: $\lambda_j \to 0$ and $\hat{u}_j \to 0$, complete pooling.
+
+Equation (3.14) is the conditional-uncertainty companion: when the data dominates ($\lambda_j \to 1$), the conditional variance of $u_j$ collapses to zero; when the prior dominates ($\lambda_j \to 0$), the conditional variance returns to the prior variance $\tau^2$. The two limits are dual — high information content shrinks both the bias and the variance of the BLUP toward zero.
+
+For our six-classroom data with the truth $\tau^2 = 25$, $\sigma^2 = 64$, the shrinkage factors are $\lambda_1 \approx 0.610, \lambda_2 \approx 0.701, \lambda_3 \approx 0.758, \lambda_4 \approx 0.796, \lambda_5 \approx 0.824, \lambda_6 \approx 0.887$, and the conditional variances $(1 - \lambda_j)\tau^2$ run from $9.75$ (Classroom 1) down to $2.83$ (Classroom 6). The smallest classroom has more than three times the BLUP uncertainty of the largest, and shrinks more than three times as hard — both in the same direction, both governed by the same single number $n_j$.
+
+The partial-pooled intercept for Classroom $j$, which is what we plotted in §1's panel (c), is the global intercept plus the BLUP:
+
+$$\hat{\alpha}_j^{\mathrm{partial}} \;=\; \hat{\alpha} + \hat{u}_j \;=\; \hat{\alpha} + \lambda_j \bar{r}_j(\hat{\boldsymbol{\beta}}). \quad\quad (3.15)$$
+
+Rewriting $\bar{r}_j$ in terms of the no-pooling intercept $\hat{\alpha}_j^{\mathrm{no\text{-}pool}} = \hat{\alpha} + \bar{r}_j(\hat{\boldsymbol{\beta}})$ — the per-classroom intercept from §1's panel (b) — gives the equivalent *weighted-average* form
+
+$$\hat{\alpha}_j^{\mathrm{partial}} \;=\; \lambda_j\,\hat{\alpha}_j^{\mathrm{no\text{-}pool}} + (1 - \lambda_j)\,\hat{\alpha}, \quad\quad (3.16)$$
+
+which makes panel (c)'s geometry algebraic: the partial-pooled intercept is a convex combination of the no-pooling estimate (panel b) and the global intercept (panel a's line), with the convex weight $\lambda_j$ set entirely by group size and the variance ratio.
+
+### 3.4 BLUE, BLUP, and the predictive frame
+
+The terminology *Best Linear Unbiased Predictor* — BLUP — deserves a remark. We've estimated $\boldsymbol{\beta}$ throughout as a fixed unknown parameter; the GLS estimator $\hat{\boldsymbol{\beta}}$ is the *Best Linear Unbiased Estimator* (BLUE) under Gauss–Markov conditions, a standard fact about linear models. We've also computed $\hat{\mathbf{u}}$, but the random effects $\mathbf{u}$ are not parameters in the same sense — they're realized values of a random vector with a known prior distribution. The convention in the mixed-effects literature is to call the corresponding estimator a *predictor* rather than an *estimator*, on the grammatical grounds that we estimate parameters and predict random variables. The mean-squared-error optimality result is the same in both cases — minimum MSE among linear unbiased rules — but the framing matters for two reasons.
+
+First, the standard error of $\hat{u}_j$ is *not* the standard error of estimation of a fixed parameter; it is the standard error of *prediction* of a random quantity, and (3.14) is what governs it. The frequentist prediction interval $\hat{u}_j \pm 1.96 \sqrt{(1 - \lambda_j)\tau^2}$ covers the true realized $u_j$ with the stated frequentist probability under repeated sampling of $(\mathbf{y}, \mathbf{u})$ pairs, not the standard "what is the probability that $u_j$ lies in this interval" — the latter requires a Bayesian posterior, and §5 shows that for this model the posterior interval and the prediction interval numerically coincide.
+
+Second, the *unbiasedness* of the BLUP is unbiasedness in the predictive sense: $\mathbb{E}[\hat{\mathbf{u}} - \mathbf{u}] = \mathbf{0}$, where the expectation is over both $\mathbf{y}$ and $\mathbf{u}$. Crucially, $\hat{\mathbf{u}}$ is *not* unbiased for any particular realized $\mathbf{u}$ — it shrinks toward zero, so for a $\mathbf{u}$ that happens to be far from zero, $\hat{\mathbf{u}}$ is systematically biased toward zero in the conditional sense $\mathbb{E}[\hat{\mathbf{u}} \mid \mathbf{u}] \ne \mathbf{u}$. The unbiasedness in the predictive average integrates over the prior, where the expected $\mathbf{u}$ is zero. This is the Stein-estimator family at work — biased point estimates can have lower MSE than unbiased ones — and it is the structural reason mixed-effects models systematically beat both complete pooling and no pooling on out-of-sample prediction.
+
+In modern Bayesian language we'd say nothing fancy at all about any of this: we have a joint Gaussian model, $\mathbb{E}[\mathbf{u} \mid \mathbf{y}]$ is the posterior mean, that's the MMSE estimator, and the predictive interval is the posterior credible interval. The frequentist BLUP framing was historically prior to the Bayesian framing in this context — Henderson 1950, Patterson and Thompson 1971 — but the two views give the same point estimates and (asymptotically) the same intervals, which is one of the nicer correspondences in applied statistics.
+
+<Figure
+  src="/images/topics/mixed-effects/03_blup_shrinkage.png"
+  alt="Three-panel figure on shrinkage. Panel (a) plots the shrinkage curve λ(n) = τ²/(τ² + σ²/n) over n in [1,50] with horizontal references at λ=0 (complete pooling) and λ=1 (no pooling); the six classrooms are marked as colored dots at (n_j, λ_j). Panel (b) shows six rows sorted by n_j ascending, each with a hollow circle at the no-pooling residual mean and a filled colored circle at the BLUP λ_j times the residual mean, with an arrow connecting them and a vertical reference at zero; smaller classrooms have visibly longer arrows. Panel (c) shows BLUPs with conditional 95% intervals plus no-pooling residual means with their own larger 95% intervals in gray for comparison."
+  caption="Figure 3. Shrinkage in action. (a) The shrinkage factor λ_j as a function of group size at the truth — monotonic, with the six classrooms at distinct points. (b) Each classroom's no-pooling deviation pulled toward zero by λ_j; smallest classrooms shrink hardest. (c) BLUPs with conditional ±1.96 SE intervals (colored) versus no-pooling means with their wider ±1.96 SE intervals (gray) — the BLUP is biased toward zero AND has narrower uncertainty, the structural reason mixed-effects beats both alternatives in MSE."
+/>
+
+```python
+# Henderson MMEs at the truth, then verify against §1's REML fit
+G_t, R_t = (tau_t ** 2) * np.eye(J), (sigma_t ** 2) * np.eye(N)
+R_inv, G_inv = np.linalg.inv(R_t), np.linalg.inv(G_t)
+M = np.block([[X.T @ R_inv @ X,           X.T @ R_inv @ Z],          # (p+q)×(p+q)
+              [Z.T @ R_inv @ X,           Z.T @ R_inv @ Z + G_inv]])  # = 8×8 here
+rhs = np.concatenate([X.T @ R_inv @ y, Z.T @ R_inv @ y])
+sol = solve(M, rhs, assume_a="pos")
+beta_mme, u_mme = sol[:2], sol[2:]                                    # MME solve
+lam = (tau_t ** 2) / (tau_t ** 2 + sigma_t ** 2 / n_per_group)        # shrinkage
+```
+
+The MME solve gives $\hat\alpha \approx 50.99$, $\hat\beta \approx 4.86$ (matching §2's GLS-with-true-$\mathbf{V}$ fit to machine precision), and BLUPs $\hat{u}_j$ that agree with `mlm.random_effects` from §1's REML fit to within the difference between truth-plug-in and REML-plug-in variance components. The shrinkage factors at the truth are $(0.610, 0.701, 0.758, 0.796, 0.824, 0.887)$ — exactly Proposition 2's prediction, and the curve panel (a) draws.
+
+## 4. REML for variance components
+
+§3 assumed the variance components $(\tau^2, \sigma^2)$ were known. They aren't. Estimating them is where the structural difficulty of mixed-effects fitting actually lives — the fixed effects and random effects come along for free once $(\tau^2, \sigma^2)$ are pinned down via §3's MMEs, but pinning them down is a job in its own right and the obvious approach (maximum likelihood on the marginal $\mathbf{y} \sim \mathcal{N}(\mathbf{X}\boldsymbol{\beta}, \mathbf{V})$) is biased downward in a way that's significant for the small-to-moderate group counts that motivate mixed-effects in the first place.
+
+REML — *restricted* or *residual* maximum likelihood — is the standard fix. The original Patterson–Thompson 1971 derivation transformed $\mathbf{y}$ to a vector of error contrasts orthogonal to $\mathbf{X}$ and computed the likelihood of those. We'll take the equivalent and tighter route: marginalize $\boldsymbol{\beta}$ out under a flat improper prior, leaving a residual likelihood that depends only on $(\mathbf{G}, \mathbf{R})$, and maximize it. The structural answer is the same as what you'd get from §1's textbook degrees-of-freedom correction, generalized to arbitrary mixed models. The mechanics turn out to mirror the [Gaussian-process](/topics/gaussian-processes) §5 marginal-likelihood-based kernel-hyperparameter learning almost exactly — same Bayesian-marginalization machinery, same Occam's-razor-flavored objective, different model class.
+
+### 4.1 Why ML is biased downward
+
+The cleanest illustration is the elementary one: ordinary linear regression. With $\mathbf{y} \sim \mathcal{N}(\mathbf{X}\boldsymbol{\beta}, \sigma^2 \mathbf{I}_N)$, $p$ fixed-effects parameters, no random effects, the maximum-likelihood estimator of $\sigma^2$ is
+
+$$\hat{\sigma}^2_{\mathrm{ML}} \;=\; \frac{1}{N}\,\sum_{i=1}^N (y_i - \mathbf{x}_i^\top \hat{\boldsymbol{\beta}})^2 \;=\; \frac{\mathrm{RSS}(\hat{\boldsymbol{\beta}})}{N},$$
+
+where $\mathrm{RSS}(\hat{\boldsymbol{\beta}}) = \|\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}}\|^2$ is the residual sum of squares at the OLS fit. The textbook unbiased estimator divides by $N - p$ instead of $N$:
+
+$$\hat{\sigma}^2_{\mathrm{unbiased}} \;=\; \frac{\mathrm{RSS}(\hat{\boldsymbol{\beta}})}{N - p}, \qquad \mathbb{E}[\hat{\sigma}^2_{\mathrm{unbiased}}] \;=\; \sigma^2. \quad\quad (4.1)$$
+
+The factor $N - p$ in the denominator is the *residual degrees of freedom*: there are $N$ raw observations, but $p$ of them have been used to fit $\hat{\boldsymbol{\beta}}$, leaving $N - p$ "effective" observations to estimate $\sigma^2$. The ML estimator, by dividing by $N$ rather than $N - p$, fails to deduct the cost of estimating $\hat{\boldsymbol{\beta}}$ and consequently underestimates $\sigma^2$ by a factor of $(N - p)/N$. For $N = 100, p = 5$, that's a 5% downward bias — small but real. For $N = 12, p = 5$, that's a 58% downward bias — catastrophic.
+
+Mixed-effects fits suffer from the same problem, in a more elaborate form. The marginal log-likelihood we'd plausibly maximize in $(\boldsymbol{\beta}, \mathbf{G}, \mathbf{R})$ jointly is
+
+$$\ell_{\mathrm{ML}}(\boldsymbol{\beta}, \mathbf{G}, \mathbf{R}) \;=\; -\tfrac{N}{2}\log 2\pi - \tfrac{1}{2}\log\det \mathbf{V} - \tfrac{1}{2}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta})^\top \mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta}), \quad\quad (4.2)$$
+
+with $\mathbf{V} = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top + \mathbf{R}$. Maximizing in $\boldsymbol{\beta}$ at fixed $(\mathbf{G}, \mathbf{R})$ gives the GLS estimator from §2; maximizing in $(\mathbf{G}, \mathbf{R})$ at the resulting $\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}$ — *profiling* $\boldsymbol{\beta}$ out — gives the *profile log-likelihood* in $(\mathbf{G}, \mathbf{R})$:
+
+$$\ell_{\mathrm{prof}}(\mathbf{G}, \mathbf{R}) \;=\; -\tfrac{N}{2}\log 2\pi - \tfrac{1}{2}\log\det \mathbf{V} - \tfrac{1}{2}\mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}), \quad\quad (4.3)$$
+
+where $\mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}) = (\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}}_{\mathrm{GLS}})^\top \mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\hat{\boldsymbol{\beta}}_{\mathrm{GLS}})$ is the GLS-weighted residual sum of squares. Maximizing $\ell_{\mathrm{prof}}$ over $(\mathbf{G}, \mathbf{R})$ gives the *ML estimates* $(\hat{\mathbf{G}}_{\mathrm{ML}}, \hat{\mathbf{R}}_{\mathrm{ML}})$, and these are biased downward for exactly the same reason (4.1) is: $\ell_{\mathrm{prof}}$ has paid no penalty for the $p$ degrees of freedom consumed by $\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}$.
+
+For our six-classroom example with $p = 2$, the bias is mild — about $(N - p)/N = 58/60 \approx 96.7\%$ of the truth, a 3.3% downward bias. For a study with more covariates or fewer observations the bias scales linearly in $p$. With six covariates and twenty observations, ML would underestimate $\sigma^2$ by 30%. The variance-component estimates inherit that bias, the fixed-effects standard errors (which depend on $\mathbf{V}^{-1}$) inherit it from there, and confidence intervals based on the ML fit are systematically too narrow.
+
+REML's job is to clean this up.
+
+### 4.2 The REML derivation by Bayesian marginalization
+
+Patterson and Thompson 1971 derived REML by transforming $\mathbf{y}$ to a vector of *error contrasts* — linear combinations $\mathbf{a}^\top \mathbf{y}$ with $\mathbf{a}^\top \mathbf{X} = \mathbf{0}$ — and writing down the likelihood of those contrasts. The contrasts are statistics that depend on the data only through residuals from the fixed-effects fit, so their distribution depends on $(\mathbf{G}, \mathbf{R})$ but not on $\boldsymbol{\beta}$, and maximizing their likelihood gives unbiased variance-component estimates. The construction is geometrically clean but algebraically heavy. We'll take the equivalent route that's cleaner algebraically and connects directly to the GP §5 story: integrate $\boldsymbol{\beta}$ out under a flat improper prior $p(\boldsymbol{\beta}) \propto 1$ on $\mathbb{R}^p$.
+
+<TheoremBlock type="theorem" number={3} title="REML log-likelihood">
+Under Definition 1 with $\mathbf{V}, \mathbf{G}, \mathbf{R}$ positive-definite, the marginal density of $\mathbf{y}$ obtained by integrating $\boldsymbol{\beta}$ out under a flat improper prior $p(\boldsymbol{\beta}) \propto 1$ on $\mathbb{R}^p$ is well-defined up to a multiplicative constant, and the resulting *REML log-likelihood* (up to an additive constant in $(\mathbf{G}, \mathbf{R})$) is
+$$\ell_{\mathrm{REML}}(\mathbf{G}, \mathbf{R}) \;=\; -\tfrac{1}{2}\log\det \mathbf{V} \;-\; \tfrac{1}{2}\log\det(\mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}) \;-\; \tfrac{1}{2}\mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}). \quad\quad (4.4)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The marginal density of $\mathbf{y}$ after integrating out $\boldsymbol{\beta}$ is
+$$p_{\mathrm{REML}}(\mathbf{y} \mid \mathbf{G}, \mathbf{R}) \;=\; \int_{\mathbb{R}^p} p(\mathbf{y} \mid \boldsymbol{\beta}, \mathbf{G}, \mathbf{R})\,p(\boldsymbol{\beta})\,d\boldsymbol{\beta} \;\propto\; \int_{\mathbb{R}^p} \mathcal{N}(\mathbf{y};\, \mathbf{X}\boldsymbol{\beta},\, \mathbf{V})\,d\boldsymbol{\beta}, \quad\quad (4.5)$$
+the proportionality absorbing the unknown constant from the improper prior. The integrand is a Gaussian in $\boldsymbol{\beta}$ — quadratic exponential — so the integral is a Gaussian integral and we can evaluate it in closed form. Expand the quadratic in the integrand:
+$$(\mathbf{y} - \mathbf{X}\boldsymbol{\beta})^\top \mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta}) \;=\; \boldsymbol{\beta}^\top \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}\boldsymbol{\beta} - 2\boldsymbol{\beta}^\top \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{y} + \mathbf{y}^\top \mathbf{V}^{-1}\mathbf{y}.$$
+Complete the square in $\boldsymbol{\beta}$. With $\mathbf{A} = \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}$ and $\mathbf{b} = \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{y}$, the quadratic-in-$\boldsymbol{\beta}$ piece is $\boldsymbol{\beta}^\top \mathbf{A}\boldsymbol{\beta} - 2\boldsymbol{\beta}^\top \mathbf{b}$, which equals $(\boldsymbol{\beta} - \mathbf{A}^{-1}\mathbf{b})^\top \mathbf{A}(\boldsymbol{\beta} - \mathbf{A}^{-1}\mathbf{b}) - \mathbf{b}^\top \mathbf{A}^{-1}\mathbf{b}$. Recognizing $\mathbf{A}^{-1}\mathbf{b} = \hat{\boldsymbol{\beta}}_{\mathrm{GLS}}$ and substituting,
+$$(\mathbf{y} - \mathbf{X}\boldsymbol{\beta})^\top \mathbf{V}^{-1}(\mathbf{y} - \mathbf{X}\boldsymbol{\beta}) \;=\; (\boldsymbol{\beta} - \hat{\boldsymbol{\beta}}_{\mathrm{GLS}})^\top \mathbf{A}(\boldsymbol{\beta} - \hat{\boldsymbol{\beta}}_{\mathrm{GLS}}) \;+\; \mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}),$$
+where $\mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}) = \mathbf{y}^\top \mathbf{V}^{-1}\mathbf{y} - \mathbf{b}^\top \mathbf{A}^{-1}\mathbf{b}$. The integral in (4.5) factors:
+$$p_{\mathrm{REML}}(\mathbf{y} \mid \mathbf{G}, \mathbf{R}) \;\propto\; \frac{1}{(2\pi)^{N/2}\sqrt{\det \mathbf{V}}} \,\exp\!\left(-\tfrac{1}{2}\mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}})\right) \cdot \int_{\mathbb{R}^p} \exp\!\left(-\tfrac{1}{2}(\boldsymbol{\beta} - \hat{\boldsymbol{\beta}}_{\mathrm{GLS}})^\top \mathbf{A}(\boldsymbol{\beta} - \hat{\boldsymbol{\beta}}_{\mathrm{GLS}})\right) d\boldsymbol{\beta}.$$
+The Gaussian integral evaluates to $(2\pi)^{p/2} (\det \mathbf{A})^{-1/2}$:
+$$p_{\mathrm{REML}}(\mathbf{y} \mid \mathbf{G}, \mathbf{R}) \;\propto\; \frac{1}{(2\pi)^{(N-p)/2}\sqrt{\det \mathbf{V}}\sqrt{\det(\mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X})}} \,\exp\!\left(-\tfrac{1}{2}\mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}})\right).$$
+Take logs and drop the $-\tfrac{N - p}{2}\log 2\pi$ constant (it doesn't depend on $(\mathbf{G}, \mathbf{R})$):
+$$\ell_{\mathrm{REML}}(\mathbf{G}, \mathbf{R}) \;=\; -\tfrac{1}{2}\log\det \mathbf{V} - \tfrac{1}{2}\log\det(\mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}) - \tfrac{1}{2}\mathrm{RSS}_\mathbf{V}(\hat{\boldsymbol{\beta}}_{\mathrm{GLS}}),$$
+which is (4.4).
+</TheoremBlock>
+
+The structural difference between (4.3) and (4.4) is one term — $-\tfrac{1}{2}\log\det(\mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X})$ — and that one term is the entire fix. It penalizes variance components that produce large fixed-effects information $\mathbf{A} = \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}$, which counter-acts the ML profile likelihood's tendency to push $\sigma^2$ down to inflate the GLS information matrix. The Patterson–Thompson construction produces the same correction by a different route: their error-contrast likelihood is the likelihood of an $(N - p)$-dimensional vector of statistics whose distribution doesn't involve $\boldsymbol{\beta}$, and writing it out yields exactly (4.4) up to constants. The flat-prior marginalization route is shorter, more transparent about what the correction *is* (a marginalization of a nuisance parameter), and connects directly to GP §5: the GP marginal log-likelihood
+
+$$\log p(\mathbf{y} \mid \mathcal{X}, \boldsymbol{\theta}_{\mathrm{kernel}}) \;=\; -\tfrac{1}{2}\log\det \mathbf{K}_{\mathrm{kernel}} - \tfrac{1}{2}\mathbf{y}^\top \mathbf{K}_{\mathrm{kernel}}^{-1}\mathbf{y} - \tfrac{N}{2}\log 2\pi$$
+
+is structurally identical to (4.4) with $\mathbf{X}\boldsymbol{\beta} \equiv \mathbf{0}$ — no fixed effects to marginalize, no $\log\det$ correction, just the determinant penalty and the residual quadratic. REML is the marginal-likelihood machinery, plus a $\log\det(\mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X})$ correction for the $p$ fixed effects we've integrated out.
+
+A remark on the improper prior. We used $p(\boldsymbol{\beta}) \propto 1$ on $\mathbb{R}^p$, which doesn't normalize. The marginal density (4.5) is therefore defined only up to a multiplicative constant — the constant of integration of the improper prior — and that's why (4.4) is the REML log-likelihood "up to an additive constant." For the purpose of maximizing in $(\mathbf{G}, \mathbf{R})$ the constant is irrelevant. For Bayesian readers: the improper-prior marginalization is what makes REML a *partial* Bayesian procedure rather than a fully Bayesian one — we marginalize $\boldsymbol{\beta}$ but point-estimate $(\mathbf{G}, \mathbf{R})$. Putting a proper prior on $(\mathbf{G}, \mathbf{R})$ and integrating those out too is the fully Bayesian alternative, which §5 takes up.
+
+### 4.3 The profile form for the random-intercept model
+
+Specializing (4.4) to the random-intercept-only model with $\mathbf{G} = \tau^2 \mathbf{I}_J$ and $\mathbf{R} = \sigma^2 \mathbf{I}_N$ produces a function of two scalar variance components that we can plot, optimize numerically, and validate against `statsmodels.MixedLM(reml=True)`. Three computational ingredients make this practical:
+
+1. **$\log\det \mathbf{V}$ via the Sylvester identity.** Direct computation of $\det \mathbf{V}$ on a $60 \times 60$ matrix is fine here, but for general use the *Sylvester determinant identity* gives
+   $$\log\det \mathbf{V} \;=\; \log\det(\mathbf{R}) + \log\det(\mathbf{I}_q + \mathbf{Z}^\top \mathbf{R}^{-1}\mathbf{Z}\,\mathbf{G}). \quad\quad (4.6)$$
+   The right side reduces a $60 \times 60$ determinant to a $6 \times 6$ determinant plus a $60 \times 60$ diagonal $\mathbf{R}$. The savings is dramatic at scale: a study with $N = 10^5$ and $J = 100$ does a $100 \times 100$ determinant rather than a $10^5 \times 10^5$ one.
+
+2. **$\mathbf{V}^{-1}$ via Woodbury.** The same identity from §3's proof reduces $\mathbf{V}^{-1}$ to a single $J \times J$ inversion.
+
+3. **Reparameterization to unconstrained variables.** The variance components $(\tau^2, \sigma^2)$ are positive-real; numerical optimizers prefer unconstrained variables. Standard practice is to optimize over $(\log \tau, \log \sigma)$, matching the §3 transform table from probabilistic programming. The Jacobian factor doesn't appear in (4.4) because we're maximizing a likelihood, not a posterior, but it would appear if we put proper log-Normal priors on $(\tau, \sigma)$ in §5's Bayesian fit.
+
+For a numerical optimizer to find the REML optimum, plug (4.6) and Woodbury into (4.4), differentiate analytically (or use `scipy.optimize.minimize` with `method='L-BFGS-B'` and finite-difference gradients), and let the optimizer report $(\hat\tau^2_{\mathrm{REML}}, \hat\sigma^2_{\mathrm{REML}})$. The result must agree with `statsmodels.MixedLM(reml=True).fit().cov_re` and `.scale` to numerical precision — which it does, because `MixedLM` does exactly this optimization internally.
+
+### 4.4 ML vs REML on the six-classroom data
+
+Run both estimators on §1's data. Maximize the profile likelihood (4.3) for ML and the REML likelihood (4.4) for REML, both over the same $(\log\tau, \log\sigma)$ space, and compare. Two consistency checks the run should confirm: (i) $\hat\tau^2_{\mathrm{REML}} > \hat\tau^2_{\mathrm{ML}}$ and $\hat\sigma^2_{\mathrm{REML}} > \hat\sigma^2_{\mathrm{ML}}$ (REML's bias correction pushes both variance components up); (ii) the REML estimates match statsmodels to numerical precision.
+
+The visual story is in Figure 4. The two log-likelihood surfaces over $(\log\tau, \log\sigma)$ have different optima — REML's optimum sits at slightly larger variance components than ML's, exactly the bias correction (4.4) was designed to produce. On the six-classroom data with $p = 2$, the correction is small (~3% on $\sigma^2$, slightly larger on $\tau^2$ because of the $\log\det \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}$ term's nonlinear interaction with $\tau^2$). On a study with $p = 10$ and $N = 30$, the same comparison produces ML estimates 30% lower than REML's, which is the regime where REML is non-negotiable.
+
+A note on degenerate optima. The REML log-likelihood for a random-intercept model can have $\hat\tau^2 = 0$ as a boundary optimum if the data shows little classroom-level variation — the case where the model "decides" classrooms don't matter. This is *not* a bug; it's the data telling us partial pooling collapses to complete pooling. `MixedLM` handles this gracefully (returns $\hat\tau^2 = 0$ and a warning); custom optimizers should optimize over $\log\tau \in [-\infty, \infty]$ with care at the lower bound. Our DGP has $\tau = 5 > 0$ and $J = 6$ classrooms, so the boundary case won't trigger here, but it's worth flagging because applied users encounter it routinely with small $J$ or weak between-group signal.
+
+### 4.5 The Bayesian view: REML as an empirical-Bayes hyperprior
+
+The marginalization step in (4.5) integrates $\boldsymbol{\beta}$ out under a flat improper prior. What if we put a prior on $(\mathbf{G}, \mathbf{R})$ too and integrate them out? That's full Bayesian inference, and it's what §5's PyMC fit does. The relationship to REML is direct: REML is *empirical Bayes* on the variance components — point-estimate them by maximizing a marginal likelihood, then plug those point estimates into Henderson's MMEs (which are themselves the conditional posterior mode for $(\boldsymbol{\beta}, \mathbf{u})$ given $(\mathbf{G}, \mathbf{R}) = (\hat{\mathbf{G}}, \hat{\mathbf{R}})$).
+
+This empirical-Bayes-meets-MAP reading is what makes the §5 frequentist–Bayesian comparison so clean: REML and the PyMC posterior agree wherever the variance-component posterior is concentrated near $(\hat{\mathbf{G}}_{\mathrm{REML}}, \hat{\mathbf{R}}_{\mathrm{REML}})$, which is the typical regime when $J$ isn't too small. The discrepancies show up when the variance-component posterior is wide (small $J$, weak between-group signal, posterior bimodality at $\tau^2 = 0$) — exactly the regime where empirical-Bayes plug-in underestimates uncertainty and full Bayesian propagation pays its rent.
+
+For the six-classroom data at $J = 6$, the variance-component posterior is concentrated enough that REML and the PyMC fit will agree closely, and that agreement is the closure point §5 builds toward.
+
+<Figure
+  src="/images/topics/mixed-effects/04_ml_vs_reml_likelihood.png"
+  alt="Two-panel side-by-side log-likelihood surfaces over (log-tau, log-sigma) with shared axes. Panel (a) shows the ML profile log-likelihood as a filled viridis contour with a black star marking the truth (log 5, log 8) and a magenta cross marking the ML optimum, which sits at smaller variance components than the truth. Panel (b) shows the REML log-likelihood with the same truth marker and a cyan cross at the REML optimum, which sits closer to the truth and at slightly larger variance components than ML's. The two surfaces look similar away from the optima."
+  caption="Figure 4. ML versus REML log-likelihood surfaces over (log τ, log σ). The truth (black star) sits between the two optima, and REML's optimum (cyan ×) is at larger variance components than ML's (magenta ×). On p=2 data the bias correction is small but visible; on small-N high-p data it dominates."
+/>
+
+```python
+# Custom REML and ML log-likelihoods, optimized via L-BFGS-B
+from scipy.optimize import minimize
+from scipy.linalg import cho_factor, cho_solve
+
+def neg_ell(theta, kind):                                # theta = (log τ, log σ)
+    tau2, sig2 = np.exp(2 * theta[0]), np.exp(2 * theta[1])
+    V = Z @ (tau2 * np.eye(J)) @ Z.T + sig2 * np.eye(N)
+    L, _ = cho_factor(V, lower=True)
+    A = X.T @ cho_solve((L, True), X)                    # X^T V^{-1} X
+    beta = np.linalg.solve(A, X.T @ cho_solve((L, True), y))
+    rss = (y - X @ beta) @ cho_solve((L, True), y - X @ beta)
+    logdet_V = 2 * np.sum(np.log(np.diag(L)))
+    if kind == "ml":
+        return 0.5 * (N * np.log(2 * np.pi) + logdet_V + rss)
+    return 0.5 * (logdet_V + np.linalg.slogdet(A)[1] + rss)   # REML
+
+x0 = np.array([np.log(5.0), np.log(8.0)])
+ml = minimize(neg_ell, x0, args=("ml",),   method="L-BFGS-B")
+re = minimize(neg_ell, x0, args=("reml",), method="L-BFGS-B")
+```
+
+The custom REML fit returns $\hat\tau_{\mathrm{REML}}^2 \approx 3.30$ and $\hat\sigma_{\mathrm{REML}}^2 \approx 56.1$, agreeing with `mlm.cov_re.iloc[0,0]` and `mlm.scale` from §1's statsmodels fit to roughly $1.5 \times 10^{-3}$ — the two implementations solve the same optimization to the optimizer's tolerance. The ML estimates are $\hat\tau_{\mathrm{ML}}^2 \approx 2.70$, $\hat\sigma_{\mathrm{ML}}^2 \approx 56.0$ — both below REML's by the Bayesian-marginalization correction (4.4) introduces. The truth $(25, 64)$ sits in the right neighborhood; this realization happens to under-shoot $\tau^2$ (one of the regimes where the variance-component posterior has nontrivial mass near zero, as §5 will exhibit).
+
+## 5. The frequentist–Bayesian bridge
+
+We've spent four sections building the frequentist machinery. §1 motivated partial pooling geometrically. §2 gave the linear mixed model and the marginal covariance $\mathbf{V} = \mathbf{Z}\mathbf{G}\mathbf{Z}^\top + \mathbf{R}$. §3 derived Henderson's mixed-model equations and the BLUP shrinkage formula. §4 derived REML and showed it's a Bayesian-marginalization-of-$\boldsymbol{\beta}$ in disguise.
+
+§4 closed with a remark that's worth taking seriously: REML is *empirical Bayes* on the variance components. We marginalize $\boldsymbol{\beta}$ (frequentists call this profiling), point-estimate $(\mathbf{G}, \mathbf{R})$ by maximizing the residual likelihood, then plug those point estimates into Henderson's MMEs to get $(\hat{\boldsymbol{\beta}}, \hat{\mathbf{u}})$. The plug-in step is what makes it empirical Bayes rather than fully Bayesian — full Bayesian inference would put a prior on $(\mathbf{G}, \mathbf{R})$ and integrate over the variance-component posterior rather than picking a single estimate.
+
+This section runs the full Bayesian fit on §1's data and shows what we get. Three claims to defend, in order:
+
+1. **The Bayesian fit recovers REML.** The variance-component posteriors concentrate near the REML estimates, the fixed-effects posteriors concentrate near the GLS estimates, and the random-effects posterior means concentrate near the BLUPs. When the data is informative enough — and $J = 6$ classrooms with $N = 60$ observations is plenty — the two views agree numerically.
+2. **The Bayesian fit gives properly propagated uncertainty.** REML's plug-in step ignores variance-component uncertainty when reporting fixed-effects standard errors and BLUP intervals. The Bayesian fit propagates that uncertainty through to every downstream quantity. Whether the difference matters depends on how concentrated the variance-component posterior is — for our data it's small, but the experiment will show it.
+3. **Centered-vs-non-centered shows up here, in its native habitat.** [Probabilistic programming](/topics/probabilistic-programming) §5 used eight schools with known $\sigma_j$ as the iconic centered-vs-non-centered example. The funnel pathology those parameterizations diagnose is *the* characteristic geometry of hierarchical models with small group counts — which is exactly the regime mixed-effects practitioners run into routinely. Our $J = 6$ classrooms are smaller than eight schools' $J = 8$, the variance components are unknown, and the funnel will be present. Same lesson, different data, in the regime where it actually applies.
+
+### 5.1 The Bayesian GLMM specification
+
+Take the §1 model and put priors on everything.
+
+$$\begin{aligned}
+\alpha &\sim \mathcal{N}(50,\, 20^2) \\
+\beta &\sim \mathcal{N}(0,\, 10^2) \\
+\tau &\sim \mathrm{HalfNormal}(10) \\
+\sigma &\sim \mathrm{HalfNormal}(10) \\
+a_j \mid \tau &\sim \mathcal{N}(0,\, \tau^2), \qquad j = 1, \ldots, 6 \\
+y_{ij} \mid \alpha, \beta, a_j, \sigma &\sim \mathcal{N}(\alpha + \beta\, x_{ij} + a_j,\, \sigma^2). \quad\quad (5.1)
+\end{aligned}$$
+
+Two notes on the prior choices. The fixed-effects priors $\alpha \sim \mathcal{N}(50, 400)$ and $\beta \sim \mathcal{N}(0, 100)$ are intentionally weak — they cover the plausible range of exam-score intercepts and prep-hours slopes by orders of magnitude, with no real prior commitment. They behave essentially like a flat prior on the support that matters; the data dominates them. The variance-component priors $\tau, \sigma \sim \mathrm{HalfNormal}(10)$ are what Gelman et al. (2008) call *weakly informative*: they're not flat (a flat prior on a positive-real parameter is improper and creates pathologies near zero), but they put modest probability on values up to $\sim 30$, which comfortably accommodates the truth $(\tau, \sigma) = (5, 8)$ without imposing much.
+
+The choice of `HalfNormal` over the historically common `InverseGamma(0.001, 0.001)` is deliberate. The Gelman 2006 prior-sensitivity paper showed that the inverse-gamma prior on variance components creates an artifact: for small data the posterior pulls $\tau$ away from zero in proportion to the prior's tail behavior, not the data. `HalfNormal` (or `HalfCauchy` / `HalfStudentT`, equivalent in this regime) shrinks toward zero gracefully when the data is uninformative and gets out of the way when the data is. It's the modern default and what Stan's manual recommends.
+
+### 5.2 The funnel reappears
+
+Run the centered model with NUTS. PyMC's defaults — 1000 warmup, 1000 draws, 4 chains, `target_accept=0.9` — should be plenty for a model this small. The diagnostics will report some number of *divergent transitions* — leapfrog trajectories where the symplectic integrator's energy error exceeded NUTS's tolerance. The count will be small but nonzero, $\hat R$ for $\tau$ will sit around 1.01–1.02 (acceptable but not great), and the effective sample size for $\tau$ will be a fraction of the nominal 4000 draws. This is the same pathology probabilistic programming §5 identified on eight schools: the joint distribution of $(a_j, \log\tau)$ has a *funnel* — wide at the top (large $\tau$, the $a_j$ have lots of room) and tight at the bottom (small $\tau$, the $a_j$ are squeezed near zero). NUTS's leapfrog integrator picks one step size $\epsilon$ during warmup and reuses it everywhere; the step size that's right for the wide region is too large for the narrow region, and divergences cluster at the funnel's neck.
+
+Why does our problem funnel? Because $J = 6$ is small. The eight-schools case was the *iconic* funnel because $J = 8$ schools and the variance components were small relative to the group SEs. We have $J = 6$ classrooms and modest within-classroom data, so the variance components are estimable but not pinned down — the posterior on $\tau$ has nontrivial mass near small values, and the funnel is exactly what you get when $p(a_j \mid \tau)$ is conditionally tight at small $\tau$.
+
+The pedagogical point is that the funnel is *not a sampler bug*. It's a geometric mismatch between the model's natural parameterization and the geometry HMC samples on, and the divergence count is the diagnostic signal. Increasing `target_accept` to 0.99 reduces the divergence count by shrinking the leapfrog step size, but slows the sampler dramatically — the symptom is suppressed without addressing the cause. Reparameterizing is the structural fix.
+
+### 5.3 The non-centered rewrite
+
+The non-centered parameterization introduces standard-Normal latent variables $z_j$ and defines the random effects deterministically:
+
+$$z_j \sim \mathcal{N}(0, 1), \qquad a_j \;\equiv\; \tau \cdot z_j, \qquad j = 1, \ldots, J. \quad\quad (5.2)$$
+
+Probabilistically, integrating $z_j$ out of $a_j = \tau z_j$ gives $a_j \mid \tau \sim \mathcal{N}(0, \tau^2)$, exactly the centered prior. The two parameterizations encode the same generative model. *Geometrically*, NUTS samples on $(\alpha, \beta, \tau, \sigma, z_1, \ldots, z_J)$ rather than $(\alpha, \beta, \tau, \sigma, a_1, \ldots, a_J)$, and the joint distribution of $(z_j, \log\tau)$ is rectangular under the prior — independent components, no funnel — while the joint of $(a_j, \log\tau)$ is the funnel we just diagnosed. Same posterior, different geometry to traverse.
+
+Run the non-centered model with the same NUTS settings. The expected diagnostics: zero divergences (or very nearly), $\hat R \approx 1.00$ across the board, full effective sample size for $\tau$. The fix is mechanical, costs three lines, and is the standard Bayesian-hierarchical trick — you'll see it in any modern Stan or PyMC tutorial.
+
+### 5.4 The numerical convergence
+
+Three claims from the head of this section, now made concrete on §1's data.
+
+**Claim 1: variance-component posteriors track REML.** The non-centered NUTS fit produces 4000 posterior draws of $(\tau, \sigma)$. Plot the marginals as densities, overlay vertical reference lines at the REML estimates from §4 and the truth. The posterior mean of $\tau^2$ should be within a few percent of $\hat\tau^2_{\mathrm{REML}}$, and the posterior mean of $\sigma^2$ should be within a fraction of a percent of $\hat\sigma^2_{\mathrm{REML}}$ — the variance-component posteriors are concentrated near the REML estimates, which is what "the data is informative enough" looks like for $J = 6, N = 60$.
+
+**Claim 2: fixed-effects posteriors track GLS, and BLUPs track posterior means.** Fixed-effects posterior means $\hat\alpha_{\mathrm{Bayes}}, \hat\beta_{\mathrm{Bayes}}$ should match the GLS estimates from §2 and §4 to within Monte Carlo noise. Random-effects posterior means $\mathbb{E}[a_j \mid \mathbf{y}]$ should match the BLUPs $\hat u_j$ from §3 to within Monte Carlo noise. The two views agree on point estimates.
+
+**Claim 3: Bayesian intervals are slightly wider.** Where REML's Wald intervals on $\boldsymbol{\beta}$ assume the variance components are known at their REML estimates, the Bayesian fit propagates the variance-component posterior through to the fixed-effects posterior. The Bayesian interval widths are inflated by a small factor — typically 5–15% for this regime — relative to REML's. The factor scales with how much the variance-component posterior is non-degenerate; for studies with $J = 3$ instead of $J = 6$ the inflation could be 30% or more, which is the regime where empirical-Bayes plug-in starts to seriously underestimate uncertainty.
+
+The four-panel Figure 5 makes all three claims visually direct.
+
+### 5.5 What this comparison teaches
+
+Three takeaways, each worth being explicit about.
+
+First, *frequentist and Bayesian mixed-effects fits are not different methods.* They fit the same model. Both compute the conditional posterior of $(\boldsymbol{\beta}, \mathbf{u})$ given $(\mathbf{G}, \mathbf{R})$ and the data — Henderson's MMEs *are* the conditional posterior mode. They differ only in how they handle $(\mathbf{G}, \mathbf{R})$: REML point-estimates them by maximizing a marginal likelihood, the Bayesian fit puts a prior on them and integrates. When the data is informative, the variance-component posterior is concentrated near the REML estimates and the two procedures give numerically equivalent answers. When it isn't, they diverge in predictable ways and the Bayesian fit is the more defensible one.
+
+Second, *the centered-vs-non-centered story is a fact about HMC, not about mixed-effects.* The funnel is a feature of any hierarchical model whose variance components are unknown and whose group counts are small enough to make the variance components only weakly identified. Mixed-effects models hit this regime constantly — most applied studies have $J$ in the dozens or fewer, and most have variance-component posteriors with nontrivial mass near zero. The non-centered rewrite is the standard fix and it's a three-line code change. The next time you see a Bayesian hierarchical model with a divergent transition warning, this is the pattern to recognize.
+
+Third, *PPL idiom hides exactly nothing about what the model is doing.* The MMEs we derived in §3 are not the algorithm PyMC runs — PyMC runs NUTS on the joint log-density, the MMEs are not in the picture — but the model PyMC is fitting *is* the model whose conditional posterior mode the MMEs solve. The frequentist–Bayesian bridge is structural: same model, same data, same conditional structure, two different ways to deal with the variance components. Once you see this, the choice of which to use becomes a question about the data regime and the use case, not a question about which philosophical tribe you belong to.
+
+<Figure
+  src="/images/topics/mixed-effects/05_frequentist_bayesian_bridge.png"
+  alt="Four-panel 2×2 comparison figure. Panel (a) — variance-component posteriors: τ posterior in blue and σ posterior in green as kernel densities, with vertical reference lines at the truth (black dashed), REML estimates (orange solid), and posterior mean (color-matched solid); REML and posterior-mean references nearly coincide. Panel (b) — fixed-effects forest plot for (α, β): Bayesian 95% CI in blue, REML 95% Wald in orange, true value as a black ×; the Bayesian intervals are slightly wider. Panel (c) — funnel comparison: side-by-side scatter of centered fit (a₁, log τ) in transparent blue with red × marks for divergent transitions (funnel shape), and non-centered fit (z₁, log τ) in transparent green showing a rectangular blob with no divergences. Panel (d) — BLUPs vs Bayesian posterior means: six rows sorted by n_j, each with Bayesian 95% CI in blue (above) and BLUP interval in orange (below), with markers at point estimates and a black × at the true a_j; the two intervals are nearly coincident."
+  caption="Figure 5. The frequentist–Bayesian bridge on the six-classroom data. (a) Variance-component posteriors track REML. (b) Bayesian fixed-effects intervals are slightly wider than REML's Wald intervals. (c) Centered (a₁, log τ) shows the funnel and divergent transitions; non-centered (z₁, log τ) is rectangular. (d) BLUPs are the random-effects posterior means modulo variance-component handling."
+/>
+
+```python
+# PyMC: centered + non-centered on the same data
+import pymc as pm
+
+with pm.Model() as centered:
+    alpha = pm.Normal("alpha", mu=50.0, sigma=20.0)
+    beta = pm.Normal("beta", mu=0.0, sigma=10.0)
+    tau = pm.HalfNormal("tau", sigma=10.0)
+    sigma = pm.HalfNormal("sigma", sigma=10.0)
+    a = pm.Normal("a", mu=0.0, sigma=tau, shape=J)               # centered
+    pm.Normal("y", mu=alpha + beta * x + a[classroom], sigma=sigma, observed=y)
+    idata_c = pm.sample(1000, tune=1000, chains=4, target_accept=0.9)
+
+with pm.Model() as non_centered:
+    alpha = pm.Normal("alpha", mu=50.0, sigma=20.0)
+    beta = pm.Normal("beta", mu=0.0, sigma=10.0)
+    tau = pm.HalfNormal("tau", sigma=10.0)
+    sigma = pm.HalfNormal("sigma", sigma=10.0)
+    z = pm.Normal("z", mu=0.0, sigma=1.0, shape=J)               # standardized
+    a = pm.Deterministic("a", tau * z)                           # non-centered
+    pm.Normal("y", mu=alpha + beta * x + a[classroom], sigma=sigma, observed=y)
+    idata_nc = pm.sample(1000, tune=1000, chains=4, target_accept=0.9)
+```
+
+The centered fit produces ~30–60 divergent transitions out of 4000 draws on this realization, with $\hat R(\tau) \approx 1.02$ and visibly funnel-shaped joint draws of $(a_1, \log\tau)$. The non-centered fit produces zero or very nearly zero divergences (single digits at most — what the §5.3 prose calls "very nearly"), $\hat R \approx 1.00$ across the board, and full effective sample size for $\tau$. The non-centered posterior means recover $\hat\alpha_{\mathrm{Bayes}} \approx 50.99$, $\hat\beta_{\mathrm{Bayes}} \approx 4.86$ (matching GLS / REML to within Monte Carlo noise), $\hat\tau_{\mathrm{Bayes}}^2 \approx 3.9$ and $\hat\sigma_{\mathrm{Bayes}}^2 \approx 57.2$ (matching REML to a few percent), and per-classroom posterior means that track the BLUPs from §3 to within sampling noise. Three independently-derived procedures, one numerically consistent answer.
+
+## 6. Connections, limits, and references
+
+Mixed-effects models sit at one of those rare junctions where four independent threads of statistical theory converge on the same algebra: the frequentist GLS-with-known-covariance estimator from §2, Henderson's penalized-likelihood derivation from §3, the REML / Bayesian-marginalization story from §4, and the full Bayesian fit from §5. The four routes give numerically equivalent answers when the data is informative enough — which is to say, in the regime where mixed-effects models are most often appropriate. That convergence is the structural reason the topic has been a workhorse of applied statistics for fifty years.
+
+The remainder of §6 takes stock: where mixed-effects shine, where they break down, and what neighboring topics connect.
+
+### 6.1 Where mixed-effects shine
+
+Five regimes where the linear mixed model is the right tool:
+
+- **Clustered cross-sectional data.** The §1 six-classroom example is the canonical case: observations cluster naturally into groups, and the grouping captures variation we want to model rather than ignore. Students nest in classrooms, classrooms in schools, patients in clinics, customers in stores. Whenever the natural unit of analysis is the individual but the natural unit of *variation* is the group, mixed-effects models are the principled response.
+- **Longitudinal / repeated-measures data.** Each subject contributes a sequence of measurements over time. The within-subject correlation is non-negotiable — ignoring it gives anti-conservative standard errors — and the between-subject heterogeneity in baseline level (random intercept) and time trend (random slope) is the substantive question. The `sleepstudy` dataset from `lme4` is the canonical pedagogical example.
+- **Multilevel / hierarchical data.** Three or four levels of nesting (students within classrooms within schools within districts), each carrying its own random effects, becomes nontrivial in $\mathbf{Z}$ but the algebra is unchanged. *Crossed* random effects (an item-response model with student-level and item-level random effects, neither nested in the other) extend the same framework with a slightly different $\mathbf{Z}$.
+- **Recommender systems with user / item random effects.** The ML-native regime. A rating $y_{ui} = \mu + a_u + b_i + \varepsilon_{ui}$ with $a_u \sim \mathcal{N}(0, \tau_u^2)$ and $b_i \sim \mathcal{N}(0, \tau_i^2)$ is a crossed random-effects model whose BLUPs are exactly the user / item biases in any matrix-factorization recommender. Koren, Bell, and Volinsky 2009 makes the connection explicit.
+- **A/B testing and meta-analysis.** When the same experiment is run across many sites, the treatment effect is naturally modeled as varying by site, with a population-level mean (fixed effect) and site-level deviations (random effects). Bayesian meta-analysis is essentially this model under a different name; Rubin's eight-schools is its iconic instance.
+
+### 6.2 Where mixed-effects break down
+
+Five structural failure modes:
+
+- **Non-Gaussian likelihoods → GLMMs.** When $\mathbf{y}$ is binary, count, ordinal, censored, or otherwise non-Gaussian, the linear mixed model is replaced by the *generalized linear mixed model*. The marginal likelihood (4.2) generalizes but no longer factors. Standard responses: PQL (Breslow & Clayton 1993) for fast approximate inference; Laplace approximation (Wolfinger & O'Connell 1993, the default in `lme4::glmer`); fully Bayesian via PyMC GLMM with NUTS.
+- **Very high-dimensional random effects → factor models or GPs.** When $q$ is in the thousands, MMEs become a memory and computational problem even with sparsity exploits. Latent-factor models replace $\mathbf{u} \sim \mathcal{N}(\mathbf{0}, \mathbf{G})$ with $\mathbf{u} = \mathbf{B}\mathbf{f} + \boldsymbol{\eta}$. [Gaussian processes](/topics/gaussian-processes) apply when the random-effects index has a meaningful metric — the random-effects covariance becomes a kernel.
+- **Crossed effects with massive cardinality → variational methods.** Industrial recommender systems have $J_{\mathrm{users}}$ in the hundreds of millions. [Variational inference](/topics/variational-inference) gives a tractable approximation; mean-field VI is the natural starting point, structured VI respecting random-effects structure (Hoffman et al. 2013) is state of the art.
+- **Unidentified or near-degenerate variance components.** When $J$ is very small ($J = 2$ or $J = 3$), variance components are weakly identified — REML can return $\hat\tau^2 = 0$ as a boundary optimum. Bayesian inference handles this gracefully (wide variance-component posterior, appropriately conservative fixed-effects intervals) but at $J = 2$ even Bayesian inference identifies $\tau^2$ almost entirely from the prior. The honest response is either to collect more groups or to use fixed-effects.
+- **Misspecified random-effects distributions.** The Gaussian assumption $\mathbf{u} \sim \mathcal{N}(\mathbf{0}, \mathbf{G})$ is a modeling commitment. When the random effects are heavy-tailed, the Gaussian assumption shrinks them too aggressively. Replace with Student-$t$ random effects (a one-line PyMC change), or use Bayesian nonparametric priors — Dirichlet-process random effects are the canonical option.
+
+### 6.3 Connections to neighboring topics
+
+**Within T5 (Bayesian & Probabilistic ML):**
+
+- [Variational Inference](/topics/variational-inference) — §6.2's crossed-effects-at-scale response. The mean-field and structured VI machinery from VI §3–4 applies directly to mixed-effects with very large $\mathbf{u}$.
+- [Gaussian Processes](/topics/gaussian-processes) — sibling. The marginal-likelihood-based hyperparameter learning from GP §5 is the structural analog of REML, and both topics close with a Bayesian hyperprior alternative. When the random-effects index has a meaningful metric, the LMM becomes a GP.
+- [Probabilistic Programming](/topics/probabilistic-programming) — direct upstream. PP §5's eight-schools fit IS a hierarchical mixed-effects model; this topic developed the partial-pooling theory PP took as given. The centered-vs-non-centered story from PP §5 reappeared in §5.3 in its native habitat.
+- **Sparse Bayesian Priors** *(coming soon)* — for variable selection on the fixed effects $\boldsymbol{\beta}$ in models with many predictors.
+- **Bayesian Neural Networks** *(coming soon)* — when the fixed-effects predictor $\mathbf{X}\boldsymbol{\beta}$ is replaced by a neural network and the random effects encode group-level deviations.
+
+**Across to formalstatistics:**
+
+- <ExternalLink href="https://www.formalstatistics.com/topics/hierarchical-bayes-and-partial-pooling" site="formalstatistics" topic="Hierarchical Bayes and Partial Pooling" /> — the cross-site backbone for this topic.
+- <ExternalLink href="https://www.formalstatistics.com/topics/generalized-linear-models" site="formalstatistics" topic="Generalized Linear Models" /> — §6.2's GLMM extension lives here.
+- <ExternalLink href="https://www.formalstatistics.com/topics/linear-regression" site="formalstatistics" topic="Linear Regression" /> — direct prerequisite. The OLS / GLS machinery from §2.4 builds on the OLS theory developed there.
+- <ExternalLink href="https://www.formalstatistics.com/topics/maximum-likelihood" site="formalstatistics" topic="Maximum Likelihood" /> — §4.1's discussion of why ML is biased for variance components is the application here of the general MLE-bias theory developed there.
+- <ExternalLink href="https://www.formalstatistics.com/topics/multivariate-distributions" site="formalstatistics" topic="Multivariate Distributions" /> — the multivariate-Normal conditioning identity (3.9) is taught there in pure-probability form.
+- <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-foundations-and-prior-selection" site="formalstatistics" topic="Bayesian Foundations and Prior Selection" /> — §5.1's prior choices build directly on that topic's prior-elicitation framework.

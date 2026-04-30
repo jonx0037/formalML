@@ -109,7 +109,6 @@ export const tracks = [
     description:
       'The Bayesian toolkit at modern ML scale \u2014 variational methods, neural-network posteriors, Gaussian processes, probabilistic programming, specialized MCMC.',
     planned: [
-      'mixed-effects',
       'stacking-and-predictive-ensembles',
       'bayesian-neural-networks',
       'variational-bayes-for-model-selection',

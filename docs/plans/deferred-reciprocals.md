@@ -674,17 +674,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Metric spaces formalize learned similarity. Mahalanobis distance, Siamese networks, and triplet loss all learn metrics on embedding spaces — the axioms here are exactly the constraints those losses…_
 
-## When `formalml/mixed-effects` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/generalized-linear-models** declares `formalmlConnections` → `mixed-effects` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§22.10 Rem 25 forward-points: GLMMs add random effects $\mathbf{b} \sim \mathcal{N}(\mathbf{0}, \boldsymbol\Sigma)$ to the linear predictor for clustered or hierarchical data. Topic 22 covers the f…_
-- **formalStatistics/hierarchical-bayes-and-partial-pooling** declares `formalmlConnections` → `mixed-effects` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _REML, lme4, Stan-style GLMMs, recommender-system random-effects structures. §28.8 Rem 20 pointer._
-
 ## When `formalml/model-comparison` ships
 
 Add the reciprocal pointer back to:
