@@ -42,8 +42,12 @@ pnpm dev                                            # Dev server at localhost:43
 pnpm build                                          # Production build (runs pagefind). Needs NODE_OPTIONS=--max-old-space-size=8192 (default 4GB OOMs).
 pnpm preview                                        # Preview production build
 pnpm verify:nonparametric-ml                        # Numerical regression tests for src/components/viz/shared/nonparametric-ml.ts vs notebook printed outputs
-pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md — don't hand-edit that file.
+pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md, docs/plans/cross-site-audit-report.md, and docs/plans/audit-output/*.json — don't hand-edit those files.
 ```
+
+## Preview before publish (non-negotiable)
+
+Run `pnpm dev` and visually verify any `src/content/topics/*.mdx` change at `http://localhost:4321/topics/<slug>/` before committing. KaTeX is configured non-strict, so math parse errors render as inline `<span class="katex-error">` rather than failing the build — `pnpm build` exits 0 with broken math. Build success is necessary but not sufficient verification. Enforced at commit time by `.claude/hooks/preview-before-commit.sh`, which blocks `git commit` on staged topic MDX unless an `astro dev` process is running.
 
 ## Project Structure
 
@@ -84,9 +88,17 @@ Each topic in `src/content/topics/` is an MDX file with YAML frontmatter definin
 - `formalstatisticsPrereqs` — array of objects (same shape) declaring formalstatistics.com prerequisites
 - Interactive viz components are imported and embedded inline
 
+**Frontmatter schema source-of-truth:** the most recently shipped topic in `src/content/topics/`, not the handoff brief. As of 2026-04-29, `probabilistic-programming.mdx` is canonical (`subtitle` + `abstract` + `tags` + `connections` + `videoId` + `notebookPath` + `githubUrl` + `datePublished` + `estimatedReadTime`). Brief drafts may use older field names (`description: >`, `keywords`, `slug`, `track`, `order`, `formalmlConnections: []`) — ignore the brief's schema, follow the codebase.
+
 **MDX top-level rule:** between the closing frontmatter `---` and the first heading, only `import`/`export` statements are allowed. JSX comments (`{/* … */}`) at top level cause `MDXError: Unexpected BlockStatement`; put comments inside the body.
 
-**Proofs:** use `<TheoremBlock type="proof">…$\square$</TheoremBlock>` with no `number` and no `title`. There is no `<ProofExpand>` component — the standalone `proof` block is the codebase pattern (rank-tests, conformal-prediction, quantile-regression).
+**Proofs:** use `<TheoremBlock type="proof">…</TheoremBlock>` with no `number`, no `title`, and no manual `$\square$` — the component auto-renders `∎` (PR #65 fix). `gaussian-processes.mdx` has stale manual markers from before the fix; `probabilistic-programming.mdx` is the post-fix reference. There is no `<ProofExpand>` component — the standalone `proof` block is the codebase pattern (rank-tests, conformal-prediction, quantile-regression).
+
+**Math display gotcha:** `$$\begin{aligned}` glued onto one line breaks rendering — MDX parses `{aligned}` as a JSX expression and strips `\begin{aligned}` before remark-math forwards to KaTeX. Always put `$$` on its own line before `\begin{aligned}` and after `\end{aligned}`. See `conformal-prediction.mdx` for the working pattern.
+
+**Equation numbering:** inline `\quad\quad (X.Y)` at the end of `$$...$$`, not `\tag{X.Y}` (which has KaTeX-rendering edge cases). Verified across `variational-inference.mdx`, `gaussian-processes.mdx`, `probabilistic-programming.mdx`.
+
+**Theorem numbering:** per-type and topic-local (Theorem 1, Theorem 2; Definition 1; Lemma 1; Proposition 1, Proposition 2). Cross-references in prose use the topic-local numbers, not section-prefixed (Theorem 1, not Theorem 2.2). Brief drafts often use section-prefixed numbering — convert when porting to MDX.
 
 ### Cross-site references
 
