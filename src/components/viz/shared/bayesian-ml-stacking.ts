@@ -7,37 +7,36 @@
 //   - Closed-form Bayesian linear / polynomial regression under NIG conjugacy
 //     (Student-t predictive, conjugate marginal log-evidence)
 //   - GP closed-form predictive — re-exported from gaussian-processes.ts
-//   - Exact leave-one-out log-predictive density loops for the three closed-form
-//     candidates (n refits, each O(n³) for GP and O(p³) for BLR/BPR)
+//   - Closed-form O(n³) leave-one-out log-predictive densities for all three
+//     closed-form candidates: BLR/BPR via n refits in O(p³) each (cheap because
+//     p ≤ 5), and GP via Rasmussen–Williams (2006) eq. 5.12–5.13 from a single
+//     Cholesky factorization (no refit-per-point loop).
 //   - BMA weights via softmax of marginal log-evidences
-//   - Stacking weights via interior-point gradient ascent on the simplex
+//   - Stacking weights via softmax-reparameterized gradient ascent on the simplex
 //     (Yao 2018, Definition 3.1 of the topic)
 //   - Stacking objective evaluated on a barycentric grid for Viz 3's contour
 //
-// All numerical algorithms are direct translations of the verified Python
-// notebook at notebooks/stacking-and-predictive-ensembles/01_stacking_and_
-// predictive_ensembles.ipynb. Numerical agreement is verified against printed
-// notebook outputs by src/components/viz/shared/__tests__/verify-bayesian-ml-
-// stacking.ts.
+// Numerical algorithms mirror the Python notebook
+// notebooks/stacking-and-predictive-ensembles/01_stacking_and_predictive_ensembles.ipynb
+// and the precompute pipeline serialize_for_viz.py. Agreement is checked
+// informally against the precompute pipeline outputs in
+// src/data/sampleData/stacking-and-predictive-ensembles/. A formal numerical
+// regression test (mirroring the verify-nonparametric-ml.ts pattern) is a
+// follow-up workstream.
 // =============================================================================
 
 import {
   mulberry32,
   gaussianSampler,
-  identityMatrix,
-  addDiagonal,
-  matMul,
   matVec,
-  transpose,
-  dot,
   choleskyFactor,
   solveLowerTriangular,
   solveUpperTriangularT,
   choleskyLogDet,
+  choleskyInverse,
   kernelSE,
   gpPredict,
   gpPredictDiag,
-  type GPPredictResult,
 } from './gaussian-processes';
 
 // Re-export the shared PRNG and linear-algebra primitives so callers can import
@@ -411,6 +410,48 @@ export function gpCandidatePredictive(
   return { loc, std };
 }
 
+/**
+ * Closed-form GP marginal log-likelihood (Rasmussen & Williams 2006, eq. 5.8):
+ *
+ *   log p(y | X, hypers) = −½ yᵀ K_y⁻¹ y − ½ log|K_y| − (n/2) log 2π,
+ *
+ * where K_y = K + σ²I. Computed from a single Cholesky factorization in O(n³).
+ * We expose this so callers can put the GP candidate on the same evidence
+ * footing as BLR/BPR for pseudo-BMA / BMA weight comparisons — without it, a
+ * caller is forced to mix scales (LOO ELPD vs. log-marginal-likelihood) and the
+ * resulting "BMA" weights aren't comparable across candidates.
+ */
+export function gpLogMarginalLikelihood(
+  x: ArrayLike<number>,
+  y: ArrayLike<number>,
+  hypers: GPCandidateHypers = {},
+): number {
+  const ell = hypers.lengthScale ?? 0.1;
+  const sf2 = hypers.outputVar ?? 1.0;
+  const sn2 = hypers.noiseVar ?? 0.04;
+  const n = y.length;
+
+  const Ky: number[][] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const row = new Array(n);
+    for (let j = 0; j < n; j++) {
+      const dx = x[i] - x[j];
+      const k = sf2 * Math.exp(-0.5 * (dx * dx) / (ell * ell));
+      row[j] = i === j ? k + sn2 : k;
+    }
+    Ky[i] = row;
+  }
+  const L = choleskyFactor(Ky);
+  const yVec: number[] = new Array(n);
+  for (let i = 0; i < n; i++) yVec[i] = y[i];
+  const tmp = solveLowerTriangular(L, yVec);
+  const alpha = solveUpperTriangularT(L, tmp);
+  let dataFit = 0;
+  for (let i = 0; i < n; i++) dataFit += yVec[i] * alpha[i];
+  const halfLogDet = choleskyLogDet(L); // = sum log diag(L) = ½ log|K_y|.
+  return -0.5 * dataFit - halfLogDet - 0.5 * n * Math.log(2 * Math.PI);
+}
+
 // -----------------------------------------------------------------------------
 // Exact LOO refit loops. Each candidate refits n times leaving one observation
 // out; predictive density at the held-out point is added to the LOO matrix.
@@ -452,20 +493,45 @@ export function looLogPredictiveGP(
   y: ArrayLike<number>,
   hypers: GPCandidateHypers = {},
 ): Float64Array {
+  // Closed-form Rasmussen & Williams (2006) eq. 5.12–5.13: from a single
+  // Cholesky factorization of K_y = K + σ²I, the LOO predictive at point i is
+  //
+  //   μ_LOO(i) = y_i − α_i / [K_y⁻¹]_{ii},   σ²_LOO(i) = 1 / [K_y⁻¹]_{ii},
+  //
+  // where α = K_y⁻¹ y. We build K_y, factor once, solve for α, and read off
+  // the LOO predictives in O(n) per point — total O(n³) instead of the n
+  // separate refits the previous implementation required (O(n⁴)).
+  const ell = hypers.lengthScale ?? 0.1;
+  const sf2 = hypers.outputVar ?? 1.0;
+  const sn2 = hypers.noiseVar ?? 0.04;
+
   const n = y.length;
-  const out = new Float64Array(n);
-  const xArr = Array.from(x as ArrayLike<number>);
-  const yArr = Array.from(y as ArrayLike<number>);
+  const Ky: number[][] = new Array(n);
   for (let i = 0; i < n; i++) {
-    const xLoo = xArr.slice(0, i).concat(xArr.slice(i + 1));
-    const yLoo = yArr.slice(0, i).concat(yArr.slice(i + 1));
-    const { loc, std } = gpCandidatePredictive(
-      xLoo,
-      yLoo,
-      [xArr[i]],
-      hypers,
-    );
-    out[i] = gaussianLogPdf(yArr[i], loc[0], std[0]);
+    const row = new Array(n);
+    for (let j = 0; j < n; j++) {
+      const dx = x[i] - x[j];
+      const k = sf2 * Math.exp(-0.5 * (dx * dx) / (ell * ell));
+      row[j] = i === j ? k + sn2 : k;
+    }
+    Ky[i] = row;
+  }
+
+  const L = choleskyFactor(Ky);
+
+  const yVec: number[] = new Array(n);
+  for (let i = 0; i < n; i++) yVec[i] = y[i];
+  const tmp = solveLowerTriangular(L, yVec);
+  const alpha = solveUpperTriangularT(L, tmp);
+
+  const KyInv = choleskyInverse(L);
+
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const dii = KyInv[i][i];
+    const looMean = y[i] - alpha[i] / dii;
+    const looStd = Math.sqrt(1.0 / dii);
+    out[i] = gaussianLogPdf(y[i], looMean, looStd);
   }
   return out;
 }

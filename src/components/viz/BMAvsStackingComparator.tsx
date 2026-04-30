@@ -175,7 +175,7 @@ export default function BMAvsStackingComparator() {
       // Held-out log-score caption.
       svg
         .append('text')
-        .attr('x', width / 2)
+        .attr('x', w / 2)
         .attr('y', height - 6)
         .attr('text-anchor', 'middle')
         .attr('font-size', 10)

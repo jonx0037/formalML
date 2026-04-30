@@ -325,14 +325,15 @@ def fit_full_pipeline(n_train: int, rng: np.random.Generator) -> dict:
         n_pp = mu_bart_eval.shape[0]
         n_sigma = len(sigma_post_bart)
         n_use = min(n_pp, n_sigma)
-        lp_eval_bart = np.empty(len(X_EVAL))
-        for i in range(len(X_EVAL)):
-            log_per_sample = stats.norm.logpdf(
-                y_eval[i],
-                loc=mu_bart_eval[:n_use, i],
-                scale=sigma_post_bart[:n_use],
-            )
-            lp_eval_bart[i] = np.logaddexp.reduce(log_per_sample) - np.log(n_use)
+        # Vectorize over (posterior sample, eval point) via NumPy broadcasting.
+        # log_per_sample has shape (n_use, len(y_eval)); logaddexp.reduce along
+        # axis 0 averages over posterior samples in log-space.
+        log_per_sample = stats.norm.logpdf(
+            y_eval[None, :],
+            loc=mu_bart_eval[:n_use, :],
+            scale=sigma_post_bart[:n_use, None],
+        )
+        lp_eval_bart = np.logaddexp.reduce(log_per_sample, axis=0) - np.log(n_use)
     except Exception as e:  # pragma: no cover - capture any BART failure
         warning = f"BART fit failed: {e}"
         print(f"  [BART] WARNING: {e}")
@@ -559,14 +560,13 @@ def teacher_predictive(extras: dict, rng: np.random.Generator, n_samples_per_x: 
     lp_gp = gp_predictive_logpdf(idata_gp, x_train, y_train, X_EVAL, y_eval)
     if mu_bart_eval is not None:
         n_use = min(mu_bart_eval.shape[0], len(sigma_bart))
-        lp_bart = np.empty(n_eval)
-        for i in range(n_eval):
-            log_per_sample = stats.norm.logpdf(
-                y_eval[i],
-                loc=mu_bart_eval[:n_use, i],
-                scale=sigma_bart[:n_use],
-            )
-            lp_bart[i] = np.logaddexp.reduce(log_per_sample) - np.log(n_use)
+        # Same broadcasting trick as in fit_full_pipeline: shape (n_use, n_eval).
+        log_per_sample = stats.norm.logpdf(
+            y_eval[None, :],
+            loc=mu_bart_eval[:n_use, :],
+            scale=sigma_bart[:n_use, None],
+        )
+        lp_bart = np.logaddexp.reduce(log_per_sample, axis=0) - np.log(n_use)
     else:
         lp_bart = np.full(n_eval, -np.inf)
     LP_eval = np.stack([lp_blr, lp_bpr, lp_gp, lp_bart], axis=1)
@@ -640,30 +640,60 @@ def sample_teacher_at_inputs(x_inputs, n_samples_each, extras, teacher_cache, rn
     cand_choice = rng.choice(4, size=(n_inputs, n_samples_each), p=w_stack)
     xs_inputs = (x_inputs - x_mean) / x_std
 
-    for j in range(n_inputs):
-        for s in range(n_samples_each):
-            c = cand_choice[j, s]
-            if c == 0:
-                idx = rng.integers(len(blr_alpha))
-                mu_s = blr_alpha[idx] + blr_beta[idx] * x_inputs[j]
-                samples[j, s] = rng.normal(mu_s, blr_sigma[idx])
-            elif c == 1:
-                idx = rng.integers(len(bpr_sigma))
-                betas_s = bpr_betas[idx]
-                xs_j = xs_inputs[j]
-                mu_s = float(sum(betas_s[k] * xs_j ** k for k in range(5)))
-                samples[j, s] = rng.normal(mu_s, bpr_sigma[idx])
-            elif c == 2:
-                samples[j, s] = rng.normal(gp_input_mean[j], np.sqrt(gp_input_var[j]))
-            else:
-                if mu_bart_inputs is None:
-                    samples[j, s] = rng.normal(gp_input_mean[j], np.sqrt(gp_input_var[j]))
-                else:
-                    sample_idx = rng.integers(mu_bart_inputs.shape[0])
-                    sigma_idx = rng.integers(len(sigma_bart))
-                    samples[j, s] = rng.normal(
-                        mu_bart_inputs[sample_idx, j], sigma_bart[sigma_idx]
-                    )
+    # Vectorize per-candidate by grouping the (j, s) flat positions where this
+    # candidate was drawn, then sampling all of them in one NumPy call. This
+    # eliminates the (n_inputs × n_samples_each) Python double-loop while
+    # preserving identical results given the same `rng` state. We process
+    # candidates in deterministic order (BLR → BPR-4 → GP → BART) so the rng
+    # advances reproducibly across calls.
+    flat_choice = cand_choice.reshape(-1)
+    flat_x = np.broadcast_to(x_inputs[:, None], (n_inputs, n_samples_each)).reshape(-1)
+    flat_xs = np.broadcast_to(xs_inputs[:, None], (n_inputs, n_samples_each)).reshape(-1)
+    flat_gp_mean = np.broadcast_to(gp_input_mean[:, None], (n_inputs, n_samples_each)).reshape(-1)
+    flat_gp_std = np.broadcast_to(np.sqrt(gp_input_var)[:, None], (n_inputs, n_samples_each)).reshape(-1)
+    flat_samples = np.empty(flat_choice.shape, dtype=float)
+
+    # BLR.
+    blr_mask = flat_choice == 0
+    if blr_mask.any():
+        n_blr = int(blr_mask.sum())
+        post = rng.integers(len(blr_alpha), size=n_blr)
+        mu = blr_alpha[post] + blr_beta[post] * flat_x[blr_mask]
+        flat_samples[blr_mask] = rng.normal(mu, blr_sigma[post])
+
+    # BPR-4 (degree-4 polynomial in standardized x).
+    bpr_mask = flat_choice == 1
+    if bpr_mask.any():
+        n_bpr = int(bpr_mask.sum())
+        post = rng.integers(len(bpr_sigma), size=n_bpr)
+        b = bpr_betas[post]                          # shape (n_bpr, 5)
+        xs = flat_xs[bpr_mask]
+        # mu_s = sum_k b[s,k] * xs[s]**k for k=0..4
+        powers = np.stack([xs ** k for k in range(5)], axis=1)  # (n_bpr, 5)
+        mu = (b * powers).sum(axis=1)
+        flat_samples[bpr_mask] = rng.normal(mu, bpr_sigma[post])
+
+    # GP (closed-form predictive at fixed posterior-marginalized hypers).
+    gp_mask = flat_choice == 2
+    if gp_mask.any():
+        flat_samples[gp_mask] = rng.normal(flat_gp_mean[gp_mask], flat_gp_std[gp_mask])
+
+    # BART, with GP fallback when BART evaluations weren't materialized at the
+    # distillation inputs.
+    bart_mask = flat_choice == 3
+    if bart_mask.any():
+        if mu_bart_inputs is None:
+            flat_samples[bart_mask] = rng.normal(flat_gp_mean[bart_mask], flat_gp_std[bart_mask])
+        else:
+            n_bart = int(bart_mask.sum())
+            sample_idx = rng.integers(mu_bart_inputs.shape[0], size=n_bart)
+            sigma_idx = rng.integers(len(sigma_bart), size=n_bart)
+            # We need the input-index for each masked flat position to look up the right column.
+            input_idx = np.broadcast_to(np.arange(n_inputs)[:, None], (n_inputs, n_samples_each)).reshape(-1)
+            mu = mu_bart_inputs[sample_idx, input_idx[bart_mask]]
+            flat_samples[bart_mask] = rng.normal(mu, sigma_bart[sigma_idx])
+
+    samples = flat_samples.reshape(n_inputs, n_samples_each)
     return samples
 
 
@@ -707,28 +737,26 @@ def fit_student_bayesian_poly(x_distill, y_distill, degree, x_mean, x_std):
     sigma_samples = posterior["sigma_y"].values.reshape(-1)
     xs_eval = (X_EVAL - x_mean) / x_std
 
-    # Predictive mean over X_EVAL: posterior-mean function plus noise.
+    # Predictive mean over X_EVAL: vectorize the polynomial evaluation across
+    # posterior samples. `powers` has shape (len(X_EVAL), K); the matrix product
+    # with the posterior beta matrix gives means_per_post of shape (n_post, n_eval).
     n_post = len(sigma_samples)
-    means_per_post = np.empty((n_post, len(X_EVAL)))
-    for s in range(n_post):
-        b = betas_samples[s]
-        means_per_post[s] = sum(b[k] * xs_eval ** k for k in range(K))
+    powers = np.stack([xs_eval ** k for k in range(K)], axis=1)  # (n_eval, K)
+    means_per_post = betas_samples @ powers.T                     # (n_post, n_eval)
 
     pred_mean = means_per_post.mean(axis=0)
-    # Predictive band: marginalize noise (Monte Carlo).
-    samples_pred = np.empty((n_post, len(X_EVAL)))
+    # Predictive band: marginalize noise via NumPy broadcasting in a single call.
     rng_local = np.random.default_rng(SEED + degree)
-    for s in range(n_post):
-        samples_pred[s] = rng_local.normal(means_per_post[s], sigma_samples[s])
+    samples_pred = rng_local.normal(means_per_post, sigma_samples[:, None])
     lower = np.percentile(samples_pred, 2.5, axis=0)
     upper = np.percentile(samples_pred, 97.5, axis=0)
 
     def _log_score_fn(y_eval):
-        log_p = np.empty((n_post, len(y_eval)))
-        for s in range(n_post):
-            log_p[s] = stats.norm.logpdf(
-                y_eval, loc=means_per_post[s], scale=sigma_samples[s]
-            )
+        # log_p has shape (n_post, n_eval); logaddexp.reduce along axis 0
+        # averages over posterior samples in log-space.
+        log_p = stats.norm.logpdf(
+            y_eval[None, :], loc=means_per_post, scale=sigma_samples[:, None]
+        )
         return np.logaddexp.reduce(log_p, axis=0) - np.log(n_post)
 
     return {

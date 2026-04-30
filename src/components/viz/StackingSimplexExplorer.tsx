@@ -27,6 +27,9 @@ const PANEL_HEIGHT = 380;
 const N_OPTIONS = [40, 60, 80, 120, 160, 240, 320] as const;
 const SIM_RES = 40; // 40 → ~820 grid points
 const SIDE = 360;
+const NARROW_BREAKPOINT = 640;
+const NARROW_PANEL_HEIGHT = 600; // triangle on top + readout panel below
+const MIN_TRI_SIZE = 240;
 
 // Convert barycentric (w1, w2, w3) with w1+w2+w3 = 1 to Cartesian on the unit
 // equilateral triangle. Vertex 1 = bottom-left, vertex 2 = bottom-right, vertex 3 = top.
@@ -77,11 +80,18 @@ export default function StackingSimplexExplorer() {
   const ref = useD3(
     (svg) => {
       const panelW = width || 720;
-      const height = PANEL_HEIGHT;
+      // Below the narrow breakpoint, stack vertically: triangle on top, side
+      // readout panel beneath it. This keeps `triSize` strictly positive on
+      // mobile widths (e.g., 375px) where `panelW - SIDE - 40` would otherwise
+      // go negative and break the geometry.
+      const isNarrow = panelW < NARROW_BREAKPOINT;
+      const height = isNarrow ? NARROW_PANEL_HEIGHT : PANEL_HEIGHT;
       svg.attr('width', panelW).attr('height', height);
       svg.selectAll('*').remove();
 
-      const triSize = Math.min(panelW - SIDE - 40, height - 40);
+      const triSize = isNarrow
+        ? Math.max(MIN_TRI_SIZE, Math.min(panelW - 40, 360))
+        : Math.max(MIN_TRI_SIZE, Math.min(panelW - SIDE - 40, height - 40));
       const margin = { top: 20, left: 20 };
 
       const sx = (cx: number) => margin.left + cx * triSize;
@@ -187,8 +197,12 @@ export default function StackingSimplexExplorer() {
         });
       dragHandle.call(drag as any);
 
-      // Side panel: weight readout.
-      const side = svg.append('g').attr('transform', `translate(${triSize + 60},20)`);
+      // Side panel: weight readout. Position right of the triangle on wide
+      // viewports; below it on narrow ones.
+      const sideTransform = isNarrow
+        ? `translate(${margin.left},${margin.top + triSize + 36})`
+        : `translate(${triSize + 60},20)`;
+      const side = svg.append('g').attr('transform', sideTransform);
       side.append('text').attr('font-size', 12).attr('font-weight', 600).text('Current weights');
       const ws: [string, number, string][] = [
         ['Linear (BLR)', w[0], paletteStacking.blr],
@@ -230,7 +244,7 @@ export default function StackingSimplexExplorer() {
         .attr('y', 22 + 8 * 16)
         .attr('font-size', 10)
         .attr('fill', '#444')
-        .text('Black ring = optimum w* found by SLSQP.');
+        .text('Black ring = optimum w* (softmax-reparameterized gradient ascent).');
     },
     [grid, w, optWeights, currentObj, width],
   );

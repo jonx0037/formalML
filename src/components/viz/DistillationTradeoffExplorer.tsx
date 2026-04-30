@@ -129,16 +129,33 @@ export default function DistillationTradeoffExplorer() {
       left.append('text').attr('transform', `translate(${innerW / 2},${innerH + 28})`).attr('text-anchor', 'middle').attr('font-size', 11).text('x');
       left.append('text').attr('x', innerW / 2).attr('y', -8).attr('text-anchor', 'middle').attr('font-size', 12).attr('font-weight', 600).text('Predictive bands');
 
-      // Right panel: bars (log-score and inference cost).
+      // Right panel: bars (log-score and inference cost). The legend color for
+      // the "best single" candidate is derived from its name so it stays
+      // semantically correct if the best model isn't BART (e.g. on a different
+      // DGP where GP or polynomial wins). Bar baselines are anchored to the
+      // y-scale domain minimum, not the score-array order, so heights stay
+      // correct regardless of which candidate is best.
+      const candidateColorByName: Record<string, string> = {
+        BLR: paletteStacking.blr,
+        'BPR-4': paletteStacking.bpr,
+        BPR: paletteStacking.bpr,
+        GP: paletteStacking.gp,
+        BART: paletteStacking.bart,
+      };
+      const bestColor = candidateColorByName[data.best_single.name] ?? paletteStacking.oracle;
+
       const right = svg.append('g').attr('transform', `translate(${margin.left + innerW + 24},${margin.top})`);
       const items = [
         { label: 'Teacher', score: data.teacher.log_score, cost: data.teacher.inference_cost, color: paletteStacking.stacking },
         { label: 'Student', score: student.log_score, cost: student.inference_cost, color: paletteStacking.bma },
-        { label: `Best (${data.best_single.name})`, score: data.best_single.log_score, cost: 1, color: paletteStacking.bart },
+        { label: `Best (${data.best_single.name})`, score: data.best_single.log_score, cost: 1, color: bestColor },
       ];
       const xB = d3.scaleBand<string>().domain(items.map((d) => d.label)).range([0, innerW]).padding(0.22);
       const scores = items.map((d) => d.score);
-      const yB = d3.scaleLinear().domain([Math.min(...scores) - 0.05, Math.max(...scores) + 0.02]).range([innerH * 0.45, 0]);
+      const yMin = Math.min(...scores) - 0.05;
+      const yMax = Math.max(...scores) + 0.02;
+      const yB = d3.scaleLinear().domain([yMin, yMax]).range([innerH * 0.45, 0]);
+      const yBaseline = yB(yMin);
       right.append('g').attr('transform', `translate(0,${innerH * 0.45})`).call(d3.axisBottom(xB));
       right.append('g').call(d3.axisLeft(yB).ticks(4));
       right.append('text').attr('x', innerW / 2).attr('y', -8).attr('text-anchor', 'middle').attr('font-size', 12).attr('font-weight', 600).text('Held-out log-score / obs');
@@ -151,7 +168,7 @@ export default function DistillationTradeoffExplorer() {
         .attr('x', (d) => xB(d.label) ?? 0)
         .attr('width', xB.bandwidth())
         .attr('y', (d) => yB(d.score))
-        .attr('height', (d) => yB(scores[scores.length - 1] - 0.05) - yB(d.score))
+        .attr('height', (d) => yBaseline - yB(d.score))
         .attr('fill', (d) => d.color);
 
       // Inference cost row below.

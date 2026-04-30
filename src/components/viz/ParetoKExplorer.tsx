@@ -19,7 +19,13 @@ interface ParetoKData {
   n: number;
   x_train: number[];
   y_train: number[];
-  pareto_k: Record<string, number[]>;
+  /**
+   * Per-(candidate, observation) Pareto-k diagnostic value, or `null` when the
+   * diagnostic is undefined for that candidate. The closed-form GP LOO
+   * (Rasmussen–Williams 5.12–5.13) does not produce Pareto-k values, so the GP
+   * column is serialized as `null`s.
+   */
+  pareto_k: Record<string, (number | null)[]>;
 }
 
 type FilterMode = 'all' | 'k>=0.5' | 'k>=0.7';
@@ -81,13 +87,21 @@ export default function ParetoKExplorer() {
       // Left panel: Pareto-k scatter (x = observation index, y = k).
       const left = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-      let allK: { idx: number; k: number; cand: string }[] = [];
+      const allK: { idx: number; k: number; cand: string }[] = [];
+      const skippedByCandidate = new Map<string, number>();
       candidatesToShow.forEach((cn) => {
-        data.pareto_k[cn].forEach((k, idx) => {
+        const series = data.pareto_k[cn] ?? [];
+        let skipped = 0;
+        series.forEach((k, idx) => {
+          if (k == null || !Number.isFinite(k)) {
+            skipped++;
+            return;
+          }
           if (filter === 'all' || (filter === 'k>=0.5' && k >= 0.5) || (filter === 'k>=0.7' && k >= 0.7)) {
             allK.push({ idx, k, cand: cn });
           }
         });
+        if (skipped > 0) skippedByCandidate.set(cn, skipped);
       });
 
       const xK = d3.scaleLinear().domain([0, data.n]).range([0, innerW]);
@@ -127,6 +141,24 @@ export default function ParetoKExplorer() {
         .on('mouseout', () => setHoverIdx(null));
 
       left.append('text').attr('x', innerW / 2).attr('y', -8).attr('text-anchor', 'middle').attr('font-size', 12).attr('font-weight', 600).text(candidate === 'all' ? 'All candidates' : candidate);
+
+      // Annotate any candidate whose Pareto-k values are not defined (e.g. GP under
+      // closed-form LOO). The diagnostic is a PSIS-LOO artifact, so it's not
+      // available for every candidate; we say so explicitly rather than silently
+      // dropping points.
+      if (skippedByCandidate.size > 0) {
+        const note = Array.from(skippedByCandidate.entries())
+          .map(([c, n]) => `${c}: ${n} (closed-form LOO)`)
+          .join(', ');
+        left
+          .append('text')
+          .attr('x', innerW / 2)
+          .attr('y', innerH + 22)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', 9)
+          .attr('fill', '#666')
+          .text(`Pareto-k undefined: ${note}`);
+      }
 
       // Right panel: data scatter (x_i, y_i), highlighting the hovered observation.
       const right = svg.append('g').attr('transform', `translate(${margin.left + innerW + 24},${margin.top})`);

@@ -7,6 +7,7 @@ import {
   synthSinusoidWithWiggle,
   blrFitPosterior,
   blrLogMarginalLikelihood,
+  gpLogMarginalLikelihood,
   looLogPredictiveBLR,
   looLogPredictiveBPR,
   looLogPredictiveGP,
@@ -45,26 +46,32 @@ function fitMlForN(
   const rng = mulberry32(seed + n);
   const { x, y } = synthSinusoidWithWiggle(n, sigma, rng);
 
-  // Marginal likelihoods for the three closed-form candidates.
+  // Comparable marginal log-likelihoods for all three closed-form candidates.
+  // BLR/BPR-2 marginalize over the weight prior under NIG conjugacy
+  // (`blrLogMarginalLikelihood`); GP at fixed kernel hypers marginalizes over
+  // the latent f via Rasmussen & Williams 5.8 (`gpLogMarginalLikelihood`).
+  // Putting all three on the same log p(y | model) scale is what makes the BMA
+  // weights mathematically meaningful — earlier versions mixed log-evidences
+  // with summed LOO ELPDs, which is pseudo-BMA at best.
   const Xblr = polyFeatures(x, 1);
   const Xbpr2 = polyFeatures(x, 2);
   const blrPost = blrFitPosterior(Xblr, y);
   const bpr2Post = blrFitPosterior(Xbpr2, y);
   const logZblr = blrLogMarginalLikelihood(blrPost);
   const logZbpr2 = blrLogMarginalLikelihood(bpr2Post);
-  // GP marginal log-likelihood: full closed form would require dlnML; for the
-  // animation we estimate via cross-validated LOO-summed log predictive density,
-  // which is asymptotically equivalent and consistent with the pseudo-BMA used
-  // by ArviZ. Sufficient for the visual pedagogy here.
-  const lpGp = looLogPredictiveGP(x, y, { lengthScale: 0.1, outputVar: 1.0, noiseVar: sigma * sigma });
-  let elpdGp = 0;
-  for (let i = 0; i < n; i++) elpdGp += lpGp[i];
-  const wBma = bmaWeights([logZblr, logZbpr2, elpdGp]);
+  const logZgp = gpLogMarginalLikelihood(x, y, {
+    lengthScale: 0.1,
+    outputVar: 1.0,
+    noiseVar: sigma * sigma,
+  });
+  const wBma = bmaWeights([logZblr, logZbpr2, logZgp]);
 
-  // Stacking weights from exact LOO log predictives.
+  // Stacking weights from leave-one-out log predictives. The closed-form GP LOO
+  // (Rasmussen & Williams 5.12–5.13) makes this O(n³) per candidate, so the
+  // n-grid up to 320 is cheap to recompute on every (sigma, seed) change.
   const Lblr = looLogPredictiveBLR(Xblr, y);
   const Lbpr2 = looLogPredictiveBPR(x, y, 2);
-  const Lgp = lpGp;
+  const Lgp = looLogPredictiveGP(x, y, { lengthScale: 0.1, outputVar: 1.0, noiseVar: sigma * sigma });
   const L = new Float64Array(n * 3);
   for (let i = 0; i < n; i++) {
     L[i * 3 + 0] = Lblr[i];
