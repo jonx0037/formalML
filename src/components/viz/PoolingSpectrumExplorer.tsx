@@ -2,6 +2,13 @@ import { useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
+import {
+  blupShrinkage,
+  generateSixClassrooms,
+  PALETTE_CLASSROOMS,
+  partialPooledIntercept,
+  X_DOMAIN,
+} from './shared/mixed-effects';
 
 // =============================================================================
 // PoolingSpectrumExplorer — embedded after §1.2 of the mixed-effects topic.
@@ -18,166 +25,17 @@ import { useResizeObserver } from './shared/useResizeObserver';
 // n=4, ~0.59 for n=20) the topic reports at line 249. The size-dependent
 // drift — small classrooms collapsing hard, large classrooms barely moving —
 // is the §1.2 pedagogical payoff before §3 names the BLUP formula.
+//
+// DGP and shrinkage helpers are imported from shared/mixed-effects.ts so the
+// §3.3 BLUPShrinkageDial (A2) sees the same six classrooms.
 // =============================================================================
 
 const PANEL_HEIGHT = 380;
-const X_DOMAIN: [number, number] = [0, 5];
-const GROUP_SIZES = [4, 6, 8, 10, 12, 20] as const;
-const ALPHA_TRUE = 50;
-const BETA_TRUE = 5;
-const TAU_TRUE = 5;
-const SIGMA_TRUE = 8;
-const SEED = 20260429;
-
-// Six color-blind-friendly hues for the six classrooms.
-const PALETTE = [
-  '#1f77b4', // blue
-  '#ff7f0e', // orange
-  '#2ca02c', // green
-  '#d62728', // red
-  '#9467bd', // purple
-  '#8c564b', // brown
-];
-
-// Mulberry32 — small, fast, deterministic 32-bit PRNG. Good enough for synthetic
-// classroom data; exact byte-equality with NumPy isn't required because the
-// qualitative shape (group sizes, score range, slope) carries the pedagogy.
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// Box–Muller standard-normal sampler from a uniform PRNG.
-function gaussianSampler(rng: () => number): () => number {
-  let cached: number | null = null;
-  return () => {
-    if (cached !== null) {
-      const v = cached;
-      cached = null;
-      return v;
-    }
-    let u1 = 0;
-    while (u1 === 0) u1 = rng();
-    const u2 = rng();
-    const r = Math.sqrt(-2 * Math.log(u1));
-    const theta = 2 * Math.PI * u2;
-    cached = r * Math.sin(theta);
-    return r * Math.cos(theta);
-  };
-}
-
-interface ClassroomData {
-  j: number;        // classroom index 0..5
-  nj: number;       // group size
-  x: Float64Array;  // prep-hours
-  y: Float64Array;  // exam scores
-  xMean: number;    // x̄_j
-  yMean: number;    // ȳ_j
-}
-
-interface SyntheticDataset {
-  classrooms: ClassroomData[];
-  N: number;        // total observations
-  betaWithin: number; // shared within-group slope (no-pooling estimate)
-  alphaPool: number;  // population-mean intercept under shared slope
-  sigma2Hat: number;  // pooled within-group residual variance estimate
-  alphasNoPool: Float64Array; // per-classroom OLS intercepts
-}
-
-function generateSixClassrooms(): SyntheticDataset {
-  const rng = mulberry32(SEED);
-  const sample = gaussianSampler(rng);
-  const J = GROUP_SIZES.length;
-
-  // Sample classroom random intercepts a_j ~ N(0, τ²).
-  const aTrue = new Float64Array(J);
-  for (let j = 0; j < J; j++) aTrue[j] = TAU_TRUE * sample();
-
-  const classrooms: ClassroomData[] = [];
-  let N = 0;
-  for (let j = 0; j < J; j++) {
-    const nj = GROUP_SIZES[j];
-    const x = new Float64Array(nj);
-    const y = new Float64Array(nj);
-    for (let i = 0; i < nj; i++) {
-      x[i] = X_DOMAIN[0] + rng() * (X_DOMAIN[1] - X_DOMAIN[0]);
-      y[i] = ALPHA_TRUE + BETA_TRUE * x[i] + aTrue[j] + SIGMA_TRUE * sample();
-    }
-    let xs = 0;
-    let ys = 0;
-    for (let i = 0; i < nj; i++) {
-      xs += x[i];
-      ys += y[i];
-    }
-    classrooms.push({
-      j,
-      nj,
-      x,
-      y,
-      xMean: xs / nj,
-      yMean: ys / nj,
-    });
-    N += nj;
-  }
-
-  // Within-group OLS: β̂ = Σⱼᵢ (x − x̄ⱼ)(y − ȳⱼ) / Σⱼᵢ (x − x̄ⱼ)².
-  let sxy = 0;
-  let sxx = 0;
-  for (const c of classrooms) {
-    for (let i = 0; i < c.nj; i++) {
-      const dx = c.x[i] - c.xMean;
-      const dy = c.y[i] - c.yMean;
-      sxy += dx * dy;
-      sxx += dx * dx;
-    }
-  }
-  const betaWithin = sxy / sxx;
-
-  // No-pooling intercepts: α̂ⱼ = ȳⱼ − β̂·x̄ⱼ.
-  const alphasNoPool = new Float64Array(J);
-  for (let j = 0; j < J; j++) {
-    const c = classrooms[j];
-    alphasNoPool[j] = c.yMean - betaWithin * c.xMean;
-  }
-
-  // Population-mean intercept under the shared slope.
-  let xBar = 0;
-  let yBar = 0;
-  for (const c of classrooms) {
-    for (let i = 0; i < c.nj; i++) {
-      xBar += c.x[i];
-      yBar += c.y[i];
-    }
-  }
-  xBar /= N;
-  yBar /= N;
-  const alphaPool = yBar - betaWithin * xBar;
-
-  // Pooled within-group residual variance σ̂² = Σ (yᵢⱼ − α̂ⱼ − β̂·xᵢⱼ)² / (N − J − 1).
-  let rss = 0;
-  for (let j = 0; j < J; j++) {
-    const c = classrooms[j];
-    for (let i = 0; i < c.nj; i++) {
-      const r = c.y[i] - alphasNoPool[j] - betaWithin * c.x[i];
-      rss += r * r;
-    }
-  }
-  const sigma2Hat = rss / (N - J - 1);
-
-  return { classrooms, N, betaWithin, alphaPool, sigma2Hat, alphasNoPool };
-}
 
 export default function PoolingSpectrumExplorer() {
   const { ref: containerRef, width } = useResizeObserver<HTMLDivElement>();
-  // τ²/σ² slider — log-space for fine resolution near the REML estimate.
-  // u ∈ [0, 1] maps to τ²/σ² ∈ [0, 5] via u² so most of the screen real estate
-  // covers the pedagogically interesting [0, 1] range.
+  // τ²/σ² slider — square-mapped from u ∈ [0, 1] for fine resolution near the
+  // REML estimate.
   const [u, setU] = useState<number>(Math.sqrt(0.07 / 5));
   const [showPopulationLine, setShowPopulationLine] = useState<boolean>(true);
 
@@ -185,25 +43,24 @@ export default function PoolingSpectrumExplorer() {
 
   const tauSqOverSigmaSq = useMemo<number>(() => 5 * u * u, [u]);
 
-  // BLUP shrinkage factors λⱼ = τ²·nⱼ / (τ²·nⱼ + σ²) = ρ·nⱼ / (ρ·nⱼ + 1).
   const lambdas = useMemo<Float64Array>(() => {
     const J = data.classrooms.length;
     const out = new Float64Array(J);
-    const rho = tauSqOverSigmaSq;
     for (let j = 0; j < J; j++) {
-      const n = data.classrooms[j].nj;
-      out[j] = (rho * n) / (rho * n + 1);
+      out[j] = blupShrinkage(data.classrooms[j].nj, tauSqOverSigmaSq);
     }
     return out;
   }, [data, tauSqOverSigmaSq]);
 
-  // Partial-pooled intercept: α̃ⱼ = λⱼ · α̂ⱼ^(no-pool) + (1 − λⱼ) · α̂^(pool).
   const alphasPartial = useMemo<Float64Array>(() => {
     const J = data.classrooms.length;
     const out = new Float64Array(J);
     for (let j = 0; j < J; j++) {
-      out[j] =
-        lambdas[j] * data.alphasNoPool[j] + (1 - lambdas[j]) * data.alphaPool;
+      out[j] = partialPooledIntercept(
+        data.alphasNoPool[j],
+        data.alphaPool,
+        lambdas[j],
+      );
     }
     return out;
   }, [data, lambdas]);
@@ -219,7 +76,6 @@ export default function PoolingSpectrumExplorer() {
       const innerW = w - margin.left - margin.right;
       const innerH = h - margin.top - margin.bottom;
 
-      // Compute y-domain from data + line endpoints to avoid clipping.
       let yMin = Infinity;
       let yMax = -Infinity;
       for (const c of data.classrooms) {
@@ -258,7 +114,6 @@ export default function PoolingSpectrumExplorer() {
         .attr('font-size', 12)
         .text('exam score');
 
-      // Population-mean line (complete-pooling reference).
       if (showPopulationLine) {
         const x0 = X_DOMAIN[0];
         const x1 = X_DOMAIN[1];
@@ -274,9 +129,7 @@ export default function PoolingSpectrumExplorer() {
           .attr('opacity', 0.85);
       }
 
-      // Six per-classroom partial-pooled lines.
       for (let j = 0; j < data.classrooms.length; j++) {
-        const c = data.classrooms[j];
         const a = alphasPartial[j];
         const b = data.betaWithin;
         const x0 = X_DOMAIN[0];
@@ -287,12 +140,11 @@ export default function PoolingSpectrumExplorer() {
           .attr('x2', xScale(x1))
           .attr('y1', yScale(a + b * x0))
           .attr('y2', yScale(a + b * x1))
-          .attr('stroke', PALETTE[j])
+          .attr('stroke', PALETTE_CLASSROOMS[j])
           .attr('stroke-width', 2.2)
           .attr('opacity', 0.92);
       }
 
-      // Scatter points, colored by classroom.
       for (let j = 0; j < data.classrooms.length; j++) {
         const c = data.classrooms[j];
         const grp = root.append('g');
@@ -302,12 +154,11 @@ export default function PoolingSpectrumExplorer() {
             .attr('cx', xScale(c.x[i]))
             .attr('cy', yScale(c.y[i]))
             .attr('r', 3.2)
-            .attr('fill', PALETTE[j])
+            .attr('fill', PALETTE_CLASSROOMS[j])
             .attr('opacity', 0.7);
         }
       }
 
-      // Legend with classroom sizes and current shrinkage factors.
       const legend = root.append('g').attr('transform', `translate(${innerW - 200},10)`);
       legend
         .append('text')
@@ -324,7 +175,7 @@ export default function PoolingSpectrumExplorer() {
           .attr('x2', 18)
           .attr('y1', 4)
           .attr('y2', 4)
-          .attr('stroke', PALETTE[j])
+          .attr('stroke', PALETTE_CLASSROOMS[j])
           .attr('stroke-width', 2.2);
         row
           .append('text')
