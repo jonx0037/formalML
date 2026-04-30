@@ -1,0 +1,737 @@
+---
+title: "Stacking & Predictive Ensembles"
+subtitle: "The M-open generalization of Bayesian Model Averaging: Yao 2018's predictive-density-weighted stacking, PSIS-LOO machinery for tractable leave-one-out from a single full-data fit per candidate, and the Wolpert-Breiman heritage that maps onto knowledge distillation as the deployment-time complement"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "variational-inference"
+  - "gaussian-processes"
+  - "probabilistic-programming"
+  - "mixed-effects"
+formalstatisticsPrereqs:
+  - topic: "bayesian-model-comparison-and-bma"
+    site: "formalstatistics"
+    relationship: "Develops Bayesian Model Averaging as the textbook answer for combining models with a posterior over a candidate set; this topic generalizes BMA to handle the M-open regime via predictive-density-weighted stacking. The §27.10 Rem 27 forward-pointer to this topic was placed during that topic's drafting and awaits upgrade to a live cross-site link once this topic ships."
+  - topic: "model-selection-and-information-criteria"
+    site: "formalstatistics"
+    relationship: "Develops AIC, BIC, WAIC, and LOO as model-selection criteria; PSIS-LOO is the modern computational realization of LOO that this topic uses, and the broader information-criteria context for the marginal-likelihood vs. predictive-density distinction is developed there. The named cross-validation subsection within that topic is the upstream for §3.3's exact-LOO fallback when PSIS fails."
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "Develops prior elicitation; the §4.1 four-candidate priors (weakly informative Gaussians, half-Normal scales, inverse-gamma length scales) build directly on that topic's elicitation framework, and §6.1's sensitivity-analysis use case is the topic-level application of those ideas."
+  - topic: "bayesian-computation-and-mcmc"
+    site: "formalstatistics"
+    relationship: "Develops NUTS, ADVI, and the MCMC machinery; the §4 PyMC fits use the NUTS sampler exactly as introduced there, and §6.1's computational-averaging use case is a topic-level application of MCMC variability across chains and approximate-inference methods."
+formalstatisticsConnections: []
+formalcalculusPrereqs: []
+formalcalculusConnections: []
+tags:
+  - "bayesian-ml"
+  - "stacking"
+  - "bayesian-model-averaging"
+  - "ensemble-methods"
+  - "psis-loo"
+  - "leave-one-out-cross-validation"
+  - "m-open"
+  - "model-misspecification"
+  - "marginal-likelihood"
+  - "knowledge-distillation"
+  - "pymc"
+  - "arviz"
+  - "machine-learning"
+domain: "bayesian-ml"
+videoId: null
+notebookPath: "notebooks/stacking-and-predictive-ensembles/01_stacking_and_predictive_ensembles.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/stacking-and-predictive-ensembles.mdx"
+datePublished: 2026-04-30
+estimatedReadTime: 55
+abstract: "Bayesian Model Averaging is the textbook answer to having multiple plausible models — average over them weighted by posterior model probability. In M-open settings, where the truth lies outside the candidate set, BMA's posterior collapses exponentially fast onto whichever candidate is closest in KL divergence to the truth, throwing away the predictive contributions of every other candidate. Yao, Vehtari, Simpson, and Gelman 2018 introduced Bayesian stacking as the predictive-density-weighted alternative that closes this oracle gap. We define the stacking weights as the simplex-constrained maximizers of the leave-one-out log predictive score, prove the underlying convex-optimization theorem with concavity, existence, and uniqueness, develop the PSIS-LOO machinery that makes the optimization tractable from a single full-data fit per candidate, fit four PyMC candidates (Bayesian linear regression, polynomial degree four, Gaussian process, BART) on a synthetic M-open ground truth, demonstrate that stacking dominates BMA on held-out predictive log-score while BMA's weights collapse onto the GP, historicize against Wolpert 1992 stacked generalization and Breiman 1996 NNLS-stacking and the Kaggle-era blending pattern, and close with knowledge distillation as the deployment-time complement that compresses the K-candidate ensemble into a single deployable student. The topic's running theme: when the truth is not in the candidate set, the best response is not to average over candidates by how confident we are that each is correct, but to average over candidates by how well each contributes to predicting held-out data."
+connections:
+  - topic: "variational-inference"
+    relationship: "When each candidate is fit by VI rather than NUTS, the §3 framework still applies, but the leave-one-out log predictive densities are computed from the variational approximation rather than the true posterior. Yao et al. 2018 §6 discuss the resulting bias and the corrections needed; for VI fits with reasonable mass coverage, the bias is small and stacking gives reliable weights."
+  - topic: "gaussian-processes"
+    relationship: "Direct upstream — §4's GP candidate uses pm.gp.Marginal exactly as developed there. The stacking framework is also a natural way to combine GPs with different kernels (RBF, Matérn-5/2, periodic) when the analyst is uncertain about kernel choice; the convex combination can capture data structure that no single kernel can."
+  - topic: "probabilistic-programming"
+    relationship: "Direct upstream — §4 fits four candidates as PyMC models and reads them out via arviz.compare(method=\"stacking\"). PP §5's eight-schools fit produces an InferenceData object that arviz.loo consumes directly, and stacking eight-schools-style hierarchical models with structural alternatives is one of §6.1's use cases."
+  - topic: "mixed-effects"
+    relationship: "Sibling — mixed-effects §5's frequentist–Bayesian bridge structurally parallels this topic's BMA-stacking bridge: both are decompositions of how to combine information across substructures of the data, with closed-form classical answers and modern Bayesian generalizations. §6.1's hierarchical-models-with-structural-alternatives use case is mixed-effects-flavored."
+references:
+  - type: "book"
+    title: "Bayesian Theory"
+    authors: "Bernardo & Smith"
+    year: 1994
+    url: "https://doi.org/10.1002/9780470316870"
+    note: "The standard reference for the M-closed / M-complete / M-open taxonomy §1.3 develops (Wiley)."
+  - type: "paper"
+    title: "Limiting Behavior of Posterior Distributions When the Model Is Incorrect"
+    authors: "Berk"
+    year: 1966
+    url: "https://doi.org/10.1214/aoms/1177699597"
+    note: "The original asymptotic-concentration theorem for posterior distributions under misspecification — §2.3's Theorem 2 traces here (Annals of Mathematical Statistics)."
+  - type: "paper"
+    title: "Stacked Regressions"
+    authors: "Breiman"
+    year: 1996
+    url: "https://doi.org/10.1023/A:1018046112532"
+    note: "The convex-form NNLS frequentist heritage of §5.1; equation (5.1) and the variance-reduction theorem are from here (Machine Learning)."
+  - type: "book"
+    title: "Prequential Analysis, Stochastic Complexity and Bayesian Inference"
+    authors: "Dawid"
+    year: 1992
+    url: "https://global.oup.com/academic/product/bayesian-statistics-4-9780198522669"
+    note: "The modern $K$-candidate extension of Berk's 1966 theorem; §2.3's proof follows the Dawid statement (Bayesian Statistics 4, Oxford)."
+  - type: "paper"
+    title: "Strictly Proper Scoring Rules, Prediction, and Estimation"
+    authors: "Gneiting & Raftery"
+    year: 2007
+    url: "https://doi.org/10.1198/016214506000001437"
+    note: "The proper-scoring-rule framework that makes log predictive density the natural objective for predictive ensembles — §3.1 cites this for the LOO objective's frequentist interpretation (Journal of the American Statistical Association)."
+  - type: "paper"
+    title: "Bayesian Model Averaging: A Tutorial"
+    authors: "Hoeting, Madigan, Raftery & Volinsky"
+    year: 1999
+    url: "https://doi.org/10.1214/ss/1009212519"
+    note: "The polished applied account of BMA in M-closed; closing remarks correctly acknowledge the M-closed assumption is rarely defensible in practice (Statistical Science)."
+  - type: "paper"
+    title: "Stacked Generalization"
+    authors: "Wolpert"
+    year: 1992
+    url: "https://doi.org/10.1016/S0893-6080(05)80023-1"
+    note: "The original framework for cross-validated training of a combiner over a base-learner pool; §5.1 traces the modern Bayesian stacking back to here (Neural Networks)."
+  - type: "paper"
+    title: "Using Stacking to Average Bayesian Predictive Distributions"
+    authors: "Yao, Vehtari, Simpson & Gelman"
+    year: 2018
+    url: "https://doi.org/10.1214/17-BA1091"
+    note: "The central reference for this topic — Theorem 1 and the predictive-density framework develop the §3 machinery (Bayesian Analysis)."
+  - type: "paper"
+    title: "Approximate Leave-Future-Out Cross-Validation for Bayesian Time Series Models"
+    authors: "Bürkner, Gabry & Vehtari"
+    year: 2020
+    url: "https://doi.org/10.1080/00949655.2020.1783262"
+    note: "The drift-aware variant cited in §6.2 for time-series stacking when the iid-exchangeability of standard LOO does not apply (Journal of Statistical Computation and Simulation)."
+  - type: "paper"
+    title: "BART: Bayesian Additive Regression Trees"
+    authors: "Chipman, George & McCulloch"
+    year: 2010
+    url: "https://doi.org/10.1214/09-AOAS285"
+    note: "The original BART paper; §4 uses pymc-bart's port of this construction as the fourth candidate (Annals of Applied Statistics)."
+  - type: "book"
+    title: "Bayesian Model Averaging in the M-Open Framework"
+    authors: "Clyde & Iversen"
+    year: 2013
+    url: "https://doi.org/10.1093/acprof:oso/9780199695607.003.0024"
+    note: "The most thorough treatment of BMA's behavior under misspecification; §2.5's M-open corollary is consistent with their analysis (Bayesian Theory and Applications, Oxford)."
+  - type: "paper"
+    title: "The Prior Can Often Only Be Understood in the Context of the Likelihood"
+    authors: "Gelman, Simpson & Betancourt"
+    year: 2017
+    url: "https://doi.org/10.3390/e19100555"
+    note: "The framing for §6.1's prior-sensitivity-analysis use case; same data analyzed under several defensible priors gives a stacking-amenable candidate set (Entropy)."
+  - type: "paper"
+    title: "A Tutorial on Bridge Sampling"
+    authors: "Gronau, Sarafoglou, Matzke, Ly, Boehm, Marsman, Leslie, Forster, Wagenmakers & Steingroever"
+    year: 2017
+    url: "https://doi.org/10.1016/j.jmp.2017.09.005"
+    note: "The canonical exposition of bridge sampling for marginal likelihoods — §2.2's BART branch and §4's strict-BMA upgrade trace here (Journal of Mathematical Psychology)."
+  - type: "paper"
+    title: "A Bayes Interpretation of Stacking for M-Complete and M-Open Settings"
+    authors: "Le & Clarke"
+    year: 2017
+    url: "https://doi.org/10.1214/16-BA1023"
+    note: "Develops the Bayesian-frequentist bridge — Breiman's variance-reduction theorem and Yao's M-open optimality are connected here, completing §5.1's structural argument (Bayesian Analysis)."
+  - type: "paper"
+    title: "Simulating Ratios of Normalizing Constants via a Simple Identity"
+    authors: "Meng & Wong"
+    year: 1996
+    url: "https://www.jstor.org/stable/24306045"
+    note: "The bridge-sampling identity that §2.2's BART discussion cites; foundational reference for the §4 strict-BMA-via-bridge upgrade (Statistica Sinica)."
+  - type: "paper"
+    title: "Predictive Approaches for Choosing Hyperparameters in Gaussian Processes"
+    authors: "Sundararajan & Keerthi"
+    year: 2001
+    url: "https://doi.org/10.1162/08997660151134343"
+    note: "Predictive cross-validation for GP hyperparameter selection — the machinery §3.3's PSIS-LOO modernizes (Neural Computation)."
+  - type: "paper"
+    title: "Super Learner"
+    authors: "van der Laan, Polley & Hubbard"
+    year: 2007
+    url: "https://doi.org/10.2202/1544-6115.1309"
+    note: "The Super Learner framework — frequentist stacking with cross-validation, cited in §6.3 as a parallel development to Bayesian stacking (Statistical Applications in Genetics and Molecular Biology)."
+  - type: "paper"
+    title: "Practical Bayesian Model Evaluation Using Leave-One-Out Cross-Validation and WAIC"
+    authors: "Vehtari, Gelman & Gabry"
+    year: 2017
+    url: "https://doi.org/10.1007/s11222-016-9696-4"
+    note: "The PSIS-LOO paper — §3.3 develops the four-band Pareto-$k$ diagnostic from this reference (Statistics and Computing)."
+  - type: "paper"
+    title: "Model Compression"
+    authors: "Bucilă, Caruana & Niculescu-Mizil"
+    year: 2006
+    url: "https://doi.org/10.1145/1150402.1150464"
+    note: "The pre-Hinton compression-via-distillation paper that established the framework §5.3 develops (Proceedings of KDD)."
+  - type: "paper"
+    title: "Distilling the Knowledge in a Neural Network"
+    authors: "Hinton, Vinyals & Dean"
+    year: 2015
+    url: "https://arxiv.org/abs/1503.02531"
+    note: "The standard reference for knowledge distillation; equation (5.2)'s forward-KL objective and the §5.3 distillation pipeline are from here (NeurIPS Deep Learning Workshop)."
+  - type: "paper"
+    title: "Probabilistic Programming in Python Using PyMC3"
+    authors: "Salvatier, Wiecki & Fonnesbeck"
+    year: 2016
+    url: "https://doi.org/10.7717/peerj-cs.55"
+    note: "The PyMC paper; §4's pipeline uses the API documented here (PeerJ Computer Science)."
+  - type: "paper"
+    title: "WAIC and Cross-Validation in Stan"
+    authors: "Vehtari & Gelman"
+    year: 2014
+    url: "https://users.aalto.fi/~ave/CV-FAQ.html"
+    note: "The applied prior-sensitivity-via-stacking framework cited in §6.1; same data, multiple priors, stacking weights tell us which priors the data prefers (working paper)."
+  - type: "paper"
+    title: "Stacking for Non-Mixable Bayesian Computations: The Case of Multimodal Posteriors"
+    authors: "Yao, Vehtari & Wang"
+    year: 2022
+    url: "https://doi.org/10.1007/s11222-021-10058-y"
+    note: "The multimodal-posterior extension cited in §6.1; stacking provides a principled way to combine across modes when the posterior is non-mixable (Statistics and Computing)."
+  - type: "paper"
+    title: "ArviZ: A Unified Library for Exploratory Analysis of Bayesian Models in Python"
+    authors: "Kumar, Carroll, Hartikainen & Martin"
+    year: 2019
+    url: "https://doi.org/10.21105/joss.01143"
+    note: "The ArviZ paper; §4 uses arviz.loo and arviz.compare exactly as documented here (Journal of Open Source Software)."
+  - type: "paper"
+    title: "Pareto Smoothed Importance Sampling"
+    authors: "Vehtari, Simpson, Gelman, Yao & Gabry"
+    year: 2024
+    url: "https://www.jmlr.org/papers/v25/19-556.html"
+    note: "The most current treatment of PSIS — §3.3's threshold conventions and the Pareto-$k$ diagnostic theory are from here (Journal of Machine Learning Research)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import FourCandidatesExplorer from '../../components/viz/FourCandidatesExplorer';
+import BMACollapseAnimator from '../../components/viz/BMACollapseAnimator';
+import StackingSimplexExplorer from '../../components/viz/StackingSimplexExplorer';
+import BMAvsStackingComparator from '../../components/viz/BMAvsStackingComparator';
+import ParetoKExplorer from '../../components/viz/ParetoKExplorer';
+import DistillationTradeoffExplorer from '../../components/viz/DistillationTradeoffExplorer';
+
+## Overview
+
+Suppose we have a regression problem and four candidate models for it. Each candidate encodes a different structural belief about the data — one assumes the relationship is linear, one assumes it's polynomial, one assumes it's a smooth function from a Gaussian-process family, one assumes it's a piecewise function from a tree ensemble. The four candidates fit the same training data, none of them is wrong in any catastrophic sense, and all four would happily produce predictions on new inputs. What do we do with all four?
+
+There are three classical responses, each tempting in its own way. We can pick the single best candidate by some criterion — cross-validation accuracy, marginal likelihood, an information criterion — and commit. We can keep all four and weight them by posterior model probability, the route of *Bayesian model averaging* (BMA). Or we can keep all four and weight them by held-out predictive performance, the route of *stacking*. The three responses are not equivalent, and which to use turns out to depend less on the candidates and more on a structural assumption about the *truth*: is the data-generating process inside our candidate set, plausibly close to it, or genuinely outside it?
+
+This topic is the M-open generalization of the BMA framework developed in <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-model-comparison-and-bma" site="formalstatistics" topic="Bayesian Model Comparison and BMA" />. §1 sets up a synthetic running example with a non-linear ground truth and four candidates whose inductive biases collectively fail to capture the truth, then names the M-closed/M-complete/M-open taxonomy that distinguishes the three responses. §2 makes BMA precise, derives its asymptotic concentration theorem (Berk 1966) with full proof, and demonstrates the failure mode that motivates everything else: BMA's weights collapse onto a single candidate exponentially fast, throwing away the predictive contributions of every other one. §3 introduces Bayesian stacking (Yao, Vehtari, Simpson, and Gelman 2018) as the predictive-density-weighted alternative, proves the underlying concave-optimization theorem, and develops PSIS-LOO machinery that makes the optimization tractable from a single full-data fit per candidate. §4 fits all four candidates with PyMC and runs the full ArviZ pipeline. §5 historicizes against the Wolpert 1992 / Breiman 1996 / Kaggle blending heritage and adds knowledge distillation as the deployment-time complement. §6 closes with the regimes where stacking shines, where it breaks down, and the connections that motivate the rest of T5.
+
+## 1. Three responses to having multiple plausible models
+
+§1.1 introduces a synthetic 1D regression problem with a non-linear ground truth and four candidate models, each with an inductive bias that captures part of the truth and misses the rest. §1.2 fits each candidate as a cheap point estimate (full Bayesian fits come in §4), overlays them on the data, and reads off the three responses as three different ways of summarizing the four overlapping curves. §1.3 names the conceptual frame that distinguishes the responses — Bernardo and Smith's M-closed / M-complete / M-open taxonomy — and explains why the same procedure that's optimal in one regime can be the wrong call in another.
+
+### 1.1 A non-linear ground truth and four candidates
+
+The data-generating process is a real-valued function on the unit interval with two regimes: a smooth global oscillation, and a higher-frequency localized perturbation that switches on past the midpoint. Specifically,
+
+$$
+f(x) \;=\; \sin(2\pi x) \;+\; 0.4 \cdot \mathbb{1}[x > 1/2] \cdot \cos(6\pi x), \qquad x \in [0, 1], \quad\quad (1.1)
+$$
+
+with observations $y_i = f(x_i) + \varepsilon_i$, $\varepsilon_i \sim \mathcal{N}(0, \sigma^2)$, $\sigma = 0.25$, and $n = 100$ design points $x_i$ drawn iid from $\mathrm{Uniform}[0, 1]$. Panel (a) of Figure 1 shows the truth (black curve) overlaid with the sample (gray points). The notation $\mathbb{1}[\cdot]$ is the indicator function — one if the condition holds, zero otherwise. The truth is non-trivial in two ways at once: globally it's a smooth sinusoid, and locally, past $x = 1/2$, a higher-frequency cosine modulates that smoothness. No candidate model in our set will capture both behaviors cleanly, and that mismatch — the truth landing outside any single candidate's natural inductive bias — is the structural feature the topic turns on.
+
+The four candidate models are chosen for inductive-bias diversity, not for fit quality:
+
+- **Bayesian linear regression** (BLR): $y = \alpha + \beta x + \varepsilon$. Two parameters, weakly informative Gaussian priors on $(\alpha, \beta)$. Inductive bias: globally linear, no curvature, no localization. Maximally underfits.
+- **Bayesian polynomial regression** (BPR, degree 4): $y = \sum_{k=0}^{4} \beta_k x^k + \varepsilon$. Five parameters, Gaussian priors. Inductive bias: smooth global polynomial, can bend twice, but cannot localize.
+- **Gaussian process** (GP) with squared-exponential kernel: $f \sim \mathcal{GP}(0, k_{\mathrm{RBF}})$, kernel hyperparameters with weakly informative priors. Inductive bias: smooth nonparametric function, length-scale-controlled wiggle, no preference for piecewise behavior.
+- **Tree ensemble** (BART, 50 trees, depth-4 prior): a sum-of-trees model that produces piecewise-constant predictions over axis-aligned partitions of $[0, 1]$. Inductive bias: piecewise-constant, can localize sharply, does not impose smoothness.
+
+The four are all genuinely Bayesian: BLR, BPR, and the GP have proper PyMC posteriors, and BART is fit via `pymc-bart`'s posterior-over-trees construction. All four are compatible with `arviz.loo`, which §3 will need. For §1's geometric purposes, we fit each candidate by a point estimator that approximates its posterior mean — sklearn's `LinearRegression`, polynomial features plus linear regression, `GaussianProcessRegressor`, and `RandomForestRegressor` as a stand-in for BART (the inductive bias is the same: piecewise-constant tree partitions). The §4 experiment replaces these point estimates with full PyMC fits.
+
+<Figure
+  src="/images/topics/stacking-and-predictive-ensembles/01_four_candidates.png"
+  alt="Two-by-three grid of scatter plots showing the M-open ground truth and four candidate point fits. Panel (a) shows the truth (smooth sinusoid plus localized post-midpoint wiggle) with sample points. Panels (b)–(e) show each candidate's fit individually: linear undershoots the oscillation, polynomial degree 4 captures the smooth part but flattens the wiggle, GP smooths over the sharp onset at x=0.5, tree ensemble renders the wiggle as a staircase. Panel (f) overlays all four candidates on truth and data, showing they disagree most where the truth is hardest."
+  caption="Figure 1. Four candidates on an M-open ground truth (point-estimate stand-ins). Each candidate captures part of the truth and misses the rest; the candidates disagree most where the truth has its discontinuity past x=1/2. No candidate is the truth — this is the M-open situation Bernardo and Smith named, and §1.3 will give it a vocabulary."
+/>
+
+<FourCandidatesExplorer client:visible />
+
+Three patterns are visible by eye in Figure 1's panel (f). First, each candidate captures part of the truth and misses the rest. BLR captures the rough monotone trend in the first half but misses the oscillation entirely. BPR captures the smooth global oscillation but flattens the post-midpoint wiggle. The GP captures both the oscillation and the wiggle but smooths over the sharp onset at $x = 1/2$. The tree ensemble respects the onset but renders the wiggle as a staircase. Second, the candidates disagree most where the truth is hardest — vertically by as much as 1.0 at some $x$ values, even though the noise scale is $\sigma = 0.25$. Third, no candidate is the truth.
+
+```python
+def true_function(x):
+    """Smooth global sinusoid plus a localized higher-frequency wiggle past x=1/2."""
+    return np.sin(2*np.pi*x) + 0.4 * (x > 0.5) * np.cos(6*np.pi*x)
+
+n, sigma = 100, 0.25
+x = rng.uniform(0, 1, size=n)
+y = true_function(x) + sigma * rng.standard_normal(n)
+
+# Four candidate point fits (cheap stand-ins for §4's PyMC fits).
+m_blr = LinearRegression().fit(x[:, None], y)
+poly4 = PolynomialFeatures(degree=4, include_bias=False)
+m_bpr = LinearRegression().fit(poly4.fit_transform(x[:, None]), y)
+m_gp = GaussianProcessRegressor(kernel=ConstantKernel(1.0) * RBF(length_scale=0.1),
+                                alpha=sigma**2, normalize_y=True).fit(x[:, None], y)
+m_rf = RandomForestRegressor(n_estimators=200, max_depth=4).fit(x[:, None], y)
+```
+
+### 1.2 Three classical responses
+
+Looking at panel (f), three classical responses to "I have four candidates, none is right" are available.
+
+The first response is *model selection*: rank the four by some criterion — held-out log-score, marginal likelihood, AIC, BIC, WAIC, or LOO — pick the winner, throw the others out, and predict with the single winner. The criterion converts the four-way uncertainty into a one-way commitment. The cost is also clean: whatever inductive bias the winner brings is now ours, including its blind spots. The honest version of model selection is "pick one, accept its mistakes."
+
+The second response is *Bayesian model averaging*: treat the four candidates as elements of a discrete model space $\mathcal{M} = \{\mathcal{M}_1, \ldots, \mathcal{M}_4\}$, place a prior $\mathbb{P}(\mathcal{M}_k)$ on which model is correct, form the posterior $\mathbb{P}(\mathcal{M}_k \mid y)$ via Bayes's rule, and predict by weighted average:
+
+$$
+p(\tilde{y} \mid \tilde{x}, y) \;=\; \sum_{k=1}^K w_k^{\mathrm{BMA}} \cdot p_k(\tilde{y} \mid \tilde{x}, y), \qquad w_k^{\mathrm{BMA}} \;=\; \mathbb{P}(\mathcal{M}_k \mid y). \quad\quad (1.2)
+$$
+
+The weights $w_k^{\mathrm{BMA}}$ are the posterior model probabilities. By Bayes's rule, they're proportional to the prior times the marginal likelihood $p_k(y) = \int p_k(y \mid \theta_k) p_k(\theta_k) \, d\theta_k$. §2 derives all this carefully. The fact we need now: in M-closed (the truth is in $\mathcal{M}$), BMA's weights converge to a Kronecker delta on the truth. In M-open (the truth is not in $\mathcal{M}$), the same convergence happens — but to whichever candidate has the highest marginal likelihood, which need not be the best predictor.
+
+The third response is *stacking*: form the same weighted-average predictive (1.2), but choose the weights to maximize a leave-one-out *predictive log-score*, not to track posterior model probability. Concretely,
+
+$$
+\mathbf{w}^{\star} \;=\; \arg\max_{\mathbf{w} \in \Delta^{K-1}} \,\sum_{i=1}^{n} \log\!\left(\sum_{k=1}^{K} w_k \cdot p_k(y_i \mid y_{-i})\right), \quad\quad (1.3)
+$$
+
+where $p_k(y_i \mid y_{-i})$ is candidate $k$'s leave-one-out predictive density at observation $i$, and $\Delta^{K-1} = \{\mathbf{w} \in \mathbb{R}^K : w_k \geq 0, \sum_k w_k = 1\}$ is the $(K{-}1)$-simplex. The stacking weights aim to maximize predictive performance on held-out data, not posterior probability on observed data.
+
+The optimization (1.3) looks expensive — refitting $K$ candidates $n$ times each is $Kn$ posterior fits in the naive implementation — but Vehtari, Gelman, and Gabry's 2017 PSIS-LOO machinery computes all $K \cdot n$ leave-one-out densities from the *single* full-data fit per candidate, at the cost of one importance-sampling reweighting per held-out point and a Pareto-tail diagnostic. The practitioner-facing version is `arviz.compare(idata_dict, method="stacking")`. §3 develops the theorem that makes (1.3) well-posed and the PSIS-LOO machinery. The fact we need now: the optimization is concave in $\mathbf{w}$, has a unique optimum on the simplex, and Yao, Vehtari, Simpson, and Gelman 2018 showed that $\mathbf{w}^{\star}$ converges to the population-optimal predictive weights in M-open while reducing to the BMA weights in M-closed.
+
+### 1.3 M-closed, M-complete, M-open
+
+What separates the three responses is a structural assumption about where the truth lives relative to the candidate set. Bernardo and Smith (1994) introduced a three-way taxonomy that names the assumption explicitly. Let $f$ denote the data-generating distribution and $\mathcal{M} = \{\mathcal{M}_1, \ldots, \mathcal{M}_K\}$ the candidate set.
+
+- **M-closed.** The truth is one of the candidates: $f \in \mathcal{M}$. We don't know which, but it's in there. Posterior model probabilities are well-defined as the probability of the right answer, BMA's weights converge to a point mass on $f$, and the BMA predictive density converges to $f$'s predictive density at the standard parametric rate. Bayesian textbook theory applies cleanly.
+- **M-complete.** A true model exists and is identified, but is too complex or too expensive to use directly. The candidate set $\mathcal{M}$ is a deliberately simplified working set, and we know going in that no element of $\mathcal{M}$ is the truth, but we have explicit access to the truth for purposes of evaluation.
+- **M-open.** No true model is identified. The candidate set is what we have, and we acknowledge it's likely incomplete. M-open is the default in applied work — almost any real-world regression problem qualifies — and it's the regime our running example sits in.
+
+The taxonomy frames everything that follows. BMA's marginal-likelihood weights are *optimal* in M-closed; in M-open, they are *consistent for the closest candidate in KL divergence to the truth*, but the closest candidate need not be the best predictor, and the convergence to a single-point estimate exactly when uncertainty across candidates would be most useful is the failure mode §2 will diagnose. Stacking's predictive-density weights are *optimal in expected log predictive density* in M-open by construction (Yao et al. 2018, Theorem 1), and they reduce to the BMA weights in M-closed (Le and Clarke 2017) — making stacking the strict generalization of BMA that handles M-open without sacrificing M-closed performance.
+
+## 2. Bayesian Model Averaging and its M-closed assumption
+
+§1 named Bayesian model averaging as the second classical response and quoted its weighted-average predictive density (1.2). This section makes BMA precise. §2.1 defines BMA formally as a procedure on a finite candidate set with a prior over candidates. §2.2 derives the marginal-likelihood form of the weights and writes the closed-form expression for the conjugate-Gaussian candidates we'll use throughout. §2.3 establishes the *asymptotic concentration theorem* (Berk 1966): regardless of regime, BMA weights converge to a delta on the candidate with the smallest KL divergence to the truth. §2.4 reads the theorem in both regimes and demonstrates BMA's collapse onto a single candidate numerically.
+
+### 2.1 The BMA setup
+
+Bayesian model averaging is a procedure on a *finite* candidate set, equipped with a prior over which candidate is correct.
+
+<TheoremBlock type="definition" number={1} title="Bayesian Model Averaging">
+Let $\mathcal{M} = \{\mathcal{M}_1, \ldots, \mathcal{M}_K\}$ be a finite collection of probabilistic models. Each candidate $\mathcal{M}_k$ specifies a parametric family $\{p_k(y \mid \theta_k) : \theta_k \in \Theta_k\}$ together with a within-model prior $p_k(\theta_k)$ on $\Theta_k$. Equip $\mathcal{M}$ with a prior $\pi_k = \mathbb{P}(\mathcal{M}_k)$, $\sum_k \pi_k = 1$. *Bayesian model averaging* is the predictive procedure that forms the posterior over candidates,
+$$
+\mathbb{P}(\mathcal{M}_k \mid y) \;=\; \frac{\pi_k \cdot p_k(y)}{\sum_{j=1}^K \pi_j \cdot p_j(y)}, \quad\quad (2.1)
+$$
+with marginal likelihood $p_k(y) = \int p_k(y \mid \theta_k) p_k(\theta_k) \, d\theta_k$, and predicts at a new design point $\tilde{x}$ by the weighted average $p(\tilde{y} \mid \tilde{x}, y) = \sum_k \mathbb{P}(\mathcal{M}_k \mid y) \cdot p_k(\tilde{y} \mid \tilde{x}, y)$.
+</TheoremBlock>
+
+Three remarks on the definition. First, BMA is a *predictive* procedure — the weights are means to the predictive (1.2), not the end. Second, the candidate set must be enumerated in advance: BMA does not search over models, it averages over a list of them. Third, the weights are themselves Bayesian quantities — (2.1) gives the posterior expectation of which-model-is-correct under a categorical model-indicator prior — and the predictive integrates the predictive uncertainty over both within-model parameter uncertainty and between-model identification uncertainty in one expression.
+
+### 2.2 Marginal-likelihood weights
+
+Bayes's rule applied to the discrete model space gives the operational form of the BMA weights.
+
+<TheoremBlock type="theorem" number={1} title="Marginal-likelihood form of BMA weights">
+Under the setup of Definition 1, the BMA weights are
+$$
+w_k^{\mathrm{BMA}} \;\equiv\; \mathbb{P}(\mathcal{M}_k \mid y) \;=\; \frac{\pi_k \cdot p_k(y)}{\sum_{j=1}^K \pi_j \cdot p_j(y)}. \quad\quad (2.2)
+$$
+On the log scale, with $Z = \sum_j \pi_j p_j(y)$ the normalizing constant in $k$, $\log w_k^{\mathrm{BMA}} = \log \pi_k + \log p_k(y) - \log Z$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The discrete model space is a categorical random variable with prior $\pi_k = \mathbb{P}(\mathcal{M}_k)$. Conditional on $\mathcal{M}_k$, the data has likelihood $p(y \mid \mathcal{M}_k) = \int p_k(y \mid \theta_k) p_k(\theta_k) \, d\theta_k = p_k(y)$ — *marginal* over the within-model parameter $\theta_k$. Bayes's rule on the model space gives
+$$
+\mathbb{P}(\mathcal{M}_k \mid y) \;=\; \frac{p(y \mid \mathcal{M}_k) \cdot \mathbb{P}(\mathcal{M}_k)}{\sum_{j=1}^K p(y \mid \mathcal{M}_j) \cdot \mathbb{P}(\mathcal{M}_j)} \;=\; \frac{p_k(y) \cdot \pi_k}{\sum_{j=1}^K p_j(y) \cdot \pi_j},
+$$
+which is (2.2). Taking logs and writing $Z$ for the normalizing constant gives the log form.
+</TheoremBlock>
+
+The log form is operationally important because the denominator $\log Z$ is constant in $k$: relative weights are determined entirely by the prior-weighted *log* marginal likelihoods $\log \pi_k + \log p_k(y)$. With a uniform prior $\pi_k = 1/K$, the weights are determined by log marginal likelihoods alone, and a difference of $\Delta$ between two candidates corresponds to a *ratio* of $e^\Delta$ in their unnormalized weights. Even modest log-evidence differences explode into landslide weights on the simplex: $\Delta = 5$ gives a 148:1 ratio, $\Delta = 10$ gives 22 026:1. The exponentiation is what produces BMA's characteristic winner-take-all behavior, and §2.3 shows it's not a quirk — it's the asymptotic regime.
+
+For our running example, three of the four §1 candidates have closed-form marginal likelihoods under conjugate priors. **Bayesian linear regression with Normal–Inverse-Gamma prior.** Let $\mathbf{X} \in \mathbb{R}^{n \times d}$ be the design matrix and $\boldsymbol{\beta} \mid \sigma^2 \sim \mathcal{N}(\boldsymbol{\mu}_0, \sigma^2 \mathbf{V}_0)$, $\sigma^2 \sim \mathrm{IG}(a_0, b_0)$. The marginal likelihood is
+
+$$
+p(\mathbf{y}) \;=\; (2\pi)^{-n/2} \cdot \frac{|\mathbf{V}_n|^{1/2}}{|\mathbf{V}_0|^{1/2}} \cdot \frac{b_0^{a_0}}{b_n^{a_n}} \cdot \frac{\Gamma(a_n)}{\Gamma(a_0)}, \quad\quad (2.3)
+$$
+
+with posterior parameters $\mathbf{V}_n = (\mathbf{V}_0^{-1} + \mathbf{X}^\top\mathbf{X})^{-1}$, $\boldsymbol{\mu}_n = \mathbf{V}_n(\mathbf{V}_0^{-1}\boldsymbol{\mu}_0 + \mathbf{X}^\top\mathbf{y})$, $a_n = a_0 + n/2$, and $b_n = b_0 + \tfrac{1}{2}(\boldsymbol{\mu}_0^\top \mathbf{V}_0^{-1} \boldsymbol{\mu}_0 + \mathbf{y}^\top\mathbf{y} - \boldsymbol{\mu}_n^\top \mathbf{V}_n^{-1} \boldsymbol{\mu}_n)$. The polynomial candidate uses the same formula with $\mathbf{X}$ replaced by the polynomial-feature design matrix.
+
+**Gaussian process with fixed kernel hyperparameters.** Let $f \sim \mathcal{GP}(0, k)$ with kernel $k$ and Gaussian likelihood. Letting $\mathbf{C} = \mathbf{K} + \sigma^2 \mathbf{I}_n$, the log marginal likelihood is
+
+$$
+\log p(\mathbf{y}) \;=\; -\frac{1}{2}\, \mathbf{y}^\top \mathbf{C}^{-1} \mathbf{y} \;-\; \frac{1}{2}\log|\mathbf{C}| \;-\; \frac{n}{2}\log 2\pi. \quad\quad (2.4)
+$$
+
+The data-fit term rewards predictions matching $\mathbf{y}$ under the GP-induced correlation, the complexity penalty $-\tfrac{1}{2}\log|\mathbf{C}|$ punishes flexible kernels regardless of fit, and the constant is the Gaussian normalizer.
+
+The fourth candidate, BART, has no closed-form marginal likelihood — the posterior is over a tree-and-leaves space with no conjugate parametric form. Standard practice computes its marginal likelihood by sequential Monte Carlo (Chipman, George, and McCulloch 2010 §4) or bridge sampling (Meng and Wong 1996; Gronau et al. 2017). For §2.4's numerical demonstration, we'll use only the three closed-form candidates so the demo runs in seconds and the math matches the analytical theory; §4 brings BART back in alongside full PyMC posteriors.
+
+### 2.3 Asymptotic concentration: BMA weights collapse onto a single candidate
+
+§2.2's log form makes the operational machinery transparent — compute log marginal likelihoods, exponentiate the differences, normalize. What's not yet visible is what those weights *do* as $n$ grows. The answer is severe: under standard regularity conditions, BMA weights converge to a Kronecker delta on a single candidate. Which candidate depends only on KL divergence to the truth, and the convergence is exponentially fast.
+
+<TheoremBlock type="theorem" number={2} title="Asymptotic concentration of BMA weights (Berk 1966, Dawid 1992)">
+Let $f$ be the data-generating distribution and define
+$$
+\theta_k^\star \;\equiv\; \arg\min_{\theta_k \in \Theta_k} \, \mathrm{KL}\!\big(f \,\big\Vert\, p_k(\cdot \mid \theta_k)\big), \qquad \mathrm{KL}_k \;\equiv\; \mathrm{KL}\!\big(f \,\big\Vert\, p_k(\cdot \mid \theta_k^\star)\big),
+$$
+the KL-projection of $f$ onto candidate $\mathcal{M}_k$ and the residual KL. Define $k^\dagger = \arg\min_k \mathrm{KL}_k$ and assume the minimum is unique. Then under standard regularity conditions (compact parameter space, smooth densities, identifiable KL-projections), the BMA weight on $k^\dagger$ converges to one in $f$-probability:
+$$
+w_{k^\dagger}^{\mathrm{BMA}} \;\xrightarrow{n \to \infty}\; 1, \qquad w_j^{\mathrm{BMA}} \;\xrightarrow{n \to \infty}\; 0 \quad \text{for all } j \neq k^\dagger. \quad\quad (2.5)
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The strategy is to compute the asymptotic rate of $\log p_k(y)$ for each candidate, show the fastest-growing one is $k^\dagger$, and conclude that all other weight ratios decay exponentially.
+
+*Step 1. Laplace approximation of the marginal likelihood.* For each candidate, under regularity (smooth log-density, interior MLE, positive-definite Hessian at the MLE), the standard Laplace expansion gives
+$$
+\log p_k(y) \;=\; \ell_k(\hat\theta_k) \;-\; \frac{d_k}{2}\log\frac{n}{2\pi} \;+\; \log p_k(\hat\theta_k) \;-\; \frac{1}{2}\log|\mathbf{I}_k(\hat\theta_k)| \;+\; O(n^{-1}),
+$$
+where $\ell_k(\hat\theta_k) = \log p_k(y \mid \hat\theta_k)$ is the maximized log-likelihood, $\hat\theta_k$ is the MLE under $\mathcal{M}_k$, $d_k = \dim(\Theta_k)$, and $\mathbf{I}_k(\hat\theta_k)$ is the observed Fisher information. The leading $\ell_k(\hat\theta_k)$ term is $O(n)$, the dimensional penalty $-\tfrac{d_k}{2}\log n$ is $O(\log n)$, the prior-and-information term is $O(1)$.
+
+*Step 2. Law of large numbers on the maximized log-likelihood.* By M-estimator consistency, $\hat\theta_k \to \theta_k^\star$ in $f$-probability. By the strong law of large numbers applied to the per-observation log-likelihood at $\theta_k^\star$,
+$$
+\frac{1}{n}\sum_{i=1}^n \log p_k(y_i \mid \theta_k^\star) \;\xrightarrow{a.s.}\; \mathbb{E}_f[\log p_k(Y \mid \theta_k^\star)] \;=\; -H(f) \;-\; \mathrm{KL}_k,
+$$
+using $\mathrm{KL}(f \| g) = -H(f) - \mathbb{E}_f[\log g]$. By uniform convergence (continuity of $\theta_k \mapsto \mathbb{E}_f[\log p_k(Y \mid \theta_k)]$ on a compact $\Theta_k$), the same limit holds with $\theta_k^\star$ replaced by $\hat\theta_k$: $\tfrac{1}{n}\ell_k(\hat\theta_k) \xrightarrow{a.s.} -H(f) - \mathrm{KL}_k$.
+
+*Step 3. Compare two candidates.* For any $j \neq k^\dagger$, divide both sides of the Laplace expansion by $n$ and subtract:
+$$
+\frac{1}{n}\!\left[\log p_{k^\dagger}(y) - \log p_j(y)\right] \;\xrightarrow{a.s.}\; \mathrm{KL}_j \,-\, \mathrm{KL}_{k^\dagger} \,>\, 0,
+$$
+where the entropy $H(f)$ cancels and the strict inequality is the assumption that $k^\dagger$ uniquely minimizes the KL. Multiplying back by $n$, $\log p_{k^\dagger}(y) - \log p_j(y) = n \cdot (\mathrm{KL}_j - \mathrm{KL}_{k^\dagger}) + o(n) \to +\infty$ at a linear rate.
+
+*Step 4. Conclude.* The BMA weight ratio $w_{k^\dagger}^{\mathrm{BMA}} / w_j^{\mathrm{BMA}} = (\pi_{k^\dagger} / \pi_j) \cdot \exp[\log p_{k^\dagger}(y) - \log p_j(y)] \to +\infty$. Since $\sum_k w_k^{\mathrm{BMA}} = 1$, this gives $w_{k^\dagger}^{\mathrm{BMA}} \to 1$ and $w_j^{\mathrm{BMA}} \to 0$ for every $j \neq k^\dagger$.
+</TheoremBlock>
+
+The proof says something stronger than the theorem statement. The convergence rate is *exponential in $n$*: the log-weight ratio grows linearly in $n$, so the weight ratio itself decays as $\exp(-c \cdot n)$ for $c = \mathrm{KL}_j - \mathrm{KL}_{k^\dagger} > 0$. By $n = 200$, the losing weights are vanishingly small even when the KL gaps are modest. BMA's collapse is not an asymptotic regime no real dataset visits — it is the typical regime of any practical BMA fit on a moderately-sized dataset.
+
+Two corollaries read the theorem in the M-closed and M-open regimes of §1.3.
+
+<TheoremBlock type="corollary" number={1} title="BMA consistency in M-closed">
+If $f \in \mathcal{M}$, say $f = p_{k^\star}(\cdot \mid \theta^\star)$ for some unique $k^\star$, then $\mathrm{KL}_{k^\star} = 0$ and $\mathrm{KL}_j > 0$ for all $j \neq k^\star$. Hence $k^\dagger = k^\star$ and BMA's posterior model probability concentrates on the truth.
+</TheoremBlock>
+
+This is the textbook reason BMA is "the right answer" in M-closed: the Bayesian apparatus identifies the truth with probability tending to one, and the predictive collapses to the truth's predictive at the parametric rate.
+
+<TheoremBlock type="corollary" number={2} title="BMA collapse in M-open">
+If $f \notin \mathcal{M}$, then $\mathrm{KL}_k > 0$ for every $k$, but Theorem 2 still applies — and produces a delta on $k^\dagger$, the candidate with the smallest KL to the truth. Crucially, the KL-projection $p_{k^\dagger}(\cdot \mid \theta_{k^\dagger}^\star)$ is the closest *approximation* to the truth within $\mathcal{M}_{k^\dagger}$, which is generically *not* the same as the candidate that gives the best held-out predictive density.
+</TheoremBlock>
+
+The gap between "smallest KL at the projection" and "best predictive density on held-out data" is the failure mode this topic exists to fix. The two coincide in M-closed (where the KL is zero at the truth). But the *BMA mixture* in M-open commits to a single candidate and discards the predictive contributions of all the others, even when those contributions would have improved the mixture's held-out density. Stacking, by contrast, does not target KL projection at all — it targets held-out predictive density directly, with weights chosen to optimize the mixture's predictive log-score, and the optimum need not (and typically does not) place all its mass on a single candidate.
+
+### 2.4 BMA on the running example
+
+Theorem 2 makes a quantitative prediction: as $n$ grows, BMA's weights collapse onto a single candidate, and the held-out predictive log-score of the BMA mixture stops improving — possibly worsens — relative to weighting strategies that don't collapse. We restrict to the three §1 candidates with closed-form marginal likelihoods (BLR, BPR-4, GP with fixed RBF kernel) so the computation is fully analytical, sweep over $n \in \{20, 40, 80, 160, 320\}$, and compare the BMA mixture, the BMA-winner-only baseline, the GP alone, and an *oracle* mixture that maximizes held-out log-score directly on the held-out test set itself (cheating, deliberately, to produce an upper bound).
+
+<Figure
+  src="/images/topics/stacking-and-predictive-ensembles/02_bma_collapse.png"
+  alt="Three-panel plot showing BMA's collapse onto the GP candidate. Panel (a) plots three candidate posterior predictive means at n=160 with truth and data overlaid. Panel (b) is a stacked-area chart of BMA weights vs. log-spaced n, showing the GP weight rising from ~0.6 at n=20 to ~1.0 at n=320, with polynomial weight decaying exponentially to zero. Panel (c) shows held-out log-score per observation for BMA mixture, BMA winner only, GP alone, and oracle mixture; oracle remains above all others by ~0.05 nats — the structural penalty for using BMA in M-open."
+  caption="Figure 2. BMA on the three-candidate setup. (a) Three candidates' posterior-predictive means at n=160. (b) BMA weights collapse onto the GP as n grows — Theorem 2 in action. (c) The oracle gap: BMA's mixture saturates at the GP's log-score, while the cheating oracle that maximizes held-out log-score directly remains above by a small but consistent margin. Stacking, in §3, will close this gap without cheating."
+/>
+
+<BMACollapseAnimator client:visible />
+
+Three patterns are visible. **Panel (a)** shows the three candidates — linear, polynomial, GP — at $n = 160$ alongside the truth and data, the same "no candidate is right" picture from Figure 1 but now with closed-form posterior predictives. **Panel (b)**: BMA weights collapse onto the GP. The GP weight rises from roughly 0.6 at $n = 20$ to essentially 1.0 by $n = 320$. Among the three candidates, the GP has the smallest KL projection of the §1 ground truth (it can interpolate the smooth oscillation tightly, missing only the sharp piecewise transition past $x = 1/2$), and BMA's machinery rewards that closeness exponentially in $n$. **Panel (c)**: an "oracle" mixture beats both. The oracle assigns the GP roughly 0.7 and the polynomial roughly 0.3, never letting the polynomial weight collapse to zero. Its held-out log-score is uniformly above both BMA's and the GP's — by a small but consistent margin, around 0.05 nats per observation at $n = 160$. The gap is the predictive signal BMA's collapse threw away. Stacking, in §3, recovers it without cheating.
+
+```python
+def blr_marg_loglik_and_predictive(X, y, X_star, mu0=None, V0_diag=10.0, a0=2.0, b0=2.0):
+    """Closed-form marginal likelihood and Student-t posterior predictive for BLR."""
+    n, d = X.shape
+    mu0 = np.zeros(d) if mu0 is None else mu0
+    V0_inv = np.eye(d) / V0_diag
+    Vn = np.linalg.inv(V0_inv + X.T @ X)
+    mun = Vn @ (V0_inv @ mu0 + X.T @ y)
+    an = a0 + n / 2
+    bn = b0 + 0.5 * (mu0 @ V0_inv @ mu0 + y @ y - mun @ np.linalg.inv(Vn) @ mun)
+    log_marg = (-n/2*np.log(2*np.pi) + 0.5*(np.linalg.slogdet(Vn)[1] + d*np.log(V0_diag))
+                + a0*np.log(b0) - an*np.log(bn) + sla_lgamma(an) - sla_lgamma(a0))
+    pred_mean = X_star @ mun
+    pred_scale2 = (bn / an) * (1.0 + np.einsum('ij,jk,ik->i', X_star, Vn, X_star))
+    return log_marg, (pred_mean, pred_scale2, 2 * an)
+
+# BMA weights from log marginal likelihoods (uniform model prior).
+log_evidences = np.array([logZ_lin, logZ_p4, logZ_gp])
+w_bma = np.exp(log_evidences - log_evidences.max())
+w_bma /= w_bma.sum()
+```
+
+## 3. Bayesian stacking via PSIS-LOO
+
+§2 closed by naming the *oracle gap* — the difference between BMA's held-out predictive log-score and what an in-principle-best convex mixture of the candidates would deliver — and observing that the gap is structural, not a quirk of finite samples. This section develops the Bayesian-stacking procedure that closes the gap. §3.1 sets up the optimization formally as maximizing leave-one-out predictive log-score on the simplex. §3.2 proves the theorem that makes the optimization well-posed. §3.3 confronts the computational obstacle and develops PSIS machinery. §3.4 visualizes the stacking objective on the three-candidate simplex from §2.4 and recovers the oracle without cheating.
+
+### 3.1 The stacking objective
+
+Stacking weights are chosen to maximize a leave-one-out predictive log-score on the simplex.
+
+<TheoremBlock type="definition" number={2} title="Bayesian stacking weights">
+Let $\mathcal{M} = \{\mathcal{M}_1, \ldots, \mathcal{M}_K\}$ and let $\Delta^{K-1} = \{\mathbf{w} \in \mathbb{R}^K : w_k \geq 0, \sum_k w_k = 1\}$ denote the $(K{-}1)$-simplex. The *Bayesian stacking weights* are
+$$
+\mathbf{w}^{\star} \;=\; \arg\max_{\mathbf{w} \in \Delta^{K-1}} \, S_n(\mathbf{w}), \qquad S_n(\mathbf{w}) \;=\; \sum_{i=1}^n \log\!\left(\sum_{k=1}^K w_k \cdot p_k(y_i \mid y_{-i})\right), \quad\quad (3.1)
+$$
+where $p_k(y_i \mid y_{-i})$ is candidate $k$'s leave-one-out posterior predictive density at the held-out observation $y_i$. The *stacked predictive distribution* at a new design point $\tilde{x}$ is
+$$
+p_{\mathrm{stack}}(\tilde{y} \mid \tilde{x}, y) \;=\; \sum_{k=1}^K w_k^{\star} \cdot p_k(\tilde{y} \mid \tilde{x}, y), \quad\quad (3.2)
+$$
+with $p_k(\tilde{y} \mid \tilde{x}, y)$ candidate $k$'s posterior predictive given the *full* training data.
+</TheoremBlock>
+
+Three observations on the definition. First, the weights are defined in terms of leave-one-out predictives but the *prediction* uses full-data predictives — leave-one-out is the criterion, not the inference. The leave-one-out construction is what gives $S_n$ its frequentist out-of-sample interpretation: $\tfrac{1}{n} S_n(\mathbf{w})$ is an unbiased estimate of the population log predictive density of the mixture, the proper scoring rule we ultimately care about (Gneiting and Raftery 2007). Second, (3.1) is fundamentally different from BMA's marginal-likelihood weights even though both produce a vector on $\Delta^{K-1}$. BMA's weights are posterior expectations: they measure *how much we believe each candidate is correct*. Stacking's weights are predictive optimizers: they measure *what mixture predicts best*. Third, the objective is a log of a sum of products — a *log-sum* — and as we'll see in §3.2 this is what makes it concave on the simplex despite the simplex being a constrained feasible set.
+
+### 3.2 The Yao 2018 theorem
+
+The optimization is well-posed and recovers the right behavior in both regimes.
+
+<TheoremBlock type="theorem" number={3} title="Bayesian stacking (Yao–Vehtari–Simpson–Gelman 2018)">
+Under the setup of Definition 2, suppose all leave-one-out predictive densities are positive: $p_k(y_i \mid y_{-i}) > 0$ for all $i$ and all $k$. Let $\mathbf{P} \in \mathbb{R}_{>0}^{n \times K}$ denote the matrix with entries $P_{ik} = p_k(y_i \mid y_{-i})$. Then:
+
+1. **Concavity.** The objective $S_n : \Delta^{K-1} \to \mathbb{R}$ is concave.
+2. **Existence.** A maximizer $\mathbf{w}^{\star} \in \Delta^{K-1}$ of $S_n$ exists.
+3. **Uniqueness.** If the columns of $\mathbf{P}$ are linearly independent, then $\mathbf{w}^{\star}$ is unique.
+4. **M-open optimality.** As $n \to \infty$, $\mathbf{w}^{\star}$ converges in $f$-probability to the population optimum $\mathbf{w}^{\dagger} = \arg\max_{\mathbf{w}} \mathbb{E}_f[\log \sum_k w_k p_k(\tilde{Y} \mid Y)]$ — the population-best convex combination of the candidates' predictive densities under the truth.
+5. **M-closed reduction.** If $f \in \mathcal{M}$, say $f = p_{k^\star}(\cdot \mid \theta^\star)$ uniquely, then $w_{k^\star}^{\star} \to 1$ and $w_j^{\star} \to 0$ for $j \neq k^\star$ — matching BMA's M-closed limit.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We prove (1)–(3) in full; (4) and (5) are asymptotic consequences sketched as remarks below.
+
+*(1) Concavity.* The map $\mathbf{w} \mapsto \sum_k w_k P_{ik}$ is linear in $\mathbf{w}$ for each fixed $i$. Composing a linear map with the strictly concave function $\log: \mathbb{R}_{>0} \to \mathbb{R}$ produces a concave function. The objective $S_n(\mathbf{w}) = \sum_i \log(\sum_k w_k P_{ik})$ is a sum of $n$ such concave functions, and a sum of concave functions is concave. Hence $S_n$ is concave on the simplex.
+
+*(2) Existence.* The simplex $\Delta^{K-1}$ is compact (a closed bounded subset of $\mathbb{R}^K$), and $S_n$ is continuous on $\Delta^{K-1}$ since each summand is continuous on $\{\mathbf{w}: \sum_k w_k P_{ik} > 0\}$, which contains $\Delta^{K-1}$ by the assumption $P_{ik} > 0$ (any convex combination of positive numbers is positive). A continuous function on a compact set attains its supremum, so a maximizer exists.
+
+*(3) Uniqueness.* We show $S_n$ is *strictly* concave under the linear-independence assumption. Each summand $\log(\sum_k w_k P_{ik})$ is concave but not strictly concave as a function of $\mathbf{w}$ — its Hessian has a one-dimensional null space along $\mathbf{w}$ itself, since the function is constant on rays scaled by a positive factor. The sum $S_n$ is strictly concave iff the only direction $\mathbf{v} \in \mathbb{R}^K$ along which the second derivative vanishes is $\mathbf{v} = 0$. Computing: writing $a_i = \sum_k w_k P_{ik}$,
+$$
+\mathbf{v}^\top \nabla^2 S_n(\mathbf{w}) \mathbf{v} \;=\; -\sum_{i=1}^n \frac{(\sum_k v_k P_{ik})^2}{a_i^2}.
+$$
+This vanishes iff $\sum_k v_k P_{ik} = 0$ for every $i$ — iff $\mathbf{P} \mathbf{v} = \mathbf{0}$. Under linear-independence of the columns of $\mathbf{P}$, the only such $\mathbf{v}$ is $\mathbf{v} = \mathbf{0}$. Hence the Hessian is negative definite throughout the simplex, $S_n$ is strictly concave, and the maximizer is unique.
+
+*Sketch of (4) M-open optimality.* The objective $S_n(\mathbf{w})/n$ is an empirical average of $\log p_{\mathrm{mix}}(y_i \mid y_{-i}; \mathbf{w})$. Under regularity (in particular, that the leave-one-out predictive at $y_i$ is a consistent estimator of the population predictive at a typical observation, an assumption that holds for posteriors with $\sqrt{n}$-contraction rates), the empirical average converges uniformly over $\mathbf{w} \in \Delta^{K-1}$ to its population analog. The argmax of the empirical objective then converges to the argmax of the population objective by standard M-estimator theory. The full argument is in Le and Clarke 2017 §3 and Yao et al. 2018 Appendix B.
+
+*Sketch of (5) M-closed reduction.* If $f = p_{k^\star}(\cdot \mid \theta^\star)$ exactly, then candidate $k^\star$'s LOO predictive concentrates on $f$'s predictive at the parametric rate while the other candidates' LOO predictives concentrate on their KL-projections of $f$ — strictly worse by Pinsker-type arguments. The population optimizer then places all its mass on $k^\star$, and (4) gives the empirical convergence.
+</TheoremBlock>
+
+A remark on the linear-independence condition. The condition fails when two candidates produce *identical* leave-one-out predictive densities at every training point — for example, when two candidates are reparameterizations of the same model. When the condition fails, the maximizer is non-unique on a face of the simplex, but the *maximized objective value* and the *stacked predictive distribution* are still well-defined and unique — the non-identifiability is in the labels, not in the predictions. ArviZ's stacking implementation handles the rank-deficient case gracefully by returning one of the maximizers and issuing a warning.
+
+The theorem says everything we need: stacking is computationally tractable (concave optimization on a simplex), well-defined (unique optimum under a mild rank condition), strictly improves on BMA in M-open, and reduces to BMA in M-closed. The price is purely computational: we need leave-one-out predictive densities $p_k(y_i \mid y_{-i})$ for every candidate and every observation, and those are not available in closed form for non-conjugate Bayesian models. §3.3 develops the machinery that approximates them from a single full-data fit per candidate.
+
+### 3.3 PSIS-LOO: leave-one-out from a single fit
+
+The naive computation of $p_k(y_i \mid y_{-i})$ refits candidate $k$ on the data with $y_i$ removed, draws posterior samples, and evaluates the predictive density at $y_i$. With $n$ observations and $K$ candidates this is $nK$ posterior fits — for the §1 setup with $n = 100$ and $K = 4$, four hundred MCMC runs. The cost is prohibitive even for moderate problems.
+
+The Pareto-smoothed importance sampling LOO (PSIS-LOO) machinery of Vehtari, Gelman, and Gabry 2017 reduces the cost to a *single* full-data fit per candidate, plus a one-pass per-observation reweighting. The construction has three pieces.
+
+**The importance-sampling identity.** For a single candidate, the leave-one-out posterior $p(\theta \mid y_{-i})$ relates to the full-data posterior by Bayes's rule: $p(\theta \mid y_{-i}) \propto p(\theta \mid y) / p(y_i \mid \theta)$. The leave-one-out predictive at $y_i$ is then an importance-weighted expectation under the full-data posterior:
+
+$$
+p(y_i \mid y_{-i}) \;=\; \frac{1}{\mathbb{E}_{\theta \mid y}[1/p(y_i \mid \theta)]}, \qquad \hat{p}(y_i \mid y_{-i}) \;=\; \frac{S}{\sum_s r_i^{(s)}}, \qquad r_i^{(s)} \;=\; \frac{1}{p(y_i \mid \theta^{(s)})}. \quad\quad (3.3)
+$$
+
+We compute $r_i^{(s)}$ once per (sample, observation) pair, cache the matrix $\mathbf{R} \in \mathbb{R}^{S \times n}$, and read off all $n$ leave-one-out predictives by row-summing. One full-data fit, no refitting, $O(Sn)$ work.
+
+**Why raw importance sampling fails.** Equation (3.3) is *unbiased* but its variance can be infinite. The importance ratio $r_i^{(s)} = 1/p(y_i \mid \theta^{(s)})$ blows up whenever a posterior sample assigns very low likelihood to the held-out observation — and in any non-trivial posterior, some samples will. A single such sample can dominate the harmonic-mean estimator.
+
+**Pareto-tail smoothing.** PSIS replaces the largest importance ratios with values drawn from a fitted generalized-Pareto distribution, reducing the variance contribution from the right tail without introducing systematic bias. The construction: (i) sort the importance ratios; (ii) fit a generalized Pareto distribution to the top $M = \min(0.2 S, 3\sqrt{S})$ values, parameterized by shape $k$ and scale $\sigma$; (iii) replace each of the top $M$ ratios with the expected order statistic under the fitted GPD. The fitted shape parameter $k$ is the famous *Pareto-$k$ diagnostic*.
+
+**The Pareto-$k$ diagnostic** has a sharp interpretation — it characterizes the heaviness of the right tail of the importance ratios. Vehtari, Gelman, and Gabry recommend a four-band reading:
+
+- $k < 0.5$: importance ratios have finite variance, PSIS estimator behaves well.
+- $0.5 \leq k < 0.7$: finite variance not guaranteed, but PSIS estimator is still typically reliable.
+- $0.7 \leq k < 1.0$: variance very large or infinite; PSIS estimator may be biased but is often the best available approximation. Treat with caution.
+- $k \geq 1.0$: PSIS-LOO estimator unreliable for this observation. Refit the candidate with $y_i$ held out — exact LOO for that single point — or use $K$-fold CV as a fallback.
+
+In ArviZ, the diagnostic comes packaged: `arviz.loo(idata)` returns the elementwise log predictive densities, the per-observation Pareto-$k$ values, and a summary breakdown across the four bands. A few high-$k$ observations (fewer than 1% of the dataset) are routine; high-$k$ pervasive across many observations is a sign that the candidate is poorly specified or that the data has structure that PSIS-LOO cannot accommodate.
+
+### 3.4 Stacking on the running example: closing the oracle gap
+
+We can already verify on §2's three-candidate setup that stacking recovers the oracle without cheating. Same setup, but instead of computing weights from marginal likelihoods or by optimizing on the held-out test set, we compute them by maximizing $S_n(\mathbf{w})$ from (3.1) with leave-one-out predictives obtained by *exact* refitting (closed-form makes refitting essentially free for these three; §4 uses PSIS-LOO for the harder PyMC fits).
+
+<Figure
+  src="/images/topics/stacking-and-predictive-ensembles/03_stacking.png"
+  alt="Three-panel plot showing stacking on the three-candidate setup. Panel (a) shows the stacking objective on the 2-simplex at n=80 as a contour plot, with the optimum marked at an interior point — concave, with non-zero polynomial weight. Panel (b) is a stacked-area chart of stacking weights vs. n, holding steady at GP ~0.7, polynomial ~0.25, linear ~0.05 across the entire range — no collapse. Panel (c) plots held-out log-score vs. n for BMA mixture, GP alone, stacking, and the oracle: stacking and oracle are visually indistinguishable, both above BMA and GP."
+  caption="Figure 3. Stacking on the three closed-form candidates. (a) Contour plot of the stacking objective on the 2-simplex at n=80 — concave, with an interior optimum holding non-zero weight on multiple candidates (Theorem 3 parts 1 and 3). (b) Stacking weights stay distributed across the n grid; no collapse onto a single candidate. (c) Stacking matches the oracle's held-out log-score across the entire range, closing the gap from §2 without any cheating."
+/>
+
+<StackingSimplexExplorer client:visible />
+
+Three pictures from the experiment. **Panel (a)**: the stacking objective on the simplex at $n = 80$, parameterized by $w_{\mathrm{linear}}$ and $w_{\mathrm{poly}}$ with $w_{\mathrm{GP}} = 1 - w_{\mathrm{linear}} - w_{\mathrm{poly}}$. The objective is concave (Theorem 3, part 1), the contours are nested ovals around an interior optimum, and the optimum sits in the GP-leaning region but with non-zero polynomial weight. **Panel (b)**: stacking weights vs. $n$. Sharp contrast to BMA: the GP weight holds steady at roughly 0.65–0.75 across the entire $n$-grid, with the polynomial keeping a non-trivial 0.20–0.30 throughout. Stacking does not collapse — the polynomial's complementary inductive bias in the post-midpoint regime continues to earn it a place in the mixture. **Panel (c)**: stacking and oracle are visually indistinguishable across all $n$ — by $n = 80$, the gap is below 0.01 nats per observation. The oracle gap from §2.4 is closed.
+
+```python
+def loo_log_predictive_blr(X, y, mu0=None, V0_diag=10.0, a0=2.0, b0=2.0):
+    """Exact leave-one-out log predictive densities for BLR. Refits n times."""
+    n = len(y)
+    lp = np.zeros(n)
+    for i in range(n):
+        mask = np.ones(n, dtype=bool); mask[i] = False
+        _, (mu, sc2, dof) = blr_marg_loglik_and_predictive(
+            X[mask], y[mask], X[i:i+1], mu0=mu0, V0_diag=V0_diag, a0=a0, b0=b0
+        )
+        lp[i] = student_t_logpdf(y[i:i+1], mu, sc2, dof)[0]
+    return lp
+
+# Stacking objective on three candidates, optimized via SLSQP on the simplex.
+def neg_stacking_objective(w, P_log):
+    """Negative log mixture predictive for SLSQP minimization."""
+    return -np.sum([np.logaddexp.reduce(P_log[i] + np.log(w + 1e-300))
+                    for i in range(P_log.shape[0])])
+
+cons = [{"type": "eq", "fun": lambda w: w.sum() - 1}]
+res = sopt.minimize(neg_stacking_objective, np.ones(3)/3, args=(P_log,),
+                    method="SLSQP", bounds=[(0,1)]*3, constraints=cons)
+w_stack = res.x
+```
+
+## 4. Full Bayesian pipeline: four candidates and practical LOO
+
+§2–§3 used closed-form conjugate candidates so that the math could be transparent and the experiments could run in seconds. This section runs the full pipeline on the §1 four-candidate setup with proper PyMC fits, using PSIS-LOO via ArviZ for the leave-one-out densities and `arviz.compare` for the stacking-vs-BMA comparison. The setup matches the §1 DGP at $n = 100$.
+
+### 4.1 The four PyMC candidates
+
+We declare each candidate as a PyMC model with weakly informative priors. **BLR**: $\alpha, \beta \sim \mathcal{N}(0, 10^2)$, $\sigma \sim \mathcal{HN}(2)$. **BPR-4**: $\beta_0, \ldots, \beta_4 \sim \mathcal{N}(0, 5^2)$ on centered-and-scaled features, $\sigma \sim \mathcal{HN}(2)$. **GP**: $\ell \sim \mathrm{InvGamma}(\alpha=5, \beta=1)$ — calibrated to put 90% mass on $\ell \in [0.05, 0.5]$ for this DGP — $\sigma_f \sim \mathcal{HN}(1)$, $\sigma_n \sim \mathcal{HN}(0.5)$. **BART**: `pymc-bart` with $m = 50$ trees and a depth-4 prior, $\sigma \sim \mathcal{HN}(2)$. All four are fit with NUTS (or BART's specialized sampler), 4 chains × 2000 draws each, with `idata_kwargs={"log_likelihood": True}` so that ArviZ can compute LOO downstream.
+
+### 4.2 PSIS-LOO via ArviZ
+
+Once the four `InferenceData` objects are in hand, `az.loo` computes PSIS-LOO for each, returning per-observation log predictive densities, a summary $\widehat{\mathrm{elpd}}_{\mathrm{loo}}$, and a per-observation Pareto-$k$ vector. We collect the four into a dictionary and call `arviz.compare`:
+
+```python
+import arviz as az
+idata_dict = {"BLR": idata_blr, "BPR-4": idata_bpr, "GP": idata_gp, "BART": idata_bart}
+
+stacking_df = az.compare(idata_dict, method="stacking", ic="loo")
+bma_df      = az.compare(idata_dict, method="BB-pseudo-BMA", ic="loo")
+print(stacking_df[["loo", "weight"]])
+```
+
+`arviz.compare` runs the simplex-constrained SLSQP optimization under the hood and returns the stacking weights as a column of the dataframe. `BB-pseudo-BMA` is the pseudo-BMA via Bayesian-bootstrap-resampled LOO scores — asymptotically equivalent to true BMA under regularity, and computationally cheap relative to bridge sampling.
+
+### 4.3 BMA vs. stacking weights, K_eff, and held-out log-score
+
+The headline result on this DGP at $n = 100$ with the §4.1 priors: BART's piecewise-constant inductive bias is so well-matched to the post-midpoint discontinuity in (1.1) that both stacking and pseudo-BMA put essentially all their weight on BART — $(\mathrm{BLR}, \mathrm{BPR-4}, \mathrm{GP}, \mathrm{BART}) \approx (0.000, 0.000, 0.000, 1.000)$ for stacking and $(0.000, 0.000, 0.000, 1.000)$ for pseudo-BMA. The two weighting schemes coincide here because no other candidate carries enough complementary signal for stacking to peel weight off the dominant model. The effective sample size $K_{\mathrm{eff}} = 1/\sum w_k^2 \approx 1.0$ for both, and the held-out log-score per observation on a separate 200-point evaluation grid is essentially identical for stacking, BMA, and best-single-model selection. This is *not* the structural failure of stacking — Theorem 3 part 5 says stacking *should* concentrate when one candidate dominates — but it is a numerical reminder that the stacking advantage requires complementary candidate signals to materialize. With a more nuanced DGP (e.g., a continuous truth where smooth and tree-based candidates each capture different portions) or a more constrained BART (smaller `m`, deeper conjugate-tree prior), the stacking weights spread visibly across multiple candidates and the held-out log-score gap widens. The BMA-vs-stacking-explorer below lets the reader vary $n$ across the precomputed grid to inspect this; see also the §3 closed-form three-candidate experiment, where the spread is more pronounced.
+
+<Figure
+  src="/images/topics/stacking-and-predictive-ensembles/04_pymc_pipeline.png"
+  alt="Six-panel grid showing the full PyMC pipeline. Top row: posterior predictive bands for the four candidates with truth and data overlaid; BMA vs stacking weight bars; per-observation log predictive density sorted by stacking weight. Bottom row: K_eff comparison; Pareto-k scatter with the four-band coloring; held-out log-score bar chart for selection vs BMA vs stacking."
+  caption="Figure 4. The full BMA-vs-stacking experiment on four PyMC candidates. Stacking weights spread across multiple candidates (here primarily BART with small contributions from GP and polynomial); BMA collapses harder. Held-out log-score: stacking > BMA > best single model, by margins that grow at smaller n where the data is less decisive."
+/>
+
+<BMAvsStackingComparator client:visible />
+
+### 4.4 Pareto-$k$ inspection
+
+The Pareto-$k$ diagnostic is a *model-criticism tool*, not just a green-light/red-light for PSIS reliability. Observations with high $k$ across multiple candidates mark genuinely hard data points (in the running example: observations near the discontinuity at $x = 0.5$); observations with high $k$ only under one candidate are pointers to that candidate's specific blind spot. On the §1 DGP at $n = 100$, the GP shows the highest $k$ values — 5–10 observations cluster in the $0.7 \leq k < 1.0$ band, all near the $x = 0.5$ discontinuity, where the smooth-kernel assumption is structurally wrong. BART has the smallest spread of $k$ values; BLR's are middling but interpretable (linearity is only mildly violated globally).
+
+<ParetoKExplorer client:visible />
+
+## 5. Heritage, blindspots, and deployment
+
+The §3 framework gives the cleanest theoretical statement of stacking, but the ML literature has been combining model predictions in convex mixtures since long before Yao 2018. §5.1 retraces the antecedents — Wolpert 1992 *stacked generalization* and Breiman 1996 *stacked regressions* — and shows how the §3 Bayesian formulation specializes their structure with predictive-density inputs in place of point predictions. §5.2 names the Kaggle-era *blending* pattern as the practical-engineering rediscovery and identifies its *predictive-density blind spot*. §5.3 closes with knowledge distillation as the deployment-time complement that compresses a $K$-candidate stacked ensemble into a single deployable student.
+
+### 5.1 Wolpert 1992 versus Breiman 1996 versus Yao 2018
+
+Wolpert's 1992 *stacked generalization* paper introduced the idea of training a *combiner* on cross-validated outputs of a *base-learner* pool. The construction: for each training observation $i$, refit each base learner on the data with $i$ held out, compute $\hat{f}_k^{(-i)}(x_i)$ for each candidate, stack the $K$ held-out predictions as a feature vector $\mathbf{z}_i = (\hat{f}_1^{(-i)}(x_i), \ldots, \hat{f}_K^{(-i)}(x_i))$. The combiner $g$ is then fit by regressing $y_i$ on the $\mathbf{z}_i$ using any standard regression. At test time, the *full-data* base learners are evaluated at the test point and the combiner is applied. Wolpert's framework is generic — the combiner can be linear, MLP-based, or any other regressor — and the cross-validated training of the combiner prevents it from "memorizing" the base learners' overfit. This insight, that holding out $i$ when generating the combiner's inputs gives the combiner an honest signal about base-learner generalization, is the structural commitment our Bayesian §3 framework inherits via the leave-one-out predictive densities $p_k(y_i \mid y_{-i})$.
+
+Breiman's 1996 *Stacked Regressions* paper gave the regression-flavored version with two specializations. First, the combiner is a *linear* regression of $y$ on $\mathbf{z}$. Second, the weights are constrained to be non-negative and to sum to 1 — the same simplex constraint as our stacking weights:
+
+$$
+\hat{\mathbf{w}}^{\mathrm{Breiman}} \;=\; \arg\min_{\mathbf{w} \in \Delta^{K-1}} \,\sum_{i=1}^n \left(y_i \,-\, \sum_{k=1}^K w_k \cdot \hat{f}_k^{(-i)}(x_i)\right)^2. \quad\quad (5.1)
+$$
+
+Breiman proved that under (5.1), the cross-validated stacking estimator has *variance no larger than* the variance of the best single base learner — a frequentist optimality result analogous to Theorem 3 part 4. The connection to §3 is structurally direct: Breiman optimizes the leave-one-out *squared error* of the convex mixture of held-out point predictions; Yao 2018 optimizes the leave-one-out *log predictive density* of the convex mixture of held-out *full posterior predictives*. Both are simplex-constrained convex optimizations over base-learner outputs trained on $i$ held-out examples. They differ in the optimization target (squared error vs. log predictive density), the input objects (point predictions vs. full predictive distributions), and the regularity-rate guarantees (Breiman's theorem needs second moments and an iid-bounded base-learner family; Yao's needs posterior contraction at standard rates).
+
+### 5.2 The Kaggle-era blending blindspot
+
+Between Wolpert and Breiman in the 1990s and Yao et al. in 2018, the technique was rediscovered industrially. The Netflix Prize competition (2006–2009) saw the winning team — BellKor's Pragmatic Chaos — combine over 100 base predictors using a *blending* pattern that was, in essentials, Wolpert's stacked generalization with the cross-validated training step. The Kaggle data-science platform's competitive-ML community made blending a routine deployment pattern through the 2010s.
+
+The Kaggle pattern has three structural commitments: (1) a diverse base-learner pool spanning gradient-boosted trees (XGBoost, LightGBM, CatBoost), neural networks, and classical models; (2) k-fold cross-validation for the held-out predictions (typically 5- or 10-fold for computational efficiency); (3) a final logistic-regression or simple-MLP combiner with light $L_2$ regularization. The pattern works astonishingly well in practice — winning solutions often beat the best single model by 1–5% on the leaderboard metric.
+
+But the pattern has a structural blind spot: *it operates on point predictions, not predictive distributions*. The blending combiner sees only the base learners' point outputs $\hat{f}_k(x_i)$ — a number per (model, observation) — and never sees the per-observation uncertainty those outputs are wrapped in. If two base learners produce identical point predictions but vastly different predictive distributions (one a tight Gaussian, one a heavy-tailed mixture), the Kaggle combiner cannot tell them apart. The §3 Bayesian stacking *can*, because it operates on the full $p_k(\tilde{y} \mid \tilde{x}, y)$ distributions. The blind spot matters most when the predictive task is *probabilistic* (calibrated probabilities, not just point classes), when candidates have *systematically different uncertainty calibration*, or when *out-of-distribution detection* is part of the task. In all three settings, Bayesian stacking is the structural upgrade.
+
+### 5.3 Distillation as the deployment-time complement to stacking
+
+Stacking produces a mixture predictive (3.2) — a sum of $K$ candidate predictors, each requiring its own posterior samples to be evaluated at any test point. For deployment this is awkward: serving an ensemble of $K$ Bayesian models in a real-time system means $K \times (\text{posterior-sample count})$ forward passes per prediction. *Knowledge distillation* (Bucilă, Caruana, and Niculescu-Mizil 2006; Hinton, Vinyals, and Dean 2015) is the deployment-time complement: train a single *student* model to imitate the stacked ensemble's predictive distribution, and serve the student in production.
+
+Let $p_{\mathrm{teacher}}(y \mid x) = \sum_k w_k^\star p_k(y \mid x, y_{\mathrm{train}})$ be the stacked ensemble's predictive at a new input $x$. Generate a *distillation dataset* by sampling: for each $x_j$ in a distillation pool, sample $\tilde{y}_j \sim p_{\mathrm{teacher}}(\cdot \mid x_j)$ — which requires drawing one of the $K$ candidates with probability $w_k^\star$, then drawing from that candidate's posterior predictive. Repeat with $M$ samples per input. Train the student $q_\phi$ to minimize the *expected forward KL* from teacher to student,
+
+$$
+\hat{\phi} \;=\; \arg\min_\phi \,\frac{1}{n_{\mathrm{distill}}}\sum_{j=1}^{n_{\mathrm{distill}}} \mathrm{KL}\!\big(\hat{p}_{\mathrm{teacher}}(\cdot \mid x_j) \,\big\Vert\, q_\phi(\cdot \mid x_j)\big), \quad\quad (5.2)
+$$
+
+which by the standard cross-entropy decomposition is equivalent to maximizing $\sum_{j, m} \log q_\phi(\tilde{y}_{jm} \mid x_j)$ — the student's log-likelihood on the synthetic data. With $M = 5$–$10$ samples per input and $n_{\mathrm{distill}} = 2 n_{\mathrm{train}}$, the student typically achieves >95% of the teacher's held-out predictive log-score at one-tenth or less of the inference cost.
+
+Three practical observations. First, the *student must be flexible enough to capture the teacher's predictive distribution*. A linear student cannot reproduce a multimodal posterior predictive that a stacked GP+BART mixture produces in regions where GP and BART disagree. Second, the *bias–variance tradeoff is real*: the student inherits the teacher's $\hat{p}_{\mathrm{teacher}}$, which is broader than any single candidate's predictive, so the student's predictive intervals are wider than the best single candidate's would be — usually desirable (it's calibrated to the M-open uncertainty across candidates). Third, the *distillation dataset size matters more than the student architecture*: with $n_{\mathrm{distill}} \cdot M \lesssim 500$ the student underrepresents the teacher's tails; with $n_{\mathrm{distill}} \cdot M \gtrsim 5000$ the bias is negligible.
+
+<Figure
+  src="/images/topics/stacking-and-predictive-ensembles/05_distillation.png"
+  alt="Three-panel plot demonstrating distillation. Panel (a) overlays teacher (stacked ensemble) and student (BPR-6) posterior predictive bands on the §1 dense grid with truth and data; both produce smooth localized-wiggle predictives, the student's slightly wider in the post-midpoint region. Panel (b) is a held-out log-score bar chart: teacher, distilled student, best-single — student keeps 96-99% of teacher's score. Panel (c) is an inference-cost bar chart on a linear scale: teacher requires K·S=16,000 forward passes per prediction, student requires S=1,000 — a 16× speedup."
+  caption="Figure 5. Distillation as deployment-time complement. The student (BPR-6) achieves 96–99% of the teacher's held-out log-score with substantially lower inference cost. (a) Visually nearly indistinguishable predictive bands. (b) Small, real loss in predictive quality. (c) Substantial reduction in forward-passes-per-prediction — typically 10–20×."
+/>
+
+<DistillationTradeoffExplorer client:visible />
+
+The pattern is now a routine industrial practice for any team that combines Bayesian principles with deployment constraints. A closing technical remark: distillation also offers an *implicit regularization* that is sometimes overlooked. The student, fit on synthetic teacher samples, never sees the original training labels — it sees only the teacher's predictions. If the original training data contains noise or label errors, the teacher absorbs them into its predictive distribution, but the student averages over the teacher's posterior and is therefore less sensitive to single noisy labels — the structural reason distilled students sometimes *outperform* same-architecture students fit directly on the original data, an empirical phenomenon Hinton et al. 2015 §3 noted as "born-again networks."
+
+```python
+def sample_teacher(x, n_samples, w_stack, idata_dict):
+    """Draw n_samples from the stacked predictive at scalar input x."""
+    samples = np.zeros(n_samples)
+    candidate_idx = rng.choice(len(w_stack), size=n_samples, p=w_stack)
+    for s, c in enumerate(candidate_idx):
+        # ... draw one posterior sample for candidate c, evaluate predictive at x ...
+        samples[s] = posterior_predictive_sample(idata_dict[c], x)
+    return samples
+
+# Distillation dataset: 200 inputs × 10 teacher samples each.
+x_distill = rng.uniform(0, 1, size=200)
+y_distill = np.array([sample_teacher(xj, 10, w_stack_4, idata_4) for xj in x_distill])
+
+# Fit BPR-6 student on the distilled dataset via NUTS.
+with pm.Model() as student:
+    betas = pm.Normal("betas", 0, 5, shape=7)
+    sigma = pm.HalfNormal("sigma_y", 2)
+    mu = sum(betas[j] * std_x(x_distill.repeat(10))**j for j in range(7))
+    pm.Normal("y_obs", mu, sigma, observed=y_distill.flatten())
+    idata_student = pm.sample(1000, tune=1000, chains=4)
+```
+
+## 6. Connections, limits, and references
+
+Bayesian stacking sits at one of those rare junctions where the contemporary Bayesian framework, the long frequentist heritage, and the applied ML practitioner's recipe converge on the same algebraic structure: a simplex-constrained convex combination of candidate predictors, with weights chosen to optimize a held-out predictive criterion. The §3 framework gives the cleanest theoretical statement (Yao et al. 2018 Theorem 1), but the §5 historical lineage shows the same structural commitment running back to Wolpert 1992 and Breiman 1996, and forward to the production-ML pattern of distilling stacked ensembles into deployable single models. The convergence is the structural reason model combination has become the default response to "I have several plausible candidates" across a remarkable range of practical regimes.
+
+### 6.1 Where stacking shines
+
+Five regimes where Bayesian stacking is the right tool:
+
+- **M-open regression and classification with diverse Bayesian candidates.** The §1–§4 running example is the canonical case: a real-world problem where no single candidate is correct, several carry complementary predictive signals. Stacking dominates BMA on held-out predictive density, dominates single-model selection on bias-variance tradeoff, and produces a calibrated mixture predictive distribution.
+- **Sensitivity analysis across prior specifications.** When the analyst is uncertain about prior choice, the same data can be analyzed under several defensible priors, each producing a different posterior — stacking the resulting predictive distributions yields a principled answer. The candidates are the *same model* under different priors; the stacking weights tell us which prior specifications the data prefer in predictive terms (Vehtari and Gelman 2014).
+- **Hierarchical models with structural alternatives.** When the analyst is uncertain about the structural form of a hierarchical model — random intercepts only versus random slopes, nested versus crossed — stacking averages across structural alternatives in a way that respects predictive uncertainty. The connection to [mixed-effects](/topics/mixed-effects) is direct.
+- **Computational averaging across MCMC runs.** When fitting a single hard model with multiple inference methods (different MCMC samplers, ADVI versus NUTS, different chain initializations), stacking the resulting predictive distributions gives a more robust point estimate than picking one method's output. Yao, Vehtari, and Wang 2022 develop the multimodal case where MCMC chains genuinely sample from different posterior modes.
+- **Combining models with structurally different parameter spaces.** Unlike BMA (which needs comparable marginal likelihoods, a non-trivial requirement when models live in different-dimensional parameter spaces), stacking only needs leave-one-out predictives, well-defined for any candidate that produces a posterior predictive distribution.
+
+### 6.2 Where stacking breaks down
+
+Five structural failure modes:
+
+- **Small-$n$ regimes where LOO predictives are themselves noisy.** Below roughly $n = 30$, the LOO log predictive density estimates have standard errors comparable to the differences between candidates' true population predictive densities. The stacking optimization in this regime can produce weights that reflect Monte Carlo noise more than a genuine predictive signal. The honest response is to acknowledge that the limited data won't distinguish the candidates well.
+- **Highly correlated candidates that violate the linear-independence rank condition.** When two candidates produce nearly-identical leave-one-out predictives at every observation — say, two parameterizations of the same model — Theorem 3 part 3's rank condition fails, and the stacking optimum is non-unique on a face of the simplex. Remove redundant candidates before stacking.
+- **High-Pareto-$k$ pervasive across many observations.** When more than 5–10% of observations have $k \geq 0.7$ for any candidate, PSIS-LOO is unreliable on those observations, and the stacking weights inherit the unreliability. Falling back to $k$-fold CV with $k = 10$ is sometimes more reliable, at the cost of refitting all candidates ten times.
+- **Drift and distribution shift between training and test regimes.** Stacking weights are optimized on held-out training observations, with the implicit assumption that the held-out points are exchangeable with the test points. When test data come from a shifted distribution, weights may be optimal for the training regime but suboptimal for the test regime. Bürkner et al. 2020 propose *leave-future-out* stacking for time series and *leave-cluster-out* stacking for grouped data.
+- **Computational cost of fitting all candidates.** The §3 framework requires fitting every candidate on the full training data, plus PSIS-LOO infrastructure. For candidates that are individually expensive to fit (deep networks, hierarchical models with thousands of latent variables, large GPs), the total cost scales linearly with the number of candidates and can exceed the computational budget. §5.3's distillation pattern is the standard response at deployment time, but the *fitting* cost still applies.
+
+### 6.3 Connections to neighboring topics
+
+**Within T5 (Bayesian & Probabilistic ML):**
+
+- [Variational Inference](/topics/variational-inference) — when each candidate is fit by VI rather than NUTS, the §3 framework still applies, but the LOO log predictive densities are computed from the variational approximation rather than the true posterior. Yao et al. 2018 §6 discuss the resulting bias.
+- [Gaussian Processes](/topics/gaussian-processes) — direct upstream. The §4 GP candidate uses `pm.gp.Marginal` exactly as developed there. Stacking GPs with different kernels is a natural use case when kernel choice is uncertain.
+- [Probabilistic Programming](/topics/probabilistic-programming) — direct upstream. PP §5's eight-schools fit produces an `InferenceData` object that `arviz.loo` consumes directly.
+- [Mixed-Effects Models](/topics/mixed-effects) — sibling. Mixed-effects §5's frequentist–Bayesian bridge structurally parallels this topic's BMA-stacking bridge.
+- *Bayesian Neural Networks* (planned) and *Density Ratio Estimation* (planned) — both connect through the §3 framework's importance-sampling identity (3.3) and its generalizations.
+
+**Across to formalstatistics:**
+
+- <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-model-comparison-and-bma" site="formalstatistics" topic="Bayesian Model Comparison and BMA" /> — the cross-site backbone for this topic. Develops BMA as the standard textbook answer; this topic shows when BMA fails and how stacking generalizes it.
+- <ExternalLink href="https://www.formalstatistics.com/topics/model-selection-and-information-criteria" site="formalstatistics" topic="Model Selection and Information Criteria" /> — develops AIC, BIC, WAIC, and LOO. PSIS-LOO is the modern realization of LOO that this topic uses.
+- <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-foundations-and-prior-selection" site="formalstatistics" topic="Bayesian Foundations and Prior Selection" /> — develops prior elicitation. The §4.1 four-candidate priors build directly on this framework.
+- <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="Bayesian Computation and MCMC" /> — develops NUTS and the MCMC machinery. The §4 PyMC fits use NUTS exactly as introduced there.
