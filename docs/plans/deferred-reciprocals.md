@@ -881,14 +881,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The spectral theorem for compact self-adjoint operators is the foundation of PCA, kernel PCA, and spectral clustering._
 
-## When `formalml/stacking-and-predictive-ensembles` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-model-comparison-and-bma** declares `formalmlConnections` → `stacking-and-predictive-ensembles` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Stacking is the M-open alternative to BMA: optimize predictive weights directly rather than derive them from marginal likelihoods. Critical when no candidate model is true. §27.10 Rem 26 sets up th…_
-
 ## When `formalml/statistical-learning-theory` ships
 
 Add the reciprocal pointer back to:
