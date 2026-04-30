@@ -42,8 +42,12 @@ pnpm dev                                            # Dev server at localhost:43
 pnpm build                                          # Production build (runs pagefind). Needs NODE_OPTIONS=--max-old-space-size=8192 (default 4GB OOMs).
 pnpm preview                                        # Preview production build
 pnpm verify:nonparametric-ml                        # Numerical regression tests for src/components/viz/shared/nonparametric-ml.ts vs notebook printed outputs
-pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md — don't hand-edit that file.
+pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md, docs/plans/cross-site-audit-report.md, and docs/plans/audit-output/*.json — don't hand-edit those files.
 ```
+
+## Preview before publish (non-negotiable)
+
+Run `pnpm dev` and visually verify any `src/content/topics/*.mdx` change at `http://localhost:4321/topics/<slug>/` before committing. KaTeX is configured non-strict, so math parse errors render as inline `<span class="katex-error">` rather than failing the build — `pnpm build` exits 0 with broken math. Build success is necessary but not sufficient verification. During Claude Code sessions, `.claude/hooks/preview-before-commit.sh` is wired as a `PreToolUse:Bash` hook in `.claude/settings.json` and blocks Claude-triggered `git commit` on staged topic MDX unless an `astro dev` process is running. This is Claude-side enforcement only — direct human `git commit` from a terminal is not gated, so the policy still relies on developer discipline outside Claude sessions.
 
 ## Project Structure
 
@@ -78,15 +82,23 @@ public/images/          # Static images organized by topic
 
 ### MDX topic file structure
 
-Each topic in `src/content/topics/` is an MDX file with YAML frontmatter defining:
-- title, description, domain, difficulty, prerequisites, references
+Each topic in `src/content/topics/` is an MDX file with YAML frontmatter that includes (canonical schema, see `probabilistic-programming.mdx`):
+- `title`, `subtitle`, `abstract`, `domain`, `difficulty`, `prerequisites`, `tags`, `connections`, `references`, `videoId`, `notebookPath`, `githubUrl`, `datePublished`, `estimatedReadTime`
 - `formalcalculusPrereqs` — array of objects (each with `topic`, `site`, `relationship`) declaring formalcalculus.com prerequisites; full schema in the "Cross-site references" subsection below
 - `formalstatisticsPrereqs` — array of objects (same shape) declaring formalstatistics.com prerequisites
 - Interactive viz components are imported and embedded inline
 
+**Frontmatter schema source-of-truth:** the most recently shipped topic in `src/content/topics/`, not the handoff brief. As of 2026-04-29, `probabilistic-programming.mdx` is canonical (`subtitle` + `abstract` + `tags` + `connections` + `videoId` + `notebookPath` + `githubUrl` + `datePublished` + `estimatedReadTime`). Brief drafts may use older field names (`description: >`, `keywords`, `slug`, `track`, `order`, `formalmlConnections: []`) — ignore the brief's schema, follow the codebase.
+
 **MDX top-level rule:** between the closing frontmatter `---` and the first heading, only `import`/`export` statements are allowed. JSX comments (`{/* … */}`) at top level cause `MDXError: Unexpected BlockStatement`; put comments inside the body.
 
-**Proofs:** use `<TheoremBlock type="proof">…$\square$</TheoremBlock>` with no `number` and no `title`. There is no `<ProofExpand>` component — the standalone `proof` block is the codebase pattern (rank-tests, conformal-prediction, quantile-regression).
+**Proofs:** use `<TheoremBlock type="proof">…</TheoremBlock>` with no `number`, no `title`, and no manual `$\square$` — the component auto-renders `∎` (PR #65 fix). `gaussian-processes.mdx` has stale manual markers from before the fix; `probabilistic-programming.mdx` is the post-fix reference. There is no `<ProofExpand>` component — the standalone `proof` block is the codebase pattern (rank-tests, conformal-prediction, quantile-regression).
+
+**Math display gotcha:** `$$\begin{aligned}` glued onto one line breaks rendering — MDX parses `{aligned}` as a JSX expression and strips `\begin{aligned}` before remark-math forwards to KaTeX. Always put `$$` on its own line before `\begin{aligned}` and after `\end{aligned}`. See `conformal-prediction.mdx` for the working pattern.
+
+**Equation labels:** put end labels inside the `$$...$$` block rather than using `\tag{...}` (which has KaTeX-rendering edge cases). For numbered equations the convention is `\quad\quad (X.Y)` — see `probabilistic-programming.mdx` and `mixed-effects.mdx` (numeric labels). For symbolic anchor labels (e.g., a `(†)` reference target), `\qquad (\dagger)` is used — see `gaussian-processes.mdx`. Many topics don't number equations at all (e.g., `variational-inference.mdx`).
+
+**Theorem numbering:** the default is per-type and topic-local (Theorem 1, Theorem 2; Definition 1; Lemma 1; Proposition 1, Proposition 2), and prose cross-references should follow whatever scheme the topic itself uses. Some synthesis/bridge topics intentionally use section-prefixed numbering — `prediction-intervals.mdx` uses `number={5.1}`, `5.2`, `5.3` for §5's three theorems alongside topic-local definitions — so don't force-convert those to topic-local unless deliberately standardizing the entire topic. Brief drafts often use section-prefixed numbering by default; convert to topic-local when porting to MDX unless the topic warrants the section-prefixed exception.
 
 ### Cross-site references
 
