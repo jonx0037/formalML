@@ -99,8 +99,6 @@ function scoreFunctionEstimate(
 // One reparameterization estimator value: (1/S) Σ_s (−θ_s).
 // Derived above: after the score-zero simplification, only the path through
 // log p remains, and ∇_θ log p = −θ for a standard-Normal target. Algebraic
-// simplification: (1/S) Σ −(μ + σε_s) = −μ − σ · mean(ε_s), which avoids S
-// repeated additions of μ in the inner loop.
 function reparamEstimate(
   mu: number,
   sigma: number,
@@ -108,7 +106,9 @@ function reparamEstimate(
 ): number {
   let sumEps = 0;
   const S = epsilons.length;
-  for (let s = 0; s < S; s++) sumEps += epsilons[s];
+  for (let s = 0; s < S; s++) {
+    sumEps += epsilons[s];
+  }
   return -mu - (sigma * sumEps) / S;
 }
 
