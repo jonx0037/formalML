@@ -44,9 +44,10 @@ if [ -z "$staged_topics" ]; then
 fi
 
 # Topic MDX changes are staged. Require a dev server process to be running.
-# `pgrep -f` matches the full command line, so it catches `astro dev`,
-# `node .../astro.js dev`, and the various pnpm wrappers.
-if pgrep -f 'astro dev' >/dev/null 2>&1; then
+# `pgrep -f` matches the full command line as an extended regex, so the
+# `(\.mjs)?` suffix catches both `astro dev` (older invocations) and
+# `node .../astro.mjs dev` (current pnpm/Astro 6 spawn shape).
+if pgrep -f 'astro(\.mjs)? dev' >/dev/null 2>&1; then
   exit 0
 fi
 
