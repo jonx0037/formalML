@@ -217,6 +217,11 @@ references:
 
 import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import Figure from '../../components/ui/Figure.astro';
+import ForwardVsReverseKL from '../../components/viz/ForwardVsReverseKL';
+import MeanFieldStructuralError from '../../components/viz/MeanFieldStructuralError';
+import GradientVarianceComparator from '../../components/viz/GradientVarianceComparator';
+import CAVITrajectoryExplorer from '../../components/viz/CAVITrajectoryExplorer';
+import NormalizingFlowSequence from '../../components/viz/NormalizingFlowSequence';
 
 ## Overview
 
@@ -279,6 +284,8 @@ $$\mathrm{KL}\bigl(q\,\|\,p(\cdot \mid x)\bigr) \;=\; \mathbb{E}_{q}\!\left[\log
 This is tractable in the sense that matters: $q$ is the distribution we chose, so we can sample from it (or compute expectations under it analytically when $q$ is in a simple family). The integrand involves $\log p(\theta \mid x) = \log p(x, \theta) - \log p(x)$, and the unknown constant $\log p(x)$ separates cleanly from the parts that depend on $q$ — which is the entire point and the subject of §2.
 
 Reverse KL is the standard VI objective, and it comes with a famous shape: the *mode-seeking* behavior previewed in [KL divergence](/topics/kl-divergence). A reverse-KL minimizer punishes mass placed where the target has none — $q(\theta) > 0$ where $p(\theta \mid x) \approx 0$ blows up the integrand — but pays no penalty for failing to cover regions where the target has mass and $q$ does not. When the target is multimodal, and the family is unimodal, the minimizer locks onto one mode rather than spreading across all of them. This is a feature in some applications (sharp predictions, decisive point estimates) and a pathology in others (genuine multimodality, identifiability problems where the modes correspond to distinct scientific hypotheses).
+
+<ForwardVsReverseKL client:visible />
 
 The figure below illustrates the geometry on two synthetic 2D targets. Panel (a) shows a posterior with off-diagonal correlation; panel (b) overlays the reverse-KL projection onto the *mean-field* family of diagonal Gaussians — the projection captures the center but cannot represent orientation, and (we will see in §3 and again in §5) systematically *under*-estimates the marginal variance along correlated directions. Panel (c) shows the mode-seeking pathology: a bimodal target on the left, the reverse-KL projection onto a single Gaussian on the right — locked onto one mode, with a symmetric solution at the other.
 
@@ -495,6 +502,8 @@ The reading: the optimal $q_j$ given the others is proportional to the exponenti
 
 The monotonicity of the ELBO under CAVI follows immediately from Theorem 2: each block update either increases the ELBO (if $q_j$ wasn't already optimal) or leaves it unchanged, so the ELBO is non-decreasing across iterations. Like EM, CAVI is guaranteed to converge to a *local* maximum of the ELBO; the global maximum is generally unattainable because the ELBO is non-concave in $q$ for non-trivial models — particularly for mixtures, where the symmetry across component labels generates exponentially many local maxima.
 
+<CAVITrajectoryExplorer client:visible />
+
 ### 3.3 Conjugate exponential families
 
 CAVI's update has a closed form whenever the model is *conditionally conjugate* — meaning each complete conditional $p(\theta_j \mid \theta_{-j}, x)$ is in an exponential family. The derivation is short, and the result is operationally important.
@@ -671,6 +680,8 @@ and the chain rule unpacks $\nabla_\phi \log p(x, g(\epsilon, \phi)) = \nabla_\t
 
 ADVI is what is under the hood of Stan's `advi`, PyMC's `fit(method='advi')`, NumPyro's `SVI` with `Trace_ELBO`, and Pyro's variational machinery. The §4.5 example is essentially a hand-rolled ADVI implementation in JAX — a five-line variational family, $\mathcal{O}(50)$-line training loop — that produces the same gradients these frameworks compute internally.
 
+<GradientVarianceComparator client:visible />
+
 ### 4.5 Worked example: Bayesian logistic regression
 
 We close §4 with reparameterization-gradient VI for Bayesian logistic regression on the Iris versicolor-vs-virginica classification problem ($n = 100$, $d = 2$ features: petal length and petal width, plus a bias term). The model is
@@ -736,6 +747,8 @@ The reading: when we coerce a correlated Gaussian into a product of independent 
 The §1 panel (b) figure was a special case of this theorem: a 2D Gaussian with correlation $\rho = 0.85$, where the diagonal-Gaussian projection shrinks each marginal variance by a factor of $1 - \rho^2 = 0.2775$. The §3 GMM and §4 logistic-regression posteriors are not Gaussian, so Theorem 5 doesn't apply *literally*; but the qualitative phenomenon — mean-field VI's reverse-KL projection systematically underestimates posterior uncertainty along correlated directions — extends to general posteriors with empirical regularity (Turner and Sahani 2011), without admitting a comparably clean closed form.
 
 The consequence for downstream inference is operational: a credible interval read off a mean-field posterior is *narrower* than the corresponding interval from MCMC, often by a factor large enough to materially change conclusions about whether a parameter is "significantly" different from zero. The §5.4 banana experiment makes this visible at scale, and §6 returns to it as one of VI's headline limitations.
+
+<MeanFieldStructuralError client:visible />
 
 ### 5.2 Full-rank Gaussian VI
 
@@ -810,6 +823,8 @@ We fit three variational families to this target by reparameterization-gradient 
 - *Normalizing flow*: four alternating coupling layers, each with a small MLP ($1 \to 8 \to 2$ for the scale-and-shift), about 130 parameters.
 
 The §5 figure has four panels in a 2×2 layout. Panels (a)–(c) show samples from each fitted variational distribution overlaid on contours of the target. The reader should see: (a) mean-field samples scattered as an axis-aligned isotropic blob, missing the curvature entirely; (b) full-rank samples forming a tilted ellipse that captures the linear correlation but cannot bend; (c) flow samples tracing the banana's curve. Panel (d) shows the ELBO trajectories on a common axis: the flow's ELBO climbs higher than full-rank, which climbs higher than mean-field. Since the target is normalized, all three ELBOs are bounded above by zero, and the gap from zero at convergence equals the residual KL between the fitted $q^*$ and the target — a direct read-out of how much structural error each family carries.
+
+<NormalizingFlowSequence client:visible />
 
 <Figure
   src="/images/topics/variational-inference/05_beyond_mean_field.png"

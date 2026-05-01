@@ -171,6 +171,11 @@ references:
 import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import Figure from '../../components/ui/Figure.astro';
 import ExternalLink from '../../components/ui/ExternalLink.astro';
+import PoolingSpectrumExplorer from '../../components/viz/PoolingSpectrumExplorer';
+import BLUPShrinkageDial from '../../components/viz/BLUPShrinkageDial';
+import MarginalCovarianceHeatmap from '../../components/viz/MarginalCovarianceHeatmap';
+import PriorInformativenessShrinkage from '../../components/viz/PriorInformativenessShrinkage';
+import MLvsREMLLikelihoodSurface from '../../components/viz/MLvsREMLLikelihoodSurface';
 
 ## Overview
 
@@ -201,6 +206,8 @@ The third answer is *partial pooling*. Don't treat the six classroom intercepts 
 Panel (c) of Figure 1 shows the partial-pooling fit on the same scatterplot. The lines for the largest classrooms barely move from where panel (b)'s no-pooling fits placed them. The lines for the smallest classrooms drift visibly toward the grand-mean line that panel (a) drew. The magnitude of the drift is the *shrinkage* we'll derive in §3 — for now, it's a visual fact about the figure.
 
 The geometric punchline: panel (c) sits *between* panels (a) and (b), and the location depends on group size. Partial pooling is the answer that admits both the within-group signal and the between-group signal exist, and weighs them against each other. The rest of the topic spells out how.
+
+<PoolingSpectrumExplorer client:visible />
 
 ### 1.3 What makes an effect "random"?
 
@@ -324,6 +331,8 @@ The intra-classroom correlation,
 $$\rho \;=\; \frac{\mathrm{Cov}(y_{ij}, y_{i'j})}{\sqrt{\mathrm{Var}(y_{ij}) \mathrm{Var}(y_{i'j})}} \;=\; \frac{\tau^2}{\tau^2 + \sigma^2}, \quad\quad (2.7)$$
 
 is called the *intraclass correlation coefficient* (ICC). It's the fraction of total variance explained by the grouping — $\rho \to 0$ means classrooms barely matter, $\rho \to 1$ means classrooms explain almost everything. For our DGP, $\rho = 25 / (25 + 64) \approx 0.281$, so about 28% of the total variance lives at the classroom level. The ICC is the most-quoted single number in mixed-effects practice, and (2.7) is its full derivation.
+
+<MarginalCovarianceHeatmap client:visible />
 
 ### 2.4 GLS and the chicken-and-egg problem
 
@@ -470,6 +479,8 @@ Equation (3.14) is the conditional-uncertainty companion: when the data dominate
 
 For our six-classroom data with the truth $\tau^2 = 25$, $\sigma^2 = 64$, the shrinkage factors are $\lambda_1 \approx 0.610, \lambda_2 \approx 0.701, \lambda_3 \approx 0.758, \lambda_4 \approx 0.796, \lambda_5 \approx 0.824, \lambda_6 \approx 0.887$, and the conditional variances $(1 - \lambda_j)\tau^2$ run from $9.75$ (Classroom 1) down to $2.83$ (Classroom 6). The smallest classroom has more than three times the BLUP uncertainty of the largest, and shrinks more than three times as hard — both in the same direction, both governed by the same single number $n_j$.
 
+<BLUPShrinkageDial client:visible />
+
 The partial-pooled intercept for Classroom $j$, which is what we plotted in §1's panel (c), is the global intercept plus the BLUP:
 
 $$\hat{\alpha}_j^{\mathrm{partial}} \;=\; \hat{\alpha} + \hat{u}_j \;=\; \hat{\alpha} + \lambda_j \bar{r}_j(\hat{\boldsymbol{\beta}}). \quad\quad (3.15)$$
@@ -597,6 +608,8 @@ The visual story is in Figure 4. The two log-likelihood surfaces over $(\log\tau
 
 A note on degenerate optima. The REML log-likelihood for a random-intercept model can have $\hat\tau^2 = 0$ as a boundary optimum if the data shows little classroom-level variation — the case where the model "decides" classrooms don't matter. This is *not* a bug; it's the data telling us partial pooling collapses to complete pooling. `MixedLM` handles this gracefully (returns $\hat\tau^2 = 0$ and a warning); custom optimizers should optimize over $\log\tau \in [-\infty, \infty]$ with care at the lower bound. Our DGP has $\tau = 5 > 0$ and $J = 6$ classrooms, so the boundary case won't trigger here, but it's worth flagging because applied users encounter it routinely with small $J$ or weak between-group signal.
 
+<MLvsREMLLikelihoodSurface client:visible />
+
 ### 4.5 The Bayesian view: REML as an empirical-Bayes hyperprior
 
 The marginalization step in (4.5) integrates $\boldsymbol{\beta}$ out under a flat improper prior. What if we put a prior on $(\mathbf{G}, \mathbf{R})$ too and integrate them out? That's full Bayesian inference, and it's what §5's PyMC fit does. The relationship to REML is direct: REML is *empirical Bayes* on the variance components — point-estimate them by maximizing a marginal likelihood, then plug those point estimates into Henderson's MMEs (which are themselves the conditional posterior mode for $(\boldsymbol{\beta}, \mathbf{u})$ given $(\mathbf{G}, \mathbf{R}) = (\hat{\mathbf{G}}, \hat{\mathbf{R}})$).
@@ -705,6 +718,8 @@ First, *frequentist and Bayesian mixed-effects fits are not different methods.* 
 Second, *the centered-vs-non-centered story is a fact about HMC, not about mixed-effects.* The funnel is a feature of any hierarchical model whose variance components are unknown and whose group counts are small enough to make the variance components only weakly identified. Mixed-effects models hit this regime constantly — most applied studies have $J$ in the dozens or fewer, and most have variance-component posteriors with nontrivial mass near zero. The non-centered rewrite is the standard fix and it's a three-line code change. The next time you see a Bayesian hierarchical model with a divergent transition warning, this is the pattern to recognize.
 
 Third, *PPL idiom hides exactly nothing about what the model is doing.* The MMEs we derived in §3 are not the algorithm PyMC runs — PyMC runs NUTS on the joint log-density, the MMEs are not in the picture — but the model PyMC is fitting *is* the model whose conditional posterior mode the MMEs solve. The frequentist–Bayesian bridge is structural: same model, same data, same conditional structure, two different ways to deal with the variance components. Once you see this, the choice of which to use becomes a question about the data regime and the use case, not a question about which philosophical tribe you belong to.
+
+<PriorInformativenessShrinkage client:visible />
 
 <Figure
   src="/images/topics/mixed-effects/05_frequentist_bayesian_bridge.png"

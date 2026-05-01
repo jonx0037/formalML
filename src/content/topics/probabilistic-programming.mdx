@@ -167,6 +167,11 @@ references:
 import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import Figure from '../../components/ui/Figure.astro';
 import ExternalLink from '../../components/ui/ExternalLink.astro';
+import JacobianTransformViewer from '../../components/viz/JacobianTransformViewer';
+import NealsFunnelExplorer from '../../components/viz/NealsFunnelExplorer';
+import HMCTrajectoryAnimator from '../../components/viz/HMCTrajectoryAnimator';
+import CenteredVsNonCenteredMorph from '../../components/viz/CenteredVsNonCenteredMorph';
+import InferenceDispatchExplorer from '../../components/viz/InferenceDispatchExplorer';
 
 ## Overview
 
@@ -362,6 +367,8 @@ $$\log p_Y(y) \;=\; (\alpha - 1)\log x + (\beta - 1)\log(1 - x) - \log B(\alpha,
 $$\phantom{\log p_Y(y)} \;=\; \alpha \log\sigma(y) + \beta \log\sigma(-y) - \log B(\alpha, \beta), \quad\quad (3.2)$$
 using $1 - \sigma(y) = \sigma(-y)$. The pushforward (3.2) is a smooth bell-curve on $\mathbb{R}$ for any $\alpha, \beta > 0$. Its mode is at $y^* = \log(\alpha / \beta)$ — found by setting the derivative of (3.2) to zero, which gives $\alpha \sigma(-y) = \beta \sigma(y)$, i.e., $e^{-y} = \beta / \alpha$. Notice that this differs from the mode of $X$ on the constrained space, which is $x^* = (\alpha - 1) / (\alpha + \beta - 2)$ (the standard mode of a Beta density). The two modes are not related by $T$: $T(x^*) \neq y^*$ in general. This is a feature of nonlinear reparameterization — modes are not reparameterization-invariant. (Posterior means are also not reparameterization-invariant: $\mathbb{E}[T(X)] \neq T(\mathbb{E}[X])$ unless $T$ is affine.)
 
+<JacobianTransformViewer client:visible />
+
 Panel (c) of Figure 3 verifies (3.2) by histogramming the §1 NUTS draws of $\theta \sim \mathrm{Beta}(16, 8)$ on the logit-transformed scale and overlaying the analytical pushforward density. The agreement is the operational confirmation that PyMC's NUTS — which sampled the unconstrained representation under the hood — produced draws whose constrained-side post-image matches the analytical conjugate posterior.
 
 #### Simplex $\Delta^{K-1} \to \mathbb{R}^{K-1}$ via stick-breaking
@@ -427,6 +434,8 @@ Two diagnostics matter for NUTS:
 
 The full convergence theory — when does HMC converge, at what rate, on what classes of distributions — is the subject of <ExternalLink href="https://www.formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="Bayesian Computation and MCMC" />. Here we just call `pm.sample(...)` and read the diagnostics off the resulting `idata`.
 
+<HMCTrajectoryAnimator client:visible />
+
 ### 4.3 ADVI in 30 seconds
 
 Automatic Differentiation Variational Inference (Kucukelbir et al. 2017) is the variational engine that ships with every modern PPL. It does three things mechanically:
@@ -456,6 +465,8 @@ The same model declared in §4.1 is fitted three ways. Figure 4 below shows: (a)
 For this problem (a tractable 3-parameter logistic regression with 100 well-separated rows), the three methods agree closely. NUTS converges with $\hat{R} \approx 1.00$ and zero divergences. ADVI's mean-field marginals are slightly tighter than NUTS's — mean-field underestimates marginal variance when parameters are correlated, and here the petal-length and petal-width slopes have a mild negative correlation that ADVI's diagonal covariance ignores — and the ADVI ellipse in panel (a) is conspicuously axis-aligned compared to the tilted NUTS scatter. MAP lies essentially at the NUTS posterior mean. The agreement is not coincidence: Iris with continuous features and a moderately informative prior produces a near-Gaussian posterior, exactly the regime where all three methods converge to the same answer at very different costs.
 
 The pedagogical takeaway is twofold. First, the dispatch *works*: writing the model once and fitting it three ways gave us three matching answers, with no model-specific derivation. Second, the methods are not interchangeable — they're a Pareto front. NUTS gives uncertainty quantification and is exact up to discretization; ADVI gives uncertainty quantification but is structurally limited by the variational family; MAP gives no uncertainty quantification but is the cheapest. The right choice depends on what the analysis needs. §5 will encounter a model where the three methods *don't* all agree, and the disagreement will tell us something useful about the posterior.
+
+<InferenceDispatchExplorer client:visible />
 
 <Figure
   src="/images/topics/probabilistic-programming/04_dispatch_comparison.png"
@@ -500,6 +511,8 @@ Panel (b) of Figure 5 plots the centered fit's draws of $(\theta_1, \log\tau)$ a
 
 The pedagogical point: divergent transitions are not a sampler bug. They're a *signal* that the parameterization the user wrote down has a geometry NUTS struggles with. The fix is on the user's side, not the sampler's. (Increasing `target_accept` toward 1 reduces $\epsilon$ globally, which mitigates divergences at the cost of slower exploration; this is a workaround, not a structural fix.)
 
+<NealsFunnelExplorer client:visible />
+
 ### 5.3 The non-centered reparameterization
 
 The standard fix is the *non-centered* parameterization. Rather than declare $\theta_j \sim \mathcal{N}(\mu, \tau^2)$ directly, introduce a standard-Normal auxiliary $z_j \sim \mathcal{N}(0, 1)$ and define $\theta_j = \mu + \tau \cdot z_j$ as a deterministic transformation of the latents. The user-side code change is three lines:
@@ -520,6 +533,8 @@ But they are not *geometrically equivalent* from NUTS's perspective. In the cent
 Panel (c) of Figure 5 plots the non-centered fit's draws of $(z_1, \log\tau)$ — the parameter NUTS actually saw — and the contrast with panel (b) is the punchline: the funnel is gone. The post-hoc $\theta_j = \mu + \tau z_j$ values reproduce the same marginal posterior on $\theta_j$ that the centered fit produces (they have to — the models are probabilistically equivalent), but the geometry NUTS navigated to compute that posterior is rectangular rather than funnel-shaped.
 
 The non-centered fit's diagnostics are clean: zero divergences, $\hat{R} \approx 1.00$ for all parameters, full-strength effective sample size. The reparameterization is purely a user-side change to the model code; the engine's behavior is identical. This is the gift of the PPL abstraction: the rewrite is a 3-line code edit, and the engine's machinery happily runs on the rewritten model with no further intervention.
+
+<CenteredVsNonCenteredMorph client:visible />
 
 ### 5.4 The posterior predictive check
 
