@@ -140,6 +140,104 @@ def fit_centered_eight_schools() -> az.InferenceData:
     return idata
 
 
+def fit_noncentered_eight_schools() -> az.InferenceData:
+    """Fit the §5.3 non-centered reparameterization:
+
+        mu     ~ N(0, 5^2)
+        tau    ~ HalfNormal(5)
+        z      ~ N(0, 1)                 (standard-Normal auxiliary)
+        theta  := mu + tau * z           (deterministic)
+        y      ~ N(theta, sigma_obs^2)
+
+    Same NUTS settings as the centered fit. Expected diagnostics:
+    zero (or very few) divergences, R-hat ≈ 1.00 across the board, full
+    effective sample size — because the (z_j, log tau) joint is rectangular
+    instead of funnel-shaped.
+    """
+    rng = np.random.default_rng(SEED + 1)  # different seed for second fit
+    with pm.Model() as model:
+        mu = pm.Normal("mu", mu=0.0, sigma=5.0)
+        tau = pm.HalfNormal("tau", sigma=5.0)
+        z = pm.Normal("z", mu=0.0, sigma=1.0, shape=J)
+        theta = pm.Deterministic("theta", mu + tau * z)
+        pm.Normal("y_obs", mu=theta, sigma=SIGMA_OBS, observed=Y_OBS)
+
+        idata = pm.sample(
+            draws=1000,
+            tune=1000,
+            chains=4,
+            cores=1,
+            target_accept=0.8,
+            random_seed=int(rng.integers(2**31)),
+            progressbar=False,
+            return_inferencedata=True,
+            idata_kwargs={"log_likelihood": False},
+        )
+    return idata
+
+
+def extract_noncentered_payload(idata: az.InferenceData) -> dict:
+    """Flatten chains × draws → samples and pull z, theta, divergence flags.
+
+    Returns a dict matching the centered payload's draws structure plus a
+    ``z`` field (the standard-Normal auxiliary that NUTS actually saw).
+    """
+    posterior = idata.posterior
+    sample_stats = idata.sample_stats
+
+    n_chains = posterior.sizes["chain"]
+    n_draws = posterior.sizes["draw"]
+    n_total = n_chains * n_draws
+
+    mu_flat = posterior["mu"].values.reshape(n_total)
+    tau_flat = posterior["tau"].values.reshape(n_total)
+    log_tau_flat = np.log(tau_flat)
+    z_flat = posterior["z"].values.reshape(n_total, J)
+    theta_flat = posterior["theta"].values.reshape(n_total, J)
+
+    diverging = sample_stats["diverging"].values.reshape(n_total).astype(bool)
+    n_divergent = int(diverging.sum())
+    summary = az.summary(idata, var_names=["mu", "tau"], round_to=4)
+
+    print(f"  Drew {n_total} samples (non-centered)")
+    print(f"  Divergent transitions: {n_divergent} ({100.0 * n_divergent / n_total:.2f}%)")
+    print(f"  R-hat (mu, tau): {float(summary.loc['mu', 'r_hat']):.4f}, "
+          f"{float(summary.loc['tau', 'r_hat']):.4f}")
+    print(f"  ESS bulk (mu, tau): {int(summary.loc['mu', 'ess_bulk'])}, "
+          f"{int(summary.loc['tau', 'ess_bulk'])}")
+
+    return {
+        "metadata": {
+            "model": "eight_schools_noncentered",
+            "engine": "PyMC",
+            "pymc_version": pm.__version__,
+            "n_chains": n_chains,
+            "n_draws_per_chain": n_draws,
+            "n_total": n_total,
+            "n_divergent": n_divergent,
+            "divergence_rate": n_divergent / n_total,
+            "target_accept": 0.8,
+            "tune_steps": 1000,
+            "seed": SEED + 1,
+            "rhat": {
+                "mu": float(summary.loc["mu", "r_hat"]),
+                "tau": float(summary.loc["tau", "r_hat"]),
+            },
+            "ess_bulk": {
+                "mu": int(summary.loc["mu", "ess_bulk"]),
+                "tau": int(summary.loc["tau", "ess_bulk"]),
+            },
+        },
+        "draws": {
+            "mu": _round_floats(_to_jsonable(mu_flat)),
+            "log_tau": _round_floats(_to_jsonable(log_tau_flat)),
+            "z": _round_floats(_to_jsonable(z_flat)),
+            "theta": _round_floats(_to_jsonable(theta_flat)),
+            "divergent": _to_jsonable(diverging),
+        },
+    }
+
+
 def extract_trace_payload(idata: az.InferenceData) -> dict:
     """Flatten chains × draws → samples and pull divergence flags."""
     posterior = idata.posterior
@@ -207,6 +305,10 @@ def main() -> None:
     print("Fitting centered eight-schools …")
     idata = fit_centered_eight_schools()
     payload = extract_trace_payload(idata)
+
+    print("Fitting non-centered eight-schools …")
+    idata_nc = fit_noncentered_eight_schools()
+    payload["non_centered"] = extract_noncentered_payload(idata_nc)
 
     body = json.dumps(payload, separators=(",", ":"))
     for d in OUT_DIRS:
