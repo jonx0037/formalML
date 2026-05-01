@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -105,18 +105,66 @@ export default function MarginalCovarianceHeatmap() {
     return tauSq + sigmaSq;
   }, [view, tauSq, sigmaSq]);
 
+  // Heatmap layout — shared between canvas (cells) and SVG (axes/legend).
+  const layout = useMemo(() => {
+    const w = width || 720;
+    const h = PANEL_HEIGHT;
+    const margin = { top: 24, right: 90, bottom: 28, left: 36 };
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+    const size = Math.max(60, Math.min(innerW, innerH));
+    const cellSize = size / N;
+    const offsetX = margin.left + Math.max(0, (innerW - size) / 2);
+    const offsetY = margin.top;
+    return { w, h, margin, innerW, innerH, size, cellSize, offsetX, offsetY };
+  }, [width]);
+
+  // Canvas-rendered cell grid — 3600 cells re-paint as pixel fills rather
+  // than DOM nodes, keeping slider re-renders smooth on mobile per a Gemini
+  // code-review suggestion. SVG (below) keeps axes, block boundaries,
+  // legend, and outer border so labels remain crisp text.
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = layout.w * dpr;
+    canvas.height = layout.h * dpr;
+    canvas.style.width = `${layout.w}px`;
+    canvas.style.height = `${layout.h}px`;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, layout.w, layout.h);
+
+    const colorScale = d3
+      .scaleSequential(d3.interpolateBlues)
+      .domain([0, maxValue]);
+    const { cellSize, offsetX, offsetY } = layout;
+
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const v = matrixValue(i, j);
+        if (v === 0 && view !== 'full') continue;
+        ctx.fillStyle = v > 0 ? colorScale(v) : COLORS.empty;
+        ctx.fillRect(
+          offsetX + j * cellSize,
+          offsetY + i * cellSize,
+          cellSize + 0.5,
+          cellSize + 0.5,
+        );
+      }
+    }
+  }, [tauSq, sigmaSq, view, maxValue, classroomMembership, layout]);
+
   const ref = useD3(
     (svg) => {
-      const w = width || 720;
-      const h = PANEL_HEIGHT;
+      const { w, h, size } = layout;
       const margin = { top: 24, right: 90, bottom: 28, left: 36 };
       svg.attr('width', w).attr('height', h);
       svg.selectAll('*').remove();
 
       const innerW = w - margin.left - margin.right;
-      const innerH = h - margin.top - margin.bottom;
-      // Square heatmap; pick min dimension so it never overflows on mobile.
-      const size = Math.max(60, Math.min(innerW, innerH));
       const cellSize = size / N;
 
       const root = svg
@@ -130,23 +178,7 @@ export default function MarginalCovarianceHeatmap() {
         .scaleSequential(d3.interpolateBlues)
         .domain([0, maxValue]);
 
-      // Cell rectangles. Skip true-zero cells (off-block) to reduce DOM size
-      // when view is "between" or "within" — only nonzero cells get a rect.
-      // For "full", every cell gets a rect to make the gray "empty" off-block
-      // grid visible.
-      for (let i = 0; i < N; i++) {
-        for (let j = 0; j < N; j++) {
-          const v = matrixValue(i, j);
-          if (v === 0 && view !== 'full') continue;
-          root
-            .append('rect')
-            .attr('x', j * cellSize)
-            .attr('y', i * cellSize)
-            .attr('width', cellSize + 0.5)  // hairline overlap to remove gaps
-            .attr('height', cellSize + 0.5)
-            .attr('fill', v > 0 ? colorScale(v) : COLORS.empty);
-        }
-      }
+      // Cells now drawn to <canvas> (see useEffect above).
 
       // Block boundaries — thin white lines separating classroom blocks.
       blockBoundaries.forEach((boundary) => {
@@ -283,8 +315,24 @@ export default function MarginalCovarianceHeatmap() {
           ))}
         </div>
       </div>
-      <div ref={containerRef} className="w-full">
-        <svg ref={ref} />
+      <div
+        ref={containerRef}
+        className="w-full"
+        style={{ position: 'relative', height: PANEL_HEIGHT }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            pointerEvents: 'none',
+          }}
+        />
+        <svg
+          ref={ref}
+          style={{ position: 'absolute', top: 0, left: 0 }}
+        />
       </div>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs text-[var(--color-text-muted)]">
         <span>

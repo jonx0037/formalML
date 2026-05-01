@@ -97,9 +97,14 @@ function evaluateSurface(
         LOG_SIGMA_DOMAIN[0] +
         (iSigma / (N_GRID - 1)) * (LOG_SIGMA_DOMAIN[1] - LOG_SIGMA_DOMAIN[0]);
       const sigmaSq = Math.exp(2 * logSigma);
+      // Hoist constants out of the per-block loop. logSigmaSq and inv1 don't
+      // depend on j; the (n_j - 1)·logSigmaSq term sums to (N - J)·logSigmaSq.
+      const logSigmaSq = Math.log(sigmaSq);
+      const inv1 = 1 / sigmaSq;
+      const tauSqInv1 = tauSq * inv1;
 
       // log|V| via block eigenstructure.
-      let logDetV = 0;
+      let logDetV = (N - J) * logSigmaSq;
       // Per-block coefficients for V⁻¹: V_j⁻¹ = (1/σ²)I − c_j 1 1ᵀ
       // where c_j = τ²/(σ²(σ² + n_j τ²)).
       // Need X^T V⁻¹ X (2×2) and X^T V⁻¹ y (2×1).
@@ -113,7 +118,7 @@ function evaluateSurface(
       for (let j = 0; j < J; j++) {
         const nj = groupSizes[j];
         const lambdaSpike = sigmaSq + nj * tauSq; // big-eigenvalue
-        logDetV += Math.log(lambdaSpike) + (nj - 1) * Math.log(sigmaSq);
+        logDetV += Math.log(lambdaSpike);
 
         // Per-block sums precomputed.
         const sumY = blockSumY[j];
@@ -121,8 +126,7 @@ function evaluateSurface(
         const sumX2 = blockSumX2[j];
 
         // c_j = τ²/(σ² · λ_spike)
-        const c = tauSq / (sigmaSq * lambdaSpike);
-        const inv1 = 1 / sigmaSq;
+        const c = tauSqInv1 / lambdaSpike;
 
         // X1ᵀ V_j⁻¹ X1 = n_j/σ² − c·n_j² = n_j/λ_spike
         xtVx_11 += nj / lambdaSpike;
