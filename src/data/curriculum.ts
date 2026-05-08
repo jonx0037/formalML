@@ -112,7 +112,6 @@ export const tracks = [
       'variational-bayes-for-model-selection',
       'sparse-bayesian-priors',
       'meta-learning',
-      'stochastic-gradient-mcmc',
       'sequential-monte-carlo',
       'reversible-jump-mcmc',
       'riemann-manifold-hmc',

@@ -875,14 +875,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PAC-Bayes and VC-dimension generalization bounds are uniform-concentration statements whose proofs mirror the indicator-function comparison of Proof 1 (Neyman-Pearson). The 'MP test = LR test' dual…_
 
-## When `formalml/stochastic-gradient-mcmc` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-computation-and-mcmc** declares `formalmlConnections` → `stochastic-gradient-mcmc` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _SGLD (Welling–Teh 2011) and SGHMC (Chen–Fox–Guestrin 2014) replace the full-batch gradient in HMC / Langevin with a mini-batch gradient plus injected noise. Scales MCMC to large-n datasets at the c…_
-
 ## When `formalml/structural-risk-minimization` ships
 
 Add the reciprocal pointer back to:
