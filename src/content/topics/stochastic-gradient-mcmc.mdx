@@ -1,0 +1,225 @@
+---
+title: "Stochastic-Gradient MCMC"
+subtitle: "From the Ma–Chen–Fox complete recipe to SGLD, SGHMC, RSGLD, and the head-to-head with NUTS — a unified Itô-SDE treatment of scalable Bayesian posterior sampling."
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "bayesian-neural-networks"
+  - "probabilistic-programming"
+  - "variational-inference"
+  - "gradient-descent"
+  - "riemannian-geometry"
+formalstatisticsPrereqs:
+  - topic: "bayesian-computation-and-mcmc"
+    site: "formalstatistics"
+    relationship: "The deep prerequisite — what makes an MCMC method correct, the diagnostic vocabulary (R̂, IAT, ESS), and the standard Metropolis–Hastings / Gibbs / HMC menu against which SG-MCMC defines itself. §1 of this topic frames SG-MCMC as the scalable wing of formalstatistics's MCMC catalog; §12 returns to that catalog for the head-to-head with NUTS."
+  - topic: "modes-of-convergence"
+    site: "formalstatistics"
+    relationship: "The asymptotic-exactness statement (§6.3 Welling–Teh schedule) and the O(η + 1/B) bias bound (§8.3 Vollmer–Zygalakis–Teh) both rely on knowing how to interpret convergence in expectation versus convergence in distribution; the formalstatistics topic is the right place to sort that out."
+  - topic: "central-limit-theorem"
+    site: "formalstatistics"
+    relationship: "The §12 head-to-head benchmark uses Bayesian logistic regression with asymptotically-Gaussian posterior by Bernstein–von Mises; CLT is the underlying mechanism for that asymptotic Gaussianity."
+formalcalculusPrereqs:
+  - topic: "jacobian"
+    site: "formalcalculus"
+    relationship: "The Riemann-manifold metric tensor G(θ) in §10 is a smooth assignment of positive-definite matrices to points in parameter space; computing its inverse and divergence requires Jacobian-style multivariable-calculus machinery built up there."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "bayesian-ml"
+  - "stochastic-gradient-mcmc"
+  - "sgld"
+  - "sghmc"
+  - "rsgld"
+  - "rmhmc"
+  - "langevin-dynamics"
+  - "ito-sde"
+  - "fokker-planck"
+  - "riemann-manifold-mcmc"
+  - "machine-learning"
+domain: "bayesian-ml"
+videoId: null
+notebookPath: "notebooks/stochastic-gradient-mcmc/01_stochastic_gradient_mcmc.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/stochastic-gradient-mcmc.mdx"
+datePublished: 2026-05-08
+estimatedReadTime: 65
+abstract: "bayesian-neural-networks introduced SGLD and SGHMC as recipes that scale Bayesian posterior sampling to deep learning regimes. This topic supplies the theory: SGLD and SGHMC are not two unrelated tricks but two instantiations of a single object — a stochastic differential equation whose stationary distribution is the posterior we want to sample. The Ma–Chen–Fox (2015) complete-recipe framework organizes every SG-MCMC variant inside one (D, Q) skew decomposition; specializing it gives overdamped Langevin → SGLD, underdamped Langevin → SGHMC, and Riemann-manifold variants in turn. The Vollmer–Zygalakis–Teh (2016) bound quantifies the price of mini-batching as O(η + 1/B), and a head-to-head with NUTS on Bayesian logistic regression pins down the regime in which SG-MCMC is the only practical option."
+connections:
+  - topic: "bayesian-neural-networks"
+    relationship: "Direct prerequisite. BNN §§6–7 introduced SGLD and SGHMC as recipes for posterior sampling on neural network weights; this topic is the theoretical deepening — the underlying SDEs, the stationary-distribution proofs, the mini-batch bias bound, and the head-to-head with NUTS."
+  - topic: "probabilistic-programming"
+    relationship: "§10 demonstrates Riemann-manifold SG-MCMC on Neal's funnel — the same pathological hierarchical geometry that motivated PP §5's non-centered reparameterization. §12 reuses PP's PyMC NUTS machinery for the head-to-head benchmark."
+  - topic: "variational-inference"
+    relationship: "The alternative posterior-approximation method, contrasted in §12.4. Reverse-KL VI's mode-seeking pathology motivates the mass-covering advantage of SG-MCMC. A practical pattern is hybrid: VI to find modes quickly, SG-MCMC to refine the posterior estimates near each mode."
+  - topic: "riemannian-geometry"
+    relationship: "§10's Riemann-manifold SG-MCMC uses a state-dependent metric G(θ) on parameter space; the metric-tensor framework underlying that section is developed in riemannian-geometry."
+  - topic: "information-geometry"
+    relationship: "The Fisher information metric is the canonical metric choice in §10.2 — information-geometry develops Fisher as the natural Riemannian metric on a parametric statistical model."
+  - topic: "gradient-descent"
+    relationship: "The §5 overdamped Langevin SDE is the gradient-flow ODE of gradient-descent plus a calibrated Brownian-noise term. §6's SGLD is gradient descent with stochastic gradient and an extra √(2η)·ξ term; the same minibatch-gradient machinery underwrites both."
+references:
+  - type: "paper"
+    title: "Bayesian Learning via Stochastic Gradient Langevin Dynamics"
+    authors: "Welling & Teh"
+    year: 2011
+    url: "https://icml.cc/2011/papers/398_icmlpaper.pdf"
+    note: "The original SGLD paper. §6's update rule, §6.3's polynomial step-size schedule, and the asymptotic-exactness argument all originate here (ICML)."
+  - type: "paper"
+    title: "Stochastic Gradient Hamiltonian Monte Carlo"
+    authors: "Chen, Fox & Guestrin"
+    year: 2014
+    url: "https://proceedings.mlr.press/v32/cheni14.html"
+    note: "The original SGHMC paper. §7's underdamped-Langevin discretization and the friction–noise calibration of §7.5 are from here (ICML)."
+  - type: "paper"
+    title: "A Complete Recipe for Stochastic Gradient MCMC"
+    authors: "Ma, Chen & Fox"
+    year: 2015
+    url: "https://papers.nips.cc/paper_files/paper/2015/hash/9a4400501febb2a95e79248486a5f6d3-Abstract.html"
+    note: "The (D, Q) skew decomposition that organizes the entire topic. §2 and §10 lean on this framework throughout (NeurIPS)."
+  - type: "paper"
+    title: "The No-U-Turn Sampler: Adaptively Setting Path Lengths in Hamiltonian Monte Carlo"
+    authors: "Hoffman & Gelman"
+    year: 2014
+    url: "https://jmlr.org/papers/v15/hoffman14a.html"
+    note: "NUTS — the head-to-head reference in §12 (JMLR)."
+  - type: "book"
+    title: "MCMC Using Hamiltonian Dynamics"
+    authors: "Neal"
+    year: 2011
+    url: "https://www.mcmchandbook.net/HandbookChapter5.pdf"
+    note: "Chapter 5 of the Handbook of Markov Chain Monte Carlo. The HMC reference §7 builds on (Chapman & Hall/CRC)."
+  - type: "paper"
+    title: "Langevin Diffusions and Metropolis–Hastings Algorithms"
+    authors: "Roberts & Stramer"
+    year: 2002
+    url: "https://doi.org/10.1023/A:1023562417138"
+    note: "The κ-condition-number scaling of overdamped Langevin mixing referenced in §5.3 (Methodology and Computing in Applied Probability)."
+  - type: "paper"
+    title: "Exploration of the (Non-)Asymptotic Bias and Variance of Stochastic Gradient Langevin Dynamics"
+    authors: "Vollmer, Zygalakis & Teh"
+    year: 2016
+    url: "https://jmlr.org/papers/v17/15-494.html"
+    note: "The O(η + 1/B) bias bound proved via Stein's method and the Poisson equation. §8.3's Theorem 8.1 is the headline result of this paper (JMLR)."
+  - type: "paper"
+    title: "Stochastic Gradient Riemannian Langevin Dynamics on the Probability Simplex"
+    authors: "Patterson & Teh"
+    year: 2013
+    url: "https://papers.nips.cc/paper_files/paper/2013/hash/309928d4b100a5d75adff48a9bfc1ddb-Abstract.html"
+    note: "The original RSGLD paper. §10.3's Riemann-manifold Langevin update is from here (NeurIPS)."
+  - type: "paper"
+    title: "Riemann Manifold Langevin and Hamiltonian Monte Carlo Methods"
+    authors: "Girolami & Calderhead"
+    year: 2011
+    url: "https://doi.org/10.1111/j.1467-9868.2010.00765.x"
+    note: "The full-batch Riemann-manifold HMC paper. §10.5's RMHMC sketch and the Fisher-metric prescription come from here (Journal of the Royal Statistical Society Series B)."
+  - type: "paper"
+    title: "Underdamped Langevin MCMC: A Non-Asymptotic Analysis"
+    authors: "Cheng, Chatterji, Bartlett & Jordan"
+    year: 2018
+    url: "https://proceedings.mlr.press/v75/cheng18a.html"
+    note: "The √κ vs κ mixing-time scaling §7.6 invokes for SGHMC's mixing advantage on anisotropic targets (COLT)."
+  - type: "paper"
+    title: "On Markov Chain Monte Carlo Methods for Tall Data"
+    authors: "Bardenet, Doucet & Holmes"
+    year: 2017
+    url: "https://jmlr.org/papers/v18/15-205.html"
+    note: "The subsampling Metropolis–Hastings family discussed in §9.5 (JMLR)."
+  - type: "paper"
+    title: "Zero Variance Markov Chain Monte Carlo for Bayesian Estimators"
+    authors: "Mira, Solgi & Imparato"
+    year: 2013
+    url: "https://doi.org/10.1007/s11222-012-9344-6"
+    note: "The control-variate construction §9.3 ports to SGLD via the ZV-SGLD estimator (Statistics and Computing)."
+  - type: "paper"
+    title: "Firefly Monte Carlo: Exact MCMC with Subsets of Data"
+    authors: "Maclaurin & Adams"
+    year: 2014
+    url: "https://arxiv.org/abs/1403.5693"
+    note: "The augmented-state exact-subsampling method discussed in §9.5 (UAI)."
+  - type: "paper"
+    title: "Stochastic Gradient Descent as Approximate Bayesian Inference"
+    authors: "Mandt, Hoffman & Blei"
+    year: 2017
+    url: "https://jmlr.org/papers/v18/17-214.html"
+    note: "Connects SGD's stationary distribution to a calibrated Langevin SDE — the bridge between optimization and SG-MCMC (JMLR)."
+  - type: "paper"
+    title: "How Good Is the Bayes Posterior in Deep Neural Networks Really?"
+    authors: "Wenzel, Roth, Veeling, Świątkowski, Tran, Mandt, Snoek, et al."
+    year: 2020
+    url: "https://proceedings.mlr.press/v119/wenzel20a.html"
+    note: "The cold-posterior puzzle §12.3 forwards to. Tempered-posterior sampling at T < 1 closes the gap to SGD ensembles (ICML)."
+  - type: "paper"
+    title: "Cyclical Stochastic Gradient MCMC for Bayesian Deep Learning"
+    authors: "Zhang, Li, Zhang, Chen & Wilson"
+    year: 2020
+    url: "https://arxiv.org/abs/1902.03932"
+    note: "The cyclical step-size schedule §12.5 invokes for multi-modal posteriors at deep-learning scale (ICLR)."
+  - type: "paper"
+    title: "Variance Reduction in Stochastic Gradient Langevin Dynamics"
+    authors: "Dubey, Reddi, Williamson, Póczos, Smola & Xing"
+    year: 2016
+    url: "https://papers.nips.cc/paper_files/paper/2016/hash/9b8619251a19057cff70779273e95aa6-Abstract.html"
+    note: "SVRG-LD — the variance-reduced gradient estimator §9.2 develops (NeurIPS)."
+  - type: "paper"
+    title: "Preconditioned Stochastic Gradient Langevin Dynamics for Deep Neural Networks"
+    authors: "Li, Chen, Carlson & Carin"
+    year: 2016
+    url: "https://arxiv.org/abs/1512.07666"
+    note: "The diagonal RMSprop-style preconditioner §10.6 references as a cheaper alternative to the full Fisher metric (AAAI)."
+---
+
+import SGLDBatchSizeExplorer from '../../components/viz/SGLDBatchSizeExplorer';
+
+## 1. Overview & Motivation
+
+*(Section prose pending — Phase 4 port from brief §1.)*
+
+## 2. The complete-recipe lens
+
+*(Pending — `CompleteRecipeMorpher` viz also pending.)*
+
+## 3. Itô SDE preliminaries
+
+*(Pending.)*
+
+## 4. Fokker–Planck and stationary distributions
+
+*(Pending.)*
+
+## 5. Overdamped Langevin dynamics
+
+*(Pending.)*
+
+## 6. Stochastic-Gradient Langevin Dynamics (SGLD)
+
+*Section prose pending; the η × B explorer below is the §6 deliverable.*
+
+<SGLDBatchSizeExplorer client:visible />
+
+## 7. Underdamped Langevin and SGHMC
+
+*(Pending.)*
+
+## 8. Mini-batch finite-sample bias
+
+*(Pending.)*
+
+## 9. Bias-reduction strategies
+
+*(Pending.)*
+
+## 10. Riemann-manifold preconditioning
+
+*(Pending.)*
+
+## 11. Computational Notes
+
+*(Pending.)*
+
+## 12. SG-MCMC in Machine Learning
+
+*(Pending.)*
+
+## 13. Connections & Further Reading
+
+*(Pending.)*
