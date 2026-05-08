@@ -18,6 +18,10 @@ import * as d3 from 'd3';
 import BNNInteractiveFigure from './BNNInteractiveFigure';
 import { paletteBNN } from './shared/bayesian-ml';
 
+// Layout constants — kept here rather than as magic numbers in the chart body.
+const Y_AXIS_PADDING = 0.2;
+const BAR_HEAD_ROOM = 1.2;
+
 interface NNGPPayload {
   width_convergence: { width: number; empirical: number; closed_form_K00: number }[];
   regression: {
@@ -50,7 +54,9 @@ export default function NNGPSidebarViz() {
       caption="Figure 9. The function-space view. (a) Empirical Var f(x_0) of finite-width MLPs converges to the closed-form arc-cosine NNGP kernel value as h grows. (b) NNGP-kernel GP regression — closed-form, no-training, with uncertainty growing between training points. Toggle 95% bands; click a bar to highlight that width's deviation from the limit."
       ariaLabel="Figure 9: Interactive NNGP convergence and arc-cosine kernel regression"
       controls={(s, setS) => <NNGPControls state={s} setState={setS} />}
-      chart={(data, s, w) => <NNGPChart data={data} state={s} width={w} />}
+      chart={(data, s, w, setS) => (
+        <NNGPChart data={data} state={s} width={w} setState={setS} />
+      )}
       maxWidth={760}
     />
   );
@@ -111,10 +117,12 @@ function NNGPChart({
   data,
   state,
   width,
+  setState,
 }: {
   data: NNGPPayload;
   state: ControlState;
   width: number;
+  setState: (s: ControlState) => void;
 }) {
   const layoutWidth = Math.max(width, 320);
   const halfWidth = (layoutWidth - 32) / 2;
@@ -132,7 +140,7 @@ function NNGPChart({
     .range([0, innerW])
     .padding(0.18);
   const yMaxBar =
-    Math.max(...data.width_convergence.map((d) => d.empirical), closedForm) * 1.2;
+    Math.max(...data.width_convergence.map((d) => d.empirical), closedForm) * BAR_HEAD_ROOM;
   const yBar = d3.scaleLinear().domain([0, yMaxBar]).range([innerH, 0]);
 
   // Panel 2: GP regression
@@ -143,8 +151,8 @@ function NNGPChart({
     ...data.regression.mean.map((m, i) => m + 2 * data.regression.std[i]),
     ...data.regression.mean.map((m, i) => m - 2 * data.regression.std[i]),
   ];
-  const yMinR = Math.min(...yAll) - 0.2;
-  const yMaxR = Math.max(...yAll) + 0.2;
+  const yMinR = Math.min(...yAll) - Y_AXIS_PADDING;
+  const yMaxR = Math.max(...yAll) + Y_AXIS_PADDING;
   const xR = d3.scaleLinear().domain([xMin, xMax]).range([0, innerW]);
   const yR = d3.scaleLinear().domain([yMinR, yMaxR]).range([innerH, 0]);
   const meanLine = d3
@@ -180,6 +188,17 @@ function NNGPChart({
                   opacity={isHighlight ? 1 : 0.5}
                   stroke={isHighlight ? 'var(--color-text, #333)' : 'none'}
                   strokeWidth={isHighlight ? 1.5 : 0}
+                  style={{ cursor: 'pointer' }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Highlight width ${d.width}`}
+                  onClick={() => setState({ ...state, highlightedWidth: d.width })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setState({ ...state, highlightedWidth: d.width });
+                    }
+                  }}
                 />
                 <text
                   x={(xBar(d.width) ?? 0) + xBar.bandwidth() / 2}

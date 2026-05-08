@@ -18,6 +18,7 @@ import { useMemo } from 'react';
 import * as d3 from 'd3';
 import BNNInteractiveFigure from './BNNInteractiveFigure';
 import {
+  BCE_EPSILON,
   bnnCalibrationDiagnostic,
   paletteBNN,
   type BNNColorKey,
@@ -69,7 +70,7 @@ const initialState: ControlState = {
 function applyTemperature(probs: number[], T: number): Float32Array {
   const out = new Float32Array(probs.length);
   for (let i = 0; i < probs.length; i++) {
-    const p = Math.min(Math.max(probs[i], 1e-7), 1 - 1e-7);
+    const p = Math.min(Math.max(probs[i], BCE_EPSILON), 1 - BCE_EPSILON);
     const logit = Math.log(p / (1 - p));
     const scaled = logit / T;
     out[i] = 1 / (1 + Math.exp(-scaled));
@@ -84,10 +85,12 @@ export default function BNNCalibrationComparisonViz() {
       initialState={initialState}
       figurePath="/images/topics/bayesian-neural-networks/08_calibration_comparison.png"
       alt="Two panels: panel (a) reliability diagram with predicted confidence on the x-axis and empirical accuracy on the y-axis, with the diagonal y=x as the reference line and one connected line per method (point estimate, Laplace, MC-dropout, deep ensemble, SGLD, SGHMC); the point estimate's curve sits below the diagonal in mid-confidence bins (over-confidence) and the BNN methods' curves sit closer to the diagonal; panel (b) grouped bar chart of ECE, Brier × 10, and NLL × 10 for the six methods, with deep ensemble and SGHMC having the lowest values."
-      caption="Figure 8. Head-to-head calibration on Two Moons. (a) Reliability diagram — distance from the y=x diagonal measures miscalibration. (b) Bar chart of ECE / Brier×10 / NLL×10 across methods. Toggle methods to compare; slide bin count to see binning sensitivity; flip on temperature scaling for post-hoc Platt calibration."
+      caption="Figure 8. Head-to-head calibration on Two Moons. (a) Reliability diagram — distance from the y=x diagonal measures miscalibration. (b) Bar chart of ECE / Brier×10 / NLL×10 across methods. Toggle methods to compare; slide bin count to see binning sensitivity. The optional manual-temperature slider rescales logits as a sanity check; full temperature scaling fits T on a held-out set rather than letting the reader pick — that step is left for a v3 enhancement."
       ariaLabel="Figure 8: Interactive head-to-head calibration comparison across six methods"
       controls={(s, setS) => <CalibrationControls state={s} setState={setS} />}
       chart={(data, s, w) => <CalibrationChart data={data} state={s} width={w} />}
+      // CalibrationChart doesn't drive state from inside the chart; it ignores
+      // the fourth setState argument the substrate now passes.
       maxWidth={760}
     />
   );
@@ -147,7 +150,7 @@ function CalibrationControls({
           checked={state.temperatureOn}
           onChange={(e) => setState({ ...state, temperatureOn: e.target.checked })}
         />
-        <span>Temperature scaling</span>
+        <span>Manual temperature</span>
       </label>
       {state.temperatureOn && (
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>

@@ -2,17 +2,17 @@
 // BNNStaticFigure.tsx
 //
 // Shared layout component for the bayesian-neural-networks topic's nine viz
-// components. v1 ships static-figure-only per the handoff brief's
-// "MDX/React-layer enhancement deferred to v2" framing; v2 will wrap each
-// of these in a useD3-driven interactive layer that consumes the precomputed
-// JSON payloads emitted by notebooks/bayesian-neural-networks/precompute_*.py
-// (not yet written — tracked as follow-up workstream).
+// components. v1 ships seven of them as static-figure-only wrappers around
+// this component; D8 (BNNCalibrationComparisonViz) and D9 (NNGPSidebarViz)
+// have been promoted to interactive React+D3 components driven by the
+// precomputed JSON fixtures emitted by
+// notebooks/bayesian-neural-networks/precompute_viz_data.py.
 //
-// In v1 this component is a responsive, dark-mode-safe `<figure>` rendering
-// the corresponding notebook PNG with a caption and accessibility metadata.
-// useResizeObserver is wired in so future v2 enhancements can pivot from
-// width-aware static layout to width-aware D3 layout without restructuring
-// the consumer components.
+// Renders a responsive, dark-mode-safe `<figure>` with the corresponding
+// notebook PNG, an accessible caption, and ARIA metadata. useResizeObserver
+// is wired in so future v2 enhancements can pivot from width-aware static
+// layout to width-aware D3 layout without restructuring the consumer
+// components.
 // =============================================================================
 
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -39,12 +39,11 @@ export default function BNNStaticFigure({
 }: BNNStaticFigureProps) {
   // ResizeObserver wires width tracking now so v2 enhancements can use it
   // without restructuring; in v1 we only consume the ref for layout.
-  const { ref } = useResizeObserver<HTMLDivElement>();
+  const { ref } = useResizeObserver<HTMLElement>();
 
   return (
-    <div
-      ref={ref}
-      role="figure"
+    <figure
+      ref={ref as React.RefObject<HTMLElement>}
       aria-label={ariaLabel}
       style={{
         width: '100%',
@@ -80,6 +79,6 @@ export default function BNNStaticFigure({
       >
         {caption}
       </figcaption>
-    </div>
+    </figure>
   );
 }

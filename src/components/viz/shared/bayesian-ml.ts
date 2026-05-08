@@ -16,6 +16,26 @@
 
 import { choleskyFactor } from './gaussian-processes';
 
+// =============================================================================
+// NUMERICAL CONSTANTS
+// =============================================================================
+// Pulled out so callers in MDX viz components and downstream consumers can
+// reference the same values rather than hardcoding magic numbers in
+// presentation code.
+// =============================================================================
+
+/** Probability clip used by BCE loss + temperature scaling to avoid log(0). */
+export const BCE_EPSILON = 1e-7;
+
+/** Adam optimizer denominator floor. */
+export const ADAM_EPSILON = 1e-8;
+
+/** Tikhonov stabilization added to Hessian before Cholesky. */
+export const HESSIAN_STABILIZATION = 1e-3;
+
+/** Floor below which we treat eigenvalues as zero when reporting condition numbers. */
+export const EIGENVALUE_FLOOR = 1e-12;
+
 // -----------------------------------------------------------------------------
 // VI palette + types (existing — first consumer: variational-inference)
 // -----------------------------------------------------------------------------
@@ -282,9 +302,8 @@ function mlpBackward(
   const preActs = cache.preActs;
   // BCE loss
   let loss = 0;
-  const eps = 1e-7;
   for (let i = 0; i < n; i++) {
-    const p = Math.min(Math.max(probs[i], eps), 1 - eps);
+    const p = Math.min(Math.max(probs[i], BCE_EPSILON), 1 - BCE_EPSILON);
     loss += -y[i] * Math.log(p) - (1 - y[i]) * Math.log(1 - p);
   }
   loss /= n;
@@ -346,7 +365,7 @@ export function adamStep(
   lr: number,
   beta1 = 0.9,
   beta2 = 0.999,
-  eps = 1e-8,
+  eps = ADAM_EPSILON,
 ): void {
   const corr1 = 1 - Math.pow(beta1, t);
   const corr2 = 1 - Math.pow(beta2, t);
@@ -505,6 +524,56 @@ export interface LaplaceResult {
 }
 
 /**
+ * Estimate κ(A) = λ_max(A) / λ_min(A) for a small SPD matrix A (Cholesky L
+ * already computed). Uses power iteration on A for λ_max and on A^{-1} via
+ * Cholesky solves for λ_min. ~10 iterations suffice for two-significant-digit
+ * accuracy on the BNN last-layer block (~33×33).
+ */
+function estimateConditionNumberSPD(A: number[][], L: number[][]): number {
+  const dim = A.length;
+  const ITERS = 12;
+  // Power iteration on A → dominant eigenvalue
+  let v = new Array<number>(dim).fill(0);
+  v[0] = 1;
+  let lambdaMax = 0;
+  for (let it = 0; it < ITERS; it++) {
+    const Av = new Array<number>(dim).fill(0);
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) Av[i] += A[i][j] * v[j];
+    }
+    const norm = Math.sqrt(Av.reduce((s, x) => s + x * x, 0));
+    if (norm < EIGENVALUE_FLOOR) break;
+    for (let i = 0; i < dim; i++) v[i] = Av[i] / norm;
+    lambdaMax = norm;
+  }
+  // Inverse power iteration via L L^T solves → smallest eigenvalue
+  v = new Array<number>(dim).fill(0);
+  v[0] = 1;
+  let lambdaMin = 0;
+  for (let it = 0; it < ITERS; it++) {
+    // Solve L y = v (forward sub)
+    const y = new Array<number>(dim).fill(0);
+    for (let i = 0; i < dim; i++) {
+      let acc = v[i];
+      for (let j = 0; j < i; j++) acc -= L[i][j] * y[j];
+      y[i] = acc / L[i][i];
+    }
+    // Solve L^T x = y (back sub)
+    const x = new Array<number>(dim).fill(0);
+    for (let i = dim - 1; i >= 0; i--) {
+      let acc = y[i];
+      for (let j = i + 1; j < dim; j++) acc -= L[j][i] * x[j];
+      x[i] = acc / L[i][i];
+    }
+    const norm = Math.sqrt(x.reduce((s, xi) => s + xi * xi, 0));
+    if (norm < EIGENVALUE_FLOOR) break;
+    for (let i = 0; i < dim; i++) v[i] = x[i] / norm;
+    lambdaMin = 1 / norm;
+  }
+  return lambdaMax / Math.max(lambdaMin, EIGENVALUE_FLOOR);
+}
+
+/**
  * Last-layer Laplace approximation. Runs one full training pass to find the
  * MAP, then computes the Hessian H = Φ^T diag(p(1-p)) Φ + λI in closed form
  * over the final-layer weights only, where Φ is the final-hidden-layer
@@ -532,7 +601,7 @@ export function lastLayerLaplace(
     for (let j = 0; j < phiCols; j++) row.push(lastActs[i * phiCols + j]);
     row.push(1.0); // bias
     phi.push(row);
-    const p = Math.max(Math.min(probs[i], 1 - 1e-7), 1e-7);
+    const p = Math.max(Math.min(probs[i], 1 - BCE_EPSILON), BCE_EPSILON);
     pVec.push(p * (1 - p));
   }
   // H = Φ^T W Φ + λI  where W = diag(p_i (1-p_i))
@@ -552,9 +621,10 @@ export function lastLayerLaplace(
     }
   }
   const L = choleskyFactor(H);
-  const eigMin = Math.min(...L.map((row, i) => row[i] * row[i]));
-  const eigMax = Math.max(...L.map((row, i) => row[i] * row[i]));
-  const conditionNumber = eigMax / Math.max(eigMin, 1e-12);
+  // True condition number κ(H) = λ_max / λ_min, estimated by power iteration
+  // on H and on H^{-1} (via L L^T solves). The block is small (~33×33) so
+  // this is cheap; ten iterations suffice for a viz-quality estimate.
+  const conditionNumber = estimateConditionNumberSPD(H, L);
   // Sampling: w_sample = w_map_lastblock + L^{-T} z, z ~ N(0, I)
   const lastWOff = layout.wOffsets[lastIdx];
   const lastBOff = layout.bOffsets[lastIdx];
@@ -604,7 +674,7 @@ export function laplaceApproxBNN(
   arch: MLPArchSpec,
   training: TrainingSpec,
   data: TrainingData,
-  deltaStabilization: number = 1e-3,
+  deltaStabilization: number = HESSIAN_STABILIZATION,
 ): LaplaceResult {
   // For v2 viz this is the "load precomputed" path. Throwing rather than
   // computing in-browser makes the precompute requirement explicit. For
@@ -713,9 +783,8 @@ export function bnnCalibrationDiagnostic(
   let brier = 0;
   let nll = 0;
   let correct = 0;
-  const eps = 1e-7;
   for (let i = 0; i < n; i++) {
-    const p = Math.min(Math.max(testProbs[i], eps), 1 - eps);
+    const p = Math.min(Math.max(testProbs[i], BCE_EPSILON), 1 - BCE_EPSILON);
     const y = testLabels[i];
     const conf = Math.max(p, 1 - p); // top-class confidence (binary)
     const pred = p >= 0.5 ? 1 : 0;

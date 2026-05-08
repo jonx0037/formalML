@@ -61,7 +61,12 @@ function header(s: string): void {
 }
 
 // -----------------------------------------------------------------------------
-// Two Moons synthesis (mirroring sklearn.datasets.make_moons, noise=0.20)
+// Two Moons synthesis — same shape as sklearn.datasets.make_moons (two
+// interlocking half-circles, n samples, binary labels), but noise here is
+// uniform on [-noise, +noise] per coordinate rather than sklearn's Gaussian
+// N(0, noise). Sufficient for the BNN primitives' verification — the tests
+// check off/on variance ordering, sigmoid range, etc., none of which depend
+// on the precise noise distribution.
 // -----------------------------------------------------------------------------
 
 function twoMoonsTS(n: number, noise: number, seed: number): TrainingData {
@@ -94,10 +99,11 @@ header('1. mulberry32 determinism');
   const b = [r2(), r2(), r2()];
   check('seed-reproducibility', a.every((v, i) => v === b[i]), JSON.stringify(a));
   const r3 = mulberry32(43);
+  const r3First = r3();
   check(
     'seed-divergence (different seeds → different streams)',
-    r3() !== a[0],
-    `seed42[0]=${a[0]} vs seed43[0]=${r3()}`,
+    r3First !== a[0],
+    `seed42[0]=${a[0]} vs seed43[0]=${r3First}`,
   );
   // Range check
   const inUnit = a.every((v) => v >= 0 && v < 1);

@@ -40,7 +40,12 @@ import torch.nn as nn
 from sklearn.datasets import make_moons
 from sklearn.decomposition import PCA
 
-warnings.filterwarnings("ignore")
+# Scope warning suppression to known-benign categories rather than the
+# blanket warnings.filterwarnings("ignore") that hides issues during
+# dependency upgrades.
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"torch.*")
 torch.set_num_threads(4)
 
 # --------------------------------------------------------------------------- #
@@ -51,6 +56,39 @@ SEED = 42
 NOTEBOOK_DIR = Path(__file__).resolve().parent
 REPO_ROOT = NOTEBOOK_DIR.parents[1]
 SLUG = "bayesian-neural-networks"
+
+# --------------------------------------------------------------------------- #
+# Numerical constants
+#
+# Pulled out of the function bodies so the values are visible and editable
+# in one place. The matching TypeScript constants in
+# src/components/viz/shared/bayesian-ml.ts (BCE_EPSILON, HESSIAN_STABILIZATION,
+# EIGENVALUE_FLOOR) keep the two layers in lockstep.
+# --------------------------------------------------------------------------- #
+
+BCE_EPS = 1e-7                   # probability clip for log losses
+HESSIAN_STABILIZATION = 1e-3     # Tikhonov term added to last-layer Hessian
+EIGENVALUE_FLOOR = 1e-12         # condition-number denominator floor
+
+# SG-MCMC budget aligned with the topic narrative in §§6-7:
+# 1200 total iterations, 200 burn-in, retain every 10th post-burn sample.
+SGMCMC_TOTAL_ITERS = 1200
+SGMCMC_BURN_IN = 200
+SGMCMC_THIN = 10
+SGMCMC_BATCH_SIZE = 32
+
+SGLD_ETA = 5e-4                  # SGLD step size
+SGHMC_ETA = 1e-4                 # SGHMC step size (smaller — momentum amplifies)
+SGHMC_FRICTION = 0.1             # SGHMC friction coefficient C
+
+LAPLACE_NUM_SAMPLES = 20         # MC samples drawn from the Gaussian Laplace posterior
+ENSEMBLE_K = 10                  # deep ensemble size
+
+NNGP_WIDTHS = [50, 100, 200, 500, 1000, 2000]
+NNGP_SAMPLES_PER_WIDTH = 200
+NNGP_SIGMA_W2 = 2.0
+NNGP_SIGMA_B2 = 0.1
+NNGP_NOISE = 0.05                # GP regression noise variance
 
 OUT_DIRS = [
     REPO_ROOT / "src" / "data" / "sampleData" / SLUG,
@@ -204,9 +242,8 @@ def load_params(model: MLP, flat: np.ndarray):
 # §5: Deep ensemble — train K=10 MLPs (also reused by §1, §2, §8)
 # =========================================================================== #
 
-print("\n=== Training deep-ensemble base models (K=10) ===")
+print(f"\n=== Training deep-ensemble base models (K={ENSEMBLE_K}) ===")
 t0 = time.time()
-ENSEMBLE_K = 10
 ensemble_models = []
 ensemble_weights = []
 ensemble_losses = []
@@ -236,17 +273,16 @@ with torch.no_grad():
     p_train = torch.sigmoid(map_model(X_train)).numpy()
     weight_diag = p_train * (1 - p_train)
 
-H_ll = Phi_train.T @ np.diag(weight_diag) @ Phi_train + 1e-3 * np.eye(Phi_train.shape[1])
+H_ll = Phi_train.T @ np.diag(weight_diag) @ Phi_train + HESSIAN_STABILIZATION * np.eye(Phi_train.shape[1])
 L_ll = np.linalg.cholesky(H_ll)
 H_inv = np.linalg.inv(H_ll)
 
-S = 20
 LAPLACE_RNG = np.random.default_rng(SEED + 100)
 laplace_grid_probs = []
 last_linear = map_model.net[-1]
 orig_w = last_linear.weight.data.clone()
 orig_b = last_linear.bias.data.clone()
-for s in range(S):
+for s in range(LAPLACE_NUM_SAMPLES):
     z = LAPLACE_RNG.normal(size=H_ll.shape[0])
     delta = np.linalg.solve(L_ll.T, z)
     last_linear.weight.data = orig_w + torch.from_numpy(delta[:-1].reshape(1, -1).astype(np.float32))
@@ -260,7 +296,7 @@ laplace_mean = laplace_grid_probs.mean(axis=0)
 laplace_std = laplace_grid_probs.std(axis=0)
 
 eigvals = np.linalg.eigvalsh(H_ll)
-condition_number = float(eigvals.max() / max(eigvals.min(), 1e-12))
+condition_number = float(eigvals.max() / max(eigvals.min(), EIGENVALUE_FLOOR))
 
 _write_dual(
     "laplace.json",
@@ -322,18 +358,25 @@ def sghmc_step(model: MLP, momentum: list, eta: float, alpha: float,
             p.add_(v)
 
 
-def run_chain(method: str, n_iter: int = 600, eta: float = 5e-4, friction: float = 0.05):
+def run_chain(
+    method: str,
+    n_iter: int = SGMCMC_TOTAL_ITERS,
+    burn_in: int = SGMCMC_BURN_IN,
+    thin: int = SGMCMC_THIN,
+    eta: float = SGLD_ETA,
+    friction: float = SGHMC_FRICTION,
+    batch_size: int = SGMCMC_BATCH_SIZE,
+):
     torch.manual_seed(SEED + 200 if method == "SGLD" else SEED + 300)
     model = MLP()
     load_params(model, ensemble_weights[0].copy())
-    if method == "SGHMC":
-        momentum = [torch.zeros_like(p) for p in model.parameters()]
-    burn_in = max(n_iter // 4, 100)
+    momentum = (
+        [torch.zeros_like(p) for p in model.parameters()] if method == "SGHMC" else None
+    )
     keep = []
     weight_trace = []
-    bs = 32
     for t in range(n_iter):
-        idx = torch.randint(0, X_train.shape[0], (bs,))
+        idx = torch.randint(0, X_train.shape[0], (batch_size,))
         bx, by = X_train[idx], y_train[idx]
         if method == "SGLD":
             sgld_step(model, eta, bx, by, X_train.shape[0])
@@ -341,7 +384,7 @@ def run_chain(method: str, n_iter: int = 600, eta: float = 5e-4, friction: float
             sghmc_step(model, momentum, eta, friction, bx, by, X_train.shape[0])
         first_param = next(model.parameters())
         weight_trace.append(float(first_param.data.ravel()[0]))
-        if t >= burn_in and (t - burn_in) % 5 == 0:
+        if t >= burn_in and (t - burn_in) % thin == 0:
             keep.append(predict_grid(model, T=1)[0])
     keep_arr = np.stack(keep)
     grid_mean = keep_arr.mean(axis=0)
@@ -365,13 +408,23 @@ def run_chain(method: str, n_iter: int = 600, eta: float = 5e-4, friction: float
         "autocorrelation": acf,
         "iat": float(iat),
         "n_samples": int(keep_arr.shape[0]),
+        # Surface the budget params in the JSON for transparency.
+        "config": {
+            "method": method,
+            "n_iter": n_iter,
+            "burn_in": burn_in,
+            "thin": thin,
+            "eta": eta,
+            "friction": friction if method == "SGHMC" else None,
+            "batch_size": batch_size,
+        },
     }
 
 
-sgld_out = run_chain("SGLD", n_iter=600, eta=5e-4)
+sgld_out = run_chain("SGLD", eta=SGLD_ETA)
 print(f"  SGLD done, n_samples={sgld_out['n_samples']}, IAT={sgld_out['iat']:.1f}")
-# SGHMC needs smaller eta + larger friction to prevent velocity divergence
-sghmc_out = run_chain("SGHMC", n_iter=600, eta=1e-4, friction=0.1)
+# SGHMC uses a smaller step size; momentum amplifies gradient updates.
+sghmc_out = run_chain("SGHMC", eta=SGHMC_ETA, friction=SGHMC_FRICTION)
 print(f"  SGHMC done, n_samples={sghmc_out['n_samples']}, IAT={sghmc_out['iat']:.1f}")
 
 iat_speedup = sgld_out["iat"] / max(sghmc_out["iat"], 1e-3)
@@ -406,7 +459,7 @@ LAPLACE_RNG_TEST = np.random.default_rng(SEED + 400)
 last_linear = ensemble_models[0].net[-1]
 orig_w = last_linear.weight.data.clone()
 orig_b = last_linear.bias.data.clone()
-for s in range(20):
+for s in range(LAPLACE_NUM_SAMPLES):
     z = LAPLACE_RNG_TEST.normal(size=H_ll.shape[0])
     delta = np.linalg.solve(L_ll.T, z)
     last_linear.weight.data = orig_w + torch.from_numpy(delta[:-1].reshape(1, -1).astype(np.float32))
@@ -426,11 +479,10 @@ m_sgld = MLP()
 load_params(m_sgld, ensemble_weights[0].copy())
 sgld_test = []
 torch.manual_seed(SEED + 200)
-bs = 32
-for t in range(600):
-    idx = torch.randint(0, X_train.shape[0], (bs,))
-    sgld_step(m_sgld, 5e-4, X_train[idx], y_train[idx], X_train.shape[0])
-    if t >= 150 and (t - 150) % 5 == 0:
+for t in range(SGMCMC_TOTAL_ITERS):
+    idx = torch.randint(0, X_train.shape[0], (SGMCMC_BATCH_SIZE,))
+    sgld_step(m_sgld, SGLD_ETA, X_train[idx], y_train[idx], X_train.shape[0])
+    if t >= SGMCMC_BURN_IN and (t - SGMCMC_BURN_IN) % SGMCMC_THIN == 0:
         sgld_test.append(predict_test(m_sgld))
 probs_sgld = np.mean(sgld_test, axis=0)
 
@@ -439,17 +491,16 @@ load_params(m_sghmc, ensemble_weights[0].copy())
 mom = [torch.zeros_like(p) for p in m_sghmc.parameters()]
 sghmc_test = []
 torch.manual_seed(SEED + 300)
-for t in range(600):
-    idx = torch.randint(0, X_train.shape[0], (bs,))
-    sghmc_step(m_sghmc, mom, 1e-4, 0.1, X_train[idx], y_train[idx], X_train.shape[0])
-    if t >= 150 and (t - 150) % 5 == 0:
+for t in range(SGMCMC_TOTAL_ITERS):
+    idx = torch.randint(0, X_train.shape[0], (SGMCMC_BATCH_SIZE,))
+    sghmc_step(m_sghmc, mom, SGHMC_ETA, SGHMC_FRICTION, X_train[idx], y_train[idx], X_train.shape[0])
+    if t >= SGMCMC_BURN_IN and (t - SGMCMC_BURN_IN) % SGMCMC_THIN == 0:
         sghmc_test.append(predict_test(m_sghmc))
 probs_sghmc = np.mean(sghmc_test, axis=0)
 
 
 def calibration_metrics(probs: np.ndarray, labels: np.ndarray, n_bins: int = 15):
-    eps = 1e-7
-    p = np.clip(probs, eps, 1 - eps)
+    p = np.clip(probs, BCE_EPS, 1 - BCE_EPS)
     pred = (p >= 0.5).astype(np.float32)
     acc = (pred == labels).mean()
     brier = ((p - labels) ** 2).mean()
@@ -572,11 +623,11 @@ print("\n=== §9: NNGP arc-cosine kernel + width-convergence ===")
 t0 = time.time()
 
 
-def arc_cosine_kernel(X, Xp, sigma_w2: float = 2.0, sigma_b2: float = 0.1) -> np.ndarray:
+def arc_cosine_kernel(X, Xp, sigma_w2: float = NNGP_SIGMA_W2, sigma_b2: float = NNGP_SIGMA_B2) -> np.ndarray:
     norms_X = np.linalg.norm(X, axis=1)
     norms_Xp = np.linalg.norm(Xp, axis=1)
     dot = X @ Xp.T
-    norm_outer = np.maximum(norms_X[:, None] * norms_Xp[None, :], 1e-12)
+    norm_outer = np.maximum(norms_X[:, None] * norms_Xp[None, :], EIGENVALUE_FLOOR)
     cos_theta = np.clip(dot / norm_outer, -1, 1)
     theta = np.arccos(cos_theta)
     K = (sigma_w2 / (2 * np.pi)) * norm_outer * (np.sin(theta) + (np.pi - theta) * np.cos(theta))
@@ -599,11 +650,10 @@ def empirical_finite_width_kernel(width: int, n_samples: int, X: np.ndarray) -> 
     return float(np.var(f_origin))
 
 
-widths = [50, 100, 200, 500, 1000, 2000]
 width_convergence = []
 target_K00 = float(arc_cosine_kernel(X_train_np[:1], X_train_np[:1]).item())
-for w in widths:
-    emp = empirical_finite_width_kernel(w, n_samples=200, X=X_train_np)
+for w in NNGP_WIDTHS:
+    emp = empirical_finite_width_kernel(w, n_samples=NNGP_SAMPLES_PER_WIDTH, X=X_train_np)
     width_convergence.append({"width": w, "empirical": emp, "closed_form_K00": target_K00})
 print(f"  K(x_0, x_0) closed-form = {target_K00:.4f}")
 print("  empirical Var f(x_0):")
@@ -615,8 +665,7 @@ X_reg = np.linspace(-2.5, 2.5, 8).reshape(-1, 1).astype(np.float32)
 y_reg = (np.sin(X_reg) + 0.1 * rng_reg.normal(size=X_reg.shape)).ravel().astype(np.float32)
 
 X_grid = np.linspace(-3, 3, 80).reshape(-1, 1).astype(np.float32)
-sigma_n2 = 0.05
-K_train = arc_cosine_kernel(X_reg, X_reg) + sigma_n2 * np.eye(len(X_reg))
+K_train = arc_cosine_kernel(X_reg, X_reg) + NNGP_NOISE * np.eye(len(X_reg))
 K_grid_train = arc_cosine_kernel(X_grid, X_reg)
 K_grid = arc_cosine_kernel(X_grid, X_grid)
 L = np.linalg.cholesky(K_train)
@@ -624,7 +673,7 @@ alpha = np.linalg.solve(L.T, np.linalg.solve(L, y_reg))
 mu = K_grid_train @ alpha
 v = np.linalg.solve(L, K_grid_train.T)
 var = np.diag(K_grid - v.T @ v)
-std = np.sqrt(np.maximum(var, 1e-12))
+std = np.sqrt(np.maximum(var, EIGENVALUE_FLOOR))
 
 _write_dual(
     "nngp.json",
@@ -637,7 +686,7 @@ _write_dual(
             "mean": mu.tolist(),
             "std": std.tolist(),
         },
-        "kernel_params": {"sigma_w2": 2.0, "sigma_b2": 0.1},
+        "kernel_params": {"sigma_w2": NNGP_SIGMA_W2, "sigma_b2": NNGP_SIGMA_B2},
     },
 )
 print(f"  NNGP done in {time.time()-t0:.1f}s")

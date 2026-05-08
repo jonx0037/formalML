@@ -1,8 +1,8 @@
 # Bayesian Neural Networks — Interactive Viz Layer (v2 Starter Prompt)
 
-This is the v2 follow-up to the Bayesian Neural Networks topic. The v1 PR shipped the topic content, the shared module, the curriculum graph, the cross-references, the figures, and **9 React static-figure wrappers** (`BNNStaticFigure`-based components). The v2 task is to **rebuild those 9 wrappers as fully interactive React + D3 components** matching the per-section interactive-control specs in the handoff brief's "Viz design intent §X" subsections.
+This is the v2 follow-up to the Bayesian Neural Networks topic. The v1+v2-substrate PR shipped the topic content, the shared module (`bayesian-ml.ts` extended with seven BNN primitives + verification harness), the curriculum graph, the cross-references, the figures, the precompute script (`precompute_viz_data.py` emitting five JSON fixtures), the interactive substrate (`BNNInteractiveFigure.tsx`), and **2 of 9 viz components promoted to fully interactive React+D3** — `BNNCalibrationComparisonViz` (§8) and `NNGPSidebarViz` (§9). The remaining 7 still render via `BNNStaticFigure`. **This v2 task is to promote those 7 wrappers** to fully interactive React+D3 components matching the per-section interactive-control specs in the handoff brief's "Viz design intent §X" subsections.
 
-> **Why this is its own PR.** The interactive-viz scope is multi-hours of focused work plus 4–5 Python precompute scripts. Splitting it from the v1 content PR keeps each diff reviewable and lets the topic ship to readers immediately as static-figure-only while v2 lands the interactive layer.
+> **Why this is its own PR.** The remaining-viz scope is multi-hours of focused work; splitting it from the v1 content PR kept each diff reviewable and let the topic ship to readers immediately with content + 2 showcase interactive components while this v2 lands the rest of the interactive layer.
 
 ---
 
@@ -25,7 +25,7 @@ git checkout -b feat/bayesian-neural-networks-interactive-viz
 # 3. Sanity-check the v1 deliverables you'll be extending.
 ls src/content/topics/bayesian-neural-networks.mdx                       # the topic, do not rewrite
 ls src/components/viz/BNN*.tsx src/components/viz/{LossLandscape,Laplace,MCDropout,DeepEnsemble,SGLD,SGHMC,NNGP}*.tsx
-ls src/components/viz/shared/bayesian-ml-bnn.ts                          # shared module, do extend
+ls src/components/viz/shared/bayesian-ml.ts                          # shared module, do extend
 ls notebooks/bayesian-neural-networks/.venv/bin/python                   # if absent, run `cd notebooks/bayesian-neural-networks && uv sync`
 ls notebooks/bayesian-neural-networks/figures/*.png | wc -l              # expect 9
 ls public/images/topics/bayesian-neural-networks/*.png | wc -l           # expect 9
@@ -57,13 +57,13 @@ If any required file is missing, stop and report which one.
 ## What's already in place (do not rebuild)
 
 - **Topic content** at `src/content/topics/bayesian-neural-networks.mdx` — 11,882 words, 11 H2 sections, 46 TheoremBlocks, 24 references. Math, prose, and frontmatter are locked. Don't rewrite.
-- **Shared module** at `src/components/viz/shared/bayesian-ml-bnn.ts`:
+- **Shared module** at `src/components/viz/shared/bayesian-ml.ts`:
   - Color palette `paletteBNN` (6 method colors).
   - Types: `MLPArchSpec`, `TrainingSpec`, `TrainingData`, `TrainedMLP`, `DeepEnsembleResult`, `LaplaceResult`, `MCDropoutResult`, `SGMCMCSpec`, `SGMCMCResult`, `CalibrationMetrics`, `ReliabilityBin`.
   - Implemented primitives: `bnnCalibrationDiagnostic` (ECE/Brier/NLL + reliability bins), `nngpArcCosineKernel` (Cho-Saul recursion).
   - Stubs that throw `BNNInBrowserNotImplementedError`: `deepEnsembleTraining`, `laplaceApproxBNN`, `mcDropoutInference`, `sgMCMCBNNTraining` — these are where you fill in the in-browser implementations OR replace the throw with a JSON-loader call.
   - Loaders: `loadDeepEnsemblePayload`, `loadLaplacePayload`, `loadMCDropoutPayload`, `loadSGMCMCPayload`, `loadCalibrationComparison` — already wired to fetch + parse the precomputed payload schema you'll emit from the Python precompute scripts.
-  - Verification harness: `scripts/verify-bayesian-ml-bnn.ts` — when you add new primitives, extend `verifyBNNPrimitives()` with new closed-form tests and run `pnpm exec tsx scripts/verify-bayesian-ml-bnn.ts`.
+  - Verification harness: `src/components/viz/shared/__tests__/verify-bayesian-neural-networks.ts` — when you add new primitives, extend `verifyBNNPrimitives()` with new closed-form tests and run `pnpm exec tsx src/components/viz/shared/__tests__/verify-bayesian-neural-networks.ts`.
 - **Static-figure wrappers** at `src/components/viz/{BNNPredictiveMotivation,LossLandscapeModes,LaplaceBNN,MCDropoutBNN,DeepEnsemble,SGLDBNN,SGHMCBNN,BNNCalibrationComparison,NNGPSidebar}Viz.tsx` (each ~12 lines). These wrap `BNNStaticFigure`. **You will replace these wrappers, file by file, with full interactive components**, keeping the same default-export name so the MDX imports don't change.
 - **`BNNStaticFigure.tsx`** — the v1 layout component. Keep it; useful as the no-JS / pre-hydration fallback inside each interactive component (see "Static-fallback pattern" below).
 - **9 figures** at `public/images/topics/bayesian-neural-networks/0[1-9]_*.png` — used as the static fallback inside each interactive component.
@@ -85,11 +85,11 @@ Build in this order — each later component leans on infrastructure (helpers in
 - For panel (b) GP regression: standard conjugate Gaussian conditional on $(X_{\text{train}}, y_{\text{train}})$ — reuse `gpPredict` from `gaussian-processes.ts`.
 - Estimated: ~400 lines TSX. **Pause and report after this is wired in and rendering correctly.**
 
-**Decision needed:** the brief lists `erf` and `tanh` activations in the dropdown. The closed-form recursion for those (Williams 1998, Cho-Saul 2009) is implementable but adds ~100 lines to `bayesian-ml-bnn.ts`. Recommendation: **ship ReLU-only in v2 and document erf/tanh as v3** — the ReLU case alone demonstrates the convergence phenomenon and matches the most-cited NNGP literature. Confirm with Jonathan before deciding.
+**Decision needed:** the brief lists `erf` and `tanh` activations in the dropdown. The closed-form recursion for those (Williams 1998, Cho-Saul 2009) is implementable but adds ~100 lines to `bayesian-ml.ts`. Recommendation: **ship ReLU-only in v2 and document erf/tanh as v3** — the ReLU case alone demonstrates the convergence phenomenon and matches the most-cited NNGP literature. Confirm with Jonathan before deciding.
 
 ### Stage 2: in-browser MLP training (no Python precompute)
 
-These three viz components share an in-browser small-MLP training loop. **First add helpers to `bayesian-ml-bnn.ts`**:
+These three viz components share an in-browser small-MLP training loop. **First add helpers to `bayesian-ml.ts`**:
 
 ```typescript
 // Pure-TS Adam + cross-entropy on a 3-hidden-layer × 32-unit ReLU MLP.
@@ -111,7 +111,7 @@ Then build:
 
 **§5 — `DeepEnsembleViz.tsx`.** Brief §5 viz design intent. Pre-train pool of 20 MLPs on first hydration (~10 s — share with §2's pool if §2's component has rendered first). K-slider subsets the pool; member-highlight click re-renders panel (a)'s heatmap as the highlighted member's predictive.
 
-Estimated: ~1,500 lines TSX across the three components, plus ~300 lines added to `bayesian-ml-bnn.ts` for the training helpers.
+Estimated: ~1,500 lines TSX across the three components, plus ~300 lines added to `bayesian-ml.ts` for the training helpers.
 
 ### Stage 3: in-browser MLP training, heavier compute
 
@@ -123,7 +123,7 @@ Estimated: ~500 lines TSX.
 
 **§3 — `LaplaceBNNViz.tsx`.** Brief §3 viz design intent. The full Hessian for $p = 2241$ is too slow in-browser (~1 s blocking, per brief §10 Q3). Write `notebooks/bayesian-neural-networks/precompute_laplace.py` mirroring the notebook's §3 cell:
 
-- Train MAP, compute `H_data` via `torch.autograd.functional.hessian`, save to JSON: `{wMap: [...], hessianCholesky: [...], conditionNumber: ..., gridProbs: [[]] for S=100}` per the `LaplaceResult` schema in `bayesian-ml-bnn.ts`.
+- Train MAP, compute `H_data` via `torch.autograd.functional.hessian`, save to JSON: `{wMap: [...], hessianCholesky: [...], conditionNumber: ..., gridProbs: [[]] for S=100}` per the `LaplaceResult` schema in `bayesian-ml.ts`.
 - Run for the default $\tau^2 = 10^4$, plus precomputed payloads for the prior-scale-slider tick values (e.g., $\tau^2 \in \{10^2, 10^3, 10^4, 10^5, 10^6\}$). Five payloads × ~5 MB each = ~25 MB total. If this is too large, reduce the tick count.
 - Dual-write to `src/data/sampleData/bayesian-neural-networks/laplace_tau2_{value}.json` AND `public/sample-data/bayesian-neural-networks/laplace_tau2_{value}.json`.
 - Curvature-reduction dropdown variants: emit separate payloads for `last-layer` and `diagonal-fisher` reductions. The reductions are cheap in Python; emit all three for the default $\tau^2$.
@@ -156,7 +156,7 @@ import { useEffect, useState } from 'react';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { useD3 } from './shared/useD3';
 import BNNStaticFigure from './BNNStaticFigure';
-// import primitives, types, loaders from './shared/bayesian-ml-bnn'
+// import primitives, types, loaders from './shared/bayesian-ml'
 
 export default function XViz() {
   const { ref, width } = useResizeObserver<HTMLDivElement>();
@@ -203,7 +203,7 @@ This keeps the no-JS / pre-hydration UX identical to v1 (the static figure rende
 Follow the brief's build-order step-by-step. Pause and report progress before proceeding to the next stage at:
 
 - After Stage 1 (NNGPSidebarViz). Report: in-browser sample timings, kernel-matrix Cholesky timing, screenshot of the rendered component.
-- After helpers added to `bayesian-ml-bnn.ts` for in-browser MLP training. Report: extended verification table.
+- After helpers added to `bayesian-ml.ts` for in-browser MLP training. Report: extended verification table.
 - After each Stage 2 component (§1, §4, §5). Report: training-pool hydration time, slider re-render time.
 - After Stage 3 (§2). Report: 30-MLP pool hydration time, click-to-pick re-render time.
 - Before each Python precompute script (Stage 4). Report: planned grid coverage, expected payload size.
@@ -216,7 +216,7 @@ Follow the brief's build-order step-by-step. Pause and report progress before pr
 
 - Rewrite topic content in `src/content/topics/bayesian-neural-networks.mdx`. The math, prose, and frontmatter are locked. The MDX imports the same component names as v1 — only the component implementations change.
 - Re-run, modify, or regenerate the notebook. It is read-only. Mirror its training recipes in the precompute scripts.
-- Change the `bayesian-ml-bnn.ts` API surface that v1 ships (interfaces, function signatures, color palette names). You can ADD primitives and ADD optional fields to interfaces, but don't break what v1 exports.
+- Change the `bayesian-ml.ts` API surface that v1 ships (interfaces, function signatures, color palette names). You can ADD primitives and ADD optional fields to interfaces, but don't break what v1 exports.
 - Add tests, lint rules, ESLint configuration, or CI workflow changes that aren't strictly needed for this work.
 - Build interactive D3 viz that hardcode colors that break dark mode. Use CSS custom properties.
 - Skip the `useD3` + `useResizeObserver` pattern. Every viz must use both.
@@ -241,7 +241,7 @@ Follow the brief's build-order step-by-step. Pause and report progress before pr
 ## Verify as you go
 
 - **After each component is wired:** Take a screenshot via the `preview_*` MCP tools. Walk through every slider/toggle/click target on the live preview. Check console (`preview_console_logs level=error`) for errors. Confirm: no console errors, all interactions render in <100 ms (except first-hydration computes), static-fallback PNG visible pre-hydration, dark-mode rendering correct.
-- **After each precompute script is run:** Verify the JSON validates against the matching loader's schema in `bayesian-ml-bnn.ts`. Verify the dual-write happened (file exists in both `src/data/sampleData/...` and `public/sample-data/...`).
+- **After each precompute script is run:** Verify the JSON validates against the matching loader's schema in `bayesian-ml.ts`. Verify the dual-write happened (file exists in both `src/data/sampleData/...` and `public/sample-data/...`).
 - **After full build:** `pnpm build` exits 0. No `katex-error` spans in built HTML (`grep -c katex-error dist/topics/bayesian-neural-networks/index.html` should return 0). Pagefind index includes BNN page. `pnpm preview` re-walks identically to dev.
 - **After all 9 viz are wired:** Walk brief §14 testing checklist top to bottom — the "Visualization components" subsection in particular. Every checkbox should now check (the v1 PR left some unchecked with `(deferred to v2)` annotations; v2 closes them).
 
@@ -252,7 +252,7 @@ Follow the brief's build-order step-by-step. Pause and report progress before pr
 A draft pull-request description containing:
 
 - Short summary paragraph: "Rebuilds the 9 BNN viz components from v1's static-figure wrappers into fully interactive React + D3 components per brief §4's per-section 'Interactive controls (v1 deliverable)' specs."
-- Files touched: `components/viz/*.tsx` (9 components rewritten), `components/viz/shared/bayesian-ml-bnn.ts` (extended with in-browser MLP training helpers + verification tests), `notebooks/bayesian-neural-networks/precompute_*.py` (4 scripts), `src/data/sampleData/bayesian-neural-networks/*.json` + `public/sample-data/bayesian-neural-networks/*.json` (precomputed payloads, dual-written).
+- Files touched: `components/viz/*.tsx` (9 components rewritten), `components/viz/shared/bayesian-ml.ts` (extended with in-browser MLP training helpers + verification tests), `notebooks/bayesian-neural-networks/precompute_*.py` (4 scripts), `src/data/sampleData/bayesian-neural-networks/*.json` + `public/sample-data/bayesian-neural-networks/*.json` (precomputed payloads, dual-written).
 - Per-component verification: a row per component listing first-hydration cost, slider re-render time, payload size (if precomputed), and screenshot.
 - Brief §14 "Visualization components" checklist — fully checked, no `(deferred to v2)` annotations remaining.
 - A "Deviations from the brief" list. Likely items: erf/tanh activation deferral in §9, any precompute-grid coarsening adopted to keep payload sizes reasonable.
