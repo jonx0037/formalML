@@ -33,9 +33,9 @@ import {
   blrPosterior,
   makeBLRDataset,
   makeGauss,
+  makeSampler,
   paletteSGMCMC,
   runningMean,
-  sampleWithoutReplacement,
 } from './shared/sgmcmc';
 
 const DATA_SEED = 41;
@@ -64,18 +64,24 @@ interface CachedRun {
 }
 
 interface BLRGrad {
-  full: (theta: Float32Array) => Float32Array;
-  miniWith: (B: number, idx: Int32Array) => (theta: Float32Array) => Float32Array;
-  data: (theta: Float32Array) => Float32Array; // data-only full grad (for SVRG ref)
-  dataMini: (B: number, idx: Int32Array) => (theta: Float32Array) => Float32Array;
-  prior: (theta: Float32Array) => Float32Array;
+  /** Full gradient ∇U(θ) = ∇U_data(θ) + λθ. Writes into `out`. */
+  full: (theta: Float32Array, out: Float32Array) => void;
+  /** Data-only full gradient ∇U_data(θ). Writes into `out`. */
+  data: (theta: Float32Array, out: Float32Array) => void;
+  /** Mini-batch data-only gradient at the given index slot. Writes into `out`. */
+  dataMini: (theta: Float32Array, idx: Int32Array, B: number, out: Float32Array) => void;
+  /** Mini-batch full gradient (data + prior) at the given index slot. Writes into `out`. */
+  miniFull: (theta: Float32Array, idx: Int32Array, B: number, out: Float32Array) => void;
 }
 
 function buildGrads(spec: ReturnType<typeof makeBLRDataset>): BLRGrad {
   const { XDesign, yData, N, sigmaNoise, tauPrior } = spec;
   const inv2 = 1 / (sigmaNoise * sigmaNoise);
   const tauInv2 = 1 / (tauPrior * tauPrior);
-  const fullData = (theta: Float32Array): Float32Array => {
+  // All four gradient functions write into a caller-provided `out` Float32Array
+  // so the chain-runner loop can avoid allocating a new gradient buffer each
+  // step. Compose-by-write rather than compose-by-return.
+  const data = (theta: Float32Array, out: Float32Array): void => {
     let g0 = 0,
       g1 = 0;
     for (let i = 0; i < N; i++) {
@@ -85,9 +91,10 @@ function buildGrads(spec: ReturnType<typeof makeBLRDataset>): BLRGrad {
       g0 += inv2 * a * r;
       g1 += inv2 * b * r;
     }
-    return new Float32Array([g0, g1]);
+    out[0] = g0;
+    out[1] = g1;
   };
-  const dataMini = (B: number, idx: Int32Array) => (theta: Float32Array): Float32Array => {
+  const dataMini = (theta: Float32Array, idx: Int32Array, B: number, out: Float32Array): void => {
     const scale = N / B;
     let g0 = 0,
       g1 = 0;
@@ -99,24 +106,20 @@ function buildGrads(spec: ReturnType<typeof makeBLRDataset>): BLRGrad {
       g0 += scale * inv2 * a * r;
       g1 += scale * inv2 * b * r;
     }
-    return new Float32Array([g0, g1]);
+    out[0] = g0;
+    out[1] = g1;
   };
-  const prior = (theta: Float32Array): Float32Array =>
-    new Float32Array([tauInv2 * theta[0], tauInv2 * theta[1]]);
-  const miniWith = (B: number, idx: Int32Array) => {
-    const dm = dataMini(B, idx);
-    return (theta: Float32Array): Float32Array => {
-      const d = dm(theta);
-      const p = prior(theta);
-      return new Float32Array([d[0] + p[0], d[1] + p[1]]);
-    };
+  const full = (theta: Float32Array, out: Float32Array): void => {
+    data(theta, out);
+    out[0] += tauInv2 * theta[0];
+    out[1] += tauInv2 * theta[1];
   };
-  const full = (theta: Float32Array): Float32Array => {
-    const d = fullData(theta);
-    const p = prior(theta);
-    return new Float32Array([d[0] + p[0], d[1] + p[1]]);
+  const miniFull = (theta: Float32Array, idx: Int32Array, B: number, out: Float32Array): void => {
+    dataMini(theta, idx, B, out);
+    out[0] += tauInv2 * theta[0];
+    out[1] += tauInv2 * theta[1];
   };
-  return { full, miniWith, data: fullData, dataMini, prior };
+  return { full, data, dataMini, miniFull };
 }
 
 const yieldToBrowser = () => new Promise<void>((res) => setTimeout(res, 0));
@@ -133,61 +136,74 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   const sqrt2eta = Math.sqrt(2 * eta);
 
   // Vanilla SGLD with mini-batch gradient.
+  // gradCache holds the per-step mini-batch gradient ∇̂U_B(θ_n) used by the
+  // ZV-SGLD post-processing below. Allocated as a single flat Float32Array
+  // of size T·2 (row-major) instead of T separate Float32Array(2) objects —
+  // avoids T allocations per slider commit at T = 30k.
   await yieldToBrowser();
   const rngV = mulberry32(chainSeed * 991 + 401);
   const gaussV = makeGauss(rngV);
+  const samplerV = makeSampler(N, B);
   const theta = new Float32Array(start);
+  const gradOut = new Float32Array(2);
   const vanillaCh1 = new Float32Array(T);
-  const gradCache: Float32Array[] = new Array(T);
+  const gradCache = new Float32Array(T * 2);
   for (let n = 0; n < T; n++) {
-    const idx = sampleWithoutReplacement(N, B, rngV);
-    const g = grads.miniWith(B, idx)(theta);
-    gradCache[n] = new Float32Array(g);
-    theta[0] -= eta * g[0] - sqrt2eta * gaussV();
-    theta[1] -= eta * g[1] - sqrt2eta * gaussV();
+    const idx = samplerV(rngV);
+    grads.miniFull(theta, idx, B, gradOut);
+    gradCache[n * 2 + 0] = gradOut[0];
+    gradCache[n * 2 + 1] = gradOut[1];
+    theta[0] -= eta * gradOut[0] - sqrt2eta * gaussV();
+    theta[1] -= eta * gradOut[1] - sqrt2eta * gaussV();
     vanillaCh1[n] = theta[0];
   }
 
-  // SVRG-LD: gradient = ∇U(θ̃) + (1/B Σ ∇log p(y_i | θ) - ∇log p(y_i | θ̃))·(N/B)·data + prior
-  // We use full-data gradient at θ̃ updated every k_inner steps.
+  // SVRG-LD: gradient = ∇U_data(θ̃) + (∇̂U_data,B(θ_n) - ∇̂U_data,B(θ̃)) + prior(θ_n).
+  // Full-data reference gradient at θ̃ is refreshed every k_inner steps.
   await yieldToBrowser();
   const rngS = mulberry32(chainSeed * 991 + 402);
   const gaussS = makeGauss(rngS);
+  const samplerS = makeSampler(N, B);
   const thetaS = new Float32Array(start);
-  let thetaTilde = new Float32Array(start);
-  let gTildeData = grads.data(thetaTilde);
+  const thetaTilde = new Float32Array(start);
+  const gTildeData = new Float32Array(2);
+  grads.data(thetaTilde, gTildeData);
+  const gDataCur = new Float32Array(2);
+  const gDataTilde = new Float32Array(2);
+  const tauInv2 = 1 / (spec.tauPrior * spec.tauPrior);
   const svrgCh1 = new Float32Array(T);
   for (let n = 0; n < T; n++) {
     if (n > 0 && n % SVRG_K_INNER === 0) {
-      thetaTilde = new Float32Array(thetaS);
-      gTildeData = grads.data(thetaTilde);
+      thetaTilde[0] = thetaS[0];
+      thetaTilde[1] = thetaS[1];
+      grads.data(thetaTilde, gTildeData);
     }
-    const idx = sampleWithoutReplacement(N, B, rngS);
-    const dmCur = grads.dataMini(B, idx);
-    const gDataCur = dmCur(thetaS);
-    const gDataTilde = dmCur(thetaTilde);
-    const gData = new Float32Array([
-      gTildeData[0] + gDataCur[0] - gDataTilde[0],
-      gTildeData[1] + gDataCur[1] - gDataTilde[1],
-    ]);
-    const pr = grads.prior(thetaS);
-    const g0 = gData[0] + pr[0];
-    const g1 = gData[1] + pr[1];
+    const idx = samplerS(rngS);
+    grads.dataMini(thetaS, idx, B, gDataCur);
+    grads.dataMini(thetaTilde, idx, B, gDataTilde);
+    const g0 = gTildeData[0] + gDataCur[0] - gDataTilde[0] + tauInv2 * thetaS[0];
+    const g1 = gTildeData[1] + gDataCur[1] - gDataTilde[1] + tauInv2 * thetaS[1];
     thetaS[0] -= eta * g0 - sqrt2eta * gaussS();
     thetaS[1] -= eta * g1 - sqrt2eta * gaussS();
     svrgCh1[n] = thetaS[0];
   }
 
-  // ZV-SGLD: postprocess vanilla chain with linear control variate.
+  // ZV-SGLD: post-process the vanilla chain with a linear control variate.
   // Fit α* = -[Cov(∇U, ∇U)]⁻¹ Cov(∇U, φ) on the chain, then φ_zv = φ + α^T ∇U.
-  // φ(θ) = θ_0; ∇U(θ) is the vanilla full gradient (use cache).
+  // Note: gradCache stores the *mini-batch* gradient estimator ∇̂U_B(θ_n), not
+  // the full gradient ∇U(θ_n). Mira–Solgi–Imparato's variance-zero argument
+  // assumes ∇U is the exact gradient under π, so using the unbiased mini-batch
+  // estimator carries an extra noise term that shows up as the residual
+  // estimator variance in panel (b). For the §6 BLR posterior at B = 16 the
+  // residual is small (the §8 mini-batch bias for SGLD is O(η + 1/B)) and the
+  // variance reduction over vanilla SGLD is still ~5–10×.
   await yieldToBrowser();
   let mg0 = 0,
     mg1 = 0,
     mp = 0;
   for (let n = 0; n < T; n++) {
-    mg0 += gradCache[n][0];
-    mg1 += gradCache[n][1];
+    mg0 += gradCache[n * 2 + 0];
+    mg1 += gradCache[n * 2 + 1];
     mp += vanillaCh1[n];
   }
   mg0 /= T;
@@ -199,8 +215,8 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
     sp0 = 0,
     sp1 = 0;
   for (let n = 0; n < T; n++) {
-    const d0 = gradCache[n][0] - mg0;
-    const d1 = gradCache[n][1] - mg1;
+    const d0 = gradCache[n * 2 + 0] - mg0;
+    const d1 = gradCache[n * 2 + 1] - mg1;
     const dp = vanillaCh1[n] - mp;
     s00 += d0 * d0;
     s01 += d0 * d1;
@@ -219,7 +235,7 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   const a1 = -(-s01 * sp0 + s00 * sp1) * invDet;
   const zvCh1 = new Float32Array(T);
   for (let n = 0; n < T; n++) {
-    zvCh1[n] = vanillaCh1[n] + a0 * gradCache[n][0] + a1 * gradCache[n][1];
+    zvCh1[n] = vanillaCh1[n] + a0 * gradCache[n * 2 + 0] + a1 * gradCache[n * 2 + 1];
   }
 
   // Running means

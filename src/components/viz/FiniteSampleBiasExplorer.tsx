@@ -24,8 +24,12 @@
 //     makes the §8 η contribution dominant.
 //   - Resample button — re-rolls all chain seeds.
 //
-// Computation: in-browser via shared/sgmcmc.ts. 14 chains per run (7
-// η-sweep + 7 B-sweep). At T = 6000 ≈ 2 s on commodity laptops.
+// Computation: in-browser via shared/sgmcmc.ts. 13 chains per run (6 η-sweep
+// + 7 B-sweep — the η-sweep was trimmed from 7 to 6 because the largest
+// notebook η = 5e-3 sits at the EM stability threshold for the BLR Hessian
+// and contaminates the in-browser estimate at the shorter T we run; see the
+// ETA_GRID note below). At the default T = 10000 the run takes ≈ 5 s on
+// commodity laptops; longer T tightens the bias estimates linearly.
 // Static fallback: /images/topics/stochastic-gradient-mcmc/08_vzt_bias.png.
 // =============================================================================
 
@@ -535,9 +539,12 @@ function BiasVsParam({
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
 
-  const positiveYs = ys.filter((y) => y > 0);
-  const yMin = positiveYs.length > 0 ? Math.min(...positiveYs) * 0.7 : 1e-5;
-  const yMax = Math.max(...ys, 1e-3) * 1.5;
+  // biasOfChain returns NaN when all post-burn samples are non-finite (the
+  // EM scheme can occasionally diverge near the stability threshold). Filter
+  // before reducing so a single NaN doesn't poison the log-scale domain.
+  const finiteYs = ys.filter((y) => Number.isFinite(y) && y > 0);
+  const yMin = finiteYs.length > 0 ? Math.min(...finiteYs) * 0.7 : 1e-5;
+  const yMax = (finiteYs.length > 0 ? Math.max(...finiteYs, 1e-3) : 1e-3) * 1.5;
   const xMin = Math.min(...xs);
   const xMax = Math.max(...xs);
 
@@ -583,19 +590,23 @@ function BiasVsParam({
         strokeWidth={1.4}
         strokeDasharray="4 3"
       />
-      {/* Empirical points + connecting line */}
+      {/* Empirical points + connecting line — skip non-finite y values
+          (chain divergence) instead of letting them poison the path string. */}
       <path
         d={d3
           .line<[number, number]>()
+          .defined((d) => Number.isFinite(d[1]) && d[1] > 0)
           .x((d) => xS(d[0]))
           .y((d) => yS(Math.max(d[1], yMin)))(xs.map((x, i) => [x, ys[i]] as [number, number])) ?? ''}
         fill="none"
         stroke={paletteSGMCMC.sgld}
         strokeWidth={1.6}
       />
-      {xs.map((x, i) => (
-        <circle key={i} cx={xS(x)} cy={yS(Math.max(ys[i], yMin))} r={4} fill={paletteSGMCMC.sgld} />
-      ))}
+      {xs.map((x, i) =>
+        Number.isFinite(ys[i]) && ys[i] > 0 ? (
+          <circle key={i} cx={xS(x)} cy={yS(Math.max(ys[i], yMin))} r={4} fill={paletteSGMCMC.sgld} />
+        ) : null,
+      )}
       {/* Axes */}
       <line x1={0} x2={innerW} y1={innerH} y2={innerH} stroke="var(--color-text-muted, #888)" />
       <line x1={0} x2={0} y1={0} y2={innerH} stroke="var(--color-text-muted, #888)" />
@@ -624,22 +635,38 @@ function CollapsePanel({ grid, width, height }: { grid: BiasGrid; width: number;
   const cRatio = grid.cRatio;
   const C1 = grid.C1Hat;
 
-  // Combined x: η + cRatio/B for all 14 samples (η-sweep at B=64; B-sweep at η=ETA_FIXED).
+  // Guard against runBiasSweep returning NaN cRatio / NaN C1Hat when every
+  // chain in the sweep diverged. With NaN cRatio the x-axis values would
+  // also be NaN and the log scales below would crash at runtime — render a
+  // status overlay instead.
+  if (!Number.isFinite(cRatio) || !Number.isFinite(C1)) {
+    return (
+      <g transform={`translate(${margin.left},${margin.top})`}>
+        <rect x={0} y={0} width={innerW} height={innerH} fill="var(--color-surface, #fafafa)" />
+        <text x={innerW / 2} y={innerH / 2} textAnchor="middle" fontSize={11} fill="var(--color-text-muted, #666)">
+          fit failed — all chains diverged at this (T, σ_g). Try a longer T.
+        </text>
+      </g>
+    );
+  }
+
+  // Combined x: η + cRatio/B for the 13 sweep points (6 η-sweep at B = B_FIXED;
+  // 7 B-sweep at η = ETA_FIXED). Filter non-finite biases (chain divergence).
   const etaPoints: { x: number; y: number }[] = ETA_GRID.map((eta, i) => ({
     x: eta + cRatio / B_FIXED,
     y: grid.biasEta[i],
-  }));
+  })).filter((p) => Number.isFinite(p.y) && p.y > 0);
   const bPoints: { x: number; y: number }[] = B_GRID.map((B, i) => ({
     x: ETA_FIXED + cRatio / B,
     y: grid.biasB[i],
-  }));
+  })).filter((p) => Number.isFinite(p.y) && p.y > 0);
 
   const allX = [...etaPoints, ...bPoints].map((p) => p.x);
-  const allY = [...etaPoints, ...bPoints].map((p) => p.y).filter((y) => y > 0);
-  const xMin = Math.max(Math.min(...allX) * 0.7, 1e-7);
-  const xMax = Math.max(...allX) * 1.3;
+  const allY = [...etaPoints, ...bPoints].map((p) => p.y);
+  const xMin = allX.length > 0 ? Math.max(Math.min(...allX) * 0.7, 1e-7) : 1e-7;
+  const xMax = allX.length > 0 ? Math.max(...allX) * 1.3 : 1e-3;
   const yMin = (allY.length > 0 ? Math.min(...allY) : 1e-5) * 0.7;
-  const yMax = Math.max(...allY, 1e-3) * 1.5;
+  const yMax = (allY.length > 0 ? Math.max(...allY, 1e-3) : 1e-3) * 1.5;
 
   const xS = d3.scaleLog().domain([xMin, xMax]).range([0, innerW]);
   const yS = d3.scaleLog().domain([yMin, yMax]).range([innerH, 0]);

@@ -66,8 +66,9 @@ export function makeGauss(rng: () => number): () => number {
 }
 
 /** Sample n indices uniformly without replacement from {0, ..., N-1}.
- *  Partial Fisher–Yates, O(n). Use a fresh allocation each call to avoid
- *  caller-side aliasing surprises. */
+ *  Partial Fisher–Yates, O(n). Allocates a fresh Int32Array each call —
+ *  for hot loops (chain runners with mini-batch gradients), use makeSampler
+ *  below to hoist the pool and output buffer out of the loop. */
 export function sampleWithoutReplacement(N: number, n: number, rng: () => number): Int32Array {
   if (n > N) throw new Error(`sampleWithoutReplacement: n=${n} > N=${N}`);
   const pool = new Int32Array(N);
@@ -81,6 +82,39 @@ export function sampleWithoutReplacement(N: number, n: number, rng: () => number
     out[i] = pool[i];
   }
   return out;
+}
+
+/** Build a hoisted-buffer sampler for repeated calls with the same (N, B).
+ *  The returned function reuses a single `pool` of length N and a single
+ *  `out` of length B across calls, undoing the partial Fisher–Yates swaps
+ *  in O(B) at the end of each call so `pool` stays in `[0..N-1]` order.
+ *  The returned Int32Array is the same buffer every call — consume it
+ *  before the next call. Use this inside chain runners to avoid the
+ *  per-step allocation pressure of `sampleWithoutReplacement`. */
+export function makeSampler(N: number, B: number): (rng: () => number) => Int32Array {
+  if (B > N) throw new Error(`makeSampler: B=${B} > N=${N}`);
+  const pool = new Int32Array(N);
+  for (let i = 0; i < N; i++) pool[i] = i;
+  const out = new Int32Array(B);
+  const swapJ = new Int32Array(B);
+  return (rng: () => number): Int32Array => {
+    for (let i = 0; i < B; i++) {
+      const j = i + Math.floor(rng() * (N - i));
+      swapJ[i] = j;
+      const tmp = pool[i];
+      pool[i] = pool[j];
+      pool[j] = tmp;
+      out[i] = pool[i];
+    }
+    // Undo swaps in reverse so `pool` is restored to [0..N-1] for the next call.
+    for (let i = B - 1; i >= 0; i--) {
+      const j = swapJ[i];
+      const tmp = pool[i];
+      pool[i] = pool[j];
+      pool[j] = tmp;
+    }
+    return out;
+  };
 }
 
 // =============================================================================
@@ -202,6 +236,24 @@ export function extractCoord(chain: Float32Array[], j: number): Float32Array {
 // cells 12, 14, 18, 20.
 // =============================================================================
 
+// -----------------------------------------------------------------------------
+// Chain-buffer convention
+// -----------------------------------------------------------------------------
+// Every chain runner allocates ONE flat `Float32Array(nSteps * d)` and returns
+// `Float32Array[]` whose entries are typed-array VIEWS (subarray) into that
+// single buffer. The `Float32Array[]` shape is preserved for caller ergonomics
+// (`chain[n][j]`, `chain.length`, `chain.slice(burn)`) but the per-step
+// allocation cost drops from O(nSteps) Float32Array objects to O(1) — only
+// the backing buffer and the wrapper array of views are allocated.
+// -----------------------------------------------------------------------------
+
+function allocChainViews(nSteps: number, d: number): { buf: Float32Array; views: Float32Array[] } {
+  const buf = new Float32Array(nSteps * d);
+  const views: Float32Array[] = new Array(nSteps);
+  for (let n = 0; n < nSteps; n++) views[n] = buf.subarray(n * d, (n + 1) * d);
+  return { buf, views };
+}
+
 /** Generic Euler–Maruyama on overdamped Langevin (§5–6).
  *  Update: θ_{n+1} = θ_n - η · gradFn(θ_n) + √(2η) · ξ_n, ξ ~ N(0, I).
  *  Use a closure for `gradFn` if you want fresh minibatch sampling per step. */
@@ -216,13 +268,13 @@ export function sgldChain(
   const gauss = makeGauss(rng);
   const sqrt2eta = Math.sqrt(2 * eta);
   const theta = new Float32Array(theta0);
-  const chain: Float32Array[] = new Array(nSteps);
+  const { buf, views } = allocChainViews(nSteps, d);
   for (let n = 0; n < nSteps; n++) {
     const g = gradFn(theta);
     for (let i = 0; i < d; i++) theta[i] -= eta * g[i] - sqrt2eta * gauss();
-    chain[n] = new Float32Array(theta);
+    buf.set(theta, n * d);
   }
-  return chain;
+  return views;
 }
 
 /** SGLD with a step-size schedule (Welling–Teh §6.3). schedule(n) returns η_n. */
@@ -236,15 +288,15 @@ export function sgldChainScheduled(
   const d = theta0.length;
   const gauss = makeGauss(rng);
   const theta = new Float32Array(theta0);
-  const chain: Float32Array[] = new Array(nSteps);
+  const { buf, views } = allocChainViews(nSteps, d);
   for (let n = 0; n < nSteps; n++) {
     const eta = schedule(n);
     const sqrt2eta = Math.sqrt(2 * eta);
     const g = gradFn(theta);
     for (let i = 0; i < d; i++) theta[i] -= eta * g[i] - sqrt2eta * gauss();
-    chain[n] = new Float32Array(theta);
+    buf.set(theta, n * d);
   }
-  return chain;
+  return views;
 }
 
 /** Underdamped Langevin / SGHMC (§7.4). Mass matrix is the identity (M = I);
@@ -268,16 +320,16 @@ export function sghmcChain(
   for (let i = 0; i < d; i++) r[i] = gauss();
   const oneMinusEtaC = 1 - eta * C;
   const sqrtNoise = Math.sqrt(2 * eta * C);
-  const chain: Float32Array[] = new Array(nSteps);
+  const { buf, views } = allocChainViews(nSteps, d);
   for (let n = 0; n < nSteps; n++) {
     const g = gradFn(theta);
     for (let i = 0; i < d; i++) {
       r[i] = oneMinusEtaC * r[i] - eta * g[i] + sqrtNoise * gauss();
     }
     for (let i = 0; i < d; i++) theta[i] += eta * r[i];
-    chain[n] = new Float32Array(theta);
+    buf.set(theta, n * d);
   }
-  return chain;
+  return views;
 }
 
 /** Riemann-manifold Langevin with diagonal metric G⁻¹(θ) (§10.3).
@@ -297,7 +349,7 @@ export function rsgldDiagonalChain(
   const gauss = makeGauss(rng);
   const sqrt2eta = Math.sqrt(2 * eta);
   const theta = new Float32Array(theta0);
-  const chain: Float32Array[] = new Array(nSteps);
+  const { buf, views } = allocChainViews(nSteps, d);
   for (let n = 0; n < nSteps; n++) {
     const gInv = gInvDiagFn(theta);
     const corr = divGInvFn(theta);
@@ -306,9 +358,9 @@ export function rsgldDiagonalChain(
       const drift = -gInv[i] * g[i] + corr[i];
       theta[i] += eta * drift + sqrt2eta * Math.sqrt(gInv[i]) * gauss();
     }
-    chain[n] = new Float32Array(theta);
+    buf.set(theta, n * d);
   }
-  return chain;
+  return views;
 }
 
 // =============================================================================
@@ -541,11 +593,15 @@ export function blrPosterior(spec: BLRSpec): BLRPosterior {
   return { muPost: mu, sigmaPost: sig, sigmaPostInv: sigInv };
 }
 
-/** Full-data gradient of U(θ) = ½τ⁻²‖θ‖² + ½σ⁻² ‖Xθ - y‖². */
+/** Full-data gradient of U(θ) = ½τ⁻²‖θ‖² + ½σ⁻² ‖Xθ - y‖².
+ *  Reuses a single 2-element Float32Array across calls to avoid per-step
+ *  allocations inside chain runners (the caller copies values out before
+ *  the next gradient evaluation). */
 export function blrGradFull(spec: BLRSpec): (theta: Float32Array) => Float32Array {
   const { XDesign, yData, N, sigmaNoise, tauPrior } = spec;
   const inv2 = 1 / (sigmaNoise * sigmaNoise);
   const tauInv2 = 1 / (tauPrior * tauPrior);
+  const out = new Float32Array(2);
   return (theta: Float32Array) => {
     let g0 = tauInv2 * theta[0];
     let g1 = tauInv2 * theta[1];
@@ -556,14 +612,16 @@ export function blrGradFull(spec: BLRSpec): (theta: Float32Array) => Float32Arra
       g0 += inv2 * a * r;
       g1 += inv2 * b * r;
     }
-    const out = new Float32Array(2);
     out[0] = g0;
     out[1] = g1;
     return out;
   };
 }
 
-/** Mini-batch gradient of U(θ) using the (N/B)-rescaling of (6.2). */
+/** Mini-batch gradient of U(θ) using the (N/B)-rescaling of (6.2).
+ *  Hoists a sampler (Fisher–Yates pool reused across calls) and a 2-element
+ *  output buffer to avoid the allocation pressure of per-step
+ *  `sampleWithoutReplacement` and `new Float32Array(2)` inside long chains. */
 export function blrGradMinibatch(
   spec: BLRSpec,
   B: number,
@@ -573,8 +631,10 @@ export function blrGradMinibatch(
   const inv2 = 1 / (sigmaNoise * sigmaNoise);
   const tauInv2 = 1 / (tauPrior * tauPrior);
   const scale = N / B;
+  const sampler = makeSampler(N, B);
+  const out = new Float32Array(2);
   return (theta: Float32Array) => {
-    const idx = sampleWithoutReplacement(N, B, rng);
+    const idx = sampler(rng);
     let g0 = tauInv2 * theta[0];
     let g1 = tauInv2 * theta[1];
     for (let k = 0; k < B; k++) {
@@ -585,7 +645,6 @@ export function blrGradMinibatch(
       g0 += scale * inv2 * a * r;
       g1 += scale * inv2 * b * r;
     }
-    const out = new Float32Array(2);
     out[0] = g0;
     out[1] = g1;
     return out;
@@ -646,6 +705,28 @@ export function brownianPath(
   return { t, w };
 }
 
+/** Specialized helper for the §3 viz histogram panel: simulate K independent
+ *  Brownian paths to the terminal time T (step size dt) and return only the
+ *  K terminal values W_T. Avoids allocating 2K full-path Float32Arrays when
+ *  the caller only needs the end-point. */
+export function brownianTerminalValues(
+  T: number,
+  dt: number,
+  K: number,
+  rng: () => number,
+): Float32Array {
+  const out = new Float32Array(K);
+  const gauss = makeGauss(rng);
+  const sqrtDt = Math.sqrt(dt);
+  const nSteps = Math.floor(T / dt);
+  for (let k = 0; k < K; k++) {
+    let w = 0;
+    for (let i = 0; i < nSteps; i++) w += sqrtDt * gauss();
+    out[k] = w;
+  }
+  return out;
+}
+
 // =============================================================================
 // UTILITIES FOR VIZ PANELS
 // =============================================================================
@@ -663,7 +744,11 @@ export function runningMean(x: ArrayLike<number>): Float32Array {
 }
 
 /** Histogram a 1D trace into nBins equal-width bins on [lo, hi]. Returns
- *  density (normalized so sum(out) · binWidth = 1). */
+ *  density per bin: each bin's value is (count_in_bin) / (total · binWidth)
+ *  where total is `x.length`. Samples outside [lo, hi) are dropped, so when
+ *  the trace has tail mass beyond the window, sum(density) · binWidth equals
+ *  the in-window fraction (≤ 1) — not 1. Pick [lo, hi] wide enough to cover
+ *  the bulk of the distribution if you want the histogram to integrate to 1. */
 export function histogram(
   x: ArrayLike<number>,
   lo: number,

@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { mulberry32 } from './shared/bayesian-ml';
 import { useResizeObserver } from './shared/useResizeObserver';
-import { brownianPath, histogram, paletteSGMCMC } from './shared/sgmcmc';
+import { brownianPath, brownianTerminalValues, histogram, paletteSGMCMC } from './shared/sgmcmc';
 
 const T_MAX = 1.0;
 const N_HIST_PATHS = 5000;
@@ -57,13 +57,11 @@ function runPaths(K: number, dt: number, chainSeed: number): CachedRun {
     const rng = mulberry32(chainSeed * 991 + 31 + k);
     paths.push(brownianPath(T_MAX, dt, rng));
   }
-  // Histogram of W_T over many extra independent paths
-  const wT = new Float32Array(N_HIST_PATHS);
-  for (let k = 0; k < N_HIST_PATHS; k++) {
-    const rng = mulberry32(chainSeed * 991 + 1000 + k);
-    const p = brownianPath(T_MAX, dt, rng);
-    wT[k] = p.w[p.w.length - 1];
-  }
+  // Histogram of W_T over many independent paths. Use the specialized
+  // terminal-only helper — generating full paths just to keep the last
+  // value would allocate 2 · N_HIST_PATHS Float32Arrays per slider commit.
+  const rngHist = mulberry32(chainSeed * 991 + 1000);
+  const wT = brownianTerminalValues(T_MAX, dt, N_HIST_PATHS, rngHist);
   const histAtT = histogram(wT, -3, 3, 30);
   return { paths, histAtT, K, dt, chainSeed };
 }
@@ -179,7 +177,21 @@ function PathsPanel({ paths, width, height }: { paths: { t: Float32Array; w: Flo
   const margin = { top: 8, right: 12, bottom: 28, left: 36 };
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
-  const yAbs = useMemo(() => Math.max(3, ...paths.flatMap((p) => Array.from(p.w).map(Math.abs))) * 1.05, [paths]);
+  // Avoid `Math.max(...flatMap(...))` here: with K up to 40 paths and
+  // dt down to 0.001 the spread expands to ~40k arguments, which spills
+  // through the JS call-stack limit on some engines and allocates a chain
+  // of intermediate arrays. The explicit loop is O(K · pathLen) with no
+  // intermediate allocations.
+  const yAbs = useMemo(() => {
+    let mx = 3;
+    for (const p of paths) {
+      for (let i = 0; i < p.w.length; i++) {
+        const a = Math.abs(p.w[i]);
+        if (a > mx) mx = a;
+      }
+    }
+    return mx * 1.05;
+  }, [paths]);
   const xS = d3.scaleLinear().domain([0, T_MAX]).range([0, innerW]);
   const yS = d3.scaleLinear().domain([-yAbs, yAbs]).range([innerH, 0]);
 

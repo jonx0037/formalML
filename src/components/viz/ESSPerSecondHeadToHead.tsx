@@ -12,9 +12,12 @@
 //       become the bottleneck. The crossover is around N ≈ 5k for this
 //       problem.
 //   (b) Posterior-mean estimates at N_max for the first 5 components,
-//       compared against the true β. Reveals the regime where SGHMC
-//       diverges (large N at the chosen friction–step pair) while NUTS
-//       and SGLD recover the truth.
+//       compared against the true β. NUTS recovers truth; SGLD lands at
+//       roughly 10× truth (the §8 mini-batch bias is dominant at these
+//       hyperparameters); SGHMC diverges at large N for the chosen
+//       friction–step pair. The §12.3 lesson: hyperparameters tuned for
+//       smaller N do not transfer automatically — the (η, C) pair we use
+//       here was tuned at N ≈ 1,000 and degrades visibly as N grows.
 //
 // Controls: N selector. Other parameters fixed (this is a precomputed sweep).
 // Static fallback: /images/topics/stochastic-gradient-mcmc/12_head_to_head.png.
@@ -38,7 +41,7 @@ const FIGURE_PATH = '/images/topics/stochastic-gradient-mcmc/12_head_to_head.png
 const ALT =
   'Two-panel head-to-head benchmark on Bayesian logistic regression. (a) ESS per second of wall-clock time vs dataset size N: NUTS dominates at small N; SGLD/SGHMC scale beyond it once full-batch gradients become the bottleneck. (b) Posterior means at N = 50,000 for the first 5 regression coefficients vs the true β.';
 const CAPTION =
-  'Figure 12. The §12 head-to-head decision pin. NUTS gives high-quality samples but pays O(N) per gradient; SGLD/SGHMC pay O(B) at the cost of finite-sample bias. The crossover happens around N ≈ 5,000 for this problem; deeper architectures push it lower. SGHMC diverges at large N for this particular (η, C) pair — a reminder that hyperparameter tuning matters.';
+  'Figure 12. The §12 head-to-head decision pin. NUTS gives high-quality samples but pays O(N) per gradient; SGLD/SGHMC pay O(B) at the cost of finite-sample bias. NUTS recovers the true β at every N; SGLD lands roughly 10× off (the §8 O(η + 1/B) bias dominates here); SGHMC diverges at large N for this particular (η, C) pair — the same hyperparameters that worked at N ≈ 1,000 stop working at N = 50,000. The crossover in panel (a) happens around N ≈ 5,000; deeper architectures push it lower. The whole figure is a reminder that getting the bias-variance trade-off right takes per-N hyperparameter tuning, not one-shot defaults.';
 const ARIA = 'Figure 12: SG-MCMC vs NUTS head-to-head on Bayesian logistic regression';
 
 export default function ESSPerSecondHeadToHead() {
