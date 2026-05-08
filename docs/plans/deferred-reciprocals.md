@@ -296,26 +296,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _BIC approximates the log marginal likelihood of a single model. BMA weights predictions by posterior model probabilities. §24.4 Rem 7 flags; §24.10 Rem 23 forward-points; full treatment Track 7._
 
-## When `formalml/bayesian-neural-networks` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-foundations-and-prior-selection** declares `formalmlConnections` → `bayesian-neural-networks` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _BNN posteriors are MVN near the MAP estimate by BvM (§25.8 Thm 5); the Laplace approximation (§25.8 Rem 16) is the canonical construction. formalml's BNN topic develops non-conjugate posterior appr…_
-- **formalStatistics/central-limit-theorem** declares `formalmlConnections` → `bayesian-neural-networks` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Bernstein–von Mises theorem (the Bayesian CLT) proves that the posterior distribution √n(θ − θ₀) | X₁,…,Xₙ converges in total variation to N(0, I(θ₀)⁻¹), where I(θ₀) is the Fisher information. …_
-- **formalStatistics/hierarchical-bayes-and-partial-pooling** declares `formalmlConnections` → `bayesian-neural-networks` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Hierarchical priors over weights, MC-dropout, deep ensembles, SG-MCMC over NN posteriors. §28.10 Rem 24 pointer._
-- **formalStatistics/modes-of-convergence** declares `formalmlConnections` → `bayesian-neural-networks` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Bernstein–von Mises theorem states that the posterior distribution converges in total variation (hence in distribution) to a Normal centered at the MLE. This is the frequentist justification fo…_
-- **formalStatistics/multivariate-distributions** declares `formalmlConnections` → `bayesian-neural-networks` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Weight priors w ~ N_p(0, σ²I) are multivariate Normal. The posterior p(w|D) is approximately MVN for well-specified models. The Laplace approximation uses the Hessian as the inverse covariance._
-
 ## When `formalml/bias-variance-tradeoff` ships
 
 Add the reciprocal pointer back to:
