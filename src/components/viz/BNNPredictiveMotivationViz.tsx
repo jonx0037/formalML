@@ -28,6 +28,14 @@ import {
   type TrainingData,
   type TrainingSpec,
 } from './shared/bayesian-ml';
+import {
+  buildGridFlat,
+  canvasFromColor,
+  DEFAULT_GRID,
+  isoContourPath,
+  mathRowMajorToCanvas,
+  varianceOverK,
+} from './shared/bnn-grid-render';
 
 // -----------------------------------------------------------------------------
 // Constants — architecture, training spec, grid
@@ -48,11 +56,8 @@ const TRAINING_BASE = (seed: number): TrainingSpec => ({
 });
 const POOL_SIZE = 10;
 const N_TRAIN = 300;
-const GRID_RES = 60;
-const GRID_X_MIN = -2.5;
-const GRID_X_MAX = 2.5;
-const GRID_Y_MIN = -2.0;
-const GRID_Y_MAX = 2.0;
+const { res: GRID_RES, xMin: GRID_X_MIN, xMax: GRID_X_MAX, yMin: GRID_Y_MIN, yMax: GRID_Y_MAX } =
+  DEFAULT_GRID;
 
 const FIGURE_PATH = '/images/topics/bayesian-neural-networks/01_point_vs_bayesian_predictive.png';
 const ALT =
@@ -75,20 +80,6 @@ interface CachedEnsemble {
   seed: number;
 }
 
-function buildGridFlat(): Float32Array {
-  const out = new Float32Array(GRID_RES * GRID_RES * 2);
-  for (let i = 0; i < GRID_RES; i++) {
-    const x = GRID_X_MIN + (i / (GRID_RES - 1)) * (GRID_X_MAX - GRID_X_MIN);
-    for (let j = 0; j < GRID_RES; j++) {
-      const y = GRID_Y_MIN + (j / (GRID_RES - 1)) * (GRID_Y_MAX - GRID_Y_MIN);
-      const idx = (i * GRID_RES + j) * 2;
-      out[idx] = x;
-      out[idx + 1] = y;
-    }
-  }
-  return out;
-}
-
 const yieldToBrowser = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -96,7 +87,7 @@ async function trainAndCache(noise: number, seed: number): Promise<CachedEnsembl
   await yieldToBrowser();
   const data = makeMoonsData(N_TRAIN, noise, seed);
   const ensemble = deepEnsembleTraining(ARCH, TRAINING_BASE(seed), POOL_SIZE, data);
-  const grid = buildGridFlat();
+  const grid = buildGridFlat(DEFAULT_GRID);
   const gridProbs = ensemble.predictOnGrid(grid, GRID_RES * GRID_RES);
   return { data, ensemble, gridProbs, noise, seed };
 }
@@ -109,54 +100,6 @@ type CompState =
   | { kind: 'idle' }
   | { kind: 'training'; reason: 'first' | 'noise' | 'reseed' }
   | { kind: 'ready'; cached: CachedEnsemble };
-
-// -----------------------------------------------------------------------------
-// Heatmap → canvas helpers
-// -----------------------------------------------------------------------------
-
-/**
- * Convert a per-grid Float32Array (math-coord row-major: index i*GRID_RES + j)
- * to a canvas-row-major Float32Array (top-row first, x increasing left→right).
- * Canvas y is flipped relative to math y.
- */
-function mathRowMajorToCanvas(probs: Float32Array, gridRes: number): Float32Array {
-  const out = new Float32Array(gridRes * gridRes);
-  for (let i = 0; i < gridRes; i++) {
-    for (let j = 0; j < gridRes; j++) {
-      const canvasRow = gridRes - 1 - j;
-      out[canvasRow * gridRes + i] = probs[i * gridRes + j];
-    }
-  }
-  return out;
-}
-
-function canvasFromColor(
-  values: Float32Array,
-  gridRes: number,
-  colorMap: (v: number) => string,
-): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = gridRes;
-  canvas.height = gridRes;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-  const imgData = ctx.createImageData(gridRes, gridRes);
-  for (let r = 0; r < gridRes; r++) {
-    for (let c = 0; c < gridRes; c++) {
-      const v = values[r * gridRes + c];
-      const rgb = d3.color(colorMap(v))?.rgb();
-      const idx = (r * gridRes + c) * 4;
-      if (rgb) {
-        imgData.data[idx + 0] = rgb.r;
-        imgData.data[idx + 1] = rgb.g;
-        imgData.data[idx + 2] = rgb.b;
-        imgData.data[idx + 3] = 255;
-      }
-    }
-  }
-  ctx.putImageData(imgData, 0, 0);
-  return canvas.toDataURL();
-}
 
 // -----------------------------------------------------------------------------
 // Component
@@ -581,35 +524,13 @@ function Boundaries({
 }) {
   const xS = d3.scaleLinear().domain([GRID_X_MIN, GRID_X_MAX]).range([0, width]);
   const yS = d3.scaleLinear().domain([GRID_Y_MIN, GRID_Y_MAX]).range([height, 0]);
-  const cellW = width / (GRID_RES - 1);
-  const cellH = height / (GRID_RES - 1);
-  // d3.contours wants canvas-row-major (top-left origin). Convert each member's
-  // grid, run marching squares at the 0.5 threshold, and emit one path per member.
   const paths = useMemo(() => {
     const out: string[] = [];
-    const contour = d3.contours().size([GRID_RES, GRID_RES]).thresholds([0.5]);
     for (let k = 0; k < K; k++) {
-      const arr = Array.from(mathRowMajorToCanvas(gridProbs[k], GRID_RES));
-      const polys = contour(arr);
-      // d3.contours returns a MultiPolygon in [col, row] grid-cell coordinates;
-      // map each ring to SVG pixel coordinates.
-      const segments: string[] = [];
-      for (const polygon of polys[0]?.coordinates ?? []) {
-        for (const ring of polygon) {
-          if (ring.length === 0) continue;
-          const pts = ring.map(([col, row]) => {
-            const px = col * cellW;
-            const py = row * cellH;
-            return `${px.toFixed(2)},${py.toFixed(2)}`;
-          });
-          segments.push(`M ${pts.join(' L ')}`);
-        }
-      }
-      out.push(segments.join(' '));
+      out.push(isoContourPath(gridProbs[k], GRID_RES, width, height, 0.5));
     }
     return out;
-    // cellW, cellH derive from width/height; include them so resize re-paths.
-  }, [gridProbs, K, cellW, cellH]);
+  }, [gridProbs, K, width, height]);
 
   return (
     <>
@@ -639,32 +560,3 @@ function Boundaries({
   );
 }
 
-// -----------------------------------------------------------------------------
-// Pure helpers — pointwise mean / variance over the first K predictions.
-// -----------------------------------------------------------------------------
-
-function meanOverK(gridProbs: Float32Array[], K: number): Float32Array {
-  const n = gridProbs[0].length;
-  const out = new Float32Array(n);
-  for (let k = 0; k < K; k++) {
-    const p = gridProbs[k];
-    for (let i = 0; i < n; i++) out[i] += p[i];
-  }
-  for (let i = 0; i < n; i++) out[i] /= K;
-  return out;
-}
-
-function varianceOverK(gridProbs: Float32Array[], K: number): Float32Array {
-  const n = gridProbs[0].length;
-  const mean = meanOverK(gridProbs, K);
-  const out = new Float32Array(n);
-  for (let k = 0; k < K; k++) {
-    const p = gridProbs[k];
-    for (let i = 0; i < n; i++) {
-      const d = p[i] - mean[i];
-      out[i] += d * d;
-    }
-  }
-  for (let i = 0; i < n; i++) out[i] /= Math.max(K - 1, 1);
-  return out;
-}
