@@ -23,5 +23,14 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      // Disable minification on Vercel to reduce build-time memory pressure.
+      // The ~30 MB extra HTML/JS is acceptable for a static math-heavy site;
+      // gzip/brotli compression still applies at the CDN. See PR #73 for
+      // why this matters: rehype-katex on the BNN page consumes >6 GB of
+      // V8 heap during build, leaving no room for esbuild/terser minification
+      // workers in the 8 GB Vercel container.
+      minify: process.env.VERCEL ? false : true,
+    },
   },
 });
