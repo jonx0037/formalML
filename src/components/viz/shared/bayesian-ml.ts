@@ -860,3 +860,137 @@ export function nngpArcCosineKernel(
   }
   return K;
 }
+
+// =============================================================================
+// DATA SYNTHESIS: makeMoonsData (§§1, 2, 4, 5 default training set)
+// =============================================================================
+// sklearn-style two-moons with Gaussian noise. Top moon (y=0): (cos t, sin t)
+// for t ∈ [0, π]. Bottom moon (y=1): (1 − cos t, 0.5 − sin t) for t ∈ [0, π].
+// Noise is N(0, noise²) per coordinate, matching sklearn.datasets.make_moons.
+// =============================================================================
+
+export function makeMoonsData(n: number, noise: number, seed: number): TrainingData {
+  const rng = mulberry32(seed);
+  const X = new Float32Array(n * 2);
+  const y = new Float32Array(n);
+  const half = Math.floor(n / 2);
+  let buf: [number, number] | null = null;
+  const gauss = (): number => {
+    if (buf) {
+      const v = buf[1];
+      buf = null;
+      return v;
+    }
+    const [a, b] = gaussianPair(rng);
+    buf = [a, b];
+    return a;
+  };
+  for (let i = 0; i < n; i++) {
+    const isUpper = i < half;
+    const idxInMoon = isUpper ? i : i - half;
+    const denom = isUpper ? Math.max(half - 1, 1) : Math.max(n - half - 1, 1);
+    const t = (idxInMoon / denom) * Math.PI;
+    const baseX = isUpper ? Math.cos(t) : 1 - Math.cos(t);
+    const baseY = isUpper ? Math.sin(t) : 0.5 - Math.sin(t);
+    X[i * 2 + 0] = baseX + noise * gauss();
+    X[i * 2 + 1] = baseY + noise * gauss();
+    y[i] = isUpper ? 0 : 1;
+  }
+  return { X, y, n };
+}
+
+// =============================================================================
+// PCA: pcaProject2D (§2 loss-landscape viz)
+// =============================================================================
+// Top-2 PC projection of K weight vectors of dimension p. Uses the K×K Gram
+// matrix Xc Xc^T rather than the p×p covariance, since K ≪ p (typical: K=30,
+// p=2241). Power iteration with deflation; deterministic via a seeded RNG.
+//
+// Returned scores[i] = (√λ₁·v₁[i], √λ₂·v₂[i]) — the projection of sample i
+// onto the top-2 PCs in input space. PC vectors in p-space are not returned;
+// callers needing them can compute pc_k = (Xc^T v_k) / √λ_k.
+// =============================================================================
+
+export interface PCAProject2DResult {
+  /** Mean vector subtracted from each input row, length p. */
+  mean: Float32Array;
+  /** Top two eigenvalues of the K×K Gram matrix (descending). */
+  eigenvalues: [number, number];
+  /** 2D scores: scores[i] = projection of X[i] onto (PC1, PC2). */
+  scores: Array<[number, number]>;
+}
+
+function powerIterationTopEigSym(
+  M: number[][],
+  rng: () => number,
+  maxIters = 200,
+  tol = 1e-9,
+): { eigenvalue: number; eigenvector: number[] } {
+  const K = M.length;
+  let v = new Array<number>(K);
+  for (let i = 0; i < K; i++) v[i] = rng() - 0.5;
+  let norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+  for (let i = 0; i < K; i++) v[i] /= norm;
+  let lambda = 0;
+  for (let iter = 0; iter < maxIters; iter++) {
+    const Mv = new Array<number>(K).fill(0);
+    for (let i = 0; i < K; i++) {
+      let s = 0;
+      for (let j = 0; j < K; j++) s += M[i][j] * v[j];
+      Mv[i] = s;
+    }
+    norm = Math.sqrt(Mv.reduce((s, x) => s + x * x, 0));
+    if (norm === 0) break;
+    const vNew = Mv.map((x) => x / norm);
+    // Rayleigh quotient as eigenvalue estimate
+    let lambdaNew = 0;
+    for (let i = 0; i < K; i++) lambdaNew += vNew[i] * Mv[i];
+    if (Math.abs(lambdaNew - lambda) < tol * Math.max(1, Math.abs(lambdaNew))) {
+      v = vNew;
+      lambda = lambdaNew;
+      break;
+    }
+    v = vNew;
+    lambda = lambdaNew;
+  }
+  return { eigenvalue: lambda, eigenvector: v };
+}
+
+export function pcaProject2D(X: Float32Array[], seed = 1): PCAProject2DResult {
+  const K = X.length;
+  if (K < 2) throw new Error('pcaProject2D requires at least 2 input vectors');
+  const p = X[0].length;
+  const mean = new Float32Array(p);
+  for (let k = 0; k < K; k++) for (let i = 0; i < p; i++) mean[i] += X[k][i];
+  for (let i = 0; i < p; i++) mean[i] /= K;
+  const Xc: Float32Array[] = X.map((x) => {
+    const out = new Float32Array(p);
+    for (let i = 0; i < p; i++) out[i] = x[i] - mean[i];
+    return out;
+  });
+  const G: number[][] = [];
+  for (let i = 0; i < K; i++) {
+    const row = new Array<number>(K).fill(0);
+    for (let j = 0; j <= i; j++) {
+      let s = 0;
+      for (let d = 0; d < p; d++) s += Xc[i][d] * Xc[j][d];
+      row[j] = s;
+    }
+    G.push(row);
+  }
+  for (let i = 0; i < K; i++) for (let j = i + 1; j < K; j++) G[i][j] = G[j][i];
+  const rng = mulberry32(seed);
+  const eig1 = powerIterationTopEigSym(G, rng);
+  const lam1 = Math.max(eig1.eigenvalue, 0);
+  for (let i = 0; i < K; i++)
+    for (let j = 0; j < K; j++) G[i][j] -= lam1 * eig1.eigenvector[i] * eig1.eigenvector[j];
+  const eig2 = powerIterationTopEigSym(G, rng);
+  const lam2 = Math.max(eig2.eigenvalue, 0);
+  const sqrtL1 = Math.sqrt(lam1);
+  const sqrtL2 = Math.sqrt(lam2);
+  const scores: Array<[number, number]> = [];
+  for (let i = 0; i < K; i++) {
+    scores.push([sqrtL1 * eig1.eigenvector[i], sqrtL2 * eig2.eigenvector[i]]);
+  }
+  return { mean, eigenvalues: [lam1, lam2], scores };
+}

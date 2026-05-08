@@ -27,6 +27,7 @@ import {
   bnnCalibrationDiagnostic,
   deepEnsembleTraining,
   lastLayerLaplace,
+  makeMoonsData,
   mcDropoutInference,
   mlpForward,
   mlpInit,
@@ -34,6 +35,7 @@ import {
   mlpTrain,
   mulberry32,
   nngpArcCosineKernel,
+  pcaProject2D,
   type MLPArchSpec,
   type TrainingData,
   type TrainingSpec,
@@ -350,6 +352,125 @@ header('9. nngpArcCosineKernel closed-form invariants');
     if (K[i][i] <= 0) pdOk = false;
   }
   check('kernel matrix has positive diagonal (necessary for PD)', pdOk);
+}
+
+// -----------------------------------------------------------------------------
+// makeMoonsData — sklearn-style two-moons with Gaussian noise
+// -----------------------------------------------------------------------------
+
+header('9. makeMoonsData');
+{
+  const noisy = makeMoonsData(200, 0.20, 7);
+  check('returns n=200 samples', noisy.n === 200 && noisy.X.length === 400 && noisy.y.length === 200);
+  // Labels: half upper (y=0), half lower (y=1). Exact half = 100 each.
+  let n0 = 0;
+  let n1 = 0;
+  for (let i = 0; i < noisy.n; i++) (noisy.y[i] === 0 ? n0++ : n1++);
+  check('balanced labels (100/100)', n0 === 100 && n1 === 100, `n0=${n0}, n1=${n1}`);
+
+  // Geometry: at noise=0, points lie exactly on the parametric moons.
+  const clean = makeMoonsData(20, 0, 0);
+  let onCurve = true;
+  for (let i = 0; i < clean.n; i++) {
+    const x = clean.X[i * 2];
+    const yc = clean.X[i * 2 + 1];
+    if (clean.y[i] === 0) {
+      // Upper moon: x² + y² = 1 (within float tolerance)
+      if (Math.abs(x * x + yc * yc - 1) > 1e-5) onCurve = false;
+    } else {
+      // Lower moon: (1-x)² + (0.5-y)² = 1
+      const dx = 1 - x;
+      const dy = 0.5 - yc;
+      if (Math.abs(dx * dx + dy * dy - 1) > 1e-5) onCurve = false;
+    }
+  }
+  check('noise=0 → samples lie on parametric moons (x²+y²=1 / (1−x)²+(0.5−y)²=1)', onCurve);
+
+  // Determinism: same seed → same data
+  const a = makeMoonsData(50, 0.20, 13);
+  const b = makeMoonsData(50, 0.20, 13);
+  let same = true;
+  for (let i = 0; i < a.X.length; i++) if (a.X[i] !== b.X[i]) same = false;
+  check('seed-reproducible', same);
+
+  // Empirical std at noise=0.20 should be in (0.10, 0.30) — Gaussian sd of perturbation,
+  // not affected much by the moons' deterministic shape variance because we measure
+  // residuals from the parametric curve.
+  let sumSq = 0;
+  let count = 0;
+  const noisyShape = makeMoonsData(500, 0.20, 99);
+  const half = Math.floor(noisyShape.n / 2);
+  for (let i = 0; i < noisyShape.n; i++) {
+    const isUpper = i < half;
+    const idxInMoon = isUpper ? i : i - half;
+    const denom = isUpper ? Math.max(half - 1, 1) : Math.max(noisyShape.n - half - 1, 1);
+    const t = (idxInMoon / denom) * Math.PI;
+    const baseX = isUpper ? Math.cos(t) : 1 - Math.cos(t);
+    const baseY = isUpper ? Math.sin(t) : 0.5 - Math.sin(t);
+    const dx = noisyShape.X[i * 2] - baseX;
+    const dy = noisyShape.X[i * 2 + 1] - baseY;
+    sumSq += dx * dx + dy * dy;
+    count += 2;
+  }
+  const empStd = Math.sqrt(sumSq / count);
+  check(
+    'noise=0.20 → empirical std in (0.15, 0.25)',
+    empStd > 0.15 && empStd < 0.25,
+    `empirical std = ${empStd.toFixed(3)}`,
+  );
+}
+
+// -----------------------------------------------------------------------------
+// pcaProject2D — dual PCA via Gram matrix
+// -----------------------------------------------------------------------------
+
+header('10. pcaProject2D');
+{
+  // Construct a planted-2D dataset: 10 points lying on a 2D plane embedded in R^5
+  // with known PC directions e1, e2. The first two PCs should recover most variance.
+  const K = 10;
+  const p = 5;
+  const X: Float32Array[] = [];
+  const rng = mulberry32(1);
+  for (let i = 0; i < K; i++) {
+    const v = new Float32Array(p);
+    v[0] = 2 * (rng() - 0.5) * 5; // PC1: large variance
+    v[1] = 2 * (rng() - 0.5) * 1; // PC2: small variance
+    // Other dims: tiny noise
+    for (let d = 2; d < p; d++) v[d] = 2 * (rng() - 0.5) * 0.01;
+    X.push(v);
+  }
+  const result = pcaProject2D(X, 42);
+  check('returns K scores', result.scores.length === K);
+  check('returns 2-element eigenvalues', result.eigenvalues.length === 2);
+  check('λ₁ ≥ λ₂ ≥ 0', result.eigenvalues[0] >= result.eigenvalues[1] && result.eigenvalues[1] >= 0);
+  // λ₁ should dominate: the planted PC1 has variance ≈ 25/3, PC2 ≈ 1/3, ratio ~75.
+  check(
+    'λ₁ / λ₂ > 5 for planted-2D data',
+    result.eigenvalues[0] / Math.max(result.eigenvalues[1], 1e-12) > 5,
+    `λ₁/λ₂ = ${(result.eigenvalues[0] / result.eigenvalues[1]).toFixed(2)}`,
+  );
+  // Reconstruction sanity: sum of squared scores ≈ total centered variance
+  const totalCenteredVar =
+    X.reduce((s, x) => {
+      let acc = 0;
+      for (let d = 0; d < p; d++) acc += (x[d] - result.mean[d]) ** 2;
+      return s + acc;
+    }, 0);
+  const explainedVar = result.eigenvalues[0] + result.eigenvalues[1];
+  check(
+    '(λ₁+λ₂) / totalVar > 0.95 for planted-2D data',
+    explainedVar / totalCenteredVar > 0.95,
+    `ratio = ${(explainedVar / totalCenteredVar).toFixed(3)}`,
+  );
+  // Determinism via seed
+  const r2 = pcaProject2D(X, 42);
+  let identical = true;
+  for (let i = 0; i < K; i++) {
+    if (Math.abs(r2.scores[i][0] - result.scores[i][0]) > 1e-9) identical = false;
+    if (Math.abs(r2.scores[i][1] - result.scores[i][1]) > 1e-9) identical = false;
+  }
+  check('same seed → identical scores', identical);
 }
 
 // -----------------------------------------------------------------------------
