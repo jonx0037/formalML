@@ -36,6 +36,7 @@ import {
   mulberry32,
   nngpArcCosineKernel,
   pcaProject2D,
+  sgMCMCBNNTraining,
   type MLPArchSpec,
   type TrainingData,
   type TrainingSpec,
@@ -471,6 +472,61 @@ header('10. pcaProject2D');
     if (Math.abs(r2.scores[i][1] - result.scores[i][1]) > 1e-9) identical = false;
   }
   check('same seed → identical scores', identical);
+}
+
+// -----------------------------------------------------------------------------
+// sgMCMCBNNTraining — SGLD / SGHMC chain sanity
+// -----------------------------------------------------------------------------
+
+header('11. sgMCMCBNNTraining — SGLD');
+{
+  const data = makeMoonsData(150, 0.2, 7);
+  const result = sgMCMCBNNTraining(arch, { lr: 0, weightDecay: 1e-4, epochs: 0, optimizer: 'adam', seed: 7 }, data, {
+    method: 'SGLD',
+    eta: 5e-7,
+    batchSize: 150,
+    burnIn: 50,
+    samples: 80,
+    thin: 1,
+    seed: 7,
+  });
+  check('SGLD returns S=80 weight samples', result.weights.length === 80);
+  check(
+    'each weight sample matches pDim',
+    result.weights.every((w) => w.length === mlpLayout(arch).pDim),
+  );
+  check('weightTrace length ≥ samples * thin', result.weightTrace.length >= 80);
+  check('autocorrelation has finite values', result.autocorrelation.every((v) => Number.isFinite(v)));
+  check('autocorrelation[0] ≈ 1', Math.abs(result.autocorrelation[0] - 1) < 1e-6, `acf[0]=${result.autocorrelation[0].toFixed(4)}`);
+  // All sampled weights should be finite
+  let allFinite = true;
+  for (const w of result.weights) for (let i = 0; i < w.length; i++) if (!Number.isFinite(w[i])) allFinite = false;
+  check('all sampled weights finite (no NaN/Inf — step size stable)', allFinite);
+}
+
+header('12. sgMCMCBNNTraining — SGHMC');
+{
+  const data = makeMoonsData(150, 0.2, 11);
+  const result = sgMCMCBNNTraining(arch, { lr: 0, weightDecay: 1e-4, epochs: 0, optimizer: 'adam', seed: 11 }, data, {
+    method: 'SGHMC',
+    eta: 1e-4,
+    batchSize: 150,
+    burnIn: 50,
+    samples: 80,
+    thin: 1,
+    friction: 0.05,
+    seed: 11,
+  });
+  check('SGHMC returns S=80 weight samples', result.weights.length === 80);
+  check('weightTrace populated', result.weightTrace.length > 0);
+  check('autocorrelation[0] ≈ 1', Math.abs(result.autocorrelation[0] - 1) < 1e-6);
+  // SGHMC should mix faster than SGLD on average — autocorrelation at lag 5 typically lower.
+  // We don't lock this in as a hard check (RNG variance), just assert finiteness.
+  check('SGHMC autocorrelation values finite', result.autocorrelation.every((v) => Number.isFinite(v)));
+  // Stability check
+  let allFinite = true;
+  for (const w of result.weights) for (let i = 0; i < w.length; i++) if (!Number.isFinite(w[i])) allFinite = false;
+  check('all SGHMC sampled weights finite', allFinite);
 }
 
 // -----------------------------------------------------------------------------
