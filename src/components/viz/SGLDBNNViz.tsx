@@ -46,6 +46,7 @@ import {
   DEFAULT_GRID,
   isoContourPath,
   mathRowMajorToCanvas,
+  maxFinite,
   meanOverK,
   stdOverK,
 } from './shared/bnn-grid-render';
@@ -447,7 +448,7 @@ function Panels({
     [mean],
   );
   const stdURL = useMemo(() => {
-    const sMax = Math.max(0.001, ...std);
+    const sMax = maxFinite(std, 0.001);
     const scale = d3.scaleSequential(d3.interpolateViridis).domain([0, sMax]);
     return canvasFromColor(mathRowMajorToCanvas(std, GRID_RES), GRID_RES, scale);
   }, [std]);

@@ -359,7 +359,7 @@ header('9. nngpArcCosineKernel closed-form invariants');
 // makeMoonsData — sklearn-style two-moons with Gaussian noise
 // -----------------------------------------------------------------------------
 
-header('9. makeMoonsData');
+header('10. makeMoonsData');
 {
   const noisy = makeMoonsData(200, 0.20, 7);
   check('returns n=200 samples', noisy.n === 200 && noisy.X.length === 400 && noisy.y.length === 200);
@@ -425,7 +425,7 @@ header('9. makeMoonsData');
 // pcaProject2D — dual PCA via Gram matrix
 // -----------------------------------------------------------------------------
 
-header('10. pcaProject2D');
+header('11. pcaProject2D');
 {
   // Construct a planted-2D dataset: 10 points lying on a 2D plane embedded in R^5
   // with known PC directions e1, e2. The first two PCs should recover most variance.
@@ -446,11 +446,14 @@ header('10. pcaProject2D');
   check('returns 2-element eigenvalues', result.eigenvalues.length === 2);
   check('λ₁ ≥ λ₂ ≥ 0', result.eigenvalues[0] >= result.eigenvalues[1] && result.eigenvalues[1] >= 0);
   // λ₁ should dominate: the planted PC1 has variance ≈ 25/3, PC2 ≈ 1/3, ratio ~75.
-  check(
-    'λ₁ / λ₂ > 5 for planted-2D data',
-    result.eigenvalues[0] / Math.max(result.eigenvalues[1], 1e-12) > 5,
-    `λ₁/λ₂ = ${(result.eigenvalues[0] / result.eigenvalues[1]).toFixed(2)}`,
-  );
+  {
+    const ratio = result.eigenvalues[0] / Math.max(result.eigenvalues[1], 1e-12);
+    check(
+      'λ₁ / λ₂ > 5 for planted-2D data',
+      ratio > 5,
+      `λ₁/λ₂ ≈ ${Number.isFinite(ratio) ? ratio.toFixed(2) : '∞'}`,
+    );
+  }
   // Reconstruction sanity: sum of squared scores ≈ total centered variance
   const totalCenteredVar =
     X.reduce((s, x) => {
@@ -478,7 +481,7 @@ header('10. pcaProject2D');
 // sgMCMCBNNTraining — SGLD / SGHMC chain sanity
 // -----------------------------------------------------------------------------
 
-header('11. sgMCMCBNNTraining — SGLD');
+header('12. sgMCMCBNNTraining — SGLD');
 {
   const data = makeMoonsData(150, 0.2, 7);
   const result = sgMCMCBNNTraining(arch, { lr: 0, weightDecay: 1e-4, epochs: 0, optimizer: 'adam', seed: 7 }, data, {
@@ -504,7 +507,7 @@ header('11. sgMCMCBNNTraining — SGLD');
   check('all sampled weights finite (no NaN/Inf — step size stable)', allFinite);
 }
 
-header('12. sgMCMCBNNTraining — SGHMC');
+header('13. sgMCMCBNNTraining — SGHMC');
 {
   const data = makeMoonsData(150, 0.2, 11);
   const result = sgMCMCBNNTraining(arch, { lr: 0, weightDecay: 1e-4, epochs: 0, optimizer: 'adam', seed: 11 }, data, {

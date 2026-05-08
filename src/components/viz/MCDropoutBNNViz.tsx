@@ -42,6 +42,7 @@ import {
   DEFAULT_GRID,
   isoContourPath,
   mathRowMajorToCanvas,
+  maxFinite,
   meanOverK,
   stdOverK,
 } from './shared/bnn-grid-render';
@@ -382,16 +383,20 @@ function Controls({
       </label>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
         <span>T (samples):</span>
+        {/* T re-prediction is cheap (<100 ms per tick), so commit live on
+            every onChange — no mouseup-only debounce. The dropout-rate slider
+            above keeps the mouseup-commit pattern because retraining is ~5 s. */}
         <input
           type="range"
           min={10}
           max={200}
           step={5}
           value={localT}
-          onChange={(e) => setLocalT(Number(e.target.value))}
-          onMouseUp={(e) => onTCommit(Number((e.target as HTMLInputElement).value))}
-          onTouchEnd={(e) => onTCommit(Number((e.target as HTMLInputElement).value))}
-          onKeyUp={(e) => onTCommit(Number((e.target as HTMLInputElement).value))}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            setLocalT(next);
+            onTCommit(next);
+          }}
           disabled={isBlocked}
           style={{ width: '120px' }}
           aria-label="Forward-pass count T"
@@ -475,7 +480,7 @@ function Panels({
     [mean],
   );
   const stdURL = useMemo(() => {
-    const sMax = Math.max(0.001, ...std);
+    const sMax = maxFinite(std, 0.001);
     const scale = d3.scaleSequential(d3.interpolateViridis).domain([0, sMax]);
     return canvasFromColor(mathRowMajorToCanvas(std, GRID_RES), GRID_RES, scale);
   }, [std]);

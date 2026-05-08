@@ -986,9 +986,20 @@ export function nngpArcCosineKernel(
 // =============================================================================
 // DATA SYNTHESIS: makeMoonsData (§§1, 2, 4, 5 default training set)
 // =============================================================================
-// sklearn-style two-moons with Gaussian noise. Top moon (y=0): (cos t, sin t)
-// for t ∈ [0, π]. Bottom moon (y=1): (1 − cos t, 0.5 − sin t) for t ∈ [0, π].
-// Noise is N(0, noise²) per coordinate, matching sklearn.datasets.make_moons.
+// Two-moons dataset with Gaussian noise. The geometry matches
+// sklearn.datasets.make_moons:
+//   top moon (y=0):    (cos t, sin t)            for t ∈ [0, π]
+//   bottom moon (y=1): (1 − cos t, 0.5 − sin t)  for t ∈ [0, π]
+//   per-coordinate noise: N(0, noise²)
+//
+// Two intentional simplifications relative to sklearn:
+//   - angles are evenly spaced along [0, π] rather than uniformly random.
+//     This makes seed-reproducible verification cheaper and gives the noise=0
+//     check (samples lie exactly on the parametric curves) a clean equality.
+//   - samples come back in deterministic class order (n/2 of class 0 followed
+//     by n/2 of class 1). sklearn shuffles. Callers that need shuffled data
+//     can shuffle in place; viz components iterate all samples per panel so
+//     ordering is irrelevant.
 // =============================================================================
 
 export function makeMoonsData(n: number, noise: number, seed: number): TrainingData {
@@ -1049,30 +1060,36 @@ function powerIterationTopEigSym(
   tol = 1e-9,
 ): { eigenvalue: number; eigenvector: number[] } {
   const K = M.length;
-  let v = new Array<number>(K);
+  const v = new Array<number>(K);
+  const Mv = new Array<number>(K);
   for (let i = 0; i < K; i++) v[i] = rng() - 0.5;
-  let norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+  let norm = 0;
+  for (let i = 0; i < K; i++) norm += v[i] * v[i];
+  norm = Math.sqrt(norm) || 1;
   for (let i = 0; i < K; i++) v[i] /= norm;
   let lambda = 0;
   for (let iter = 0; iter < maxIters; iter++) {
-    const Mv = new Array<number>(K).fill(0);
+    // Mv ← M v  (in-place into the hoisted buffer)
     for (let i = 0; i < K; i++) {
       let s = 0;
-      for (let j = 0; j < K; j++) s += M[i][j] * v[j];
+      const Mi = M[i];
+      for (let j = 0; j < K; j++) s += Mi[j] * v[j];
       Mv[i] = s;
     }
-    norm = Math.sqrt(Mv.reduce((s, x) => s + x * x, 0));
-    if (norm === 0) break;
-    const vNew = Mv.map((x) => x / norm);
-    // Rayleigh quotient as eigenvalue estimate
+    let mvNorm = 0;
+    for (let i = 0; i < K; i++) mvNorm += Mv[i] * Mv[i];
+    mvNorm = Math.sqrt(mvNorm);
+    if (mvNorm === 0) break;
+    // Rayleigh quotient λ = vᵀ M v ; with v normalized, λ ≈ ‖Mv‖ · sign(vᵀ Mv).
+    // Compute it from the unscaled product to avoid an extra pass.
     let lambdaNew = 0;
-    for (let i = 0; i < K; i++) lambdaNew += vNew[i] * Mv[i];
+    for (let i = 0; i < K; i++) lambdaNew += (Mv[i] / mvNorm) * Mv[i];
+    // v ← Mv / ‖Mv‖  (in-place into v)
+    for (let i = 0; i < K; i++) v[i] = Mv[i] / mvNorm;
     if (Math.abs(lambdaNew - lambda) < tol * Math.max(1, Math.abs(lambdaNew))) {
-      v = vNew;
       lambda = lambdaNew;
       break;
     }
-    v = vNew;
     lambda = lambdaNew;
   }
   return { eigenvalue: lambda, eigenvector: v };

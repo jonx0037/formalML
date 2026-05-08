@@ -134,8 +134,20 @@ export function stdOverK(arrays: Float32Array[], K: number): Float32Array {
   return v;
 }
 
+/** Stack-safe maximum of a Float32Array. Spreading the array into Math.max
+ *  hits the engine's argument-count limit on large grids; explicit reduce is
+ *  O(n) with a fixed call stack. Returns `floor` if the array is empty.
+ */
+export function maxFinite(arr: Float32Array, floor = 0): number {
+  let m = floor;
+  for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i];
+  return m;
+}
+
 /** Compute the SVG path d-string for the 0.5 isocontour of a single math-row-major
- *  probability grid, scaled to a (panelW, panelH) viewport. */
+ *  probability grid, scaled to a (panelW, panelH) viewport. d3.contours accepts
+ *  ArrayLike<number>, so the canvas-row-major Float32Array is consumed directly
+ *  with no Array.from copy. */
 export function isoContourPath(
   probs: Float32Array,
   res: number,
@@ -143,8 +155,14 @@ export function isoContourPath(
   panelH: number,
   threshold = 0.5,
 ): string {
-  const arr = Array.from(mathRowMajorToCanvas(probs, res));
-  const polys = d3.contours().size([res, res]).thresholds([threshold])(arr);
+  const arr = mathRowMajorToCanvas(probs, res);
+  // d3-contours' .d.ts declares `number[]`, but the runtime only does
+  // `values[i]` / `values.length` lookups — Float32Array satisfies both with
+  // identical semantics. Casting via unknown skips a per-tick O(N) copy.
+  const polys = d3
+    .contours()
+    .size([res, res])
+    .thresholds([threshold])(arr as unknown as number[]);
   if (polys.length === 0) return '';
   const cellW = panelW / (res - 1);
   const cellH = panelH / (res - 1);
