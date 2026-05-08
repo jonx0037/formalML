@@ -574,37 +574,38 @@ function estimateConditionNumberSPD(A: number[][], L: number[][]): number {
 }
 
 /**
- * Last-layer Laplace approximation. Runs one full training pass to find the
- * MAP, then computes the Hessian H = Φ^T diag(p(1-p)) Φ + λI in closed form
- * over the final-layer weights only, where Φ is the final-hidden-layer
- * feature matrix and p is the predictive probability. Cholesky-factor H,
- * draw N(0, H^{-1}) perturbations to the last-layer weights for sampling.
+ * Last-layer Laplace approximation given a *pre-trained* MAP. Computes the
+ * Hessian H = Φ^T diag(p(1-p)) Φ + λI in closed form over the final-layer
+ * weights only, where Φ is the final-hidden-layer feature matrix and p is
+ * the predictive probability. Cholesky-factor H, then draw N(0, H^{-1})
+ * perturbations to the last-layer weights for sampling.
+ *
+ * Decoupling Hessian from training is what enables interactive prior-scale
+ * (τ²) sliders in the §3 viz: the MAP is computed once, then re-Hessian'd
+ * cheaply (~ms) on every τ² tick.
  */
-export function lastLayerLaplace(
-  arch: MLPArchSpec,
-  training: TrainingSpec,
+export function lastLayerLaplaceFromMAP(
+  map: TrainedMLP,
   data: TrainingData,
+  weightDecay: number,
 ): LaplaceResult {
-  const map = mlpTrain(arch, training, data);
+  const arch = map.arch;
   const layout = mlpLayout(arch);
-  // Compute Φ (n × hiddenLast+1 with bias) and p(1-p) per row
   const lastIdx = layout.wSizes.length - 1;
-  const phiCols = layout.layerSizes[lastIdx]; // size of last hidden layer
+  const phiCols = layout.layerSizes[lastIdx];
   const phi: number[][] = [];
   const pVec: number[] = [];
-  // Forward to extract last-hidden activations + final probs
   const cache: MLPForwardCache = { acts: [], preActs: [] };
   const probs = mlpForward(data.X, data.n, map.weights, arch, layout, cache, null);
-  const lastActs = cache.acts[lastIdx]; // shape [n × phiCols]
+  const lastActs = cache.acts[lastIdx];
   for (let i = 0; i < data.n; i++) {
     const row: number[] = [];
     for (let j = 0; j < phiCols; j++) row.push(lastActs[i * phiCols + j]);
-    row.push(1.0); // bias
+    row.push(1.0);
     phi.push(row);
     const p = Math.max(Math.min(probs[i], 1 - BCE_EPSILON), BCE_EPSILON);
     pVec.push(p * (1 - p));
   }
-  // H = Φ^T W Φ + λI  where W = diag(p_i (1-p_i))
   const dim = phiCols + 1;
   const H: number[][] = [];
   for (let a = 0; a < dim; a++) {
@@ -615,17 +616,13 @@ export function lastLayerLaplace(
     for (let b = a; b < dim; b++) {
       let s = 0;
       for (let i = 0; i < data.n; i++) s += phi[i][a] * pVec[i] * phi[i][b];
-      if (a === b) s += training.weightDecay;
+      if (a === b) s += weightDecay;
       H[a][b] = s;
       H[b][a] = s;
     }
   }
   const L = choleskyFactor(H);
-  // True condition number κ(H) = λ_max / λ_min, estimated by power iteration
-  // on H and on H^{-1} (via L L^T solves). The block is small (~33×33) so
-  // this is cheap; ten iterations suffice for a viz-quality estimate.
   const conditionNumber = estimateConditionNumberSPD(H, L);
-  // Sampling: w_sample = w_map_lastblock + L^{-T} z, z ~ N(0, I)
   const lastWOff = layout.wOffsets[lastIdx];
   const lastBOff = layout.bOffsets[lastIdx];
   const sampleWeights = (S: number, seed: number): Float32Array[] => {
@@ -638,7 +635,6 @@ export function lastLayerLaplace(
         z[i] = g0;
         if (i + 1 < dim) z[i + 1] = g1;
       }
-      // Solve L^T x = z (back-substitution)
       const x = new Float32Array(dim);
       for (let i = dim - 1; i >= 0; i--) {
         let acc = z[i];
@@ -654,13 +650,22 @@ export function lastLayerLaplace(
     }
     return out;
   };
-  return {
-    map,
-    hessianCholesky: L,
-    pEffective: dim,
-    conditionNumber,
-    sampleWeights,
-  };
+  return { map, hessianCholesky: L, pEffective: dim, conditionNumber, sampleWeights };
+}
+
+/**
+ * Last-layer Laplace approximation. Convenience wrapper that trains the MAP
+ * and then calls lastLayerLaplaceFromMAP. Use the underlying primitive
+ * directly when you want to recompute the Hessian with a varying weightDecay
+ * without retraining.
+ */
+export function lastLayerLaplace(
+  arch: MLPArchSpec,
+  training: TrainingSpec,
+  data: TrainingData,
+): LaplaceResult {
+  const map = mlpTrain(arch, training, data);
+  return lastLayerLaplaceFromMAP(map, data, training.weightDecay);
 }
 
 /**
@@ -712,14 +717,23 @@ export function kfacLaplace(
 }
 
 // =============================================================================
-// §6–7 PRIMITIVE: sgMCMCBNNTraining
+// §6–7 PRIMITIVE: sgMCMCBNNTraining (in-browser)
 // =============================================================================
-// SGLD/SGHMC chains are too slow to run in-browser at the brief-spec'd
-// 1200-iteration budget (~30s per method on a 2020 laptop in Python with
-// PyTorch; substantially slower in pure-JS Float32Array). For v2 viz, §6/§7
-// components consume precomputed mean/std/trace/ACF JSON from
-// notebooks/bayesian-neural-networks/precompute_sgmcmc_grid.py. Stub here
-// preserves the brief §5 API surface.
+// Full-batch SGLD and SGHMC chains on Two Moons. Per the §2.4 dimensions
+// (n = 300, p = 2241), each step costs one mlpBackward call (~700k flops);
+// at 500 post-burn samples + 200 burn-in, total ~700 steps × 700k = 490 MFLOP
+// per chain (~2–4 s in pure JS). Acceptable for client:visible hydration.
+//
+// SGLD step (Welling & Teh 2011):
+//   θ ← θ − (η/2)(n · ∇NLL_avg(θ) + λ · θ) + ξ,   ξ ~ N(0, η I)
+// SGHMC step (Chen, Fox & Guestrin 2014):
+//   r ← (1 − c) r − η (n · ∇NLL_avg(θ) + λ · θ) + ξ,   ξ ~ N(0, 2 η c I)
+//   θ ← θ + η r
+// where λ = training.weightDecay (≡ Gaussian prior precision 1/τ²).
+//
+// Minibatching is supported via spec.batchSize but defaults to full-batch
+// (batchSize ≥ data.n). The minibatch gradient is rescaled by (n/b) to
+// estimate the full-data NLL gradient unbiasedly.
 // =============================================================================
 
 export interface SGMCMCSpec {
@@ -736,8 +750,28 @@ export interface SGMCMCSpec {
 
 export interface SGMCMCResult {
   weights: Float32Array[];
+  /** Single-component trace of one weight across the full chain (post-burn-in). */
   weightTrace: number[];
+  /** Autocorrelation function of weightTrace at lags 0..maxLag. */
   autocorrelation: number[];
+}
+
+function autocorrelation(x: number[], maxLag: number): number[] {
+  const n = x.length;
+  if (n === 0) return [];
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += x[i];
+  mean /= n;
+  let var0 = 0;
+  for (let i = 0; i < n; i++) var0 += (x[i] - mean) * (x[i] - mean);
+  if (var0 === 0) return new Array(maxLag + 1).fill(0);
+  const out: number[] = new Array(maxLag + 1).fill(0);
+  for (let lag = 0; lag <= maxLag; lag++) {
+    let s = 0;
+    for (let i = 0; i < n - lag; i++) s += (x[i] - mean) * (x[i + lag] - mean);
+    out[lag] = s / var0;
+  }
+  return out;
 }
 
 export function sgMCMCBNNTraining(
@@ -746,14 +780,102 @@ export function sgMCMCBNNTraining(
   data: TrainingData,
   spec: SGMCMCSpec,
 ): SGMCMCResult {
-  void arch;
-  void training;
-  void data;
-  void spec;
-  throw new Error(
-    'sgMCMCBNNTraining: SGLD/SGHMC chains are precomputed offline. ' +
-      'Load from /sample-data/bayesian-neural-networks/sgmcmc.json.',
-  );
+  const layout = mlpLayout(arch);
+  const weights = spec.warmStart
+    ? new Float32Array(spec.warmStart)
+    : mlpInit(arch, spec.seed);
+  const momentum = new Float32Array(layout.pDim);
+  const rng = mulberry32(spec.seed * 1009 + 13);
+  const lambda = training.weightDecay; // Gaussian prior precision 1/τ²
+  const useFullBatch = spec.batchSize >= data.n;
+  const totalSteps = spec.burnIn + spec.samples * spec.thin;
+  const samples: Float32Array[] = [];
+  const trace: number[] = [];
+  const traceComponent = 0; // first weight, arbitrary monitor
+  // Permutation buffer for minibatching
+  const perm = new Int32Array(data.n);
+  for (let i = 0; i < data.n; i++) perm[i] = i;
+  let permPos = data.n;
+
+  const Xb = useFullBatch ? data.X : new Float32Array(spec.batchSize * arch.inputDim);
+  const yb = useFullBatch ? data.y : new Float32Array(spec.batchSize);
+
+  // Reusable Gaussian sampler buffer (Box–Muller)
+  let gBuf: number | null = null;
+  const gauss = (): number => {
+    if (gBuf !== null) {
+      const v = gBuf;
+      gBuf = null;
+      return v;
+    }
+    const [a, b] = gaussianPair(rng);
+    gBuf = b;
+    return a;
+  };
+
+  for (let step = 0; step < totalSteps; step++) {
+    let X: Float32Array;
+    let y: Float32Array;
+    let nUsed: number;
+    if (useFullBatch) {
+      X = data.X;
+      y = data.y;
+      nUsed = data.n;
+    } else {
+      // Refill the permutation when exhausted (Fisher–Yates)
+      if (permPos + spec.batchSize > data.n) {
+        for (let i = data.n - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          const tmp = perm[i];
+          perm[i] = perm[j];
+          perm[j] = tmp;
+        }
+        permPos = 0;
+      }
+      for (let i = 0; i < spec.batchSize; i++) {
+        const src = perm[permPos + i];
+        Xb[i * arch.inputDim + 0] = data.X[src * arch.inputDim + 0];
+        Xb[i * arch.inputDim + 1] = data.X[src * arch.inputDim + 1];
+        yb[i] = data.y[src];
+      }
+      permPos += spec.batchSize;
+      X = Xb;
+      y = yb;
+      nUsed = spec.batchSize;
+    }
+    // gradAvg = (1/nUsed) ∇NLL_b ; we add prior term separately
+    const { grad: gradAvg } = mlpBackward(X, y, nUsed, weights, arch, layout, 0, null);
+    // Posterior negative-log gradient estimate at this minibatch:
+    //   ∇U(θ) ≈ (n / nUsed) · b · gradAvg + λ θ = n · gradAvg + λ θ
+    // (since gradAvg = (1/nUsed) ∇NLL_b ⇒ b · gradAvg = ∇NLL_b ⇒ scale by n/b → n · gradAvg)
+    if (spec.method === 'SGLD') {
+      const sqrtEta = Math.sqrt(spec.eta);
+      for (let i = 0; i < layout.pDim; i++) {
+        const gradFull = data.n * gradAvg[i] + lambda * weights[i];
+        weights[i] -= 0.5 * spec.eta * gradFull;
+        weights[i] += sqrtEta * gauss();
+      }
+    } else {
+      const c = spec.friction ?? 0.05;
+      const sqrtNoiseScale = Math.sqrt(2 * spec.eta * c);
+      for (let i = 0; i < layout.pDim; i++) {
+        const gradFull = data.n * gradAvg[i] + lambda * weights[i];
+        momentum[i] = (1 - c) * momentum[i] - spec.eta * gradFull + sqrtNoiseScale * gauss();
+      }
+      for (let i = 0; i < layout.pDim; i++) {
+        weights[i] += spec.eta * momentum[i];
+      }
+    }
+    if (step >= spec.burnIn) {
+      trace.push(weights[traceComponent]);
+      const idxAfterBurn = step - spec.burnIn;
+      if (idxAfterBurn % spec.thin === 0 && samples.length < spec.samples) {
+        samples.push(new Float32Array(weights));
+      }
+    }
+  }
+  const acf = autocorrelation(trace, Math.min(50, Math.max(5, Math.floor(trace.length / 4))));
+  return { weights: samples, weightTrace: trace, autocorrelation: acf };
 }
 
 // =============================================================================
@@ -859,4 +981,155 @@ export function nngpArcCosineKernel(
     K.push(row);
   }
   return K;
+}
+
+// =============================================================================
+// DATA SYNTHESIS: makeMoonsData (§§1, 2, 4, 5 default training set)
+// =============================================================================
+// Two-moons dataset with Gaussian noise. The geometry matches
+// sklearn.datasets.make_moons:
+//   top moon (y=0):    (cos t, sin t)            for t ∈ [0, π]
+//   bottom moon (y=1): (1 − cos t, 0.5 − sin t)  for t ∈ [0, π]
+//   per-coordinate noise: N(0, noise²)
+//
+// Two intentional simplifications relative to sklearn:
+//   - angles are evenly spaced along [0, π] rather than uniformly random.
+//     This makes seed-reproducible verification cheaper and gives the noise=0
+//     check (samples lie exactly on the parametric curves) a clean equality.
+//   - samples come back in deterministic class order (n/2 of class 0 followed
+//     by n/2 of class 1). sklearn shuffles. Callers that need shuffled data
+//     can shuffle in place; viz components iterate all samples per panel so
+//     ordering is irrelevant.
+// =============================================================================
+
+export function makeMoonsData(n: number, noise: number, seed: number): TrainingData {
+  const rng = mulberry32(seed);
+  const X = new Float32Array(n * 2);
+  const y = new Float32Array(n);
+  const half = Math.floor(n / 2);
+  let buf: [number, number] | null = null;
+  const gauss = (): number => {
+    if (buf) {
+      const v = buf[1];
+      buf = null;
+      return v;
+    }
+    const [a, b] = gaussianPair(rng);
+    buf = [a, b];
+    return a;
+  };
+  for (let i = 0; i < n; i++) {
+    const isUpper = i < half;
+    const idxInMoon = isUpper ? i : i - half;
+    const denom = isUpper ? Math.max(half - 1, 1) : Math.max(n - half - 1, 1);
+    const t = (idxInMoon / denom) * Math.PI;
+    const baseX = isUpper ? Math.cos(t) : 1 - Math.cos(t);
+    const baseY = isUpper ? Math.sin(t) : 0.5 - Math.sin(t);
+    X[i * 2 + 0] = baseX + noise * gauss();
+    X[i * 2 + 1] = baseY + noise * gauss();
+    y[i] = isUpper ? 0 : 1;
+  }
+  return { X, y, n };
+}
+
+// =============================================================================
+// PCA: pcaProject2D (§2 loss-landscape viz)
+// =============================================================================
+// Top-2 PC projection of K weight vectors of dimension p. Uses the K×K Gram
+// matrix Xc Xc^T rather than the p×p covariance, since K ≪ p (typical: K=30,
+// p=2241). Power iteration with deflation; deterministic via a seeded RNG.
+//
+// Returned scores[i] = (√λ₁·v₁[i], √λ₂·v₂[i]) — the projection of sample i
+// onto the top-2 PCs in input space. PC vectors in p-space are not returned;
+// callers needing them can compute pc_k = (Xc^T v_k) / √λ_k.
+// =============================================================================
+
+export interface PCAProject2DResult {
+  /** Mean vector subtracted from each input row, length p. */
+  mean: Float32Array;
+  /** Top two eigenvalues of the K×K Gram matrix (descending). */
+  eigenvalues: [number, number];
+  /** 2D scores: scores[i] = projection of X[i] onto (PC1, PC2). */
+  scores: Array<[number, number]>;
+}
+
+function powerIterationTopEigSym(
+  M: number[][],
+  rng: () => number,
+  maxIters = 200,
+  tol = 1e-9,
+): { eigenvalue: number; eigenvector: number[] } {
+  const K = M.length;
+  const v = new Array<number>(K);
+  const Mv = new Array<number>(K);
+  for (let i = 0; i < K; i++) v[i] = rng() - 0.5;
+  let norm = 0;
+  for (let i = 0; i < K; i++) norm += v[i] * v[i];
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < K; i++) v[i] /= norm;
+  let lambda = 0;
+  for (let iter = 0; iter < maxIters; iter++) {
+    // Mv ← M v  (in-place into the hoisted buffer)
+    for (let i = 0; i < K; i++) {
+      let s = 0;
+      const Mi = M[i];
+      for (let j = 0; j < K; j++) s += Mi[j] * v[j];
+      Mv[i] = s;
+    }
+    let mvNorm = 0;
+    for (let i = 0; i < K; i++) mvNorm += Mv[i] * Mv[i];
+    mvNorm = Math.sqrt(mvNorm);
+    if (mvNorm === 0) break;
+    // Rayleigh quotient λ = vᵀ M v ; with v normalized, λ ≈ ‖Mv‖ · sign(vᵀ Mv).
+    // Compute it from the unscaled product to avoid an extra pass.
+    let lambdaNew = 0;
+    for (let i = 0; i < K; i++) lambdaNew += (Mv[i] / mvNorm) * Mv[i];
+    // v ← Mv / ‖Mv‖  (in-place into v)
+    for (let i = 0; i < K; i++) v[i] = Mv[i] / mvNorm;
+    if (Math.abs(lambdaNew - lambda) < tol * Math.max(1, Math.abs(lambdaNew))) {
+      lambda = lambdaNew;
+      break;
+    }
+    lambda = lambdaNew;
+  }
+  return { eigenvalue: lambda, eigenvector: v };
+}
+
+export function pcaProject2D(X: Float32Array[], seed = 1): PCAProject2DResult {
+  const K = X.length;
+  if (K < 2) throw new Error('pcaProject2D requires at least 2 input vectors');
+  const p = X[0].length;
+  const mean = new Float32Array(p);
+  for (let k = 0; k < K; k++) for (let i = 0; i < p; i++) mean[i] += X[k][i];
+  for (let i = 0; i < p; i++) mean[i] /= K;
+  const Xc: Float32Array[] = X.map((x) => {
+    const out = new Float32Array(p);
+    for (let i = 0; i < p; i++) out[i] = x[i] - mean[i];
+    return out;
+  });
+  const G: number[][] = [];
+  for (let i = 0; i < K; i++) {
+    const row = new Array<number>(K).fill(0);
+    for (let j = 0; j <= i; j++) {
+      let s = 0;
+      for (let d = 0; d < p; d++) s += Xc[i][d] * Xc[j][d];
+      row[j] = s;
+    }
+    G.push(row);
+  }
+  for (let i = 0; i < K; i++) for (let j = i + 1; j < K; j++) G[i][j] = G[j][i];
+  const rng = mulberry32(seed);
+  const eig1 = powerIterationTopEigSym(G, rng);
+  const lam1 = Math.max(eig1.eigenvalue, 0);
+  for (let i = 0; i < K; i++)
+    for (let j = 0; j < K; j++) G[i][j] -= lam1 * eig1.eigenvector[i] * eig1.eigenvector[j];
+  const eig2 = powerIterationTopEigSym(G, rng);
+  const lam2 = Math.max(eig2.eigenvalue, 0);
+  const sqrtL1 = Math.sqrt(lam1);
+  const sqrtL2 = Math.sqrt(lam2);
+  const scores: Array<[number, number]> = [];
+  for (let i = 0; i < K; i++) {
+    scores.push([sqrtL1 * eig1.eigenvector[i], sqrtL2 * eig2.eigenvector[i]]);
+  }
+  return { mean, eigenvalues: [lam1, lam2], scores };
 }
