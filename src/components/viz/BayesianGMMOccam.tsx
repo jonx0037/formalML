@@ -116,26 +116,33 @@ function runCAVI(
   let prevELBO = -Infinity;
   let iterUsed = 0;
 
+  // Reusable per-data-point softmax buffer.
+  const logr = new Array<number>(Kmax).fill(0);
+  const rk = new Array<number>(Kmax).fill(0);
+  const log2Pi = Math.log(2 * Math.PI);
+
   for (let iter = 0; iter < maxIter; iter++) {
     iterUsed = iter + 1;
     // E-step: responsibilities ∝ exp(E[log π_k] + E[log p(x | params_k)])
-    // E[log π_k] = digamma(α_k) − digamma(Σ α_j)
+    // E[log π_k] = digamma(α_k) − digamma(Σ α_j) — digamma(sumAlpha) is
+    // constant across k, so hoist it out of the per-component map.
     const sumAlpha = alpha.reduce((s, v) => s + v, 0);
-    const elogPi = alpha.map((a) => digamma(a) - digamma(sumAlpha));
+    const digSumAlpha = digamma(sumAlpha);
+    const elogPi = alpha.map((a) => digamma(a) - digSumAlpha);
+    // log(2π σ²_k) is constant across data points within an iteration.
+    const logVarsTerm = variances.map((v) => log2Pi + Math.log(v));
     for (let i = 0; i < n; i++) {
-      const logr = new Array<number>(Kmax).fill(0);
       for (let k = 0; k < Kmax; k++) {
         const dx = data[i].x - means[k][0];
         const dy = data[i].y - means[k][1];
         const d2 = dx * dx + dy * dy;
         // Isotropic Gaussian log-density up to a constant
-        logr[k] = elogPi[k] - Math.log(2 * Math.PI * variances[k]) - 0.5 * d2 / variances[k];
+        logr[k] = elogPi[k] - logVarsTerm[k] - 0.5 * d2 / variances[k];
       }
       // Softmax normalize
       let maxLr = -Infinity;
       for (let k = 0; k < Kmax; k++) if (logr[k] > maxLr) maxLr = logr[k];
       let denom = 0;
-      const rk = new Array<number>(Kmax);
       for (let k = 0; k < Kmax; k++) {
         rk[k] = Math.exp(logr[k] - maxLr);
         denom += rk[k];
@@ -177,15 +184,17 @@ function runCAVI(
       const bN = b0 + 0.5 * sse + 0.5 * (beta0 * Nk[k] / (beta0 + Nk[k])) * ((xbar - m0[0]) ** 2 + (ybar - m0[1]) ** 2);
       newVariances.push(bN / Math.max(aN - 1, 1e-3));
     }
-    // Compute approximate ELBO for convergence check
+    // Compute approximate ELBO for convergence check. log(2π σ²_k) is
+    // constant across data points — hoist it.
     let elbo = 0;
+    const logNewVarsTerm = newVariances.map((v) => log2Pi + Math.log(v));
     for (let i = 0; i < n; i++) {
       let acc = 0;
       for (let k = 0; k < Kmax; k++) {
         const dx = data[i].x - newMeans[k][0];
         const dy = data[i].y - newMeans[k][1];
         const d2 = dx * dx + dy * dy;
-        const logp = -Math.log(2 * Math.PI * newVariances[k]) - 0.5 * d2 / newVariances[k];
+        const logp = -logNewVarsTerm[k] - 0.5 * d2 / newVariances[k];
         if (r[i][k] > 1e-12) {
           acc += r[i][k] * (elogPi[k] + logp - Math.log(r[i][k]));
         }

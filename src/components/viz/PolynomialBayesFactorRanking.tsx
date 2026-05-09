@@ -70,18 +70,19 @@ function computeRanking(n: number, sigma2: number, tau2: number, seed: number): 
     const elbo = meanFieldELBOGaussianRegression(X, y, sigma2, tau2);
     return { d, logP: lp, elbo };
   });
-  // Argmax by closed-form
+  // All three estimators normalized against the closed-form argmax to make
+  // disagreements visible — using ELBO's own argmax as the reference for ELBO
+  // would force ELBO bars to 0 at its argmax even if that disagrees with the
+  // closed-form winner, hiding exactly the asymmetry we want to show.
   let maxLP = rows[0].logP;
-  let maxELBO = rows[0].elbo;
   for (const row of rows) {
     if (row.logP > maxLP) maxLP = row.logP;
-    if (row.elbo > maxELBO) maxELBO = row.elbo;
   }
   return rows.map((row) => ({
     d: row.d,
     logBFClosed: row.logP - maxLP,
     logBFLaplace: row.logP - maxLP,
-    logBFELBO: row.elbo - maxELBO,
+    logBFELBO: row.elbo - maxLP,
   }));
 }
 

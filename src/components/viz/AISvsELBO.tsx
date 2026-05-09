@@ -112,7 +112,16 @@ function runAISSweep(degree: number, seed: number, C: number): { trace: AISPoint
     return L;
   }
 
-  function exactSampleAtBeta(beta: number): { theta: number[]; logLik: number } {
+  // Per-β intermediate distribution: precision Λ_β = (X^T X / σ²) β + I/τ²,
+  // mean μ_β = Λ_β^{-1} (X^T y / σ²) β. Both depend only on β and the design,
+  // not on chain state — so we precompute (μ_β, L_β=chol(Λ_β)) once per β
+  // and reuse across all chains. This drops the schedule-step cost from
+  // O(C × T × dim³) Cholesky factorizations to O(T × dim³).
+  interface BetaCache {
+    L: number[][];     // Cholesky factor of Λ_β
+    mu: number[];      // posterior mean μ_β
+  }
+  function precomputeBeta(beta: number): BetaCache {
     const prec: number[][] = [];
     for (let i = 0; i < dim; i++) {
       const row = new Array<number>(dim).fill(0);
@@ -137,6 +146,15 @@ function runAISSweep(degree: number, seed: number, C: number): { trace: AISPoint
       for (let j = i + 1; j < dim; j++) acc -= L[j][i] * mu[j];
       mu[i] = acc / L[i][i];
     }
+    return { L, mu };
+  }
+
+  // Constant log-likelihood normalizer (independent of θ).
+  const logLikNorm = -0.5 * n * Math.log(2 * Math.PI * SIGMA2);
+
+  function sampleAndLogLikFromCache(cache: BetaCache): { theta: number[]; logLik: number } {
+    const { L, mu } = cache;
+    // θ = μ + (L^{-T}) z where z ∼ N(0, I)
     const z = new Array<number>(dim).fill(0);
     for (let i = 0; i < dim; i++) z[i] = draw();
     const offset = new Array<number>(dim).fill(0);
@@ -154,22 +172,25 @@ function runAISSweep(degree: number, seed: number, C: number): { trace: AISPoint
       const r = Y_FIXED[i] - pred;
       sse += r * r;
     }
-    const logLik = -0.5 * n * Math.log(2 * Math.PI * SIGMA2) - 0.5 * sse / SIGMA2;
+    const logLik = logLikNorm - 0.5 * sse / SIGMA2;
     return { theta, logLik };
   }
 
   const trace: AISPoint[] = T_GRID.map((T) => {
+    // Precompute all schedule caches β_0=0, β_1, …, β_T=1 once per T.
+    const caches: BetaCache[] = new Array<BetaCache | null>(T + 1).fill(null) as BetaCache[];
+    for (let t = 0; t <= T; t++) caches[t] = precomputeBeta(t / T);
+
     const Cact = T <= 10 ? Math.max(C * 2, 200) : C;
     const logWeights = new Array<number>(Cact);
     for (let c = 0; c < Cact; c++) {
-      const init = exactSampleAtBeta(0); // β=0 = prior
+      const init = sampleAndLogLikFromCache(caches[0]); // β=0 = prior
       let logW = 0;
       let prevLogLik = init.logLik;
       for (let t = 1; t <= T; t++) {
-        const betaCurr = t / T;
-        const betaPrev = (t - 1) / T;
-        logW += (betaCurr - betaPrev) * prevLogLik;
-        const next = exactSampleAtBeta(betaCurr);
+        const dBeta = 1 / T; // (β_t − β_{t−1}) for a uniform schedule
+        logW += dBeta * prevLogLik;
+        const next = sampleAndLogLikFromCache(caches[t]);
         prevLogLik = next.logLik;
       }
       logWeights[c] = logW;

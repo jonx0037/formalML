@@ -1252,15 +1252,21 @@ export function polynomialPosteriorMoments(
  * @param sigma2  Noise variance σ².
  * @param tau2  Prior coefficient variance τ² (note: NOT precision).
  */
-export function marginalLikelihoodGaussianRegression(
+/**
+ * Internal: closed-form log p(y | X, M) given pre-computed posterior moments.
+ * Used by both `marginalLikelihoodGaussianRegression` and
+ * `meanFieldELBOGaussianRegression` to avoid recomputing the moments twice.
+ */
+function logMarginalLikelihoodFromMoments(
   X: number[][],
   y: number[],
   sigma2: number,
   tau2: number,
+  moments: PosteriorMoments,
 ): number {
   const n = X.length;
   const d = X[0].length;
-  const { mean, precision, precisionLogDet } = polynomialPosteriorMoments(X, y, sigma2, tau2);
+  const { mean, precision, precisionLogDet } = moments;
   let yTy = 0;
   for (let i = 0; i < n; i++) yTy += y[i] * y[i];
   // μᵀ Λ μ
@@ -1279,13 +1285,24 @@ export function marginalLikelihoodGaussianRegression(
   );
 }
 
+export function marginalLikelihoodGaussianRegression(
+  X: number[][],
+  y: number[],
+  sigma2: number,
+  tau2: number,
+): number {
+  const moments = polynomialPosteriorMoments(X, y, sigma2, tau2);
+  return logMarginalLikelihoodFromMoments(X, y, sigma2, tau2, moments);
+}
+
 /**
  * Closed-form mean-field ELBO for the same Gaussian-conjugate setup. The
  * reverse-KL-optimal mean-field q* has μ_q = μ_post and Σ_q = diag(1/Λ_post,jj).
  * The KL gap to the true Gaussian posterior reduces to
  *   KL = ½[Σ log Λ_post,jj − log det Λ_post]
  * (the trace and -d terms cancel), and ELBO = log p(y) − KL. Brief §6.3 derives
- * this; mirrors `mean_field_elbo` in the notebook §1 cell.
+ * this; mirrors `mean_field_elbo` in the notebook §1 cell. Computes posterior
+ * moments once and reuses them for both log p(y) and KL.
  */
 export function meanFieldELBOGaussianRegression(
   X: number[][],
@@ -1293,8 +1310,9 @@ export function meanFieldELBOGaussianRegression(
   sigma2: number,
   tau2: number,
 ): number {
-  const log_p_y = marginalLikelihoodGaussianRegression(X, y, sigma2, tau2);
-  const { precision, precisionLogDet } = polynomialPosteriorMoments(X, y, sigma2, tau2);
+  const moments = polynomialPosteriorMoments(X, y, sigma2, tau2);
+  const log_p_y = logMarginalLikelihoodFromMoments(X, y, sigma2, tau2, moments);
+  const { precision, precisionLogDet } = moments;
   const d = precision.length;
   let sumLogDiag = 0;
   for (let i = 0; i < d; i++) sumLogDiag += Math.log(precision[i][i]);
@@ -1356,8 +1374,9 @@ export function iwelboEstimate(
   S: number,
 ): number {
   let outerSum = 0;
+  // Hoisted buffer reused across replicates to keep GC pressure low at large S.
+  const logWeights = new Array<number>(K);
   for (let s = 0; s < S; s++) {
-    const logWeights = new Array<number>(K);
     for (let k = 0; k < K; k++) {
       const theta = qSampler();
       logWeights[k] = logJoint(theta) - logQ(theta);
@@ -1397,8 +1416,9 @@ export function aisEstimate(
   mhStep: (theta: number[], beta: number) => number[],
   C: number,
 ): number {
-  // Suppress unused-import lint on logPrior (consumed by mhStep wrappers in
-  // non-conjugate cases; retained in API surface for completeness).
+  // Suppress unused-parameter lint on logPrior. The parameter is consumed by
+  // mhStep wrappers in non-conjugate cases and retained in the API surface
+  // for completeness even when the conjugate-Gaussian case ignores it.
   void logPrior;
   const logWeights = new Array<number>(C);
   for (let c = 0; c < C; c++) {
@@ -1511,7 +1531,10 @@ export function polynomialJointLogProb(
 ): number {
   const n = X.length;
   const d = beta.length;
-  // log p(y | β) = -½ n log(2π σ²) - ½ Σ (y_i - X_i β)² / σ²
+  // Constant log normalizers (independent of beta, sse, ||β||²).
+  const logLikNorm = -0.5 * n * Math.log(2 * Math.PI * sigma2);
+  const logPriorNorm = -0.5 * d * Math.log(2 * Math.PI * tau2);
+  // log p(y | β) = logLikNorm - ½ Σ (y_i - X_i β)² / σ²
   let sse = 0;
   for (let i = 0; i < n; i++) {
     let pred = 0;
@@ -1519,11 +1542,9 @@ export function polynomialJointLogProb(
     const r = y[i] - pred;
     sse += r * r;
   }
-  const logLik = -0.5 * n * Math.log(2 * Math.PI * sigma2) - 0.5 * sse / sigma2;
-  // log p(β | τ²) = -½ d log(2π τ²) - ½ ||β||² / τ²
+  // log p(β | τ²) = logPriorNorm - ½ ||β||² / τ²
   let bb = 0;
   for (let j = 0; j < d; j++) bb += beta[j] * beta[j];
-  const logPrior = -0.5 * d * Math.log(2 * Math.PI * tau2) - 0.5 * bb / tau2;
-  return logLik + logPrior;
+  return logLikNorm - 0.5 * sse / sigma2 + logPriorNorm - 0.5 * bb / tau2;
 }
 

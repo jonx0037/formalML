@@ -179,8 +179,11 @@ function computeFamilies(degree: number): FamilyResult[] {
       logEvidence: logP,
     },
     {
+      // Block partition: {β₀} (size 1) ∪ {β₁, …, β_d} (size d).
+      // Parameter count = (d+1) means + 1 variance for block 1 + d(d+1)/2
+      // covariance entries for block 2.
       name: 'Block-diagonal (2 blocks)',
-      parameters: 1 + (degree * (degree + 1)) / 2 + 1,
+      parameters: (degree + 1) + 1 + (degree * (degree + 1)) / 2,
       elbo: elboBlock,
       klGap: logP - elboBlock,
       logEvidence: logP,

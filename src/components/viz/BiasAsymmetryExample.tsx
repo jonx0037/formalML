@@ -77,23 +77,25 @@ export default function BiasAsymmetryExample() {
 
   const stats = useMemo(() => {
     if (!payload) return null;
-    let maxBias = 0;
-    let maxGap = 0;
-    let maxRatioRow: ResultRow | null = null;
+    // Track the per-row ratio gap/max(bias_h, bias_p) and report the maximum
+    // observed across rows along with the row that achieves it. The previous
+    // implementation reported max(gap) / max(bias) — those maxes can come from
+    // different rows, overstating the ratio.
+    let bestRatio = 0;
+    let bestRow: ResultRow | null = null;
     for (const row of payload.results) {
       const biasH = Math.abs(row.M_hier.vbms_elbo - row.M_hier.smc_log_evidence);
       const biasP = Math.abs(row.M_pool.vbms_elbo - row.M_pool.smc_log_evidence);
       const gap = Math.abs(row.M_hier.smc_log_evidence - row.M_pool.smc_log_evidence);
-      if (Math.max(biasH, biasP) > maxBias) maxBias = Math.max(biasH, biasP);
-      if (gap > maxGap) maxGap = gap;
       const ratio = gap / Math.max(Math.max(biasH, biasP), 1e-9);
-      if (!maxRatioRow || ratio > (maxGap / Math.max(maxBias, 1e-9))) {
-        maxRatioRow = row;
+      if (!bestRow || ratio > bestRatio) {
+        bestRatio = ratio;
+        bestRow = row;
       }
     }
     return {
-      ratioMaxN: maxGap / Math.max(maxBias, 1e-9),
-      maxRow: maxRatioRow,
+      ratioMaxN: bestRatio,
+      maxRow: bestRow,
     };
   }, [payload]);
 

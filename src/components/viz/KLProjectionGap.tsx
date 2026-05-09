@@ -265,10 +265,11 @@ export default function KLProjectionGap() {
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(xScale).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px');
       g.append('g').call(d3.axisLeft(yScale).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px');
 
-      // Gridded contour of target
+      // Gridded contour of target. Float64Array avoids per-cell boxed-number
+      // allocations on the 80×80 = 6400 grid.
       const nx = 80;
       const ny = 80;
-      const values = new Array<number>(nx * ny);
+      const values = new Float64Array(nx * ny);
       const xStep = (X_RANGE[1] - X_RANGE[0]) / (nx - 1);
       const yStep = (Y_RANGE[1] - Y_RANGE[0]) / (ny - 1);
       let maxLog = -Infinity;
@@ -281,9 +282,16 @@ export default function KLProjectionGap() {
           if (v > maxLog) maxLog = v;
         }
       }
-      const probs = values.map((v) => Math.exp(v - maxLog));
+      const probs = new Float64Array(nx * ny);
+      for (let i = 0; i < probs.length; i++) probs[i] = Math.exp(values[i] - maxLog);
       const thresholds = d3.range(0.05, 1.0, 0.15).map((t) => t);
-      const contours = d3.contours().size([nx, ny]).thresholds(thresholds)(probs);
+      // d3-contours type signature is `number[]`, but the runtime accepts any
+      // array-like of numbers — Float64Array works at runtime and avoids the
+      // boxed-number allocations of a plain Array<number>.
+      const contours = d3
+        .contours()
+        .size([nx, ny])
+        .thresholds(thresholds)(probs as unknown as number[]);
       const drawX = d3.scaleLinear().domain([0, nx - 1]).range([0, w]);
       const drawY = d3.scaleLinear().domain([0, ny - 1]).range([0, h]);
       const contourPath = d3.geoPath(d3.geoIdentity().reflectY(true).fitSize([w, h], { type: 'Sphere' }));

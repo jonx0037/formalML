@@ -5,7 +5,6 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   bicApproximation,
   marginalLikelihoodGaussianRegression,
-  meanFieldELBOGaussianRegression,
   mulberry32,
   gaussianPair,
   polynomialDesignMatrix,
@@ -245,9 +244,6 @@ export default function LaplaceBICConvergence() {
     },
     [data, containerWidth, limitGap],
   );
-
-  // Keep ELBO computation inert (not displayed) — preserves the import path.
-  void meanFieldELBOGaussianRegression;
 
   return (
     <div ref={containerRef} className="my-6">
