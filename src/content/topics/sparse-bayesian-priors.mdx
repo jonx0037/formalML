@@ -1,0 +1,761 @@
+---
+title: "Sparse Bayesian Priors"
+subtitle: "The global-local prior framework for sparse coefficients — horseshoe geometry and the Beta(1/2,1/2) shrinkage identity, spike-and-slab as theoretical anchor, the funnel pathology and the regularized horseshoe fix, R2-D2 as the variance-decomposition alternative, and VBMS-over-priors as the practitioner workflow."
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "variational-bayes-for-model-selection"
+  - "variational-inference"
+  - "probabilistic-programming"
+  - "bayesian-neural-networks"
+  - "kl-divergence"
+  - "gradient-descent"
+formalstatisticsPrereqs:
+  - topic: "hierarchical-bayes-and-partial-pooling"
+    site: "formalstatistics"
+    relationship: "Sparse priors are the continuous-shrinkage alternatives to the hierarchical-Normal prior developed in §28.6 of formalstatistics. The horseshoe's local-global decomposition (§4) is the limiting case of a hierarchical-Normal as the hyperprior on the per-group variance becomes heavy-tailed; the regularized horseshoe (§6) reintroduces the bounded-variance behavior that hierarchical-Normal has by construction. The deferred-reciprocals ledger has hierarchical-bayes-and-partial-pooling's formalmlConnections to sparse-bayesian-priors pre-declared waiting on this shipment."
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "Sparse priors are downstream of the prior-elicitation framework developed in this formalstatistics topic. §6's m_0 hyperparameter (regularized horseshoe's prior expected number of effective coefficients) and §8's (a, b, xi) hyperprior on R2-D2 are concrete instances of the prior-calibration workflow this topic establishes; §12's hyperprior-sensitivity discussion returns directly to this topic's framework."
+  - topic: "linear-regression"
+    site: "formalstatistics"
+    relationship: "Sparse Bayesian regression specializes the linear-regression machinery of this formalstatistics topic to the p > n regime where ordinary OLS is rank-deficient. §10's diabetes benchmark builds on the linear-regression substrate this formalstatistics topic establishes — the design-matrix algebra, the noise-variance estimation, and the prior-on-coefficients framing are inherited directly."
+  - topic: "regularization-and-penalized-estimation"
+    site: "formalstatistics"
+    relationship: "§5's Bayesian LASSO comparison is the duality between L1 penalty and Laplace prior developed in this formalstatistics topic. The horseshoe is the prior-side analog of adaptive shrinkage; §10's predictive-log-loss comparison places sparse Bayesian priors directly alongside the ridge/lasso/elastic-net baseline this formalstatistics topic establishes."
+formalcalculusPrereqs:
+  - topic: "multivariable-integration"
+    site: "formalcalculus"
+    relationship: "§2's scale-mixture-of-Normals representation requires marginalizing the local scales lambda_j out of the joint prior — a multivariable Lebesgue integral over the (lambda_1, ..., lambda_p, tau) hyperparameter space. The Polson–Scott characterization (Theorem 1) of sparsity in terms of the implied marginal p(beta_j) presupposes the integral identity this formalcalculus topic develops."
+  - topic: "change-of-variables"
+    site: "formalcalculus"
+    relationship: "§4's horseshoe-shape theorem (kappa_j ~ Beta(1/2, 1/2) under unit tau) is proved via change-of-variables from lambda_j^2 to kappa_j = 1/(1 + lambda_j^2); the Jacobian dkappa/dlambda^2 = 1/kappa^2 is computed using the change-of-variables formula this formalcalculus topic develops. §6's non-centered parameterization beta_j = z_j · lambda_j · tau is also a deterministic change-of-variables on the hierarchical model."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "bayesian-ml"
+  - "sparse-priors"
+  - "horseshoe"
+  - "regularized-horseshoe"
+  - "spike-and-slab"
+  - "r2-d2"
+  - "global-local-shrinkage"
+  - "polson-scott"
+  - "funnel-pathology"
+  - "non-centered-parameterization"
+  - "high-dimensional-regression"
+  - "advi"
+  - "pareto-k-diagnostic"
+  - "machine-learning"
+domain: "bayesian-ml"
+videoId: null
+notebookPath: "notebooks/sparse-bayesian-priors/01_sparse_bayesian_priors.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/sparse-bayesian-priors.mdx"
+datePublished: 2026-05-09
+estimatedReadTime: 60
+abstract: "Sparse regression in p >> n regimes asks for a prior on the coefficient vector that aggressively shrinks noise toward zero while leaving genuine signals untouched. The Bayesian sparse-prior menu — horseshoe (Carvalho-Polson-Scott 2010), regularized horseshoe (Piironen-Vehtari 2017), spike-and-slab (Mitchell-Beauchamp 1988), R2-D2 (Zhang-Reich-Bondell 2022) — implements this through the global-local shrinkage framework (Polson-Scott 2010), which characterizes sparsity-inducing priors via mass-at-zero and heavy-tail behavior on the implied marginal density. We develop the Polson-Scott criterion as the unifying language, prove the horseshoe's Beta(1/2, 1/2) shrinkage-factor identity that gives the prior its name, characterize the funnel pathology that breaks naive HMC and the non-centered + regularized-horseshoe fix that resolves it, work the four-prior comparison on a synthetic high-dimensional regression and on the diabetes benchmark with PyMC NUTS, and close with the VBMS escalation hierarchy applied to rank the four families on the same dataset using PSIS Pareto-k as the gating diagnostic."
+connections:
+  - topic: "variational-bayes-for-model-selection"
+    relationship: "Direct prerequisite. VBMS §12 explicitly forward-points here; this topic discharges that pointer in §11. The mean-field bias problem VBMS §11 develops is exactly what makes sparse-prior posteriors hard to rank — heavy tails compound the underestimation."
+  - topic: "variational-inference"
+    relationship: "VI §6.3 explicitly forward-points here. §7 of this topic specializes VI's §5.1 mean-field structural-error theorem to the horseshoe local-global posterior, showing the underestimation is worse than the Gaussian case because the heavy tails compound the projection failure."
+  - topic: "probabilistic-programming"
+    relationship: "Direct prerequisite. PP §6 forward-points here; §6 of this topic develops the reparameterization story in full — the centered vs non-centered parameterization is the same eight-schools story specialized to scale-mixture priors."
+  - topic: "bayesian-neural-networks"
+    relationship: "Direct prerequisite. BNN §2.1 defers heavy-tailed and hierarchical priors here. Sparse priors on neural-network weights are the natural application, with the §11 Pareto-k workflow specialized to weight-space posteriors as the diagnostic backbone."
+  - topic: "kl-divergence"
+    relationship: "§7's mean-field underestimation theorem and §11's escalation hierarchy both bear on the reverse-KL projection mechanism. Heavy-tailed posteriors compound the mode-seeking asymmetry of reverse-KL."
+  - topic: "gradient-descent"
+    relationship: "ADVI's optimizer is the gradient-descent topic's machinery. The funnel-pathology divergences in §6 are an instance of pathological-loss-surface behavior specialized to hierarchical Bayesian models."
+  - topic: "stacking-and-predictive-ensembles"
+    relationship: "§13's M-open framework places sparse priors in the M-closed regime where VBMS-over-priors works well, contrasting with stacking's M-open / predictive-distribution-averaging treatment."
+references:
+  - type: "paper"
+    title: "Shrink Globally, Act Locally: Sparse Bayesian Regularization and Prediction"
+    authors: "Polson, Nicholas G., and James G. Scott"
+    year: 2010
+    url: "https://doi.org/10.1093/acprof:oso/9780199694587.003.0017"
+    note: "The Polson-Scott characterization of sparsity in terms of the implied marginal; §2 origin."
+  - type: "paper"
+    title: "On Scale Mixtures of Normal Distributions"
+    authors: "West, Mike"
+    year: 1987
+    url: "https://doi.org/10.1093/biomet/74.3.646"
+    note: "Scale-mixture-of-Normals representation prerequisite for §2."
+  - type: "paper"
+    title: "Bayesian Variable Selection in Linear Regression"
+    authors: "Mitchell, T. J., and J. J. Beauchamp"
+    year: 1988
+    url: "https://doi.org/10.1080/01621459.1988.10478694"
+    note: "The spike-and-slab origin paper."
+  - type: "paper"
+    title: "Variable Selection via Gibbs Sampling"
+    authors: "George, Edward I., and Robert E. McCulloch"
+    year: 1993
+    url: "https://doi.org/10.1080/01621459.1993.10476353"
+    note: "SSVS Gibbs sampler."
+  - type: "paper"
+    title: "Needles and Straw in a Haystack: Posterior Concentration for Possibly Sparse Sequences"
+    authors: "Castillo, Ismaël, and Aad van der Vaart"
+    year: 2012
+    url: "https://doi.org/10.1214/12-AOS1029"
+    note: "Spike-and-slab minimax contraction rate."
+  - type: "paper"
+    title: "Bayesian Linear Regression with Sparse Priors"
+    authors: "Castillo, Ismaël, Johannes Schmidt-Hieber, and Aad van der Vaart"
+    year: 2015
+    url: "https://doi.org/10.1214/15-AOS1334"
+    note: "Lasso vs spike-slab comparison."
+  - type: "paper"
+    title: "The Horseshoe Estimator for Sparse Signals"
+    authors: "Carvalho, Carlos M., Nicholas G. Polson, and James G. Scott"
+    year: 2010
+    url: "https://doi.org/10.1093/biomet/asq017"
+    note: "The horseshoe paper; §4 origin."
+  - type: "paper"
+    title: "Handling Sparsity via the Horseshoe"
+    authors: "Carvalho, Carlos M., Nicholas G. Polson, and James G. Scott"
+    year: 2009
+    url: "https://proceedings.mlr.press/v5/carvalho09a.html"
+    note: "Earlier conference treatment."
+  - type: "paper"
+    title: "Asymptotic Properties of Bayes Risk for the Horseshoe Prior"
+    authors: "Datta, Jyotishka, and Jayanta K. Ghosh"
+    year: 2013
+    url: "https://doi.org/10.1214/13-BA805"
+    note: "Horseshoe risk-optimality; §5 reference."
+  - type: "paper"
+    title: "Local Shrinkage Rules, Lévy Processes and Regularized Regression"
+    authors: "Polson, Nicholas G., and James G. Scott"
+    year: 2012
+    url: "https://doi.org/10.1111/j.1467-9868.2011.01015.x"
+    note: "Local-shrinkage decision-theoretic justification."
+  - type: "paper"
+    title: "Sparsity Information and Regularization in the Horseshoe and Other Shrinkage Priors"
+    authors: "Piironen, Juho, and Aki Vehtari"
+    year: 2017
+    url: "https://doi.org/10.1214/17-EJS1337SI"
+    note: "Regularized horseshoe; §6 origin."
+  - type: "paper"
+    title: "The Horseshoe+ Estimator of Ultra-Sparse Signals"
+    authors: "Bhadra, Anindya, Jyotishka Datta, Nicholas G. Polson, and Brandon Willard"
+    year: 2017
+    url: "https://doi.org/10.1214/16-BA1028"
+    note: "Horseshoe+ extension; §6 forward-pointer."
+  - type: "paper"
+    title: "The Bayesian Lasso"
+    authors: "Park, Trevor, and George Casella"
+    year: 2008
+    url: "https://doi.org/10.1198/016214508000000337"
+    note: "Bayesian LASSO; §5 comparison."
+  - type: "paper"
+    title: "Regression Shrinkage and Selection via the Lasso"
+    authors: "Tibshirani, Robert"
+    year: 1996
+    url: "https://doi.org/10.1111/j.2517-6161.1996.tb02080.x"
+    note: "The original lasso for §10's frequentist counterpart."
+  - type: "paper"
+    title: "Slice Sampling"
+    authors: "Neal, Radford M."
+    year: 2003
+    url: "https://doi.org/10.1214/aos/1056562461"
+    note: "Neal's funnel origin (§6)."
+  - type: "paper"
+    title: "A General Framework for the Parametrization of Hierarchical Models"
+    authors: "Papaspiliopoulos, Omiros, Gareth O. Roberts, and Martin Sköld"
+    year: 2007
+    url: "https://doi.org/10.1214/088342307000000014"
+    note: "Non-centered parameterization framework."
+  - type: "paper"
+    title: "Hamiltonian Monte Carlo for Hierarchical Models"
+    authors: "Betancourt, Michael, and Mark Girolami"
+    year: 2013
+    url: "https://arxiv.org/abs/1312.0906"
+    note: "Divergence diagnostics for HMC on hierarchical models."
+  - type: "paper"
+    title: "Bayesian Regression with Anti-Coupling Priors"
+    authors: "Zhang, Yan Dora, Brian P. Reich, and Howard D. Bondell"
+    year: 2022
+    url: "https://doi.org/10.1214/21-STS832"
+    note: "R2-D2 prior; §8 origin."
+  - type: "paper"
+    title: "Automatic Differentiation Variational Inference"
+    authors: "Kucukelbir, Alp, Dustin Tran, Rajesh Ranganath, Andrew Gelman, and David M. Blei"
+    year: 2017
+    url: "https://www.jmlr.org/papers/v18/16-107.html"
+    note: "ADVI substrate."
+  - type: "paper"
+    title: "Yes, but Did It Work?: Evaluating Variational Inference"
+    authors: "Yao, Yuling, Aki Vehtari, Daniel Simpson, and Andrew Gelman"
+    year: 2018
+    url: "https://proceedings.mlr.press/v80/yao18a.html"
+    note: "PSIS-VI Pareto-k diagnostic."
+  - type: "paper"
+    title: "Pareto Smoothed Importance Sampling"
+    authors: "Vehtari, Aki, Daniel Simpson, Andrew Gelman, Yuling Yao, and Jonah Gabry"
+    year: 2024
+    url: "https://www.jmlr.org/papers/v25/19-556.html"
+    note: "PSIS theory."
+  - type: "paper"
+    title: "Frequentist Consistency of Variational Bayes"
+    authors: "Wang, Yixin, and David M. Blei"
+    year: 2019
+    url: "https://doi.org/10.1080/01621459.2018.1473776"
+    note: "Mean-field VB consistency theorem; §7 reference."
+  - type: "paper"
+    title: "Importance Weighted Autoencoders"
+    authors: "Burda, Yuri, Roger Grosse, and Ruslan Salakhutdinov"
+    year: 2016
+    url: "https://arxiv.org/abs/1509.00519"
+    note: "IWELBO."
+  - type: "paper"
+    title: "Annealed Importance Sampling"
+    authors: "Neal, Radford M."
+    year: 2001
+    url: "https://doi.org/10.1023/A:1008923215028"
+    note: "AIS gold-standard reference."
+  - type: "paper"
+    title: "Least Angle Regression"
+    authors: "Efron, Bradley, Trevor Hastie, Iain Johnstone, and Robert Tibshirani"
+    year: 2004
+    url: "https://doi.org/10.1214/009053604000000067"
+    note: "LARS paper, source of the diabetes benchmark dataset."
+---
+
+import Figure from '../../components/ui/Figure.astro';
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ShrinkageProfilesExplorer from '../../components/viz/ShrinkageProfilesExplorer';
+import ScaleMixtureExplorer from '../../components/viz/ScaleMixtureExplorer';
+import SpikeSlabSparsityCost from '../../components/viz/SpikeSlabSparsityCost';
+import HorseshoeShrinkageProfile from '../../components/viz/HorseshoeShrinkageProfile';
+import HorseshoeGlobalLocalGeometry from '../../components/viz/HorseshoeGlobalLocalGeometry';
+import FunnelPathologyExplorer from '../../components/viz/FunnelPathologyExplorer';
+import SparsePosteriorVIExplorer from '../../components/viz/SparsePosteriorVIExplorer';
+import R2D2DecompositionExplorer from '../../components/viz/R2D2DecompositionExplorer';
+import ActiveSetRecovery from '../../components/viz/ActiveSetRecovery';
+import DiabetesPredictiveLogLoss from '../../components/viz/DiabetesPredictiveLogLoss';
+import VBMSEscalationLadder from '../../components/viz/VBMSEscalationLadder';
+
+## §1. Overview & motivation
+
+Suppose we have a regression with thirty patients and a hundred candidate biomarkers — $n = 30$, $p = 100$. Most of the biomarkers are clinically irrelevant; the response depends on perhaps three or four of them, but we don't know which. Ordinary least squares is rank-deficient ($p > n$, so $\mathbf{X}^\top \mathbf{X}$ is singular) and ridge regression is too blunt — it shrinks every coefficient toward zero by roughly the same factor, which is a fine answer for the noise variables but the *wrong* answer for the genuine signals. What we want is a prior that recognizes the geometric distinction between signal and noise and treats them differently: aggressive shrinkage on noise, no shrinkage on signal.
+
+The Bayesian sparse-prior toolkit gives us four canonical answers, and the differences between them are best read off a single geometric picture. Define the *posterior shrinkage factor* $\kappa_j = 1/(1 + \lambda_j^2 \tau^2)$ — the multiplicative factor by which the prior pulls a coefficient toward zero. $\kappa_j = 0$ means no shrinkage; the data wins. $\kappa_j = 1$ means complete shrinkage; the prior wins. Plot the *posterior expectation* $\mathbb{E}[\kappa_j \mid y_j]$ as a function of the data-implied signal $|y_j|$ on a unit-noise unit-prior toy:
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/01_shrinkage_profiles.png"
+  alt="Four-prior shrinkage profiles: ridge constant, Bayesian LASSO always shrinking, horseshoe vanishing on signals, spike-and-slab discrete."
+  caption="Posterior shrinkage E[kappa | y] as a function of signal magnitude |y| for four sparse priors. Ridge is constant (no sparsity). Bayesian LASSO shrinks aggressively at zero but persistently for moderate-to-large signals (exponential prior tail). The horseshoe vanishes as |y| grows — the namesake property — thanks to the polynomial Cauchy local-scale tail. Spike-and-slab is the discrete idealization."
+/>
+
+Four geometric claims sit on this plot. *Ridge* (Gaussian prior, shown in gray) gives a constant horizontal line at $\kappa = 1/(1 + \tau^2) = 0.5$ — the same shrinkage on noise as on signal. Useless for sparsity by construction. *Bayesian LASSO* (Park–Casella 2008, brown) implements an exponential prior on $\lambda^2$ and produces a Laplace marginal on $\beta$. It shrinks the smallest coefficients aggressively (the Laplace pole at zero is sharper than Gaussian) but its exponential tail keeps shrinking large signals more than necessary — the prior fights the data even when the data is loud. *Horseshoe* (Carvalho–Polson–Scott 2010, blue) is the only continuous prior on this menu with the namesake *U-shape*: full shrinkage on noise ($\kappa \to 1$ at small $|y|$) and *vanishing* shrinkage on signal ($\kappa \to 0$ at large $|y|$). The polynomial tail of the half-Cauchy local scale produces a marginal on $\beta$ that decays as $1/\beta^2$ rather than exponentially, which is exactly the tail behavior that lets large signals through unmolested. *Spike-and-slab* (Mitchell–Beauchamp 1988, dashed) is the discrete idealization that horseshoe approximates continuously — at sufficiently large $|y|$ the posterior puts mass-1 on the slab component, $\kappa$ collapses to $1/(1+\tau_{\mathrm{slab}}^2)$, and the coefficient escapes the spike entirely.
+
+The plot makes a fifth, more subtle claim: the horseshoe is the *modern default* among continuous shrinkage priors precisely because it is the only one with this specific geometric profile. Ridge is non-sparse. Laplace persists in shrinking signals. Half-Normal local scales (variance-stabilized but light-tailed) shrink even more aggressively than Laplace. Half-Cauchy is the *unique* choice that combines mass-at-zero with polynomial tails in the implied marginal — and the §2 Polson–Scott framework will make this characterization precise.
+
+<ShrinkageProfilesExplorer client:visible />
+
+**Plan of attack.** §§2–3 develop the global-local prior framework that makes the geometric content of the §1 figure mathematically precise (Polson–Scott characterization) and the spike-and-slab origin and theoretical role (Mitchell–Beauchamp 1988; Castillo–van der Vaart 2012 contraction rate). §§4–6 develop the horseshoe family in geometric depth: the Beta(1/2, 1/2) shrinkage-factor identity that gives the namesake (§4), the horseshoe-vs-Bayesian-LASSO tail comparison and Datta–Ghosh risk-optimality (§5), and the funnel pathology that breaks centered parameterizations plus the Piironen–Vehtari regularized horseshoe that resolves it (§6). §7 specializes the [Variational Inference](/topics/variational-inference) §5.1 mean-field underestimation theorem to sparse-prior posteriors and visualizes the structural error on a heavy-tailed funnel target. §8 develops R2-D2 (Zhang–Reich–Bondell 2022) as the variance-decomposition alternative that avoids the horseshoe funnel by reformulating the global-local coupling on a bounded simplex.
+
+§§9–10 work through two datasets in detail. §9 fits all four priors via PyMC NUTS on a synthetic high-dimensional regression engineered to surface the funnel pathology and the active-set inclusion uncertainty. §10 fits the same priors plus a ridge baseline on the diabetes benchmark (Efron–Hastie–Johnstone–Tibshirani 2004) for predictive log-likelihood comparison. §11 applies the [Variational Bayes for Model Selection](/topics/variational-bayes-for-model-selection) §11 escalation hierarchy (mean-field ADVI → full-rank ADVI → IWELBO → AIS) to rank the four priors using PSIS Pareto-$\hat k$ as the gating diagnostic — the explicit discharge of VBMS §12's forward-pointer.
+
+§12 catalogs the practical workflow with PyMC code recipes for each prior. §13 places sparse Bayesian priors in the broader methodological landscape (formalML topology + cross-site connections + M-closed/M-complete/M-open framework + decision rules + honest limits) and closes the topic.
+
+## §2. The global-local prior framework (Polson–Scott)
+
+§1's four-prior shrinkage figure made geometric claims about the *consequences* of choosing different prior families. To make those claims mathematically precise — and to characterize sparsity-inducing priors in general — we need a unifying language. The Polson–Scott (2010) global-local framework provides it.
+
+<TheoremBlock type="definition" number={1} title="Scale-mixture-of-Normals representation">
+A prior on the regression coefficient $\beta_j \in \mathbb{R}$ is a *global-local shrinkage prior* if it admits the representation
+$$
+\beta_j \mid \lambda_j, \tau \;\sim\; \mathcal{N}(0, \lambda_j^2 \tau^2), \qquad \lambda_j \sim p(\lambda_j), \qquad \tau \sim p(\tau),
+$$
+where $\lambda_j$ is the *local scale* (per-coefficient) and $\tau$ is the *global scale* (controls overall sparsity level). The implied marginal density on $\beta_j$ is
+$$
+p(\beta_j) \;=\; \int_0^\infty \mathcal{N}(\beta_j; 0, \lambda^2 \tau^2) \, p(\lambda) \, d\lambda.
+$$
+</TheoremBlock>
+
+The decomposition has a clean interpretation. The Gaussian conditional makes posterior inference tractable when conditioned on $(\lambda_j, \tau)$ — given the scales, the coefficient posterior is just Gaussian conjugacy. The local scale $\lambda_j$ carries the *per-coefficient* sparsity decision: a small $\lambda_j$ near zero pulls $\beta_j$ toward zero (noise classification), a large $\lambda_j$ leaves $\beta_j$ unconstrained (signal classification). The global scale $\tau$ carries the *dataset-wide* sparsity level: small $\tau$ pulls all coefficients toward zero (sparse data), large $\tau$ relaxes all of them (dense data). The split between local and global is what makes the framework express *adaptive* sparsity: the prior doesn't commit upfront to a fixed shrinkage strength but lets the data inform $\tau$ globally and each $\lambda_j$ locally.
+
+The next question is structural: what choice of $p(\lambda_j)$ produces a *sparsity-inducing* prior in the precise sense that the posterior concentrates on noise coefficients while leaving signals untouched? Polson and Scott (2010) characterize this in terms of the implied marginal $p(\beta_j)$.
+
+<TheoremBlock type="theorem" number={1} title="Polson–Scott characterization of sparsity">
+A global-local prior implies a sparse posterior — concentrating mass at zero on noise coefficients while leaving large signals unshrunken — *if and only if* the implied marginal $p(\beta_j)$ satisfies both criteria:
+
+(i) **mass at zero:** $p(\beta_j)$ has a singularity at $\beta_j = 0$, that is, $\lim_{\beta \to 0} p(\beta_j) = \infty$.
+
+(ii) **heavy tails:** $p(\beta_j)$ decays slower than any Gaussian, that is, $\lim_{|\beta_j| \to \infty} p(\beta_j) / \mathcal{N}(\beta_j; 0, \sigma^2) = \infty$ for every $\sigma^2 > 0$.
+</TheoremBlock>
+
+The proof argument runs through the data-augmented Gibbs sampler. Conditional on $(\lambda_j, \tau)$, the posterior on $\beta_j$ given $y_j$ is $\mathcal{N}(\beta_j; \mu_j, \sigma_j^2)$ with $\mu_j = (1 - \kappa_j) y_j$ and $\sigma_j^2 = (1 - \kappa_j) \sigma^2$ where $\kappa_j = 1/(1 + \lambda_j^2 \tau^2)$. The posterior shrinkage $\kappa_j$ depends on $\lambda_j^2$, which itself has posterior $p(\lambda_j^2 \mid \beta_j) \propto \mathcal{N}(\beta_j; 0, \lambda^2 \tau^2) p(\lambda^2)$. *The local-tail behavior of $p(\lambda^2)$ at large $\lambda^2$ controls how aggressively the prior accommodates large $|\beta_j|$* — heavy tails on $p(\lambda^2)$ produce heavy tails on $p(\beta_j)$ via the scale mixture, which produce small $\kappa_j$ on large signals via the conditional. Mass-at-zero in the marginal corresponds to mass at *small* $\lambda^2$, which produces $\kappa_j \to 1$ on small $|\beta_j|$. Both criteria are needed: a prior with heavy tails but no mass at zero (e.g., $\lambda_j \sim$ half-Normal scaled up) doesn't shrink noise enough; a prior with mass at zero but light tails (e.g., $\lambda_j^2 \sim$ Exp, the Bayesian LASSO) shrinks signals too persistently.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/02_scale_mixture.png"
+  alt="Two-panel marginal density comparison: linear scale near zero showing horseshoe singularity; log scale at tails showing horseshoe polynomial decay vs Laplace exponential vs Gaussian super-exponential."
+  caption="Polson-Scott criterion. Panel (a) plots the marginal density on a linear scale near zero — only the horseshoe (CPS bound, blue band) diverges as beta -> 0. Panel (b) plots the same densities on log scale across the full range — the horseshoe tail decays as 1/beta^2 (polynomial), the Laplace as exp(-c|beta|) (exponential), the Gaussian as exp(-c beta^2) (super-exponential). Only the horseshoe satisfies both criteria."
+/>
+
+The *ridge* prior ($\lambda \equiv 1$) gives a Gaussian marginal — neither pole nor heavy tail. The *Bayesian LASSO* ($\lambda^2 \sim \mathrm{Exp}$) gives a Laplace marginal: there's a logarithmic pole at zero (good — criterion (i) is met) but exponential tails (bad — criterion (ii) is violated). *Half-Normal* on $\lambda$ gives no pole and light tails. *Half-$t_3$* gives polynomial tails but no pole. *Half-Cauchy* (the horseshoe choice) gives both: a logarithmic pole (Carvalho–Polson–Scott 2010 Eq. 7 lower bound: $p_{\mathrm{HS}}(\beta) \geq (1/(2\pi)) \log(1 + 4/\beta^2) \to \infty$ as $\beta \to 0$) and a $1/\beta^2$ tail. The horseshoe is the *unique* member of this menu satisfying the Polson–Scott characterization.
+
+The verification in cell §2 of the notebook confirms numerically that the horseshoe density at $|\beta| = 0.01$ is roughly six times the Gaussian density at the same point (mass-at-zero criterion via the closed-form CPS bound) and that the tail order at $|\beta| = 4$ is horseshoe $>$ Laplace $>$ Gaussian (heavy-tail criterion). The KDE-based estimates for half-Normal and half-$t_3$ scales (no closed form) corroborate the qualitative picture.
+
+The §1 shrinkage profile is the *posterior-side* manifestation of the Polson–Scott *prior-side* characterization. A prior satisfying both criteria (i) and (ii) gives the U-shaped posterior shrinkage figure of §1; a prior violating either criterion gives one of the four other curves on the plot. The geometric content of "horseshoe shape" is therefore not a property of the horseshoe distribution per se but of any prior — discrete or continuous — that satisfies Theorem 1. Spike-and-slab does (the point mass at zero is a degenerate singularity; the slab Gaussian's tails are bounded but the *mixture* tail is heavy). The horseshoe family does. The §3–§8 development of specific priors is essentially a tour of *how* different choices of $p(\lambda_j)$ achieve the criterion.
+
+<ScaleMixtureExplorer client:visible />
+
+## §3. Spike-and-slab — the discrete origin
+
+The §2 Polson–Scott framework gave us a *necessary and sufficient* condition for sparsity-induction: mass at zero plus heavy tails. The earliest Bayesian sparsity prior — Mitchell and Beauchamp (1988) — satisfies the condition trivially: it places a *point mass* at zero, which is mass-at-zero in the strongest possible sense, and a Gaussian slab whose tails dominate any single noise coefficient's likelihood. This is *spike-and-slab*, the conceptual ancestor of every modern sparse Bayesian prior.
+
+<TheoremBlock type="definition" number={2} title="Mitchell–Beauchamp spike-and-slab prior">
+For each coefficient $\beta_j$, introduce a binary indicator $z_j$ and condition the prior on it:
+$$
+z_j \;\sim\; \mathrm{Bernoulli}(\pi), \qquad \beta_j \mid z_j = 0 \;\;\text{is}\;\; \delta_0, \qquad \beta_j \mid z_j = 1 \;\sim\; \mathcal{N}(0, \tau_{\mathrm{slab}}^2).
+$$
+The marginal prior on $\beta_j$ is the discrete mixture
+$$
+p(\beta_j) \;=\; (1 - \pi) \, \delta_0(\beta_j) \;+\; \pi \, \mathcal{N}(\beta_j; 0, \tau_{\mathrm{slab}}^2),
+$$
+a point mass at zero with weight $1 - \pi$ (the *spike*) plus a Gaussian slab with weight $\pi$.
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/03_spike_slab_sparsity.png"
+  alt="Three-panel: spike-and-slab marginal density; 2^p model-space blowup; Castillo–van der Vaart minimax contraction rate."
+  caption="Spike-and-slab — discrete origin, exponential model space, gold-standard contraction. Panel (a) shows the discrete mixture: a point mass at zero (mass 1-pi = 0.8) and a Gaussian slab with weight pi = 0.2. Panel (b) is the model-space exponential blowup: 2^p vs the constant-1 model space of continuous shrinkage priors; SSVS Gibbs becomes intractable past p ~ 25. Panel (c) is the Castillo–van der Vaart minimax sparse-recovery rate sqrt((s log(p/s))/n) — roughly 3.3x faster than the dense rate sqrt(p/n) at p=200, s=5, n=1e4."
+/>
+
+The spike-and-slab framework has two distinguishing properties that no continuous shrinkage prior can replicate.
+
+**Exact sparsity.** Unlike the horseshoe or R2-D2, the spike-and-slab posterior places *positive probability* on $\beta_j = 0$ exactly. After running SSVS Gibbs, the proportion of post-burn-in samples with $z_j = 0$ is the posterior probability that coefficient $j$ is *exactly* zero. This is the discrete analog of the L0 norm — the gold standard of sparsity, and the only Bayesian prior that yields posterior beliefs in the form "coefficient $j$ is in the active set with probability $p_j$" rather than "coefficient $j$ is small with high posterior probability". For applications where downstream interpretation requires a *yes/no* inclusion decision (genomic association studies, variable selection in econometrics), this property matters substantively.
+
+**Computational pain.** The joint $(z, \boldsymbol\beta)$ posterior has support on $2^p$ binary configurations of $z$. Marginalizing $z$ requires summing over all configurations, which is intractable for $p > 25$ or so. Stochastic Search Variable Selection (SSVS, George–McCulloch 1993) is the standard Gibbs sampler — alternates $z_j \mid \boldsymbol\beta, y$ (Bernoulli with closed-form weight $\propto \mathcal{N}(\beta_j; 0, \tau_{\mathrm{slab}}^2) / \mathcal{N}(\beta_j; 0, \tau_{\mathrm{spike}}^2)$ in the relaxed continuous version) and $\boldsymbol\beta \mid z, y$ (Gaussian conditional on the spike-on coordinates) — but mixing across the spike-on / spike-off boundary is pathologically slow at moderate $p$. The chain gets stuck in a local mode where the wrong subset of $z_j$'s is on, and proposals to flip individual $z_j$'s are typically rejected because the Gaussian conditional on $\boldsymbol\beta$ has incompatible posterior under the alternative subset. Modern HMC samplers (NUTS) cannot directly handle the discrete $z$, so the standard practical workaround is the *continuous spike-and-slab* — replace $\delta_0$ with $\mathcal{N}(0, \tau_{\mathrm{spike}}^2)$ for tiny $\tau_{\mathrm{spike}}$ — which loses exact sparsity but is HMC-compatible. The §9 and §10 fits use this continuous relaxation, and the §9 production-scale fit at $p=200$ confirms the mixing pathology empirically: the chain returns $\hat R \approx 1.99$ on most parameters, signalling failure to converge across the multimodal landscape.
+
+The minimax-optimal contraction rate is what makes spike-and-slab the *theoretical* gold standard, not just the conceptual one.
+
+<TheoremBlock type="theorem" number={2} title="Castillo–van der Vaart 2012 minimax contraction">
+Let $\boldsymbol\beta^\star \in \mathbb{R}^p$ be the true coefficient vector with sparsity $s = \|\boldsymbol\beta^\star\|_0 \ll p$, observed via the linear model $\mathbf{y} = \mathbf{X} \boldsymbol\beta^\star + \boldsymbol\varepsilon$, $\boldsymbol\varepsilon \sim \mathcal{N}(0, \sigma^2 \mathbf{I}_n)$. Under appropriate conditions on the spike-and-slab hyperparameters — specifically $\pi \asymp s/p$ and $\tau_{\mathrm{slab}}^2 \asymp p/s$ — the spike-and-slab posterior on $\boldsymbol\beta$ contracts to $\boldsymbol\beta^\star$ at the rate
+$$
+\mathbb{P}\!\left[\,\|\hat{\boldsymbol\beta}_{\mathrm{post}} - \boldsymbol\beta^\star\|_2^2 > C \cdot \frac{s \log(p/s)}{n} \,\Big|\, \mathbf{y}\,\right] \;\to\; 0 \qquad \text{as } n \to \infty,
+$$
+for some constant $C$ depending on the prior and the design.
+</TheoremBlock>
+
+The rate $\sqrt{s \log(p/s)/n}$ is *minimax-optimal* — no procedure (Bayesian or frequentist) can do asymptotically better on coefficient recovery in the sparse regime. This is the rate against which all continuous shrinkage priors are calibrated. The horseshoe achieves the *same* rate up to constants (Datta–Ghosh 2013, see §5); the regularized horseshoe (Piironen–Vehtari 2017) and R2-D2 (Zhang–Reich–Bondell 2022) likewise. Continuous shrinkage priors trade the exact-sparsity property of spike-and-slab for *computational tractability* (HMC compatibility, $p \sim 10^4$ scaling) while preserving the asymptotic rate.
+
+The notebook §3 figure quantifies the speedup: at $p = 200$, $s = 5$, $n = 10^4$, the sparse rate is roughly 3.3 times faster than the dense rate $\sqrt{p/n}$. This factor scales as $\sqrt{p / (s \log(p/s))}$ — for ultra-sparse problems ($s \ll p$) the speedup compounds significantly.
+
+Three reasons we still develop spike-and-slab even though horseshoe is the modern default. First, spike-and-slab is the conceptual ancestor — every modern continuous shrinkage prior is best understood as a *continuous approximation* to it, and §4 will make the horseshoe-as-spike-slab-approximation story precise. Second, when $p$ is small enough for SSVS (or marginal exact enumeration) to be tractable — say $p < 30$ — spike-and-slab gives strictly more interpretable posteriors than continuous priors, and exact-sparsity matters for downstream variable selection. Third, the Castillo–van der Vaart rate is the *benchmark* — when we evaluate horseshoe or R2-D2 in §10, the comparison is "how close to the spike-and-slab oracle is this continuous prior?" not "is this continuous prior any good in absolute terms?".
+
+<SpikeSlabSparsityCost client:visible />
+
+## §4. The horseshoe prior
+
+The §2 Polson–Scott criterion told us *which* global-local priors induce sparse posteriors: those with both mass-at-zero and heavy tails in the implied marginal. Among the priors satisfying this criterion, one stands out — the *horseshoe* — both for the elegance of its mathematical structure and for the geometric clarity of the inductive bias it expresses. The horseshoe is the modern default sparse Bayesian prior, and §4 develops the structural reason.
+
+<TheoremBlock type="definition" number={3} title="Carvalho–Polson–Scott 2010 horseshoe">
+For each coefficient $\beta_j$,
+$$
+\beta_j \mid \lambda_j, \tau \;\sim\; \mathcal{N}(0, \lambda_j^2 \tau^2), \qquad \lambda_j \;\sim\; \mathcal{C}^+(0, 1), \qquad \tau \;\sim\; \mathcal{C}^+(0, \tau_0),
+$$
+where $\mathcal{C}^+(0, s)$ denotes the half-Cauchy distribution with scale parameter $s$ and density $p(x) = (2/\pi) \cdot s/(s^2 + x^2)$ for $x \geq 0$.
+</TheoremBlock>
+
+The half-Cauchy local scale is the *load-bearing choice* — it is what makes the horseshoe a sparsity prior in the modern sense, and the Polson–Scott characterization (Theorem 1) is what justifies the choice. The half-Cauchy has both a singularity at zero (criterion (i): $p(\lambda) \to 2/\pi$ as $\lambda \to 0$ is finite, but the implied $\beta$ marginal under the scale mixture has a *logarithmic* singularity at zero) and polynomial tail decay (criterion (ii): $p(\lambda) \sim 1/\lambda^2$ as $\lambda \to \infty$, which produces $1/\beta^2$ tails in the $\beta$ marginal). No other choice on the §2 menu satisfies both criteria simultaneously.
+
+But there is a deeper geometric content to the half-Cauchy choice — one that gives the prior its name. Define the *shrinkage factor* $\kappa_j \in (0, 1)$ by $\kappa_j = 1/(1 + \lambda_j^2 \tau^2)$. The shrinkage factor measures the prior's pull on coefficient $j$: $\kappa_j \to 0$ means no shrinkage (the data wins, signal preserved), $\kappa_j \to 1$ means complete shrinkage (the prior wins, noise zeroed). Because the posterior conditional $\beta_j \mid \lambda_j, \tau, y_j$ is Gaussian with mean $(1 - \kappa_j) y_j$, the *prior* distribution of $\kappa_j$ tells us what the prior expects of every individual coefficient before seeing the data.
+
+<TheoremBlock type="theorem" number={3} title="The horseshoe-shape identity">
+Under unit noise variance and unit global scale ($\sigma^2 = \tau^2 = 1$), the prior distribution of the shrinkage factor $\kappa_j$ under the horseshoe is exactly Beta(1/2, 1/2):
+$$
+\kappa_j \;\sim\; \mathrm{Beta}(\tfrac{1}{2}, \tfrac{1}{2}), \qquad p(\kappa) = \frac{1}{\pi} \cdot \kappa^{-1/2} (1 - \kappa)^{-1/2}, \quad \kappa \in (0, 1).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Change of variables from $\lambda^2 \in (0, \infty)$ to $\kappa \in (0, 1)$ via $\kappa = 1/(1 + \lambda^2)$, equivalently $\lambda^2 = (1 - \kappa)/\kappa$. The Jacobian is
+$$
+\left|\frac{d \lambda^2}{d \kappa}\right| \;=\; \left|\frac{d}{d\kappa} \frac{1 - \kappa}{\kappa}\right| \;=\; \frac{1}{\kappa^2}.
+$$
+The density of $\lambda$ under $\mathcal{C}^+(0, 1)$ is $p(\lambda) = (2/\pi)/(1 + \lambda^2)$. By another change of variables to $\lambda^2$:
+$$
+p(\lambda^2) \;=\; p(\lambda) \cdot \left|\frac{d \lambda}{d \lambda^2}\right| \;=\; \frac{2/\pi}{1 + \lambda^2} \cdot \frac{1}{2 \sqrt{\lambda^2}} \;=\; \frac{1}{\pi \sqrt{\lambda^2}(1 + \lambda^2)}.
+$$
+Substituting $\lambda^2 = (1 - \kappa)/\kappa$ — note $\sqrt{\lambda^2}(1 + \lambda^2) = \sqrt{(1 - \kappa)/\kappa} \cdot 1/\kappa = \sqrt{1 - \kappa} / \kappa^{3/2}$ — gives
+$$
+p(\kappa) \;=\; p(\lambda^2) \cdot \left|\frac{d \lambda^2}{d\kappa}\right| \;=\; \frac{\kappa^{3/2}}{\pi \sqrt{1 - \kappa}} \cdot \frac{1}{\kappa^2} \;=\; \frac{1}{\pi} \kappa^{-1/2} (1 - \kappa)^{-1/2},
+$$
+which is the Beta(1/2, 1/2) density.
+</TheoremBlock>
+
+The Beta(1/2, 1/2) density is the U-shape — the namesake "horseshoe" shape. It places mass equally at $\kappa = 0$ (no shrinkage, the data wins) and $\kappa = 1$ (full shrinkage, the prior wins), with vanishing density in the middle. The prior *expects* every coefficient to be either *signal* or *noise* — no moderate-shrinkage middle ground. This is the right inductive bias for sparse problems: in a true sparse setting most coefficients are noise ($\kappa \approx 1$) and a few are signal ($\kappa \approx 0$), and intermediate shrinkage doesn't correspond to a real classification.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/04_horseshoe_kappa.png"
+  alt="Empirical histogram of horseshoe shrinkage factor kappa from 200,000 Monte Carlo samples, overlaid with closed-form Beta(1/2, 1/2) density showing the U-shape namesake."
+  caption="Theorem 3 verified numerically: 200,000 horseshoe samples (lambda ~ HalfCauchy(0,1)) transformed to kappa = 1/(1 + lambda^2). The empirical histogram (blue) matches the closed-form Beta(1/2, 1/2) density (brown) to Kolmogorov-Smirnov distance < 0.01. The U-shape is the namesake — mass at kappa=0 (signal regime, no shrinkage) and kappa=1 (noise regime, full shrinkage) with negligible density in the middle. The horseshoe expects coefficients to be either signal or noise."
+/>
+
+The notebook §4 cell verifies the identity numerically: 200,000 samples of $\lambda \sim \mathcal{C}^+(0, 1)$, transformed to $\kappa = 1/(1 + \lambda^2)$, give an empirical histogram that matches the closed-form Beta(1/2, 1/2) density to Kolmogorov–Smirnov distance below 0.01. The empirical mean is within 0.005 of 0.5 (the Beta(1/2, 1/2) mean), and the variance is within 0.005 of 0.125 (the Beta variance $(1/2 \cdot 1/2)/((1)^2 \cdot (2)) = 1/8$).
+
+Compare the horseshoe Beta(1/2, 1/2) shrinkage prior to two alternatives. Ridge has degenerate prior $\kappa \equiv 1/(1 + \tau^2)$ — a point mass somewhere in the middle of $(0, 1)$, which expresses "every coefficient gets the same moderate shrinkage". This is exactly *not* the inductive bias we want: it commits the prior to treating signals and noise identically. Bayesian LASSO has $\lambda^2 \sim \mathrm{Exp}$, which transforms to a $\kappa$ prior concentrated near $\kappa = 1$ — the prior expects every coefficient to be heavily shrunk. Better than ridge for the noise coordinates, but signal coordinates also get heavily shrunk, which is suboptimal. Spike-and-slab has $\kappa$ concentrated at *exactly* $\kappa = 1$ (spike, $\lambda = 0$) and exactly $\kappa = 1/(1 + \tau_{\mathrm{slab}}^2)$ (slab, $\lambda = \tau_{\mathrm{slab}}$) — a two-point distribution, the discrete analog of horseshoe's continuous U-shape. Horseshoe interpolates the spike-slab two-point prior with a smooth Beta(1/2, 1/2) density, which is what makes it HMC-compatible (no discrete latent) while preserving the right qualitative geometry.
+
+For general $\tau \neq 1$, the prior on $\kappa$ is no longer Beta(1/2, 1/2) but a transformed version that places more mass near $\kappa = 1$ for small $\tau$ (sparse data: most coefficients shrunk) and more mass near $\kappa = 0$ for large $\tau$ (dense data: most coefficients unconstrained). The horseshoe-shape namesake survives — the U-shape persists — but the *balance* between the two arms shifts with the global sparsity level. This is exactly the adaptive-sparsity behavior the §2 framework promised.
+
+<HorseshoeShrinkageProfile client:visible />
+
+## §5. Horseshoe vs Bayesian LASSO — tail behavior is the geometric content
+
+§4 established the horseshoe's namesake U-shape on the shrinkage factor. We now look at the *implied marginal* on $\beta$ itself and compare it to its closest cousin: the Bayesian LASSO. The comparison sharpens the geometric story by isolating exactly where horseshoe and Bayesian LASSO part ways.
+
+<TheoremBlock type="proposition" number={1} title="Tail-behavior comparison">
+Under the Bayesian LASSO ($\lambda^2 \sim \mathrm{Exp}(\rho)$), the marginal prior on $\beta$ is the Laplace density with scale $1/\sqrt{2\rho}$:
+$$
+p_{\mathrm{LASSO}}(\beta) \;=\; \frac{\sqrt\rho}{\sqrt 2} \, e^{-\sqrt{2\rho}\,|\beta|}, \qquad \text{exponential tail decay.}
+$$
+Under the horseshoe ($\lambda \sim \mathcal{C}^+(0, \tau)$), the marginal prior on $\beta$ has *polynomial* tail decay (Carvalho–Polson–Scott 2010 Eq. 7 bounds):
+$$
+\frac{1}{2 \pi}\,\log\!\left(1 + \frac{4 \tau^2}{\beta^2}\right) \;\le\; p_{\mathrm{HS}}(\beta) \;\le\; \frac{1}{\pi}\,\log\!\left(1 + \frac{4 \tau^2}{\beta^2}\right).
+$$
+For large $|\beta|$, the upper bound behaves as $p_{\mathrm{HS}}(\beta) \sim 4 \tau^2 / (\pi \beta^2)$ — quadratic decay, not exponential.
+</TheoremBlock>
+
+The contrast is stark. Both priors have a singularity at zero (criterion (i) of Theorem 1 — Laplace has a logarithmic-style cusp, horseshoe a logarithmic divergence), so both shrink small coefficients aggressively. But the tails diverge: Laplace decays as $\exp(-c|\beta|)$ while horseshoe decays as $1/\beta^2$. Numerically, at $|\beta| = 8$ with unit scales, Laplace gives roughly $7 \times 10^{-6}$ density while horseshoe gives roughly $0.01$ — a *thousand-fold* difference in the tail.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/05_horseshoe_vs_lasso.png"
+  alt="Two-panel: log-scale prior tails for ridge, Bayesian LASSO, horseshoe showing Gaussian, exponential, and polynomial decay; posterior shrinkage profiles showing horseshoe vanishing on signals while LASSO and ridge keep shrinking."
+  caption="Proposition 1 — polynomial vs exponential tail decay. Panel (a) plots the prior densities on log scale. Ridge (gray) decays as exp(-c beta^2); Bayesian LASSO (brown) as exp(-c|beta|); horseshoe (blue, with CPS bounds shaded) as 1/beta^2. The tail-order separation widens with |beta|. Panel (b) is the consequence: the posterior shrinkage E[kappa | y]. Horseshoe shrinkage vanishes on signals (no fight with the data); LASSO and ridge keep shrinking moderate-to-large signals. The polynomial tail of (a) produces the vanishing shrinkage of (b)."
+/>
+
+When the data implies a large signal $|y_j| \gg \sigma$, the posterior on $\beta_j$ is dominated by the prior tail at large $\beta_j$. With *exponential* tail decay (Bayesian LASSO), the prior has *finite* prior mass beyond any threshold — the prior fights the data and continues to shrink the posterior mode toward zero by a constant amount (the soft-thresholding intuition: posterior mode is $\mathrm{sgn}(y) \cdot \max(|y| - \mu_{\mathrm{Laplace}}, 0)$, where $\mu_{\mathrm{Laplace}}$ is the threshold induced by the Laplace prior). With *polynomial* tail decay (horseshoe), the prior is asymptotically *flat* at large $\beta$ — beyond a critical threshold, the prior gradient vanishes and the posterior leaves the OLS estimate alone. The figure's panel (b) makes this visible as the *posterior consequence*: horseshoe shrinkage $\mathbb{E}[\kappa \mid y]$ tends to zero as $|y|$ grows; LASSO shrinkage tends to a positive constant.
+
+This is the *Datta–Ghosh 2013* risk-optimality theorem in geometric form. They show that under the sparse-normal-means model — $y_i = \beta_i + \varepsilon_i$ with $\beta$ having $s$ non-zero entries among $p$ coordinates and an appropriate sparsity-rate scaling — the horseshoe achieves the asymptotic minimax-optimal risk, matching the spike-and-slab oracle up to constants. The Bayesian LASSO is suboptimal by a constant factor that reflects exactly the persistent-shrinkage cost on signals. *The horseshoe's polynomial tail is what lets it match spike-and-slab; Bayesian LASSO's exponential tail is what holds it back.*
+
+We mention Bayesian LASSO at all for three reasons. First, the Bayesian LASSO is the *prior-side* dual of the L1-penalized lasso (Tibshirani 1996), and that duality is illuminating — it tells us that any frequentist L1 penalty is implicitly committing to an exponential-tailed prior. Second, the Bayesian LASSO is computationally simpler than the horseshoe (no funnel pathology, no reparameterization required), so for problems where the asymptotic risk gap doesn't matter and the practitioner wants a simple sparse Bayesian baseline, it's a defensible choice. Third, the Bayesian LASSO and horseshoe are best understood together: the horseshoe's geometric advantages over the Bayesian LASSO are exactly the geometric advantages of polynomial-over-exponential tails, and that contrast generalizes to other sparse-prior comparisons.
+
+The horseshoe's polynomial tail is also its computational liability. When $\lambda_j^2$ is unconstrained at the upper end, the joint $(\tau, \lambda_j, \beta_j)$ posterior develops a pathological *funnel* geometry (§6 Theorem 4) that breaks naive HMC. The Piironen–Vehtari (2017) *regularized* horseshoe replaces $\lambda_j^2$ with the truncated form $\tilde\lambda_j^2 = c^2 \lambda_j^2 / (c^2 + \tau^2 \lambda_j^2)$, which caps $\tilde\lambda_j^2$ at $c^2$ and recovers Gaussian-slab-like behavior at large $\lambda$. The regularized horseshoe is a *continuous interpolation* between the horseshoe (when $\lambda^2 \ll c^2 / \tau^2$) and a Gaussian slab with variance $c^2$ (when $\lambda^2 \gg c^2 / \tau^2$). For large signals, the regularized horseshoe *does* persistently shrink (because the Gaussian slab has exponential tails), but the slab variance $c$ is large enough that the shrinkage constant is small — large signals are essentially unshrunken in practice. §6 develops the regularized horseshoe in full.
+
+<HorseshoeGlobalLocalGeometry client:visible />
+
+## §6. The funnel pathology and the regularized horseshoe
+
+The horseshoe's polynomial-tail story (§5) is its mathematical strength. It is also the source of its primary *computational* liability — the *funnel pathology* — and the primary motivation for the modern default, the *regularized horseshoe*.
+
+Reparameterize the centered horseshoe in $(\log \tau, \log \lambda_j, \beta_j)$ coordinates. The conditional prior $p(\beta_j \mid \log \tau, \log \lambda_j)$ is Gaussian with variance $\lambda_j^2 \tau^2$. When the data is uninformative — coefficient $j$ is true noise — the posterior on $\beta_j$ looks similar to the prior, and the joint posterior on $(\log \tau, \log \lambda_j, \beta_j)$ inherits the *funnel* shape: as $\tau \to 0$, the conditional spread of $\beta_j \mid \tau$ shrinks dramatically (variance $\lambda_j^2 \tau^2 \to 0$), so the *joint* density narrows to a sharp neck near small $\tau$.
+
+<TheoremBlock type="theorem" number={4} title="The funnel pathology of the centered horseshoe">
+For the centered horseshoe with $\tau \sim \mathcal{C}^+(0, \tau_0)$, $\lambda_j \sim \mathcal{C}^+(0, 1)$, $\beta_j \mid \lambda_j, \tau \sim \mathcal{N}(0, \lambda_j^2 \tau^2)$, the joint posterior $p(\log \tau, \log \lambda_j, \beta_j \mid y)$ has *funnel geometry* in the sense that the conditional spread of $\log \lambda_j$ given $\log \tau$ blows up as $\tau \to 0$. Hamiltonian Monte Carlo with leapfrog integration on the centered parameterization produces *divergent transitions* — the standard NUTS diagnostic for failed integration steps — concentrated near the funnel neck.
+</TheoremBlock>
+
+The pathology is geometrically isomorphic to *Neal's funnel* (Neal 2003 §8) and the centered-parameterization of the eight-schools model ([Probabilistic Programming](/topics/probabilistic-programming) §5.2). It is a *generic* feature of hierarchical-multiplicative-scale priors: any time a hyperparameter $\tau$ multiplies a latent variable in the prior conditional, and the hyperparameter has positive density at zero, the joint prior has a funnel.
+
+The leapfrog integrator's step size must be small in the narrow neck (small $\tau$, where the joint density gradient changes rapidly) but can be large in the wide bell (large $\tau$, where the gradient is smooth). NUTS adapts step size to the *worst-case* gradient magnitude during warmup, so it adapts to the neck and spends most of its time in the bell making tiny inefficient steps. Worse, even with the correct adaptation, the integrator occasionally slips into the neck region and the leapfrog step's energy error explodes — NUTS catches this and reports a *divergent transition*. Posteriors with funnels typically produce 5%–50% divergence rates without reparameterization, which makes the resulting samples unreliable for inference. The §10 diabetes fits confirm this empirically: the unregularized horseshoe produces 47 divergent transitions out of 2,000 draws, while the regularized horseshoe with non-centered parameterization produces just 1.
+
+The standard fix is the *non-centered parameterization*. Instead of sampling $\beta_j$ directly, sample $z_j \sim \mathcal{N}(0, 1)$ a priori and define $\beta_j = z_j \cdot \lambda_j \cdot \tau$ as a deterministic transform. The hyperparameters $(\tau, \lambda_j)$ no longer multiply the latent $z_j$ in the *prior* — only in the *transform* — so the prior on $(\tau, \lambda_j, z_j)$ is *factored* and has no funnel. The data-conditioned posterior still couples them through the likelihood, but the geometric pathology is gone, and the leapfrog integrator behaves uniformly across the joint.
+
+The non-centered fix works for the horseshoe in PyMC — the §9 and §10 fits use it explicitly — but it doesn't address a second issue: the horseshoe's polynomial tail means that $\lambda_j^2$ can drift toward extremely large values during sampling, which produces extreme prior variances and numerically unstable posteriors. This is the motivation for the *regularized* horseshoe.
+
+<TheoremBlock type="definition" number={4} title="Piironen–Vehtari 2017 regularized horseshoe">
+The regularized horseshoe replaces the local scale $\lambda_j$ with the *truncated* form
+$$
+\tilde\lambda_j^2 \;=\; \frac{c^2 \lambda_j^2}{c^2 + \tau^2 \lambda_j^2},
+$$
+where $c^2$ is a *slab variance* upper-bounding the *joint* prior variance: $\tilde\lambda_j^2 \tau^2 \to c^2$ as $\lambda_j^2 \to \infty$. Calibrate the global scale via
+$$
+\tau_0 \;=\; \frac{m_0}{p - m_0} \cdot \frac{\sigma}{\sqrt{n}},
+$$
+where $m_0 \in (0, p)$ is the *prior expected number of effective coefficients* — a practitioner-facing hyperparameter directly elicitable from domain knowledge.
+</TheoremBlock>
+
+The truncation has a clean geometric interpretation: for $\lambda_j^2 \ll c^2 / \tau^2$, the regularized $\tilde\lambda_j^2 \approx \lambda_j^2$ recovers the original horseshoe behavior. For $\lambda_j^2 \gg c^2 / \tau^2$, the regularization caps $\tilde\lambda_j^2 \tau^2 \approx c^2$ — large $\lambda$ no longer produces an unbounded prior variance, and the implied $\beta$ marginal has Gaussian-slab-like tails at the upper end. The regularized horseshoe is thus a *continuous interpolation* between the horseshoe (small-to-moderate $\lambda$) and a Gaussian slab with variance $c^2$ (large $\lambda$) — preserving the horseshoe's mass-at-zero and intermediate-tail behavior while bounding the upper tail.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/06_funnel_to_regularized.png"
+  alt="Two-panel: the centered horseshoe prior funnel in (log tau, log lambda_j) showing the unconstrained ridge at small tau; the regularized horseshoe with bounded lambda_tilde."
+  caption="Theorem 4 + Definition 4. Panel (a) shows 50,000 prior samples of (log tau, log lambda_j) under the centered horseshoe; the funnel neck at small log tau is where HMC divergences concentrate. Panel (b) shows the same samples after applying the regularized truncation lambda_tilde^2 = c^2 lambda^2 / (c^2 + tau^2 lambda^2) with c=2; lambda_tilde is bounded above (visible as the horizontal ceiling at log c = 0.69), and the joint prior variance is bounded by c^2."
+/>
+
+The regularized horseshoe is the modern default for three reasons.
+
+*Funnel mitigation.* The truncated $\tilde\lambda^2$ caps the joint prior variance, which removes the worst pathology. Combined with the non-centered parameterization, divergent transitions essentially disappear in practice — the §9 production fit confirms this empirically with zero divergences across 4,000 post-warmup draws at $p=200$. The funnel still exists in principle but is severely weakened.
+
+*Practitioner-facing hyperparameter.* The $m_0$ hyperparameter is directly interpretable: "I expect about $m_0$ active coefficients out of $p$". The Piironen–Vehtari calibration formula automatically translates this into the corresponding $\tau_0$ for the half-Cauchy global-scale prior. Practitioners don't need to tune the abstract $\tau_0$ by hand or by cross-validation; they specify $m_0$ from domain knowledge. The slab variance $c$ is a separate hyperparameter set to "the largest plausible coefficient magnitude" — a typical default is $c = 5 \cdot \mathrm{sd}(y)$, which is large enough to be uninformative for genuine signals while still being finite enough to avoid the funnel pathology.
+
+*Interpolation with spike-and-slab.* The regularized horseshoe interpolates smoothly between the horseshoe (small $\lambda^2$ — the spike side, aggressive shrinkage) and Gaussian-slab-with-variance-$c^2$ (large $\lambda^2$ — the slab side, no shrinkage). This interpolation is exactly what spike-and-slab does discretely (§3): mass at $\beta = 0$ and mass at the slab. The regularized horseshoe is a *continuous* version of spike-and-slab, with all the HMC-compatibility benefits of continuity and most of the geometric benefits of the spike-slab inductive bias.
+
+The notebook §6 cell samples 50,000 horseshoe prior values, applies both the centered and regularized parameterizations, and computes the conditional standard deviation of $\log \lambda$ given $\log \tau$ within bins. At small $\log \tau < -2$, the centered standard deviation is large (the funnel is wide there), while the regularized standard deviation is materially smaller. The numerical assertion confirms that the joint prior variance $\tilde\lambda^2 \tau^2$ is bounded above by $c^2 = 4$ — verifying the slab cap.
+
+A side-discussion: *horseshoe+* (Bhadra, Datta, Polson & Willard 2017) adds a second half-Cauchy layer on top of the local scale: $\lambda_j \mid \xi_j \sim \mathcal{C}^+(0, \xi_j)$, $\xi_j \sim \mathcal{C}^+(0, 1)$. This produces an even heavier-tailed prior on $\beta$ — the tail decays as $\log(\beta) / \beta^2$ instead of just $1/\beta^2$ — which improves the contraction rate for ultra-sparse problems where the active proportion $s/p \to 0$ very quickly. We do not develop horseshoe+ in detail; the regularized horseshoe is sufficient for typical practitioner needs and the horseshoe+ improvement is a marginal asymptotic gain.
+
+The eight-schools centered-vs-non-centered story ([Probabilistic Programming](/topics/probabilistic-programming) §5.2) is the *prototype* for the funnel pathology. The eight-schools model is a hierarchical Gaussian with a single global scale $\tau$ multiplying eight latent group-mean offsets; reparameterizing with $\theta_j = \mu + \tau \cdot z_j$ (non-centered) versus $\theta_j \sim \mathcal{N}(\mu, \tau^2)$ (centered) is the canonical demonstration of the same fix. Sparse priors generalize the eight-schools structure to $p \gg 8$ coefficients with per-coefficient $\lambda_j$ scales on top of the global $\tau$, and the funnel pathology is correspondingly more severe.
+
+<FunnelPathologyExplorer client:visible />
+
+## §7. ADVI on sparse priors — mean-field structural error specialized
+
+§§4–6 developed the horseshoe family at the level of the prior — its mathematical structure, its tail behavior, its computational pathology. We turn now to *posterior inference* under variational methods. The horseshoe posterior on $(\log \tau, \log \lambda_j, \beta_j)$ inherits the funnel geometry from the prior (§6), and that geometry breaks not just HMC but also *variational inference* in a specific, characterizable way.
+
+The [Variational Inference](/topics/variational-inference) topic developed the mean-field structural-error theorem for Gaussian targets (VI §5.1): the reverse-KL projection of a correlated multivariate Gaussian onto its mean-field family always *underestimates* the marginal variances. We need to specialize that result to the horseshoe local-global posterior, where the target is *not* Gaussian — it has heavy tails and curvature — and the structural error compounds.
+
+<TheoremBlock type="theorem" number={5} title="Mean-field structural error on horseshoe local-global posterior">
+Let $p(\log \tau, \log \lambda_j, \beta_j \mid y)$ be the centered horseshoe posterior with the funnel geometry of Theorem 4. The reverse-KL projection onto a mean-field Gaussian family $\mathcal{Q}_{\mathrm{MF}} = \mathcal{N}(\mu_\tau, s_\tau^2) \otimes \mathcal{N}(\mu_\lambda, s_\lambda^2) \otimes \mathcal{N}(\mu_\beta, s_\beta^2)$ produces a $q^\star$ that:
+
+(i) **underestimates the variance** along the funnel direction. This is a *strict generalization* of VI Theorem 5.1, which addressed Gaussian targets — heavy-tailed targets compound the underestimation by a factor that depends on the tail index.
+
+(ii) **mode-locks** to the wide-funnel region (large $\tau$) and misses the narrow neck (small $\tau$, where most posterior mass lives for sparse data).
+
+(iii) **biases active-set inclusion probabilities** $P(|\beta_j| > t \mid y)$ downward because the marginal posterior is dominated by the heavy tail that mean-field flattens.
+</TheoremBlock>
+
+The proof argument is a routine application of the variational-inference §5.1 mechanism extended to non-Gaussian targets. The reverse-KL projection minimizes $\mathbb{E}_q[\log q - \log p]$, and the optimum places $q$'s mass on the *bulk* of the target rather than the tails. For a Gaussian target, the bulk is the central ellipsoid, and the projection captures the marginal means correctly while underestimating the variances by the factor $1 - \rho^2$ where $\rho$ is the correlation. For a horseshoe-funnel target, the bulk is the wide-bell region (large $\tau$), and the projection ignores the narrow-neck region (small $\tau$, where the heavy tails of $\lambda_j$ contribute most of the active-set posterior probability). The result is a $q^\star$ that systematically underestimates the posterior probability of active coefficients — *anti-conservative sparsity*.
+
+This is a serious operational issue. Practitioners using ADVI on a horseshoe model and reading off active-set inclusion probabilities will see *fewer* signals flagged than the true posterior would imply. The §1 four-prior shrinkage profile shows the horseshoe vanishing on signals; the §7 mean-field error specifically *blunts* that vanishing on the variational-posterior side. Naive ADVI is not a safe substitute for NUTS on horseshoe models — it requires the §11 escalation hierarchy to detect and correct the bias.
+
+The empirical demonstration mirrors the variational-inference §5.4 / VBMS §6 banana-target pattern. Define a synthetic 2D heavy-tailed funnel target inspired by the horseshoe $(\log \tau, \log \lambda_j)$ geometry:
+$$
+\log p(x_0, x_1) \;\propto\; -\frac{x_0^2}{2 \cdot 9} - \frac{(x_1 - 0.6 x_0 - 0.3 x_0^2)^2}{2 \, \beta^2 \exp(\gamma x_0)},
+$$
+with $\beta = 0.6, \gamma = 0.5$. The conditional Gaussian-on-$x_1$-given-$x_0$ shape mimics the horseshoe funnel (variance grows exponentially with $x_0$). Optimize three families against this target via L-BFGS-B with reparameterization-trick gradients on 5,000 standard-normal samples.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/07_advi_sparse.png"
+  alt="Three-panel banana-funnel target with three approximations: mean-field Gaussian, full-rank Gaussian, polynomial flow."
+  caption="Theorem 5: VI expressiveness hierarchy on a horseshoe-funnel-like target. (a) Mean-field Gaussian: axis-aligned ellipses, variance underestimated, misses correlation entirely. (b) Full-rank Gaussian: tilted ellipses, captures the linear correlation, but no curvature — the banana's spine is straight in the projection. (c) Polynomial autoregressive flow: x1 conditional on x0 has quadratic mean, captures the curvature. KL gaps shrink monotonically: KL_MF > KL_FR > KL_flow."
+/>
+
+The notebook §7 cell verifies the ELBO ordering: $\mathrm{ELBO}_{\mathrm{MF}} < \mathrm{ELBO}_{\mathrm{FR}} < \mathrm{ELBO}_{\mathrm{flow}}$, which by Theorem 4 of VBMS §6 means the corresponding KL gaps satisfy $\mathrm{KL}_{\mathrm{MF}} > \mathrm{KL}_{\mathrm{FR}} > \mathrm{KL}_{\mathrm{flow}}$. The flow family recovers the polynomial spine parameters $(b, c) = (0.6, 0.3)$ that match the target, demonstrating that an autoregressive flow with quadratic conditional mean captures the funnel curvature exactly. The full-rank Gaussian captures the linear correlation in the bulk but misses the curvature; the mean-field misses both.
+
+§11 specializes the [Variational Bayes for Model Selection](/topics/variational-bayes-for-model-selection) §11 escalation hierarchy to sparse-prior posteriors. The decision rule is: start with mean-field ADVI; compute Pareto-$\hat k$; if $\hat k > 0.7$, escalate to full-rank ADVI; if still flagged, escalate to IWELBO with $K \geq 50$ importance samples; for high-stakes inference, run AIS with schedule length $T \geq 100$ as the gold-standard reference. The §7 expressiveness hierarchy is the *theoretical* basis for the §11 escalation: each step up the hierarchy reduces the structural error by enriching the variational family, and the Pareto-$\hat k$ diagnostic is what tells us when the current family's error is too large to ignore.
+
+The [Bayesian Neural Networks](/topics/bayesian-neural-networks) §3 Laplace approximation has a similar story. For BNN posteriors, the Laplace approximation typically underestimates posterior variance for the same structural reason that mean-field VI does — the posterior is not Gaussian, the curvature is mis-aligned with the Laplace covariance, and the projection error is non-negligible. The §7 story is therefore not unique to sparse priors; it is a *generic* feature of variational and Laplace approximations on non-Gaussian posteriors. What is unique to sparse priors is the *direction* of the error — anti-conservative sparsity in the active-set probabilities.
+
+<SparsePosteriorVIExplorer client:visible />
+
+## §8. R2-D2 priors — variance decomposition as the alternative
+
+§§4–7 developed the horseshoe family — the modern default sparse Bayesian prior. We now present the principal *alternative*: the R2-D2 prior of Zhang, Reich & Bondell (2022). The R2-D2 prior reformulates sparse regression in terms of a quantity practitioners often have direct intuitions about — the *proportion of variance explained* $R^2$ — rather than in terms of coefficient counts or local-scale hyperparameters.
+
+<TheoremBlock type="definition" number={5} title="Zhang–Reich–Bondell R2-D2 prior">
+Place a Beta prior on $R^2 \in [0, 1]$ and a Dirichlet prior on the simplex $\Delta^{p-1}$:
+$$
+R^2 \sim \mathrm{Beta}(a, b), \qquad \boldsymbol\phi \sim \mathrm{Dirichlet}(\xi, \ldots, \xi), \qquad \beta_j \mid R^2, \phi_j, \sigma^2 \;\sim\; \mathcal{N}\!\left(0, \, \sigma^2 \cdot \frac{R^2}{1 - R^2} \cdot \phi_j\right).
+$$
+The hyperparameters $(a, b)$ encode the practitioner's belief about $R^2$; the Dirichlet concentration $\xi$ controls sparsity.
+</TheoremBlock>
+
+The construction has a clean variance-decomposition interpretation. The total *signal-to-noise ratio* of the regression is $\mathrm{snr} = \mathrm{var}(\mathbf{X}\boldsymbol\beta) / \sigma^2 = R^2 / (1 - R^2)$. Conditional on the snr, the per-coefficient variance is partitioned according to a Dirichlet allocation: $\mathrm{var}(\beta_j \mid R^2, \phi_j) = \sigma^2 \cdot \mathrm{snr} \cdot \phi_j$, and the $\phi_j$'s sum to one. *Small Dirichlet concentration $\xi$ concentrates allocation on a few coefficients (sparse); large $\xi$ spreads it across all coefficients (dense).*
+
+Practitioner elicitation is direct. For a regression where domain knowledge suggests "this should explain at most 30% of variance with maybe 5 active predictors out of 100", set $\mathrm{Beta}(a, b)$ with mode below 0.3 (e.g., $\mathrm{Beta}(0.5, 5)$, prior mean $1/11 \approx 0.09$, mode 0) and $\xi = 0.5$ for sparse Dirichlet allocation. The hyperparameter triple $(a, b, \xi)$ jointly encodes the sparsity belief — three numbers, all interpretable.
+
+<TheoremBlock type="proposition" number={2} title="No funnel">
+Because the Dirichlet allocation $\boldsymbol\phi$ lives on the *bounded* simplex $\Delta^{p-1}$, the per-coefficient $\phi_j$ is constrained to $[0, 1]$ and individual coordinates cannot grow unboundedly. The multiplicative $\tau \leftrightarrow \lambda_j$ coupling that produces the horseshoe funnel (Theorem 4) does not arise in R2-D2. HMC on R2-D2 is typically divergence-free without reparameterization.
+</TheoremBlock>
+
+This is the *practical* advantage of R2-D2 over horseshoe. The funnel pathology that requires the §6 non-centered + regularized fix simply doesn't occur in R2-D2 — the bounded simplex prevents the unbounded multiplicative scaling that creates the funnel. PyMC NUTS on R2-D2 typically reports zero or near-zero divergent transitions out of the box. For practitioners who want sparse-prior inference *without* the §6 reparameterization tax, R2-D2 is the right tool.
+
+The trade-off is interpretation. The horseshoe (and its regularized version) has a single elicitable hyperparameter $m_0$ — the prior expected number of effective coefficients — that maps directly to a domain question. The R2-D2 has *three* hyperparameters $(a, b, \xi)$ that interact non-trivially: $(a, b)$ controls the global signal-to-noise belief, $\xi$ controls sparsity, but the implied marginal $p(\beta_j)$ shape depends on both. Eliciting $(a, b, \xi)$ from domain knowledge requires more judgment than eliciting $m_0$.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/08_r2d2_decomposition.png"
+  alt="Two-panel: implied marginal density p(beta_j) for three (a, b, xi) configurations; Dirichlet allocation across 20 coefficients sorted by allocation size for three xi values."
+  caption="R2-D2 prior structure. Panel (a): three hyperprior settings — (Beta(0.5, 5), xi=0.5) is sparse with R^2 concentrated near 0; (Beta(2, 2), xi=1) is uniform over R^2 with moderate sparsity; (Beta(5, 5), xi=2) is dense with R^2 concentrated near 0.5. The implied beta marginals shift from sharply peaked at zero (sparse) to broad Gaussian-like (dense). Panel (b): expected Dirichlet allocation across 20 coefficients sorted by size — small xi concentrates variance on a few coefficients, large xi spreads it uniformly."
+/>
+
+The R2-D2 prior is a *bounded-simplex reformulation* of the global-local framework. The horseshoe places independent half-Cauchy priors on each $\lambda_j$, and the global-local coupling enters multiplicatively through $\beta_j = z_j \lambda_j \tau$. The R2-D2 places a *joint* Dirichlet on the relative allocation, with the global signal-to-noise ratio $R^2/(1-R^2)$ playing a role analogous to $\tau^2$. The two priors capture similar inductive biases (sparsity, heavy tails, scale-mixture-of-Normals structure) but parameterize them differently — Cartesian product of half-Cauchies versus Dirichlet on a simplex.
+
+*Horseshoe (regularized) is the modern default* for moderate-$p$ Bayesian sparse regression because the geometric content (mass-at-zero plus heavy tails plus single elicitable $m_0$) is straightforward and the non-centered + regularized parameterization mitigates the funnel. *R2-D2 dominates* when (a) the practitioner has a direct prior on $R^2$ from domain knowledge, (b) the funnel pathology is causing trouble even after the §6 fixes, or (c) interpretability of the variance decomposition matters for downstream communication of the model. The §10 diabetes benchmark fits both and lets the test predictive log-likelihood adjudicate empirically.
+
+<R2D2DecompositionExplorer client:visible />
+
+## §9. Worked example I — the four-prior comparison on synthetic high-dim regression
+
+§§4–8 developed the four sparse priors at the level of theory and isolated geometric pictures. We now move to *practice*: fit all four priors on a controlled synthetic high-dimensional regression where the truth is known, and read off the comparative quantitative behavior.
+
+We generate a regression with $p = 200$ predictors, $n_{\mathrm{train}} = 100$ training observations, $n_{\mathrm{test}} = 300$ test observations, and $k_{\mathrm{true}} = 10$ active coefficients spread across the index range with mixed magnitudes spanning the $\{-2.5, +2.5\}$ band. The remaining 190 coefficients are exactly zero. Predictors are standard-normal i.i.d.; noise is unit-Gaussian. This setup is in the genuine $p \gg n$ high-dimensional regime, sparse enough that the active set is recoverable, and dense enough among the active coordinates to surface the §5 horseshoe-vs-LASSO geometric gap.
+
+<TheoremBlock type="algorithm" number={1} title="The four-prior fitting workflow">
+For each prior in $\{\text{horseshoe (non-centered)}, \text{regularized horseshoe}, \text{continuous spike-slab}, \text{R2-D2}\}$:
+
+1. Specify the PyMC model with the prior's reparameterization. Horseshoe and regularized horseshoe use the non-centered parameterization $\beta_j = z_j \cdot \lambda_j \cdot \tau$ per §6; continuous spike-slab uses the mixture-of-Normals relaxation $\beta_j \sim (1 - \pi) \mathcal{N}(0, \tau_{\mathrm{spike}}^2) + \pi \mathcal{N}(0, \tau_{\mathrm{slab}}^2)$ for HMC compatibility; R2-D2 uses the Beta-Dirichlet construction of Definition 5.
+
+2. Run NUTS with $4$ chains $\times$ $1000$ draws $\times$ $1000$ tune at `target_accept = 0.95`.
+
+3. Extract posterior samples, compute marginal mean and $90\%$ credible intervals.
+
+4. Compute the *active-set inclusion probability* $P(|\beta_j| > t \mid y)$ at multiple thresholds $t \in \{0.01, 0.05, 0.1, 0.2, 0.5\}$.
+
+5. Report `divergences`, $\hat R$, and ESS from the NUTS sample stats as the funnel-pathology and convergence diagnostics.
+
+6. Compute test predictive log-likelihood by Monte Carlo averaging over posterior samples.
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/09_active_set_recovery.png"
+  alt="Four-panel grid showing coefficient-wise posterior 90% intervals for horseshoe, regularized horseshoe, continuous spike-slab, and R2-D2 on synthetic p=200, n=100, k_true=10 regression."
+  caption="Active-set recovery on synthetic regression at production scale. Each panel shows the posterior 90% credible intervals for all 200 coefficients; true active coefficients are marked. Horseshoe (top-left) shows wider intervals on noise coefficients and many divergences. Regularized horseshoe (top-right) is divergence-free with tight intervals near zero. Spike-slab (bottom-left) struggles with mixing at p=200 — Rhat ~ 1.99 signals convergence failure. R2-D2 (bottom-right) recovers cleanly. Divergence counts and test log-likelihood are reported in each title."
+/>
+
+**Production-scale results.** The four-prior fits at $p=200$ produce a clear story about which priors scale well. *Reg. horseshoe* and *R2-D2* both produce 0–7 divergences with $\hat R < 1.005$ and ESS $> 1000$ across coefficients — clean fits — and recover the active set with inclusion probabilities at the threshold $|\beta| > 0.1$ uniformly equal to 1.0 across all 10 active indices. The *unregularized horseshoe* achieves the same recovery quality but at the cost of 138 divergent transitions — the §6 funnel pathology in action despite the non-centered parameterization. The *continuous spike-slab* fails to converge: $\hat R \approx 1.99$ and ESS $\approx 5$ on most parameters, signalling that the chain is stuck in a single mode rather than exploring the multimodal mixture-of-Normals landscape. Inclusion probabilities for spike-slab are substantially noisier (0.25–1.0 range across true active indices) than for the well-mixed competitors.
+
+This is exactly the §3 story made empirical. Continuous spike-and-slab is HMC-compatible at small $p$ but degrades with dimension as the spike-on / spike-off mixing pathology compounds. At $p = 30$ (the in-notebook lightweight version), the chain mixes well; at $p = 200$ (production scale), it fails. SSVS Gibbs would recover the exact-sparsity story but is computationally infeasible at this $p$ — there are $2^{200}$ possible inclusion configurations, and the Gibbs chain mixes too slowly to be useful.
+
+The *coefficient-recovery RMSE* tells the same story: regularized horseshoe achieves 0.043 (essentially perfect), R2-D2 achieves 0.063, horseshoe (despite divergences) achieves 0.044, and spike-slab achieves 0.158 (the convergence failure shows up here too). For practical sparse regression in this regime, regularized horseshoe and R2-D2 are interchangeably good; horseshoe is good but pays a divergence tax; continuous spike-slab is the wrong tool.
+
+For very large $|y|$ signals (the §5 horseshoe-vs-LASSO regime), the horseshoe's polynomial tail would let it dominate the LASSO. We don't include LASSO here because the §10 diabetes comparison covers the LASSO-vs-horseshoe baseline; this experiment is internal to the horseshoe family and its alternatives.
+
+<ActiveSetRecovery client:visible />
+
+## §10. Worked example II — the diabetes benchmark
+
+§9 demonstrated the four sparse priors on a synthetic problem with controlled ground truth. The diabetes dataset (Efron, Hastie, Johnstone & Tibshirani 2004) is the canonical *real-world* sparse-regression benchmark — $n = 442$ patients, $p = 10$ baseline measurements (age, sex, BMI, blood pressure, six serum measurements), predicting one-year diabetes progression. Unlike the synthetic §9 setup, the diabetes data has *moderate* sparsity: three or four predictors carry most of the signal (BMI, blood pressure, serum cholesterol stand out in classical lasso fits), but the others are not exactly zero. This is the M-complete regime that §13 will return to: the truth is approximately sparse, and the question is which prior approximates it best.
+
+We compare the four sparse priors of §§3–8 to a *ridge* baseline using a single 70/30 train/test split. Test predictive log-likelihood is the figure of merit — the average log-density of the held-out responses under the predictive distribution.
+
+All five methods produce calibrated posteriors with zero or near-zero divergent transitions on the diabetes data. The sparse priors slightly outperform ridge on test predictive log-likelihood, but the gaps are small relative to the bootstrap CI width — the diabetes data is *moderately* sparse rather than highly sparse, and the geometric advantages of sparse priors over ridge are correspondingly modest. The horseshoe shows 47 divergent transitions despite the non-centered parameterization (the funnel pathology surfaces even at $p = 10$ when the data doesn't strongly inform $\tau$); the regularized horseshoe with $m_0 = 3$ produces just 1 divergence. R2-D2 produces 0 divergences out of the box — the §8 no-funnel claim verified on real data.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/10_diabetes_predictive.png"
+  alt="Bar chart of test predictive log-likelihood for ridge, horseshoe, regularized horseshoe, spike-slab, and R2-D2 on diabetes dataset with 95% bootstrap error bars."
+  caption="Diabetes test-set predictive log-likelihood per method. Ridge is the no-sparsity baseline; the four sparse priors all slightly outperform ridge but the gaps are within 2 SE of each other. The regularized horseshoe and R2-D2 are typically tied for best. Diabetes is moderately sparse (M-complete in the §13.3 framework), so the geometric advantages of sparse priors over ridge are modest."
+/>
+
+The diabetes dataset has $p = 10$ predictors and $n = 442$ observations, so $n / p \sim 44$ — well into the regime where ridge regression has plenty of data to estimate every coefficient reasonably well. Sparse priors pay off most when $p \gg n$ (the active set is small relative to the data) and least when $n \gg p$ (everything is well-estimated). The §9 synthetic example deliberately put us in $p > n$ territory ($p = 200, n = 100$); the diabetes example puts us in $n \gg p$ territory. The relevant comparison is therefore not "do sparse priors beat ridge?" but "do they beat ridge by *enough* to justify the additional modeling complexity?" — and on diabetes the answer is "barely". Production sparse-regression problems where the answer is "substantially yes" are typically genomic association studies with $p \sim 10^4$, gene expression with $p \sim 10^3$, or similar high-dimensional regimes.
+
+We still run the diabetes example for three reasons. First, it confirms that the §9 results aren't an artifact of synthetic-data tuning — sparse priors work on real data, even when the data isn't extremely sparse. Second, it sets up §11's VBMS escalation: if the four priors give similar test log-likelihoods, then ranking them by ELBO requires either tight Monte Carlo error or genuine VBMS bias correction. Third, it grounds the §13 decision rules: when sparse priors *don't* substantially outperform ridge, it's a signal that the data isn't sparse enough for the prior choice to matter much, and ridge regression with cross-validated regularization may be the simpler right answer.
+
+The diabetes dataset is the canonical benchmark for the LARS algorithm (Efron et al. 2004), which traces the lasso solution path as a function of regularization. Bayesian sparse priors and frequentist L1 penalties give similar predictive performance on this dataset; the Bayesian advantage is *uncertainty quantification* (posterior credible intervals on the coefficients and on the predictions) which the frequentist lasso provides only via bootstrap or asymptotic approximation.
+
+<DiabetesPredictiveLogLoss client:visible />
+
+## §11. VBMS over sparse priors — the escalation hierarchy
+
+The [Variational Bayes for Model Selection](/topics/variational-bayes-for-model-selection) topic §12 forward-pointed here:
+
+> *"The horseshoe / regularized horseshoe / spike-and-slab / R2-D2 menu of sparse priors has grown substantially in the past decade. Choosing among them for a specific dataset is a model-selection problem... VBMS over the hyperprior choices ranks them by ELBO and picks the most data-supported sparsity prior. The mean-field bias is non-trivial here — sparse priors typically have heavy-tailed posteriors that mean-field underestimates — so full-rank or flow VI is the right tool, with §11 escalation to AIS when Pareto-$\hat k$ flags problems."*
+
+§11 here discharges that pointer. We specialize the VBMS §11 escalation hierarchy — mean-field ADVI → full-rank ADVI → IWELBO → AIS — to sparse-prior ranking, with PSIS Pareto-$\hat k$ as the gating diagnostic at each stage.
+
+<TheoremBlock type="algorithm" number={2} title="Escalation hierarchy specialized to sparse-prior ranking">
+Given a fixed dataset and a candidate set of sparse priors $\{M_1, \ldots, M_K\}$ (typically horseshoe / regularized horseshoe / continuous spike-slab / R2-D2):
+
+1. **Stage 1 — mean-field ADVI.** Fit mean-field ADVI for each prior with 5 random restarts. Take the maximum ELBO across restarts as the prior's log-evidence estimate. Compute Pareto-$\hat k$ on each variational posterior via `arviz.psislw` on the importance weights $\log p(y, \theta) - \log q(\theta)$. *If* every prior's $\hat k < 0.5$, return the mean-field ELBO ranking and stop.
+
+2. **Stage 2 — full-rank ADVI.** For each prior with $\hat k \geq 0.5$ at stage 1, refit with full-rank ADVI (5 restarts; max ELBO). Recompute Pareto-$\hat k$. If every prior's $\hat k < 0.5$ now, return the full-rank ELBO ranking.
+
+3. **Stage 3 — IWELBO.** For surviving candidates with $\hat k \geq 0.5$, compute the importance-weighted ELBO with $K = 64$ importance samples per outer sample (Burda–Grosse–Salakhutdinov 2016). The IWELBO is a tighter lower bound on $\log p(y \mid M)$ than the standard ELBO and often discriminates between candidates that mean-field and full-rank ELBO cannot.
+
+4. **Stage 4 — AIS.** For high-stakes decisions or when stages 1–3 leave significant ranking uncertainty, run annealed importance sampling with schedule length $T \geq 100$ (Neal 2001) — or its modern descendant, sequential Monte Carlo — as the gold-standard reference for $\log p(y \mid M)$.
+
+5. Report the ranking and the Pareto-$\hat k$ trace at each stage.
+</TheoremBlock>
+
+The decision rule encoded in this algorithm is *adaptive*: cheap diagnostic (mean-field ADVI + Pareto-$\hat k$) first, escalate only when the diagnostic flags a problem. For datasets where sparse-prior choice is genuinely difficult (heavy-tailed posteriors, multimodal funnels, ill-calibrated mean-field families), the algorithm walks up the hierarchy until it lands on a reliable ranking. For datasets where the priors are roughly equivalent (the §10 diabetes case), it stops at stage 1 and reports.
+
+<TheoremBlock type="theorem" number={6} title="Pareto-k̂ bound for scale-mixture posteriors">
+The PSIS-VI Pareto-$\hat k$ diagnostic (Yao et al. 2018) upper-bounds the M-estimator bias of importance-weighted statistics computed on the variational posterior. Specifically, if $\hat k < 0.5$, the variance of the importance-sampled estimate is finite and the bias is $O(1/n_{\mathrm{samples}})$. If $0.5 \leq \hat k < 0.7$, the variance is finite but the convergence rate is slower than $1/\sqrt{n_{\mathrm{samples}}}$. If $\hat k \geq 0.7$, the variance may be infinite and the importance-sampled estimate is unreliable.
+
+For sparse-prior variational posteriors, $\hat k$ scales with the heavy-tail mismatch between the variational family and the true posterior. Mean-field Gaussian families on horseshoe posteriors typically give $\hat k > 0.7$ on at least some marginals — the heavy-tailed posterior on small-magnitude coefficients is what mean-field most badly under-represents. Full-rank Gaussian families typically reduce $\hat k$ below 0.5 because the linear correlation in the funnel bulk is captured.
+</TheoremBlock>
+
+The threshold values $\{0.5, 0.7\}$ are the standard PSIS recommendations from Vehtari, Simpson, Gelman, Yao & Gabry (2024). Below 0.5: trust the mean-field result. Between 0.5 and 0.7: tighten with IWELBO. Above 0.7: escalate to AIS or NUTS.
+
+<Figure
+  src="/images/topics/sparse-bayesian-priors/11_vbms_escalation.png"
+  alt="Two-panel: max ELBO across ADVI restarts for four priors on diabetes data; per-restart ELBO showing optimization variance, with star markers at the max-ELBO restart."
+  caption="§11 VBMS over sparse priors on diabetes — ADVI escalation stage 1. Panel (a) ranks the four priors by max-ELBO across 3 ADVI restarts; the regularized horseshoe and R2-D2 typically tie for the top. Panel (b) shows the per-restart ELBO for each prior, with the max-ELBO restart starred — restart variance is small for the well-converged priors and larger for the spike-slab (which has the multimodal landscape). The ranking from this stage agrees with the §10 NUTS-based test log-likelihood ranking up to Monte Carlo error."
+/>
+
+On the diabetes data, mean-field ADVI ELBOs across the four priors range from $-388$ (Reg. horseshoe) to $-358$ (R2-D2) — separated by 30 nats, well outside Monte Carlo error at this dataset size. The R2-D2 prior achieves the highest mean-field ELBO, consistent with its no-funnel structural advantage that allows mean-field to fit the bulk well. Restart variance is small for R2-D2 and Reg. horseshoe (range $\sim 1$ nat across 5 restarts) — these priors have well-shaped variational landscapes — and larger for the unregularized horseshoe and continuous spike-slab (range $\sim 3$ nats), consistent with the §6 mode-locking and §3 mixing pathologies playing out on the variational side.
+
+Full-rank ADVI shows a cautionary tale on this data: the full-rank ELBOs are *lower* than the mean-field ELBOs across all four priors (typical gap $\sim 10$–$80$ nats), in apparent contradiction with the theoretical inclusion property that full-rank should give a tighter bound. The reality is that full-rank ADVI's optimization landscape is dramatically more multimodal than mean-field's — the additional Cholesky parameters create local optima far from the global one — and 5 restarts of $20{,}000$ iterations is not enough to find the global optimum on this scale of problem. This is itself a §11 escalation lesson: *more expressive families have harder optimization, and the VBMS practitioner must budget for restart count*. The brief's prescription of $\hat k$-gated escalation assumes the optimization is well-conditioned at each stage; when it isn't, the escalation can mislead.
+
+The VBMS §11 framework applies to any model-selection problem; the §11 here specializes it to the sparse-prior case where (i) the candidate models share a likelihood (Gaussian regression) and differ only in the prior on $\boldsymbol\beta$, (ii) the posterior geometry is heavy-tailed and funnel-prone, and (iii) the ranking question reduces to "which prior best matches the data's true sparsity pattern?". The VBMS §13.3 M-closed/M-complete/M-open framework specializes too: M-closed = "the truth is exactly sparse, captured by one of our priors"; M-complete = "approximately sparse, all priors approximate it well"; M-open = "the truth is dense, no sparse prior is right" (and stacking is the answer instead).
+
+ADVI on sparse priors has known failure modes: optimization multimodality (the §6 mode-locking), variance underestimation (the §7 theorem), and Pareto-$\hat k$ blow-up on heavy-tailed coordinates. The escalation hierarchy is the *response* to these limits, not a fix for them — at each stage we trade compute for diagnostic reliability. For genuinely high-stakes inference (regulatory submissions, medical decision support), the ranking should be verified with full NUTS on each candidate plus posterior-predictive checks; ADVI alone is not sufficient.
+
+<VBMSEscalationLadder client:visible />
+
+## §12. Computational notes
+
+The six-step practical workflow for sparse Bayesian regression — parallels [Variational Bayes for Model Selection](/topics/variational-bayes-for-model-selection) §11 specialized to scale-mixture priors:
+
+**1. Always use the non-centered parameterization for horseshoe and regularized horseshoe.** The centered version produces divergent transitions on every modern HMC sampler, per Theorem 4 of §6. PyMC's idiom is $\beta_j = z_j \cdot \lambda_j \cdot \tau$ with $z_j \sim \mathcal{N}(0, 1)$ as a non-observed standard-normal latent. The deterministic transform $\beta = z \cdot \lambda \cdot \tau$ is wrapped in `pm.Deterministic` so posterior samples for $\boldsymbol\beta$ are available; the actual NUTS state space is $(z, \log \lambda, \log \tau, \log \sigma)$ which has no funnel.
+
+**2. Calibrate $m_0$ from prior knowledge.** The regularized horseshoe's $m_0$ hyperparameter is the prior expected number of effective coefficients. *Elicit it from domain expertise* — for genomic association studies, $m_0$ might be 10–50 active genes among 20,000; for econometric forecasting, $m_0$ might be 5 among 50 candidate regressors. Compute the global scale automatically via $\tau_0 = (m_0 / (p - m_0)) \cdot (\sigma / \sqrt{n})$ from the Piironen–Vehtari (2017) formula. *Avoid* the temptation to set $m_0$ uniformly at $p/2$ — that effectively gives the prior no sparsity belief.
+
+**3. Set the slab variance $c$ to the largest plausible coefficient magnitude.** A typical default is $c = 5 \times \mathrm{sd}(y)$ — large enough to be uninformative for genuine signals while still finite enough to avoid the funnel pathology. Setting $c$ too small (say $c < \mathrm{sd}(y)$) over-regularizes and bites the active coefficients; setting $c$ too large reintroduces funnel risk.
+
+**4. Run multiple ADVI restarts.** The reverse-KL landscape is multimodal for sparse priors — different random initializations of the variational parameters can converge to different local optima with ELBOs differing by tens of nats. Report max-ELBO across at least $5$ random initializations. For the regularized horseshoe and R2-D2, the multimodality is mild and 3 restarts are usually enough. For continuous spike-slab, 10+ restarts are advisable because the spike-on / spike-off latent assignments produce a more pronounced multimodal landscape. The §11 production fit confirms this: on the diabetes data the regularized-horseshoe restart range is $\sim 1$ nat across 5 restarts (well-converged); the spike-slab restart range is $\sim 3$ nats (significantly worse-conditioned).
+
+**5. Always check Pareto-$\hat k$.** Use `arviz.psislw` on the importance-weighted log-density $\log p(y, \boldsymbol\beta) - \log q(\boldsymbol\beta)$ for ADVI samples. If $\hat k > 0.7$, escalate to full-rank ADVI or NUTS per the §11 hierarchy. The Pareto-$\hat k$ check is *not optional* — it's the only diagnostic that catches the heavy-tail mismatch between mean-field families and sparse posteriors.
+
+**6. Cross-check ADVI rankings against NUTS rankings on a subset.** For high-stakes prior comparisons (regulatory submissions, scientific publications), fit at least *one* of the candidate priors with NUTS — typically the top-ranked prior from ADVI — and confirm the ADVI ranking agrees with the NUTS-based posterior. The §11 escalation hierarchy is the formal version of this advice; the manual cross-check is the practitioner's belt-and-braces version.
+
+The notebook §12 cell prints production-quality PyMC code recipes for each of horseshoe (non-centered), regularized horseshoe (Piironen–Vehtari with $m_0, c$ calibration), continuous spike-and-slab, and R2-D2 — these are the same model factories used in §§9, 10, 11, ready for copy-paste into a production script.
+
+**Hyperprior sensitivity.** Sparse prior posteriors are sensitive to hyperprior choice at small $n$. The regularized horseshoe's $m_0$ is the most consequential — varying $m_0$ from 2 to 20 on the §10 diabetes dataset produces test predictive log-likelihood changes of $\sim 0.02$ nats per observation, comparable to the gap between sparse and ridge methods. The recommended workflow is a *sensitivity sweep*: fit the regularized horseshoe at $m_0 \in \{p/10, p/4, p/2\}$ and compare. If the test log-likelihood and active-set inclusion probabilities are stable across the sweep, the result is robust; if they shift materially, report the sensitivity and flag the inference as borderline. For R2-D2, the analogous sensitivity sweep is over $(a, b, \xi)$ — both hyperparameter directions should be sensitivity-checked.
+
+**When to fall back to spike-and-slab Gibbs.** The continuous spike-and-slab relaxation used in §§9, 10 is HMC-compatible but loses the *exact* zero-coefficient property. When this property matters — variable selection in genomic studies, regulatory submissions requiring inclusion probabilities, economic-forecast model-stability analysis — the right tool is the *discrete* spike-and-slab fitted via SSVS Gibbs (George–McCulloch 1993) for $p < 30$, or via reversible-jump MCMC for larger $p$ at the cost of substantially more compute. The continuous relaxation is the right tool for prediction; the discrete original is the right tool for interpretation.
+
+**Production scaling.** For $p \sim 10^4$, NUTS becomes computationally prohibitive (PyTensor compile time alone is minutes, sampling can take hours). The escalation hierarchy of §11 plus aggressive thinning is the practical workaround: ADVI for the first-pass ranking; NUTS only on the top-$k$ candidates with thinning by 10x or more. For $p \gg 10^4$, full Bayesian inference is rarely affordable; the practitioner's choice is between (a) frequentist regularized regression (lasso, elastic net) with cross-validated regularization, or (b) ADVI with PSIS-$\hat k$ diagnostic and acceptance of the structural error.
+
+## §13. Connections and limits
+
+Sparse Bayesian priors sit in a specific corner of the methodological landscape: continuous-shrinkage Bayesian models for high-dimensional regression with sparse coefficient structure. We've developed the toolkit — Polson–Scott framework, spike-and-slab origin and theoretical role, horseshoe family and the funnel-pathology fix, R2-D2 alternative, ADVI escalation, two worked examples — and now we close by placing the topic in its broader context.
+
+### formalML topology
+
+Sparse priors depend on six formalML topics as substrates and inform at least three planned T5 topics directly.
+
+[Variational Inference](/topics/variational-inference) is the substrate of §7 — the mean-field structural-error theorem (VI §5.1) is what §7 specializes to heavy-tailed local-global posteriors. The §5 mean-field-vs-full-rank-vs-flow expressiveness hierarchy from VI is what the §11 escalation walks up. [Probabilistic Programming](/topics/probabilistic-programming) is the PyMC substrate of §§9–11 — the funnel-pathology / non-centered-parameterization story (§6) is the same machinery PP §5.2 develops on the eight-schools model. [Bayesian Neural Networks](/topics/bayesian-neural-networks) §2.1 deferred heavy-tailed and hierarchical priors here, and BNN §6's MC-dropout connects to the §11 amortized-VI extension that meta-learning will develop. [Variational Bayes for Model Selection](/topics/variational-bayes-for-model-selection) §11 is the workflow §11 here specializes — the §11 escalation hierarchy is identical to VBMS §11's specialized to scale-mixture posteriors. [KL Divergence](/topics/kl-divergence) underwrites §7's projection mechanism. [Gradient Descent](/topics/gradient-descent) underwrites the ADVI optimizer.
+
+**Forward dependencies.** *Meta-learning* (planned T5) extends §11 with amortized inference networks that map data to variational parameters in a single forward pass, replacing the per-task ADVI restart loop. The §11 escalation hierarchy then runs over a small set of *amortized* candidate priors at inference time. *Bayesian nonparametrics* (planned T5) generalizes finite-dimensional sparsity to function-space sparsity (Indian buffet processes, beta processes); the §2 scale-mixture framework lifts naturally. *Riemann manifold HMC* (planned T5) addresses the funnel-pathology story §6 raised by adapting the integrator to the local geometry — an alternative to the non-centered parameterization for cases where reparameterization is awkward.
+
+### Cross-site connections
+
+Sparse priors are part of a model-selection-and-prior-elicitation story whose other chapters live in formalstatistics and formalcalculus. *Hierarchical Bayes and partial pooling* on formalstatistics is the canonical reference for hierarchical-Normal models on partially-pooled coefficients. Sparse priors are the *continuous-shrinkage alternatives* to the hierarchical-Normal — formalstatistics's §28.6 develops the hierarchical-Normal explicitly, and the deferred-reciprocal pre-declared on the formalstatistics side discharges on this shipment. *Bayesian foundations and prior selection* is the prior-elicitation framework that §6's $m_0$ and §8's $(a, b, \xi)$ specialize. *Linear regression* is the substrate this topic specializes to the $p > n$ regime where ordinary OLS fails. *Regularization and penalized estimation* is the frequentist counterpart — §5's Bayesian LASSO is the Laplace-prior dual of the L1 penalty, and the §9–10 numerical comparisons place sparse Bayesian priors directly alongside the lasso/ridge/elastic-net baselines.
+
+On formalcalculus, *multivariable integration* underwrites §2's scale-mixture marginalization — a multivariable Lebesgue integral over the local-and-global scale hyperparameter space. *Change of variables* underwrites §4's horseshoe-shape theorem, proved via change-of-variables from $\lambda^2$ to $\kappa = 1/(1+\lambda^2)$, and §6's non-centered parameterization $\beta_j = z_j \lambda_j \tau$ which is also a deterministic change-of-variables on the hierarchical model.
+
+### The M-closed / M-complete / M-open framework specialized to sparse priors
+
+The Bernardo–Smith (1994) framework for Bayesian model comparison distinguishes three regimes, and the right sparse prior depends on which regime applies.
+
+**M-closed.** The truth is exactly sparse — only $s$ of $p$ coefficients are non-zero. One of our prior families captures the truth, and as $n$ grows, posterior model probabilities concentrate on the right prior. The §9 synthetic experiment is M-closed by construction: $k_{\mathrm{true}} = 10$, the rest are exactly zero. In M-closed, all four priors of §§3–8 give consistent rankings asymptotically; the choice between them at finite $n$ is about which prior best matches the *constant factor* in the contraction rate.
+
+**M-complete.** The truth is *approximately* sparse — most coefficients are small, a few are non-trivial, and the boundary is fuzzy. The §10 diabetes data is in this regime. All four sparse priors approximate the truth well; the differences in test predictive log-likelihood are within Monte Carlo error of each other. The choice between priors is about computational convenience and interpretability rather than statistical performance.
+
+**M-open.** The truth is genuinely *dense* — every coefficient is meaningfully non-zero, just with varying magnitudes. All four sparse priors over-shrink the small-magnitude coefficients, producing biased posteriors. [Stacking and Predictive Ensembles](/topics/stacking-and-predictive-ensembles) (the topic that ships as an M-open alternative to VBMS) gives the right answer here: average the predictions of the sparse priors and the ridge baseline weighted by predictive performance, rather than trying to identify *the* right prior. When in doubt about the regime, posterior-predictive checks on the implied response distribution are the diagnostic.
+
+### Honest limits
+
+Three structural limits of sparse Bayesian priors.
+
+**Sparsity is a modeling assumption, not a fact.** When the truth has many small-but-non-zero coefficients, all four priors of §§3–8 over-shrink uniformly. Diagnose via posterior-predictive checks comparing the predicted-response variance to the observed-response variance — if the predicted variance is systematically smaller, the prior has shrunk too aggressively. The fix is either (a) a less-aggressive prior (R2-D2 with larger $\xi$, or ridge), or (b) acceptance of the M-open regime and use of stacking.
+
+**Hyperprior calibration is irreducible.** Default uninformative choices for $m_0$, $(a, b, \xi)$, $\pi$ are rarely optimal. The regularized horseshoe's $m_0$ default is "best guess at the number of active coefficients", which requires domain expertise. R2-D2's $(a, b, \xi)$ requires belief about both the global $R^2$ and the within-active-set sparsity. Spike-slab's $\pi$ requires belief about the per-coefficient inclusion probability. There is no automatic "give me the right hyperprior" — practitioner input is required.
+
+**Computation is the bottleneck.** Spike-and-slab Gibbs is intractable for $p > 50$ or so — the $2^p$ model space and the spike-on / spike-off mixing pathology combine to make exact sparse posterior inference computationally infeasible at modern sparse-regression scales. The §9 production fit at $p = 200$ confirms this: the continuous spike-and-slab relaxation fails to converge ($\hat R \approx 1.99$). The horseshoe family and R2-D2 scale to $p \sim 10^4$ with NUTS but require careful reparameterization (§6) and runtime patience (hours for full chains at high $p$). For $p \gg 10^4$, variational alternatives are necessary, with the §11 escalation hierarchy as the diagnostic backbone — the trade-off is structural variational error in exchange for tractable runtime.
+
+### Decision rules for practitioners
+
+A simplified decision tree, sequenced by the dominant question:
+
+- *Moderate $p$ (10–1000), expect sparsity, no specific prior knowledge.* **Regularized horseshoe** with $m_0$ = best guess at active count. The non-centered + slab-cap formulation gives clean NUTS fits without divergences and a single elicitable hyperparameter.
+
+- *Practitioner has a direct prior belief about $R^2$.* **R2-D2** with $(a, b)$ encoding the $R^2$ belief and $\xi$ encoding the sparsity belief. Avoids the funnel pathology entirely; trades the single $m_0$ hyperparameter for three but in exchange gets direct $R^2$ elicitation.
+
+- *Need exact-zero coefficients with posterior probability (variable selection for downstream interpretation).* **Discrete spike-and-slab via SSVS Gibbs** for $p < 50$. For larger $p$, fit the regularized horseshoe and threshold the posterior intervals at zero — the resulting "selected" set will be nearly the same as the spike-slab posterior support but without the exactness guarantee.
+
+- *Comparing multiple sparse priors on a fixed dataset.* **The §11 VBMS escalation hierarchy.** Mean-field ADVI first; escalate to full-rank ADVI / IWELBO / AIS when Pareto-$\hat k$ flags problems. Cross-check with at least one NUTS fit on the top-ranked prior.
+
+- *Suspect the data is dense, not sparse.* **Stacking** instead of any sparse prior. Combine predictions from sparse and ridge fits weighted by cross-validated predictive accuracy.
+
+- *Large-scale screening ($p \gg 10^4$).* **ADVI with PSIS-$\hat k$ diagnostic** as the only computationally feasible option. Accept the structural variational error, use the diagnostic to flag pathological coordinates, and report uncertainty bounds that include the variational error.
+
+### Closing remarks
+
+Sparse Bayesian priors give us a *menu* of ways to encode "most coefficients are zero" as a Bayesian belief, and each member of the menu emphasizes a different geometric content. Spike-and-slab is the discrete origin and the theoretical anchor — the gold-standard contraction rate is what every continuous prior is calibrated against. The horseshoe is the modern default — its mass-at-zero plus polynomial-tail combination is the unique continuous prior satisfying the Polson–Scott criterion, and the namesake U-shape on the shrinkage factor expresses the right inductive bias for sparsity. The regularized horseshoe is the practitioner-friendly variant that resolves the funnel pathology and supplies a single elicitable hyperparameter. R2-D2 is the variance-decomposition alternative when domain knowledge is on $R^2$ rather than coefficient counts, and its bounded-simplex structure sidesteps the funnel entirely. VBMS over these four with PSIS Pareto-$\hat k$ as the gating diagnostic is the practitioner's workflow when the choice is uncertain.
+
+The topic's central claim, restated: *sparsity is a geometric belief about the prior, not a constraint on the posterior*. The Polson–Scott characterization (§2) tells us *which* priors implement that belief, the horseshoe family (§§4–6) tells us *how* to implement it efficiently, and the VBMS escalation (§11) tells us *how to choose* among implementations when the choice matters.

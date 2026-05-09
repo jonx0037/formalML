@@ -1548,3 +1548,145 @@ export function polynomialJointLogProb(
   return logLikNorm - 0.5 * sse / sigma2 + logPriorNorm - 0.5 * bb / tau2;
 }
 
+// ==========================================================================
+// Sparse Bayesian Priors (T5 #10) — global-local shrinkage utilities for the
+// horseshoe / regularized horseshoe / Bayesian LASSO / spike-and-slab / R2-D2
+// menu. Closed-form and quadrature-based posterior expectations under the
+// canonical unit-noise toy y_j ~ N(β_j, 1) used in §1, §4, §5 viz.
+// ==========================================================================
+
+/**
+ * Beta(1/2, 1/2) density on κ ∈ (0, 1) — the horseshoe's namesake U-shape.
+ * Theorem 3 of the topic: under unit τ, the horseshoe's prior shrinkage
+ * factor κ_j = 1/(1 + λ_j²) is Beta(1/2, 1/2)-distributed.
+ */
+export function horseshoeBetaShrinkageDensity(kappa: number): number {
+  if (kappa <= 0 || kappa >= 1) return 0;
+  return 1 / (Math.PI * Math.sqrt(kappa * (1 - kappa)));
+}
+
+/**
+ * Posterior mean shrinkage E[κ | y] for the horseshoe at unit-noise scale.
+ *
+ * Quadrature on λ² ∈ (0, ∞) using the inverse-CDF substitution u = atan(λ)/(π/2)
+ * ∈ (0, 1) — the half-Cauchy(0, 1) prior's Jacobian cancels the substitution
+ * Jacobian, so uniform integration over u is equivalent to λ ~ HalfCauchy(0, 1).
+ *
+ * Used by ShrinkageProfilesExplorer (§1), HorseshoeShrinkageProfile (§4), and
+ * HorseshoeGlobalLocalGeometry (§5).
+ */
+export function horseshoeShrinkageMarginal(y: number, tau = 1): number {
+  const N = 500;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < N; i++) {
+    const u = (i + 0.5) / N;
+    const lam = Math.tan((Math.PI / 2) * u);
+    const lamTau2 = lam * lam * tau * tau;
+    const k = 1 / (1 + lamTau2);
+    // log N(y; 0, 1 + λ²τ²) — likelihood after marginalizing β | λ², τ.
+    const logLik =
+      -0.5 * y * y / (1 + lamTau2) - 0.5 * Math.log(2 * Math.PI * (1 + lamTau2));
+    const w = Math.exp(logLik);
+    num += k * w;
+    den += w;
+  }
+  return den > 0 ? num / den : 0.5;
+}
+
+/**
+ * Posterior mean shrinkage E[κ | y] under the Bayesian LASSO (Park & Casella
+ * 2008): λ² ~ Exp(1/(2τ²)) gives a Laplace marginal on β. Quadrature uses the
+ * inverse-CDF substitution u = 1 - exp(-λ²/(2τ²)) so the prior cancels.
+ */
+export function bayesianLassoShrinkageMarginal(y: number, tau = 1): number {
+  const N = 500;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < N; i++) {
+    const u = (i + 0.5) / N;
+    const l2 = -2 * tau * tau * Math.log(1 - u);
+    const k = 1 / (1 + l2);
+    const logLik =
+      -0.5 * y * y / (1 + l2) - 0.5 * Math.log(2 * Math.PI * (1 + l2));
+    const w = Math.exp(logLik);
+    num += k * w;
+    den += w;
+  }
+  return den > 0 ? num / den : 0.5;
+}
+
+/**
+ * Closed-form posterior mean shrinkage E[κ | y] under spike-and-slab
+ * (Mitchell-Beauchamp 1988): mixture of point mass at zero (weight 1-π) and
+ * a Gaussian slab of variance τ_slab² (weight π). Marginal likelihoods are
+ * N(y; 0, σ²) for the spike and N(y; 0, σ² + τ_slab²) for the slab.
+ *
+ * Spike → κ = 1 (full shrinkage); slab → κ = 1/(1 + τ_slab²).
+ */
+export function spikeSlabShrinkageMarginal(
+  y: number,
+  piPrior = 0.1,
+  tauSlab = 3.0,
+): number {
+  const tauSlab2 = tauSlab * tauSlab;
+  const logLikSpike = -0.5 * y * y - 0.5 * Math.log(2 * Math.PI);
+  const logLikSlab =
+    -0.5 * y * y / (1 + tauSlab2) - 0.5 * Math.log(2 * Math.PI * (1 + tauSlab2));
+  const logWSpike = Math.log(1 - piPrior) + logLikSpike;
+  const logWSlab = Math.log(piPrior) + logLikSlab;
+  const m = Math.max(logWSpike, logWSlab);
+  const totalLog =
+    m + Math.log(Math.exp(logWSpike - m) + Math.exp(logWSlab - m));
+  const pSpike = Math.exp(logWSpike - totalLog);
+  const pSlab = 1 - pSpike;
+  return pSpike * 1.0 + pSlab * (1 / (1 + tauSlab2));
+}
+
+/**
+ * Piironen-Vehtari (2017) regularized-horseshoe truncated local scale:
+ *     λ̃ = sqrt( c² λ² / (c² + τ² λ²) )
+ *
+ * Caps the joint prior variance λ̃² τ² at c², recovering Gaussian-slab
+ * behavior at large λ². Used by FunnelPathologyExplorer (§6) and
+ * HorseshoeGlobalLocalGeometry (§5).
+ */
+export function regularizedHorseshoeLambdaTilde(
+  lambda: number,
+  tau: number,
+  c: number,
+): number {
+  const c2 = c * c;
+  const lam2 = lambda * lambda;
+  const tau2 = tau * tau;
+  return Math.sqrt((c2 * lam2) / (c2 + tau2 * lam2));
+}
+
+/**
+ * Carvalho-Polson-Scott (2010) Eq. 7 horseshoe-marginal-density bounds.
+ *     (1/(2π)) log(1 + 4τ²/β²) ≤ p_HS(β) ≤ (1/π) log(1 + 4τ²/β²)
+ *
+ * The lower / upper bounds bracket the implied marginal on β under
+ * λ ~ HalfCauchy(0, τ), revealing the logarithmic singularity at β=0
+ * (mass-at-zero) and the 1/β² polynomial tail (heavy-tail). Used by
+ * ScaleMixtureExplorer (§2) and HorseshoeGlobalLocalGeometry (§5).
+ */
+export function horseshoeMarginalBound(
+  beta: number,
+  tau = 1,
+  lower = false,
+): number {
+  const eps = 1e-9;
+  const base = Math.log(1 + (4 * tau * tau) / (beta * beta + eps));
+  return lower ? base / (2 * Math.PI) : base / Math.PI;
+}
+
+/**
+ * Posterior mean shrinkage E[κ | y] under the ridge prior (β ~ N(0, τ²)).
+ * Closed-form constant κ ≡ 1/(1 + τ²) — independent of y. The geometric
+ * baseline against which all sparse priors are calibrated in §1.
+ */
+export function ridgeShrinkageConstant(tau = 1): number {
+  return 1 / (1 + tau * tau);
+}
+
