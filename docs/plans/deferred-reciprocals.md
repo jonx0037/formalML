@@ -891,14 +891,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§31.3's Theorem 3 underwrites bootstrapped model uncertainty: bag multiple bootstrap replicates of the training set, refit the model on each, and use the distribution of test-time predictions as a …_
 
-## When `formalml/variational-bayes-for-model-selection` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-model-comparison-and-bma** declares `formalmlConnections` → `variational-bayes-for-model-selection` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The evidence lower bound (ELBO) is a variational approximation to $\log m(\mathbf{y})$ derived from the Kullback–Leibler projection of the posterior onto a tractable family. Replaces MCMC+bridge fo…_
-
 ## When `formalml/wasserstein-distances` ships
 
 Add the reciprocal pointer back to:

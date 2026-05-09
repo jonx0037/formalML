@@ -14,7 +14,7 @@
 // mulberry32 — exact values differ, but distributional invariants hold.
 // =============================================================================
 
-import { choleskyFactor } from './gaussian-processes';
+import { choleskyFactor, choleskyLogDet } from './gaussian-processes';
 
 // =============================================================================
 // NUMERICAL CONSTANTS
@@ -1133,3 +1133,397 @@ export function pcaProject2D(X: Float32Array[], seed = 1): PCAProject2DResult {
   }
   return { mean, eigenvalues: [lam1, lam2], scores };
 }
+
+// =============================================================================
+// VARIATIONAL BAYES FOR MODEL SELECTION (T5 #9)
+// =============================================================================
+// Closed-form Gaussian-conjugate evidence + Laplace + mean-field ELBO + Monte
+// Carlo IWELBO + AIS + bits-back coding. Mirrors notebook
+//   notebooks/variational-bayes-for-model-selection/
+//     01_variational_bayes_for_model_selection.ipynb
+// at the §1, §3, §6.3, §8, §9, §10 cells.
+//
+// Math conventions:
+//   Posterior precision Λ_post = X^T X / σ² + I / τ²
+//   Posterior mean      μ_post = Λ_post^{-1} X^T y / σ²
+//   Closed-form log p(y | M) = -½ n log(2πσ²) - ½ y^T y / σ²
+//                              - ½ d log τ² - ½ log det Λ_post
+//                              + ½ μ_post^T Λ_post μ_post
+//   Mean-field bias (Gaussian conjugate, §6.3):
+//                    ½[Σ log Λ_post,jj - log det Λ_post]   (always ≥ 0)
+//   Laplace expansion (Theorem 2): exact for Gaussian-conjugate, with
+//                    log p ≈ ℓ(θ̂) + (d/2) log(2π) - ½ log det H(θ̂)
+// =============================================================================
+
+/**
+ * Build the polynomial design matrix [1, x, x², ..., x^degree] for each x_i.
+ * Equivalent to NumPy's `np.vander(x, N=degree+1, increasing=True)` —
+ * (n, degree+1) row-major number[][] for the polynomial-regression spine of
+ * §1, §3, §5.
+ */
+export function polynomialDesignMatrix(x: number[], degree: number): number[][] {
+  const cols = degree + 1;
+  const X: number[][] = [];
+  for (let i = 0; i < x.length; i++) {
+    const row = new Array<number>(cols);
+    let pow = 1;
+    for (let j = 0; j < cols; j++) {
+      row[j] = pow;
+      pow *= x[i];
+    }
+    X.push(row);
+  }
+  return X;
+}
+
+interface PosteriorMoments {
+  /** μ_post — posterior mean of β under N(0, τ² I) prior. */
+  mean: number[];
+  /** Λ_post — posterior precision Λ_post = X^T X / σ² + I / τ². */
+  precision: number[][];
+  /** Λ_post Cholesky factor (lower triangular). */
+  precisionCholesky: number[][];
+  /** log det Λ_post computed from the Cholesky factor. */
+  precisionLogDet: number;
+}
+
+/**
+ * Posterior moments for Bayesian linear regression with N(0, τ² I) prior and
+ * N(Xβ, σ² I) likelihood. Returns mean, precision, and Cholesky-derived
+ * log-determinant. Mirrors `posterior_moments` in the §1 notebook cell.
+ */
+export function polynomialPosteriorMoments(
+  X: number[][],
+  y: number[],
+  sigma2: number,
+  tau2: number,
+): PosteriorMoments {
+  const n = X.length;
+  const d = X[0].length;
+  // Precision matrix Λ = X^T X / σ² + I / τ²
+  const precision: number[][] = [];
+  for (let i = 0; i < d; i++) {
+    const row = new Array<number>(d).fill(0);
+    for (let j = 0; j < d; j++) {
+      let acc = 0;
+      for (let k = 0; k < n; k++) acc += X[k][i] * X[k][j];
+      row[j] = acc / sigma2;
+      if (i === j) row[j] += 1 / tau2;
+    }
+    precision.push(row);
+  }
+  // X^T y
+  const Xty = new Array<number>(d).fill(0);
+  for (let i = 0; i < d; i++) {
+    let acc = 0;
+    for (let k = 0; k < n; k++) acc += X[k][i] * y[k];
+    Xty[i] = acc / sigma2;
+  }
+  // Solve Λ μ = X^T y / σ² via Cholesky
+  const L = choleskyFactor(precision);
+  const yTri = new Array<number>(d).fill(0);
+  for (let i = 0; i < d; i++) {
+    let acc = Xty[i];
+    for (let j = 0; j < i; j++) acc -= L[i][j] * yTri[j];
+    yTri[i] = acc / L[i][i];
+  }
+  const mean = new Array<number>(d).fill(0);
+  for (let i = d - 1; i >= 0; i--) {
+    let acc = yTri[i];
+    for (let j = i + 1; j < d; j++) acc -= L[j][i] * mean[j];
+    mean[i] = acc / L[i][i];
+  }
+  return {
+    mean,
+    precision,
+    precisionCholesky: L,
+    precisionLogDet: choleskyLogDet(L),
+  };
+}
+
+/**
+ * Closed-form log marginal likelihood log p(y | X, M) for Bayesian linear
+ * regression with N(0, τ² I) prior and N(Xβ, σ² I) likelihood. Exact for
+ * Gaussian-conjugate models; the §1, §3, §5 spine of the topic. Mirrors
+ * `log_marginal_likelihood` in the notebook §1 cell.
+ *
+ * @param X  Design matrix, shape (n, d).
+ * @param y  Targets, length n.
+ * @param sigma2  Noise variance σ².
+ * @param tau2  Prior coefficient variance τ² (note: NOT precision).
+ */
+export function marginalLikelihoodGaussianRegression(
+  X: number[][],
+  y: number[],
+  sigma2: number,
+  tau2: number,
+): number {
+  const n = X.length;
+  const d = X[0].length;
+  const { mean, precision, precisionLogDet } = polynomialPosteriorMoments(X, y, sigma2, tau2);
+  let yTy = 0;
+  for (let i = 0; i < n; i++) yTy += y[i] * y[i];
+  // μᵀ Λ μ
+  let muLambdaMu = 0;
+  for (let i = 0; i < d; i++) {
+    let acc = 0;
+    for (let j = 0; j < d; j++) acc += precision[i][j] * mean[j];
+    muLambdaMu += mean[i] * acc;
+  }
+  return (
+    -0.5 * n * Math.log(2 * Math.PI * sigma2)
+    - 0.5 * yTy / sigma2
+    - 0.5 * d * Math.log(tau2)
+    - 0.5 * precisionLogDet
+    + 0.5 * muLambdaMu
+  );
+}
+
+/**
+ * Closed-form mean-field ELBO for the same Gaussian-conjugate setup. The
+ * reverse-KL-optimal mean-field q* has μ_q = μ_post and Σ_q = diag(1/Λ_post,jj).
+ * The KL gap to the true Gaussian posterior reduces to
+ *   KL = ½[Σ log Λ_post,jj − log det Λ_post]
+ * (the trace and -d terms cancel), and ELBO = log p(y) − KL. Brief §6.3 derives
+ * this; mirrors `mean_field_elbo` in the notebook §1 cell.
+ */
+export function meanFieldELBOGaussianRegression(
+  X: number[][],
+  y: number[],
+  sigma2: number,
+  tau2: number,
+): number {
+  const log_p_y = marginalLikelihoodGaussianRegression(X, y, sigma2, tau2);
+  const { precision, precisionLogDet } = polynomialPosteriorMoments(X, y, sigma2, tau2);
+  const d = precision.length;
+  let sumLogDiag = 0;
+  for (let i = 0; i < d; i++) sumLogDiag += Math.log(precision[i][i]);
+  const klGap = 0.5 * (sumLogDiag - precisionLogDet);
+  return log_p_y - klGap;
+}
+
+/**
+ * Generic Laplace approximation to log p(y | M):
+ *   log p(y | M) ≈ ℓ(θ̂) + (d/2) log(2π) − ½ log det H(θ̂)
+ * where ℓ is the joint log-density log p(y, θ | M) at the MAP θ̂, d is the
+ * parameter dimension, and H is the negative Hessian of ℓ at θ̂ (positive
+ * definite SPD). Brief §3 Theorem 2; exact for Gaussian-conjugate models.
+ *
+ * @param jointLogProb  Function that returns log p(y, θ | M) at any θ.
+ * @param thetaMap  MAP estimator θ̂ (interior maximum).
+ * @param hessian  Negative Hessian H(θ̂) — must be SPD.
+ */
+export function laplaceApproximation(
+  jointLogProb: (theta: number[]) => number,
+  thetaMap: number[],
+  hessian: number[][],
+): number {
+  const d = thetaMap.length;
+  const L = choleskyFactor(hessian);
+  const logDetH = choleskyLogDet(L);
+  return jointLogProb(thetaMap) + 0.5 * d * Math.log(2 * Math.PI) - 0.5 * logDetH;
+}
+
+/**
+ * BIC approximation: leading-order Laplace as n → ∞ (Schwarz 1978).
+ *   BIC(M) := −2 log p(y | θ̂_MLE, M) + d log n
+ * The BIC drops the O(1) Bayesian-content term C(M, p, θ̂) of Corollary 1; the
+ * remaining gap log p(y | M) − (−BIC/2) converges to that O(1) constant as n
+ * grows. Returns −BIC/2 to align signs with log-evidences.
+ */
+export function bicApproximation(logLikAtMAP: number, dParameters: number, n: number): number {
+  return logLikAtMAP - 0.5 * dParameters * Math.log(n);
+}
+
+/**
+ * Monte-Carlo importance-weighted ELBO (Burda–Grosse–Salakhutdinov 2016):
+ *   IWELBO_K(q) = E_{θ_1..K iid ~ q}[ log( (1/K) Σ p(y, θ_k) / q(θ_k) ) ]
+ * As K → ∞, IWELBO_K(q) → log p(y | M) monotonically per Theorem 6. Brief §8.
+ *
+ * @param qSampler  Draws one θ ~ q. Should be a closure over a seeded RNG so
+ *                  the caller controls reproducibility.
+ * @param logJoint  log p(y, θ | M) evaluated at θ.
+ * @param logQ      log q(θ) evaluated at θ.
+ * @param K         Number of inner importance samples per outer Monte-Carlo draw.
+ * @param S         Number of outer Monte-Carlo replicates to average for
+ *                  variance reduction. S ≥ 200 typical for stable estimates.
+ */
+export function iwelboEstimate(
+  qSampler: () => number[],
+  logJoint: (theta: number[]) => number,
+  logQ: (theta: number[]) => number,
+  K: number,
+  S: number,
+): number {
+  let outerSum = 0;
+  for (let s = 0; s < S; s++) {
+    const logWeights = new Array<number>(K);
+    for (let k = 0; k < K; k++) {
+      const theta = qSampler();
+      logWeights[k] = logJoint(theta) - logQ(theta);
+    }
+    // logsumexp for numerical stability
+    let maxLw = -Infinity;
+    for (let k = 0; k < K; k++) if (logWeights[k] > maxLw) maxLw = logWeights[k];
+    let acc = 0;
+    for (let k = 0; k < K; k++) acc += Math.exp(logWeights[k] - maxLw);
+    outerSum += Math.log(acc / K) + maxLw;
+  }
+  return outerSum / S;
+}
+
+/**
+ * Annealed importance sampling estimate of log p(y | M) (Neal 2001).
+ * Runs C independent chains through a schedule β_0 = 0 < β_1 < ... < β_T = 1
+ * of intermediate distributions p_t(θ) ∝ p(θ) p(y | θ)^{β_t}. Each chain
+ * accumulates log w = Σ_t (β_t − β_{t−1}) log p(y | θ_{t−1}); the final
+ * estimate is logsumexp(log w_c) − log C, unbiased for log p(y | M) at any
+ * T ≥ 1 (variance shrinks as O(1/T)). Brief §9 Theorem 7.
+ *
+ * @param prior  Sampler for θ_0 ∼ p(θ).
+ * @param logPrior  log p(θ).
+ * @param logLikelihood  log p(y | θ).
+ * @param scheduleLength  T — number of schedule increments.
+ * @param mhStep  Transition kernel θ_{t−1} ↦ θ_t leaving p_{β_t} invariant.
+ *                For Gaussian-conjugate exact-sampling, this can be
+ *                `(theta, beta) => exactSampleAtBeta(beta)` directly.
+ * @param C  Number of independent chains. C ≥ 100 typical.
+ */
+export function aisEstimate(
+  prior: () => number[],
+  logPrior: (theta: number[]) => number,
+  logLikelihood: (theta: number[]) => number,
+  scheduleLength: number,
+  mhStep: (theta: number[], beta: number) => number[],
+  C: number,
+): number {
+  // Suppress unused-import lint on logPrior (consumed by mhStep wrappers in
+  // non-conjugate cases; retained in API surface for completeness).
+  void logPrior;
+  const logWeights = new Array<number>(C);
+  for (let c = 0; c < C; c++) {
+    let theta = prior();
+    let logW = 0;
+    for (let t = 1; t <= scheduleLength; t++) {
+      const betaPrev = (t - 1) / scheduleLength;
+      const betaCurr = t / scheduleLength;
+      logW += (betaCurr - betaPrev) * logLikelihood(theta);
+      theta = mhStep(theta, betaCurr);
+    }
+    logWeights[c] = logW;
+  }
+  // Unbiased estimator of p(y) is mean(exp(log w)); the log-mean is logsumexp
+  let maxLw = -Infinity;
+  for (let c = 0; c < C; c++) if (logWeights[c] > maxLw) maxLw = logWeights[c];
+  let acc = 0;
+  for (let c = 0; c < C; c++) acc += Math.exp(logWeights[c] - maxLw);
+  return Math.log(acc / C) + maxLw;
+}
+
+/**
+ * Bits-back coding expected description length for a model with prior p(θ),
+ * likelihood p(y | θ), and variational q(θ). Brief §10 Theorem 8:
+ *   L_bits-back = E_q[ −log p(θ) − log p(y | θ) + log q(θ) ] = −ELBO(q)
+ *   coding overhead = L_bits-back − (−log p(y | M)) = KL(q || p(·|y, M))
+ *
+ * Returns both the Monte Carlo code-length estimate and the KL projection gap
+ * (which equals the bias of VBMS via the §6 reverse-KL projection picture).
+ */
+export function bitsBackCodingExpectedLength(
+  qSampler: () => number[],
+  logPrior: (theta: number[]) => number,
+  logQ: (theta: number[]) => number,
+  logLikelihood: (theta: number[]) => number,
+  logEvidence: number,
+  S: number,
+): { codeLength: number; klGap: number } {
+  let acc = 0;
+  for (let s = 0; s < S; s++) {
+    const theta = qSampler();
+    acc += -logPrior(theta) - logLikelihood(theta) + logQ(theta);
+  }
+  const codeLength = acc / S;
+  const klGap = codeLength - -logEvidence;
+  return { codeLength, klGap };
+}
+
+/**
+ * Independent Gaussian sampler factory: returns a closure that draws one
+ * mean-field-Gaussian sample with the given component means and standard
+ * deviations, using a seeded mulberry32 PRNG. Used by §8 IWELBO and §10
+ * bits-back viz to produce deterministic q-samples in browser.
+ */
+export function makeMeanFieldGaussianSampler(
+  mean: number[],
+  std: number[],
+  seed: number,
+): () => number[] {
+  const rng = mulberry32(seed);
+  const d = mean.length;
+  let buf: number | null = null;
+  const draw = (): number => {
+    if (buf !== null) {
+      const v = buf;
+      buf = null;
+      return v;
+    }
+    const [a, b] = gaussianPair(rng);
+    buf = b;
+    return a;
+  };
+  return (): number[] => {
+    const out = new Array<number>(d);
+    for (let i = 0; i < d; i++) out[i] = mean[i] + std[i] * draw();
+    return out;
+  };
+}
+
+/**
+ * Mean-field Gaussian log-density: log q(θ) = −½ Σ log(2π σ_j²) − ½ Σ (θ_j − μ_j)²/σ_j².
+ * Used alongside `makeMeanFieldGaussianSampler` for the IWELBO and bits-back
+ * Monte Carlo loops.
+ */
+export function meanFieldGaussianLogDensity(
+  theta: number[],
+  mean: number[],
+  std: number[],
+): number {
+  let acc = 0;
+  for (let i = 0; i < theta.length; i++) {
+    const z = (theta[i] - mean[i]) / std[i];
+    acc += -0.5 * Math.log(2 * Math.PI * std[i] * std[i]) - 0.5 * z * z;
+  }
+  return acc;
+}
+
+/**
+ * Joint log-density log p(y, β | M) = log p(y | β, σ²) + log p(β | τ²) for
+ * Gaussian-conjugate Bayesian linear regression. Used as `logJoint` for the
+ * IWELBO and bits-back identity verification on the polynomial-regression
+ * spine.
+ */
+export function polynomialJointLogProb(
+  beta: number[],
+  X: number[][],
+  y: number[],
+  sigma2: number,
+  tau2: number,
+): number {
+  const n = X.length;
+  const d = beta.length;
+  // log p(y | β) = -½ n log(2π σ²) - ½ Σ (y_i - X_i β)² / σ²
+  let sse = 0;
+  for (let i = 0; i < n; i++) {
+    let pred = 0;
+    for (let j = 0; j < d; j++) pred += X[i][j] * beta[j];
+    const r = y[i] - pred;
+    sse += r * r;
+  }
+  const logLik = -0.5 * n * Math.log(2 * Math.PI * sigma2) - 0.5 * sse / sigma2;
+  // log p(β | τ²) = -½ d log(2π τ²) - ½ ||β||² / τ²
+  let bb = 0;
+  for (let j = 0; j < d; j++) bb += beta[j] * beta[j];
+  const logPrior = -0.5 * d * Math.log(2 * Math.PI * tau2) - 0.5 * bb / tau2;
+  return logLik + logPrior;
+}
+
