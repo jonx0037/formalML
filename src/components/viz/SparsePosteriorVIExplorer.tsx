@@ -48,8 +48,7 @@ function evalGaussian2D(
 ): number {
   const [mu0, mu1] = mu;
   const [a, b] = cov[0];
-  const [_b, c] = cov[1];
-  void _b;
+  const [, c] = cov[1];
   const det = a * c - b * b;
   const inv00 = c / det;
   const inv11 = a / det;
@@ -57,7 +56,8 @@ function evalGaussian2D(
   const dx = x - mu0;
   const dy = y - mu1;
   const q = inv00 * dx * dx + 2 * inv01 * dx * dy + inv11 * dy * dy;
-  return -0.5 * q - 0.5 * Math.log(2 * Math.PI * Math.sqrt(det));
+  // Multivariate-Normal log density for d=2: log p = -d/2·log(2π) - ½·log|Σ| - ½·q
+  return -Math.log(2 * Math.PI) - 0.5 * Math.log(det) - 0.5 * q;
 }
 
 export default function SparsePosteriorVIExplorer() {

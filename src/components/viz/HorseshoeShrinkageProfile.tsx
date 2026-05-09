@@ -2,10 +2,7 @@ import { useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
-import {
-  horseshoeBetaShrinkageDensity,
-  horseshoeShrinkageMarginal,
-} from './shared/bayesian-ml';
+import { horseshoeShrinkageMarginal } from './shared/bayesian-ml';
 
 // =============================================================================
 // HorseshoeShrinkageProfile — §4 Beta(1/2, 1/2) horseshoe-shape density.
@@ -153,9 +150,6 @@ export default function HorseshoeShrinkageProfile() {
     },
     [data, posteriorKappa, yAnchor, width],
   );
-
-  // Suppress unused-import warning while keeping the closed-form helper available.
-  void horseshoeBetaShrinkageDensity;
 
   return (
     <div ref={containerRef} style={{ width: '100%', maxWidth: 720 }}>

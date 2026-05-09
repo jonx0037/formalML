@@ -219,11 +219,9 @@ def summarize_recovery(
     posterior = idata.posterior
     sample_stats = idata.sample_stats
 
-    if "beta" in posterior:
-        beta_da = posterior["beta"]
-    else:  # fallback for the no-deterministic horseshoe; not used in this script
-        beta_da = posterior["z"] * posterior["lam"] * posterior["tau"]
-
+    # Every fit_* factory wraps β as pm.Deterministic("beta", ...), so beta is
+    # always present in posterior — no fallback needed.
+    beta_da = posterior["beta"]
     sigma_da = posterior["sigma"]
 
     n_chains = posterior.sizes["chain"]
@@ -354,7 +352,9 @@ def main() -> None:
         "priors": results,
     }
 
-    body = json.dumps(payload, separators=(",", ":"))
+    # _to_jsonable converts non-finite floats (NaN/inf) to None — JSON spec
+    # disallows NaN/Infinity literals, and browser JSON.parse rejects them.
+    body = json.dumps(_to_jsonable(payload), separators=(",", ":"), allow_nan=False)
     for d in OUT_DIRS:
         out_path = d / OUT_FILENAME
         out_path.write_text(body)

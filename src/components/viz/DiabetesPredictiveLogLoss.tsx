@@ -97,6 +97,11 @@ export default function DiabetesPredictiveLogLoss() {
         .range([0, innerH])
         .padding(0.18);
       const xScale = d3.scaleLinear().domain([xMin, xMax]).range([0, innerW]);
+      // All test log-likelihoods are negative on the standardized diabetes
+      // response, so we draw bars from the chart's left edge (xScale(xMin))
+      // outward to the per-method mean. Hoisted out of the loop since xMin
+      // is loop-invariant.
+      const barX = xScale(xMin);
 
       g.append('g').call(d3.axisLeft(yScale));
       g.append('g')
@@ -114,18 +119,7 @@ export default function DiabetesPredictiveLogLoss() {
       methods.forEach((m) => {
         const yBand = yScale(m.name)!;
         const barH = yScale.bandwidth();
-        const x0 = xScale(Math.min(0, m.test_ll_mean));
-        const xRight = xScale(m.test_ll_mean);
-        const xLeft = xScale(0);
-        // Just use the rectangle from xLeftMin to xMean, adjust if values are negative
-        const rectX = Math.min(xRight, xLeft);
-        const rectW = Math.abs(xRight - xLeft);
-        // Above is unwieldy when both numbers are negative - simpler: bar from xMin to mean.
-        const barX = xScale(xMin);
         const barW = xScale(m.test_ll_mean) - barX;
-        void rectX;
-        void rectW;
-        void x0;
         g.append('rect')
           .attr('x', barX)
           .attr('y', yBand)

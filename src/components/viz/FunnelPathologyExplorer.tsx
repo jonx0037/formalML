@@ -13,8 +13,9 @@ import { mulberry32, regularizedHorseshoeLambdaTilde } from './shared/bayesian-m
 // In (log τ, log λ) coordinates, the joint prior has a funnel — the conditional
 // spread of log λ given log τ blows up as τ → 0. The non-centered toggle keeps
 // (log τ, z) coordinates instead, eliminating the funnel by construction. The c
-// slider applies the Piironen-Vehtari regularized truncation λ̃ = c²λ²/(c²+τ²λ²),
-// shrinking λ̃ toward the slab cap at large λ²τ².
+// slider applies the Piironen-Vehtari regularized truncation
+//     λ̃² = c²λ² / (c² + τ²λ²)   (so λ̃ = sqrt(c²λ² / (c² + τ²λ²)))
+// shrinking λ̃ toward the slab cap √(c²/τ²) at large λ²τ².
 //
 // The gray reference funnel envelope plots ±2σ(log λ | log τ) under the
 // centered prior; the simulator overlay mimics where leapfrog divergences
