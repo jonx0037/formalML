@@ -194,6 +194,9 @@ Add the reciprocal pointer back to:
 - **formalStatistics/order-statistics-and-quantiles** declares `formalcalculusPrereqs` → `multivariable-integration` (prereqs)
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The joint-density derivation in §29.2 is a Jacobian change-of-variables calculation over the ordered simplex. Rényi's proof (§29.3) uses the same machinery on the spacings map._
+- **formalML/sparse-bayesian-priors** declares `formalcalculusPrereqs` → `multivariable-integration` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§2's scale-mixture-of-Normals representation requires marginalizing the local scales lambda_j out of the joint prior — a multivariable Lebesgue integral over the (lambda_1, ..., lambda_p, tau) hype…_
 - **formalML/statistical-depth** declares `formalcalculusPrereqs` → `multivariable-integration` (prereqs)
   - Reciprocal field on the new topic: `formalmlConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Halfspace mass $F(H)$ and functional-band mass $F(B)$ are concrete multivariable integrals; the §§2–5 derivations and Proposition 1's convexity proof both sit in this ambient setting._
@@ -844,14 +847,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/bayesian-computation-and-mcmc** declares `formalmlConnections` → `sequential-monte-carlo` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _SMC / particle filters are the alternative when the target is a sequence π_t indexed by time or annealing parameter. Parallel to MCMC's single-target framework. §26.10 Rem 31._
-
-## When `formalml/sparse-bayesian-priors` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/hierarchical-bayes-and-partial-pooling** declares `formalmlConnections` → `sparse-bayesian-priors` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The horseshoe, regularized horseshoe, spike-and-slab, and R2-D2 priors are the continuous-shrinkage alternatives to the hierarchical-Normal prior that §28.6 develops. §28.10 Rem 23 pointer._
 
 ## When `formalml/spectral-methods` ships
 
