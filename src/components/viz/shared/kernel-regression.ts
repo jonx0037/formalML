@@ -725,6 +725,12 @@ function kernelDomain(K: KernelFn, c: number): [number, number] {
     const lo = isFinite(c) ? Math.max(-c, -8) : -8;
     return [lo, 8];
   }
+  if (K === silvermanKernel) {
+    // Silverman kernel decays as exp(-|u|/√2); ±30 captures > 1 - 1e-9 of mass.
+    // Treated separately from compact kernels because its support is unbounded.
+    const lo = isFinite(c) ? Math.max(-c, -30) : -30;
+    return [lo, 30];
+  }
   // Compact kernels: epanechnikov, box, triangular, quartic — support [-1, 1].
   const lo = isFinite(c) ? Math.max(-Math.min(c, 1), -1) : -1;
   return [lo, 1];

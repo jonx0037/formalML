@@ -119,7 +119,7 @@ export default function LocalPolynomialFit() {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 14, color: 'var(--color-text)' }}>degree p:</span>
           {([0, 1, 2, 3] as const).map((pi) => (
-            <button key={pi} onClick={() => setP(pi)}
+            <button key={pi} type="button" onClick={() => setP(pi)}
               style={{
                 padding: '4px 12px', border: '1px solid var(--color-border)', borderRadius: 4,
                 background: p === pi ? paletteKR.posterior : 'var(--color-surface)',

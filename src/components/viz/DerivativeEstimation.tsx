@@ -78,12 +78,17 @@ export default function DerivativeEstimation() {
     truth: truthAt(x0, j),
   }));
 
+  // SVG renders at plotW (2/3 of container width on desktop, full on mobile);
+  // the D3 render must use the same width or the plot clips/overflows. Catches
+  // PR #80 review feedback (Copilot) on render-width vs SVG-width mismatch.
+  const plotW = isMobile ? w : Math.max(0, w * 0.65);
+
   const renderRef = useD3<SVGSVGElement>(
     (svg) => {
       svg.selectAll('*').remove();
-      if (w <= 0) return;
+      if (plotW <= 0) return;
       const margin = { top: 24, right: 16, bottom: 40, left: 50 };
-      const innerW = w - margin.left - margin.right;
+      const innerW = plotW - margin.left - margin.right;
       const innerH = HEIGHT - margin.top - margin.bottom;
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -114,7 +119,7 @@ export default function DerivativeEstimation() {
       g.append('circle').attr('cx', xScale(x0)).attr('cy', yScale(coefs[0]))
         .attr('r', 5).style('fill', paletteKR.posterior).style('stroke', 'white').style('stroke-width', 1.5);
     },
-    [w, X, Y, xGrid, mTrueCurve, fitGrid, x0, coefs],
+    [plotW, X, Y, xGrid, mTrueCurve, fitGrid, x0, coefs],
   );
 
   return (
@@ -139,7 +144,7 @@ export default function DerivativeEstimation() {
       </div>
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 16 }}>
         <div style={{ flex: 2 }}>
-          <svg ref={renderRef} width={w * (isMobile ? 1 : 0.65)} height={HEIGHT} />
+          <svg ref={renderRef} width={plotW} height={HEIGHT} />
         </div>
         <div style={{ flex: 1, paddingTop: 10 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: 13 }}>

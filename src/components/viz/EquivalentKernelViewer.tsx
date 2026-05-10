@@ -41,22 +41,31 @@ export default function EquivalentKernelViewer() {
   const w = containerWidth;
   const c = C_OPTIONS[cIdx].value;
 
-  const { uGrid, kStarValues } = useMemo(() => {
+  // Precompute K^*_p^(c)(u-grid) for every (p, c) combination once (5 × 4 = 20
+  // entries, ~720k Simpson-panel kernel evaluations total at startup, ~36ms).
+  // Switching the c-slider then becomes an O(1) lookup, no main-thread jank.
+  // Catches PR #80 review feedback (Copilot) on per-c-change recomputation.
+  const { uGrid, kStarValuesByCIdx } = useMemo(() => {
     const grid = new Float64Array(NPTS);
     for (let i = 0; i < NPTS; i++) grid[i] = U_MIN + ((U_MAX - U_MIN) * i) / (NPTS - 1);
-    const ks: Record<number, Float64Array> = {};
-    for (const p of [0, 1, 2, 3]) {
-      const Kstar = equivalentKernel(kGaussian, p, c);
-      const arr = new Float64Array(NPTS);
-      for (let i = 0; i < NPTS; i++) {
-        const u = grid[i];
-        // Outside [-c, ∞), the kernel is meaningless — set to NaN to break the line.
-        arr[i] = isFinite(c) && u < -c ? NaN : Kstar(u);
+    const cache: Record<number, Record<number, Float64Array>> = {};
+    C_OPTIONS.forEach((opt, ci) => {
+      const ksByP: Record<number, Float64Array> = {};
+      for (const p of [0, 1, 2, 3]) {
+        const Kstar = equivalentKernel(kGaussian, p, opt.value);
+        const arr = new Float64Array(NPTS);
+        for (let i = 0; i < NPTS; i++) {
+          const u = grid[i];
+          // Outside [-c, ∞), the kernel is meaningless — set to NaN to break the line.
+          arr[i] = isFinite(opt.value) && u < -opt.value ? NaN : Kstar(u);
+        }
+        ksByP[p] = arr;
       }
-      ks[p] = arr;
-    }
-    return { uGrid: grid, kStarValues: ks };
-  }, [c]);
+      cache[ci] = ksByP;
+    });
+    return { uGrid: grid, kStarValuesByCIdx: cache };
+  }, []);
+  const kStarValues = kStarValuesByCIdx[cIdx];
 
   const renderRef = useD3<SVGSVGElement>(
     (svg) => {
@@ -130,7 +139,7 @@ export default function EquivalentKernelViewer() {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: 14, color: 'var(--color-text)' }}>boundary parameter:</span>
           {C_OPTIONS.map((opt, i) => (
-            <button key={i} onClick={() => setCIdx(i)}
+            <button key={i} type="button" onClick={() => setCIdx(i)}
               style={{
                 padding: '4px 10px', border: '1px solid var(--color-border)', borderRadius: 4,
                 background: cIdx === i ? paletteKR.posterior : 'var(--color-surface)',
