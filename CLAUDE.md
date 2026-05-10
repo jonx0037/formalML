@@ -39,15 +39,20 @@ The 32 ML Methodology topics discharge forward-pointers from formalstatistics.co
 
 ```bash
 pnpm dev                                            # Dev server at localhost:4321
-pnpm build                                          # Production build (runs pagefind). Needs NODE_OPTIONS=--max-old-space-size=8192 (default 4GB OOMs).
+pnpm build                                          # Production build (runs pagefind). Built-in NODE_OPTIONS=--max-old-space-size=10240 (the default 4GB OOMs at the current ~52-topic scale; at 7168 it OOM'd on Vercel after kernel-regression shipped — 10GB is the post-kernel-regression baseline). The Vercel build machine has 60GB; raise further if a future topic pushes past 10GB.
 pnpm preview                                        # Preview production build
 pnpm verify:nonparametric-ml                        # Numerical regression tests for src/components/viz/shared/nonparametric-ml.ts vs notebook printed outputs
+pnpm verify:<topic>                                 # Per-topic numerical-regression suite. New topics: write src/components/viz/shared/__tests__/verify-<slug>.ts (standalone, process.exit(0/1)), register a matching verify:<slug> script in package.json. Tolerances reflect notebook printed outputs; brief tabulated values may differ if the notebook seed changed during scoping.
 pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md, docs/plans/cross-site-audit-report.md, and docs/plans/audit-output/*.json — don't hand-edit those files.
+pnpm exec tsc --noEmit --project tsconfig.json      # Ad-hoc TypeScript check. `pnpm exec` runs the local `tsc` binary from node_modules/.bin; `pnpx tsc` and `pnpm dlx tsc` both fetch the wrong global package and fail with "This is not the tsc command you are looking for".
 
 # Notebook Python — each topic ships its own .venv
 cd notebooks/<topic-slug> && .venv/bin/python <script>.py                                  # Run a notebook-local Python script (no project-wide venv)
 cd notebooks/<topic-slug> && nohup .venv/bin/python <script>.py </dev/null >out.log 2>err.log &   # Detached for long PyMC/BART precomputes (~6–15 min); </dev/null avoids stdin blocking
+cd notebooks/<topic-slug> && uv pip install <pkg>                                          # Add a package to the notebook venv. uv-managed venvs lack pip directly — `python -m pip install` returns "No module named pip".
 ```
+
+**Bash cwd persists across tool calls.** A `cd notebooks/<slug>` from earlier in the session silently breaks later relative-path operations (e.g., `git add path/from/repo-root` runs from the notebook dir and fails with "pathspec did not match"). Use absolute paths or `cd "$(git rev-parse --show-toplevel)"` at the top of any compound staging command in long sessions.
 
 ## Preview before publish (non-negotiable)
 
@@ -98,11 +103,22 @@ Each topic in `src/content/topics/` is an MDX file with YAML frontmatter that in
 
 **Proofs:** use `<TheoremBlock type="proof">…</TheoremBlock>` with no `number`, no `title`, and no manual `$\square$` — the component auto-renders `∎` (PR #65 fix). `gaussian-processes.mdx` has stale manual markers from before the fix; `probabilistic-programming.mdx` is the post-fix reference. There is no `<ProofExpand>` component — the standalone `proof` block is the codebase pattern (rank-tests, conformal-prediction, quantile-regression).
 
+**TheoremBlock supported `type` values:** `definition | theorem | lemma | proposition | corollary | proof | remark | example | algorithm` (the last added in PR #76). Adding new types is an additive edit to the `config` table in `src/components/ui/TheoremBlock.astro`; missing types render a runtime "Cannot read properties of undefined (reading 'numbered')" 500 with no MDX line number — easy to misdiagnose.
+
 **Math display gotcha:** `$$\begin{aligned}` glued onto one line breaks rendering — MDX parses `{aligned}` as a JSX expression and strips `\begin{aligned}` before remark-math forwards to KaTeX. Always put `$$` on its own line before `\begin{aligned}` and after `\end{aligned}`. See `conformal-prediction.mdx` for the working pattern.
 
 **Equation labels:** put end labels inside the `$$...$$` block rather than using `\tag{...}` (which has KaTeX-rendering edge cases). For numbered equations the convention is `\quad\quad (X.Y)` — see `probabilistic-programming.mdx` and `mixed-effects.mdx` (numeric labels). For symbolic anchor labels (e.g., a `(†)` reference target), `\qquad (\dagger)` is used — see `gaussian-processes.mdx`. Many topics don't number equations at all (e.g., `variational-inference.mdx`).
 
 **Theorem numbering:** the default is per-type and topic-local (Theorem 1, Theorem 2; Definition 1; Lemma 1; Proposition 1, Proposition 2), and prose cross-references should follow whatever scheme the topic itself uses. Some synthesis/bridge topics intentionally use section-prefixed numbering — `prediction-intervals.mdx` uses `number={5.1}`, `5.2`, `5.3` for §5's three theorems alongside topic-local definitions — so don't force-convert those to topic-local unless deliberately standardizing the entire topic. Brief drafts often use section-prefixed numbering by default; convert to topic-local when porting to MDX unless the topic warrants the section-prefixed exception.
+
+### Brief vs codebase: recurring drift
+
+Topic-shipment briefs sometimes specify patterns that don't match the codebase. When the brief and the codebase disagree, the codebase wins. Common drifts (PCA, SG-MCMC, VBMS briefs all hit subsets of these):
+
+- **Viz directory layout.** Briefs occasionally write `src/components/viz/<topic>/`. The codebase convention is **flat** — every viz component lives at `src/components/viz/*.tsx` directly (e.g., `BrownianPathExplorer.tsx`, `VariationalBoundsExplorer.tsx`).
+- **Internal cross-references.** Briefs sometimes write `<TopicLink to="/topics/svd">`. There is **no `TopicLink` component**; use Markdown links `[SVD](/topics/svd)` (handoff-reference §3 prescribes this). For unwritten topics use plain text `**Title** *(coming soon)*`.
+- **Notebook is source-of-truth.** Brief-tabulated numerical values can lag the notebook if the seed or data-generating coefficients changed during scoping. Always test verification suites against `cd notebooks/<slug> && .venv/bin/python …` outputs, not the brief tables.
+- **Astro/React versions.** PCA and SG-MCMC briefs both said "Astro 5 / React 18". Actual: Astro 6 / React 19 (per `package.json`).
 
 ### Cross-site references
 
@@ -118,7 +134,7 @@ formalML is the third site in the triad: **formalcalculus → formalstatistics �
 
 Each entry is an object with `topic` (slug, no extension), `site` (`formalcalculus` \| `formalstatistics`), and `relationship` (≥40 chars of explanatory prose). Reciprocal entries on the target side are required — when target topic doesn't exist yet, the audit logs it in [docs/plans/deferred-reciprocals.md](docs/plans/deferred-reciprocals.md) for retrieval at ship time.
 
-For inline body references to sister-site topics, port formalstatistics's `<ExternalLink>` component (interface `{ href, site, topic }`) to `src/components/ui/ExternalLink.astro` when the first cross-site-prereq topic ships. For planned-but-not-yet-published *internal* formalML topics, use plain text: `**Variational Inference** *(coming soon)*`.
+For inline body references to sister-site topics, use `<ExternalLink href="..." site="..." topic="..." />` from `src/components/ui/ExternalLink.astro` (already in place). It renders e.g. "formalStatistics: Kernel Density Estimation" with the right styling. For planned-but-not-yet-published *internal* formalML topics, use plain text: `**Variational Inference** *(coming soon)*`.
 
 The cross-site infrastructure is documented in detail in [docs/plans/cross-site-audit-report.md](docs/plans/cross-site-audit-report.md) and the strategic planning doc §5.
 
@@ -130,9 +146,12 @@ The cross-site infrastructure is documented in detail in [docs/plans/cross-site-
 - Shared color scales in `viz/shared/colorScales.ts`
 - Shared types in `viz/shared/types.ts`
 - Use `.style()` for CSS custom properties in D3 SVG elements (not `.attr("style", ...)`)
-- Hydration: `client:visible` defers React mount until the component scrolls into view. Until then `useResizeObserver` returns `width = 0` and `useD3` paints nothing. When testing via `preview_eval`, scroll the viz into view (`el.scrollIntoView({block: 'center'})`) before inspecting children. Some headless tools never fire IntersectionObserver — to verify content programmatically, select the `<astro-island>` element (e.g., `const isl = document.querySelector('astro-island')`), dynamically import the bundle (`isl.getAttribute('component-url')`) and the Astro client renderer (`isl.getAttribute('renderer-url')`), and call `renderer(isl)(Comp, {}, {}, { client: 'visible' })` — pass `{}` as an object, NOT the string `'{}'`; under React 19 the string form throws `Cannot use 'in' operator to search for '__self' in {}` because `React.createElement` treats it as props.
+- Hydration: `client:visible` defers React mount until the component scrolls into view. Until then `useResizeObserver` returns `width = 0` and `useD3` paints nothing. When testing via `preview_eval`, scroll the viz into view (`el.scrollIntoView({block: 'center'})`) before inspecting children. Some headless tools never fire IntersectionObserver *or* ResizeObserver — D3 components show `width="0"` SVGs (or `containerWidth || 720` fallback) with no children even after hydration completes (sliders and surrounding DOM are present, paths/circles/rects are not). To verify content programmatically, select the `<astro-island>` element (e.g., `const isl = document.querySelector('astro-island')`), dynamically import the bundle (`isl.getAttribute('component-url')`) and the Astro client renderer (`isl.getAttribute('renderer-url')`), and call `renderer(isl)(Comp, {}, {}, { client: 'visible' })` — pass `{}` as an object, NOT the string `'{}'`; under React 19 the string form throws `Cannot use 'in' operator to search for '__self' in {}` because `React.createElement` treats it as props. Otherwise defer D3-content verification to Vercel preview.
+- **HMR wedge symptom:** long-running Astro dev servers occasionally lock into `Cannot read properties of undefined (reading 'call')` errors that survive page reloads (often referencing an unrelated viz file like `DAGGraph.tsx`). A full server stop+start clears it; it's HMR-only and doesn't indicate a real bug.
 - **Loading-state JSX rule for fetch-based viz:** keep the `containerRef`'d `<div>` mounted from the first render, swap only the inner content (`{payload ? <svg ref={ref}/> : <Loading/>}`). Early-return JSX during loading leaves `useResizeObserver`'s mount-only `useEffect` with a null ref → the observer never attaches, the SVG falls back to `width || 720` and overflows the container on mobile. Synchronous viz (closed-form math) don't hit this; any viz that fetches JSON before rendering must keep the wrapper mounted.
 - **Default to in-browser TS for viz computation; reserve Python precompute for genuinely non-conjugate cases.** Closed-form structure to look for first: block-diagonal covariance (mixed-effects V splits per group), Gaussian conjugacy (forward-KL moment matching, CAVI updates on Gaussian targets), simple invertible maps (normalizing flows with hand-designed coupling layers), Hamiltonian dynamics on Gaussian targets. Tier 2+ plans in `docs/plans/` may over-estimate precompute needs — verify the math before scripting Python.
+- **Slider perf: commit-on-release for heavy MC.** When a slider drives a `useMemo` with O(B·n²) or worse compute, separate `displayValue` (controlled input, updates on `onChange` for live label feedback) from `committedValue` (drives the heavy `useMemo`, updates only on `onMouseUp` / `onTouchEnd` / `onKeyUp`). Reference implementations: `FiniteSampleBiasExplorer.tsx`, `SGLDBatchSizeExplorer.tsx`, kernel-regression's `BandwidthSelectorComparison.tsx`. For viz with both a cheap top panel and heavy bottom panel (e.g. `BoundaryBiasDiagnostic.tsx`), the top reads `display` and the bottom reads `committed` — live preview while dragging, heavy recompute on release. Add `aria-label` for accessibility.
+- **Kernel-smoother MC hot paths: prefer matrix-free.** For NW / LL / GCV-style smoothers in Monte Carlo sweeps, avoid materializing an n×n weight matrix per call. The diagonal `W[i,i] = K(0)/h` is a scalar (since `X[i] - X[i] = 0`), and row sums + weighted-Y sums + the GCV trace fold into a single inner loop. Same O(n²) time, O(1) memory per call, zero alloc. Reference: `looCvScore` / `gcvScore` / `looCvAndGcvScores` in `src/components/viz/shared/kernel-regression.ts`. The matrix-form `kernelWeightMatrix` is kept for callers that genuinely need the full matrix, but the matrix-free helpers are the right default in viz hot paths.
 
 **Shared API quick reference:**
 
@@ -142,9 +161,15 @@ The cross-site infrastructure is documented in detail in [docs/plans/cross-site-
 
 **Sample-data dual-location:** when a viz fetches precomputed JSON at runtime (e.g., `fetch('/sample-data/<slug>/pareto_k_n100.json')` — concrete filename, not a glob; `fetch` won't resolve `*.json`), the file must live in **both** `src/data/sampleData/<slug>/` (tracked, target of the precompute script) **and** `public/sample-data/<slug>/` (Astro serves only `public/`). Copy after every regen. Long-term this should be automated — either as a `postbuild` step in the precompute script (`shutil.copytree(..., dirs_exist_ok=True)`) or as a `pnpm sync:sample-data` package script — but the manual copy is the documented current state until that lands.
 
+**Asset commit checklist:** before `git commit` on a topic shipment, run `git ls-files public/images/topics/<slug>/ public/sample-data/<slug>/ src/data/sampleData/<slug>/` and confirm the listings match what's on disk. Disk-resident-but-untracked figures and JSON ship as 404s on Vercel even when the local dev server serves them fine — the Astro build doesn't fail on missing referenced assets, so `pnpm build` won't catch it. PR #76 shipped 12 untracked assets through the first round of review for exactly this reason.
+
 **Precompute scripts handle the dual-write themselves.** `notebooks/<slug>/precompute_<viz>.py` writes JSON to BOTH `src/data/sampleData/<slug>/` and `public/sample-data/<slug>/` from inside `main()` (iterate over an `OUT_DIRS` list); no manual copy step. Multiple viz can share one JSON via additive schema fields — e.g., `payload.non_centered` was added to `neals_funnel.json` for B4 without breaking B3's reader. See `precompute_neals_funnel.py` and `precompute_inference_dispatch.py` for the canonical structure (paths/seed → `_to_jsonable`/`_round_floats` helpers → fit functions → `main()` writing to both `OUT_DIRS`).
 
+**JSON validity:** wrap the full payload through `_to_jsonable` AND pass `allow_nan=False` to `json.dumps` — Python's default emits `NaN` literals that JSON spec disallows and browser `fetch().json()` rejects. The helper alone is insufficient if any Python `float('nan')` slips into the payload after the helper-walked numpy arrays. PR #77 round-tripped four review comments on this exact bug.
+
 **PyTensor's tensor-graph `.eval` method (same name as Python's built-in)** trips a project security hook flagging the bare-paren form as risky. Workaround for ADVI parameter extraction: use sample-based estimates via `approx.sample(N).posterior[var].mean()` and `.std()` instead of reaching into the variational params directly. Sample-based is hook-safe, less reliant on PyMC internals, and survives version bumps.
+
+**Log-marginal-likelihood reference:** use `pm.sample_smc(draws=2000, chains=2, ...)` and read `idata.sample_stats.log_marginal_likelihood` directly. Modern Sequential Monte Carlo is the descendant of Neal (2001) AIS — it adaptively schedules β-annealing with a Metropolis kernel and returns the log-evidence as a side product, replacing ~100 lines of hand-rolled AIS. Caveat: SMC can return NaN on `pm.Mixture`-based models (e.g., continuous spike-slab) — wrap in `try/except` and serialize the exception message into the JSON payload.
 
 **GP LOO closed form:** for any future Gaussian-process LOO computation, prefer Rasmussen & Williams (2006) eq. 5.12–5.13 — single Cholesky factorization plus `choleskyInverse` from `gaussian-processes.ts` — over a refit-per-point loop. Python reference: `notebooks/.../serialize_for_viz.py::gp_marginal_loo_pointwise`. TS reference: `bayesian-ml-stacking.ts::looLogPredictiveGP`. The naive refit version is O(n⁴) and freezes the browser at n ≥ ~150.
 
@@ -210,6 +235,17 @@ The `type` field is a strict enum: `paper | book | course | blog | video`. Use `
 - Track definitions in `src/data/curriculum.ts`
 - When adding a new topic, update both files and add cross-links in related topics
 
+**`/paths` is fully data-driven.** When publishing a topic: (1) set `status: "published"` in the MDX frontmatter, (2) remove the slug from its track's `planned` array in `src/data/curriculum.ts`, (3) flip the curriculum-graph node's `status` to `"published"`. The `/paths` page picks up everything else automatically — track card flips from "N planned" to "K published / N-K planned", a `<TopicCard>` renders, and the slug disappears from the bullet list. No `paths.astro` edits needed.
+
+### New-topic scoping
+
+Two reusable starter prompts in `docs/plans/`:
+
+- `Claude Chat Starter Prompt — formalML Topic Pre-Brief Drafting Template.md` — for the claude.ai chat session that produces (brief, notebook). Fill in 7 placeholders, attach 1–3 reference notebooks, paste the body. Existing filled instances at `docs/plans/formalml-{slug}-starter-prompt.md` (e.g., `extreme-value-theory`, `kernel-regression`, `statistical-depth`) are the convention for new ones.
+- `Claude Code Starter Prompt — formalML Topic Implementation Template.md` — for the Claude Code implementation session that ships brief + notebook to the live site.
+
+Reference-notebook selection rule for the Chat template: pick same-track sibling + freshest shipped exemplar + prereq-edge notebook (1–3 total).
+
 ## Code Style
 
 - TypeScript throughout (Astro + React)
@@ -217,6 +253,7 @@ The `type` field is a strict enum: `paper | book | course | blog | video`. Use `
 - No class components
 - Prefer named exports
 - D3 selections scoped to component refs — no global DOM manipulation
+- **TypedArray sort: no comparator needed.** `Float64Array.prototype.sort()` (and the other typed-array sorts) default to numeric, unlike `Array.prototype.sort` which is lexicographic. Use `arr.slice().sort()` over `Array.from(arr).sort((a, b) => a - b)` — avoids the typed-to-plain-array round trip and the JS-comparator overhead.
 
 ### Code-example language policy
 
