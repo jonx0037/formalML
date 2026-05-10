@@ -81,7 +81,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'Nonparametric and high-dimensional supervised learning \u2014 kernel and local-polynomial regression, lasso and debiased lasso, p \u226b n asymptotics.',
-    planned: ['local-regression', 'high-dimensional-regression'],
+    planned: ['high-dimensional-regression'],
     calculusDependent: false,
   },
   {

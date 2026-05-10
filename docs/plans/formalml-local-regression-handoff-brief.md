@@ -1,0 +1,1327 @@
+# Local Polynomial Regression — formalML topic handoff brief
+
+> **Slug:** `local-regression`
+> **Track:** T2 Supervised Learning
+> **Difficulty:** intermediate
+> **Predecessor:** [`kernel-regression`](https://formalml.com/topics/kernel-regression) (shipped May 2026)
+> **Companion notebook:** `notebooks/local-regression/01_local_regression.ipynb`
+> **Code language:** Python + NumPy / SciPy / scikit-learn (default — not on the PyTorch exception list)
+>
+> Generated from a Claude Chat brief-drafting session per the formalML topic-implementation workflow. The companion implementation session (Claude Code) reads this brief plus the notebook and ships the topic to the live site at https://formalml.com/topics/local-regression.
+
+---
+
+## Topic outline
+
+12 H2 sections, 47 H3 subsections. The outline matches the structure of both this brief and the companion notebook.
+
+**§1. From local-linear to degree-$p$.** Picking up the forward-pointer that closed [Kernel Regression](/topics/kernel-regression) §8.
+- §1.1 Where we left off — local-linear as the §8 boundary fix.
+- §1.2 The local-cubic teaser — capturing curvature, not just slope.
+- §1.3 The Fan–Gijbels family — degree-$p$ local polynomials with one sharp surprise.
+- §1.4 Roadmap.
+
+**§2. The degree-$p$ local polynomial estimator.** Locally-weighted polynomial regression as a pointwise WLS solve — definition through matrix form.
+- §2.1 The Taylor-expansion idea.
+- §2.2 The kernel-weighted least-squares objective at evaluation point $x$.
+- §2.3 Closed-form normal equations: the $(p+1) \times (p+1)$ solve.
+- §2.4 Matrix form and batched-grid vectorization.
+- §2.5 Reading off function value and derivatives from the same fit.
+
+**§3. The equivalent-kernel formulation.** Every local polynomial is a kernel smoother — with a degree-aware, location-aware kernel.
+- §3.1 Local polynomial estimators are linear smoothers.
+- §3.2 The asymptotic equivalent kernel via $K^*_p(u) = \mathbf{e}_1^\top \mathbf{S}_p^{-1}(1, u, \ldots, u^p)^\top K(u)$.
+- §3.3 Properties of $K^*_p$ — moment matching, the odd-with-even pairing, sometimes-negative values.
+- §3.4 Boundary behavior and the visualization.
+
+**§4. Bias and variance at general $p$ — the rate ladder.**
+- §4.1 The conditional bias and the residual decomposition.
+- §4.2 The leading-order bias formula and the identification with $\mu^*_{p+1}(K^*_p)$.
+- §4.3 The interior rate ladder.
+- §4.4 Variance: $\sigma^2(x) R^*_p(K) / (nh f_X(x))$.
+- §4.5 The AMISE-optimal bandwidth at odd $p$.
+
+**§5. The boundary and the odd-vs-even degree story.**
+- §5.1 The question this section answers.
+- §5.2 The boundary-truncated equivalent kernel.
+- §5.3 The boundary-rate ladder.
+- §5.4 The practical recommendation: $p \in \{1, 3\}$.
+
+**§6. Boundary behavior across the full support.**
+- §6.1 The location-aware equivalent kernel.
+- §6.2 Why $p \in \{1, 3\}$ removes the boundary asymmetry.
+- §6.3 The full-domain bias figure.
+
+**§7. Bandwidth selection at general $p$.**
+- §7.1 The smoother matrix at degree $p$.
+- §7.2 Leave-one-out cross-validation.
+- §7.3 Generalized cross-validation.
+- §7.4 Plug-in selectors.
+- §7.5 How $h^*_p$ shifts with $p$.
+
+**§8. Multivariate local polynomials.**
+- §8.1 The polynomial-feature design matrix.
+- §8.2 Kernel weights and bandwidth matrices.
+- §8.3 The 2-dim toy.
+- §8.4 The curse of dimensionality.
+
+**§9. Derivative estimation.**
+- §9.1 Reading derivatives off the WLS coefficients.
+- §9.2 Bias and variance of $\hat m_h^{(j)}$.
+- §9.3 The bandwidth shift for derivative estimation.
+- §9.4 Numerical demonstration on the §1 toy.
+
+**§10. Connections to smoothing splines.**
+- §10.1 The cubic smoothing-spline objective.
+- §10.2 Silverman's equivalent variable-kernel theorem.
+- §10.3 Practical comparison.
+
+**§11. Connections to additive models.**
+- §11.1 Additive structure as a curse dodge.
+- §11.2 The backfitting algorithm.
+- §11.3 Why the components have univariate rates.
+
+**§12. Connections, applications, and limits.**
+- §12.1 Local polynomials as nuisance estimators.
+- §12.2 Varying-coefficient models.
+- §12.3 Where local polynomials break down.
+- §12.4 Forward pointers within formalML.
+- §12.5 Cross-site context.
+
+---
+
+## Cross-site prerequisites
+
+The four `formalstatisticsPrereqs` and `formalcalculusPrereqs` entries for this topic, with verified slugs and ≥40-character relationship prose:
+
+```yaml
+formalstatisticsPrereqs:
+  - topic: linear-regression
+    site: formalstatistics
+    relationship: |
+      Locally-weighted least squares with a degree-p polynomial design matrix is
+      this topic's central machinery. The (X^T W X)^{-1} X^T W y normal equations
+      are the linear-regression formulas applied at every evaluation point with
+      location-adaptive design and weight matrices.
+  - topic: kernel-density-estimation
+    site: formalstatistics
+    relationship: |
+      Kernel families and bandwidth-moment conditions mu_2(K), R(K) port directly
+      from KDE. The bandwidth-selection methods (Silverman, plug-in, LOO-CV, GCV)
+      transfer to local polynomial regression via the same linear-smoother
+      machinery.
+
+formalcalculusPrereqs:
+  - topic: multiple-integrals
+    site: formalcalculus
+    relationship: |
+      Multivariate-integration substrate for the §5 bias-variance computations
+      and the §8 multivariate full-degree expansion. Same use as in the
+      predecessor kernel-regression topic.
+  - topic: mean-value-taylor
+    site: formalcalculus
+    relationship: |
+      Taylor expansion to order p+1 is the load-bearing technical move of the §4
+      bias derivation at general degree p. Higher-order than the order-2
+      expansion that kernel-regression's NW analysis uses.
+```
+
+The internal formalML prerequisite is `kernel-regression` (just shipped). `concentration-inequalities` is inherited transitively.
+
+The reciprocal forward-pointing entries on the four sister-site topics will be added in the implementation session per CLAUDE.md's `pnpm audit:cross-site` workflow.
+
+---
+
+## Code-language policy
+
+NumPy / SciPy / scikit-learn / pandas / matplotlib only. Every notebook cell runs CPU-only in under 60 seconds on a 2020-era laptop. Total notebook runtime budget: under 60s.
+
+Key library calls:
+- `numpy.linalg.solve` for the batched $(p+1) \times (p+1)$ WLS system.
+- `numpy.einsum` for the design and Gram matrix construction.
+- `scipy.integrate.quad` for the kernel-moment integrals (interior and boundary-truncated).
+- `scipy.interpolate.make_smoothing_spline` for the §10 smoothing-spline comparison.
+- `sklearn.preprocessing.PolynomialFeatures(degree=p, include_bias=True)` for the §8 multivariate design matrix.
+- `matplotlib.pyplot` for figures, with the May-2026 formalML rcParams baseline.
+
+The notebook does **not** import anything from PyTorch / JAX — `local-regression` is not on the seven-topic neural-methods exception list.
+
+---
+
+## §1. From local-linear to degree-$p$
+
+### §1.1 Where we left off
+
+[Kernel Regression](/topics/kernel-regression) closed with a boundary problem and a fix. The Nadaraya–Watson estimator does fine in the interior of the support but biases toward the data side at the boundary — the kernel mass that would sit *outside* the support gets reflected back in by the normalization, dragging $\hat m_h(0)$ toward whatever's nearby. The §8.2 fix was local-linear regression: fit a line, not a constant, in each kernel-weighted neighborhood. The line absorbs the slope information that NW was forced to merge into a level estimate, and the boundary bias drops from $O(h)$ to $O(h^2)$ — uniformly, across the whole support.
+
+That fix is the simplest member of a family. The §8.3 forward-pointer named the family — degree-$p$ **local polynomial regression**, due to Fan, Gijbels, and collaborators in a string of 1990s papers — and left the rest for this topic. We pick it up here.
+
+### §1.2 The local-cubic teaser
+
+Before the algebra, the picture. Below are NW (degree 0), local-linear (degree 1), and local-cubic (degree 3) fits to the same 200-point sample from
+
+$$
+X \sim \mathrm{Uniform}(0,1), \qquad
+Y = \sin(2\pi X) + \tfrac{X}{2} + \varepsilon, \qquad
+\varepsilon \sim \mathcal{N}(0, 0.2^2),
+$$
+
+at the same bandwidth $h = 0.08$ — the same toy that ran through [Kernel Regression](/topics/kernel-regression) and the same seed (42).
+
+[FIGURE 1.1: 4-panel comparison — true $m(x)$, NW, local-linear, local-cubic at $h = 0.08$ on the §1 toy.]
+
+Three things to notice. The NW fit clips the peaks and troughs of the sine — degree-zero polynomials are constants, so the fit at $x_0$ is a kernel-weighted *average* of nearby $Y_i$ values, and averaging across a neighborhood with a steep slope flattens the peak. Local-linear recovers the slopes — the line through the kernel-weighted neighborhood at the peak isn't asked to also fit the curvature, so the level estimate at the peak is no longer dragged down by the off-center neighbors. Local-cubic does both — slope and curvature — and tracks the sine more tightly still, particularly at the inflection points where local-linear has to compromise.
+
+You'll notice we skipped degree 2. That's not an oversight; that's the punchline of §5.
+
+### §1.3 The Fan–Gijbels family
+
+The general estimator, for a degree-$p$ polynomial, solves the kernel-weighted least-squares problem
+
+$$
+\hat{\boldsymbol\beta}(x) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^{p+1}}
+\sum_{i=1}^n \Big(Y_i - \beta_0 - \beta_1(X_i - x) - \cdots - \beta_p(X_i - x)^p\Big)^2
+\, K\!\left(\frac{X_i - x}{h}\right)
+$$
+
+at every evaluation point $x$. The function-value estimate is $\hat m_h(x) = \hat\beta_0(x)$. The first $j$ derivative estimates fall out of the same fit as $\hat m^{(j)}_h(x) = j!\,\hat\beta_j(x)$ — a notably useful side-product we cash in during §9.
+
+Three results structure the topic and earn the family its place in the modern nonparametric toolkit:
+
+1. **The equivalent-kernel formulation (§3).** Every degree-$p$ local polynomial estimator can be rewritten as a kernel smoother $\hat m_h(x) = \sum_i K^*_{h,p,x}(X_i)\,Y_i$, where $K^*$ is *not* the original kernel $K$ — it's a degree-aware, location-aware reweighting of $K$. The bandwidth-selection theory and the implementation tricks port from [Kernel Regression](/topics/kernel-regression) because of this; the higher-degree estimators are still kernel smoothers, just smarter ones.
+2. **The bias ladder (§4).** For $p$-times-differentiable $m$, degree-$p$ local polynomial achieves $O(h^{p+1})$ bias when $p$ is odd. When $p$ is even, the bias rate is the same $O(h^p)$ as $p - 1$ in the worst case, with the parity-bonus interior rate $O(h^{p+2})$ available at symmetric kernels. The variance is $O(1/(nh))$ throughout.
+3. **The odd-vs-even degree pattern (§5).** Combining the first two: there is no uniform-rate benefit to fitting an even-degree polynomial over the next-lower odd degree once boundary behavior is included. Local-quadratic is no better than local-linear at uniform rate; local-quartic is no better than local-cubic. The practical choices are $p = 1$ and $p = 3$, and the choice between them comes down to whether you need derivative estimates.
+
+That's the spine. Boundary behavior (§6) follows from the equivalent-kernel adapting to the boundary at odd $p$. Bandwidth selection (§7) extends [Kernel Regression](/topics/kernel-regression) §5 essentially unchanged. The multivariate generalization (§8), the smoothing-spline bridge (§10), and the additive-model bridge (§11) all rest on the same scaffolding.
+
+### §1.4 Roadmap
+
+§2 is the formal definition and the matrix form. §3 is the equivalent-kernel rewrite. §4 derives the bias-variance ladder, and §5 — the topic's sharpest result — is the odd-vs-even degree theorem. §6 takes the theorem to the boundary. §7 extends the bandwidth-selection toolkit. §8 generalizes to $\mathbb{R}^d$. §9 is derivative estimation. §10 connects to smoothing splines. §11 connects to additive models. §12 closes with the connections to semiparametric inference and the practical limits.
+
+---
+
+## §2. The degree-$p$ local polynomial estimator
+
+### §2.1 The Taylor-expansion idea
+
+The motivating observation is the same one that drives any local approximation in calculus. If $m$ is $p$-times differentiable at $x$, then for $z$ near $x$, Taylor's theorem gives
+
+$$
+m(z) = m(x) + m'(x)(z - x) + \frac{m''(x)}{2!}(z - x)^2 + \cdots + \frac{m^{(p)}(x)}{p!}(z - x)^p + R_p(z, x),
+$$
+
+with remainder $R_p(z, x) = O(|z - x|^{p+1})$. So in a small enough neighborhood of $x$, $m$ looks like a polynomial of degree $p$ in $(z - x)$, with coefficients $\beta_j^\star = m^{(j)}(x) / j!$.
+
+The local polynomial estimator turns this around. We don't know $m$, but we have data. Fit a polynomial of degree $p$ in $(X_i - x)$ to the observed $Y_i$, weighted by how close $X_i$ is to $x$. The kernel weights enforce the "near $x$" part — observations far from $x$ get exponentially down-weighted under a Gaussian kernel, or zeroed out entirely under a compact-support kernel like the Epanechnikov. The function-value estimate $\hat m_h(x)$ is the intercept of the fitted polynomial; the slope, curvature, and higher derivatives come along as the higher-order coefficients.
+
+NW corresponds to $p = 0$ — a local *constant* fit, where the only coefficient is the kernel-weighted mean of the $Y_i$. Local-linear is $p = 1$, the §8 [Kernel Regression](/topics/kernel-regression) fix. Local-cubic is $p = 3$.
+
+### §2.2 The kernel-weighted least-squares objective
+
+Write the kernel weight as $w_i = K_h(X_i - x)$ where $K_h(z) = h^{-1} K(z/h)$ is the standard scaling that makes $K_h$ integrate to one. The kernel-weighted sum of squared errors at evaluation point $x$ is
+
+$$
+\mathcal{L}_n(\boldsymbol\beta; x) =
+\sum_{i=1}^n w_i \, \bigg( Y_i - \sum_{k=0}^{p} \beta_k (X_i - x)^k \bigg)^{\!2}.
+$$
+
+The estimator is
+
+$$
+\hat{\boldsymbol\beta}(x) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^{p+1}}
+\mathcal{L}_n(\boldsymbol\beta; x), \qquad
+\hat m_h(x) = \hat\beta_0(x).
+$$
+
+Two things to notice. First, the problem decouples across $x$: each evaluation point gets its own $\hat{\boldsymbol\beta}$. The bandwidth $h$ and the polynomial degree $p$ are global, but the fitted coefficients are local. Second, this is ordinary weighted least squares — the kernel only enters through the weights.
+
+### §2.3 Normal equations
+
+Setting $\partial \mathcal{L}_n / \partial \beta_j = 0$ for each $j \in \{0, 1, \dots, p\}$ gives the first-order conditions:
+
+$$
+\frac{\partial \mathcal{L}_n}{\partial \beta_j}
+ = -2 \sum_{i=1}^n w_i (X_i - x)^j \bigg( Y_i - \sum_{k=0}^p \beta_k (X_i - x)^k \bigg) = 0.
+$$
+
+Rearranging,
+
+$$
+\sum_{k=0}^p \bigg( \sum_{i=1}^n w_i (X_i - x)^{j+k} \bigg) \beta_k
+ \;=\; \sum_{i=1}^n w_i (X_i - x)^j \, Y_i,
+\qquad j = 0, 1, \dots, p.
+$$
+
+Define the empirical kernel-moment quantities
+
+$$
+\tilde S_{n,j}(x) = \sum_{i=1}^n w_i (X_i - x)^j,
+\qquad
+\tilde T_{n,j}(x) = \sum_{i=1}^n w_i (X_i - x)^j \, Y_i.
+$$
+
+The normal equations are then $\sum_{k=0}^p \tilde S_{n,j+k}(x) \, \beta_k = \tilde T_{n,j}(x)$ for $j = 0, \dots, p$. Stacked as a matrix system,
+
+$$
+\underbrace{
+\begin{pmatrix}
+\tilde S_{n,0}    & \tilde S_{n,1}   & \cdots & \tilde S_{n,p}   \\
+\tilde S_{n,1}    & \tilde S_{n,2}   & \cdots & \tilde S_{n,p+1} \\
+\vdots            & \vdots           & \ddots & \vdots           \\
+\tilde S_{n,p}    & \tilde S_{n,p+1} & \cdots & \tilde S_{n,2p}
+\end{pmatrix}
+}_{\tilde{\mathbf S}_n(x)}
+\begin{pmatrix} \hat\beta_0 \\ \hat\beta_1 \\ \vdots \\ \hat\beta_p \end{pmatrix}
+\;=\;
+\begin{pmatrix} \tilde T_{n,0}(x) \\ \tilde T_{n,1}(x) \\ \vdots \\ \tilde T_{n,p}(x) \end{pmatrix}.
+\qquad\quad (2.1)
+$$
+
+The matrix $\tilde{\mathbf S}_n(x)$ has constant entries along anti-diagonals — a Hankel matrix. The structure isn't load-bearing for solving (we use a generic linear solver) but it's worth registering: $\tilde{\mathbf S}_n(x)$ is fully determined by the $2p + 1$ scalars $\tilde S_{n,0}, \dots, \tilde S_{n,2p}$.
+
+**Existence and uniqueness.** $\tilde{\mathbf S}_n(x)$ is invertible iff the $X_i$'s with positive kernel weight at $x$ contain at least $p + 1$ distinct values. For continuous kernels like the Gaussian, every observation has positive weight, so the matrix is invertible whenever the data has at least $p + 1$ distinct $X_i$ — almost surely true under any continuous distribution of $X$. For compactly supported kernels (Epanechnikov, biweight, triweight), we need at least $p + 1$ distinct $X_i$ within distance $h$ of $x$. This is a local-design constraint that bites only at small bandwidths or sparse regions.
+
+### §2.4 Matrix form and batched-grid vectorization
+
+Stack the design rows for each observation into the $n \times (p+1)$ matrix
+
+$$
+\mathbf{X}_x =
+\begin{pmatrix}
+1 & (X_1 - x) & (X_1 - x)^2 & \cdots & (X_1 - x)^p \\
+1 & (X_2 - x) & (X_2 - x)^2 & \cdots & (X_2 - x)^p \\
+\vdots & \vdots & \vdots & & \vdots \\
+1 & (X_n - x) & (X_n - x)^2 & \cdots & (X_n - x)^p
+\end{pmatrix},
+$$
+
+and let $\mathbf{W}_x = \operatorname{diag}(w_1, \dots, w_n)$ be the diagonal weight matrix. Then $\tilde{\mathbf{S}}_n(x) = \mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x$ and $\tilde{\mathbf{T}}_n(x) = \mathbf{X}_x^\top \mathbf{W}_x \mathbf{y}$, and the closed-form WLS solution is
+
+$$
+\hat{\boldsymbol\beta}(x)
+ = \big(\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x\big)^{-1}
+   \mathbf{X}_x^\top \mathbf{W}_x \mathbf{y}.
+\qquad\quad (2.2)
+$$
+
+The function-value estimate is
+
+$$
+\hat m_h(x) = \mathbf{e}_1^\top
+ \big(\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x\big)^{-1}
+ \mathbf{X}_x^\top \mathbf{W}_x \mathbf{y},
+$$
+
+where $\mathbf{e}_1 = (1, 0, \dots, 0)^\top$ picks off the intercept. We return to this $\mathbf{e}_1^\top \tilde{\mathbf{S}}^{-1}$ structure in §3 — it's the seed of the equivalent-kernel formulation.
+
+**Vectorization.** For an evaluation grid $x_1, \dots, x_G$, equation (2.2) is $G$ separate WLS solves with $G$ different design and weight matrices. The straightforward implementation loops over $G$; the batched implementation stacks all $G$ design matrices into a $G \times n \times (p+1)$ array, all $G$ weight diagonals into a $G \times n$ array, and uses NumPy's `np.linalg.solve` broadcasting to do all $G$ systems at once. The cost is the same $O\big(G \cdot n \cdot (p+1) + G \cdot (p+1)^3\big)$ — at the §1-toy scale ($G = 400, n = 200, p = 3$) the speedup over a Python loop is modest (about $1.1\times$ in the notebook timing), but at $G \ge 10^4$ where Python-loop overhead dominates the picture it grows substantially.
+
+**Conditioning.** The columns of $\mathbf{X}_x$ have entries $(X_i - x)^j$ that span many orders of magnitude when $h$ is small. The fix is to work in scaled coordinates $u_i = (X_i - x)/h$. The rescaled design $\tilde{\mathbf{Z}}_x$ has entries $u_i^j$, with $|u_i| \lesssim 3$ for the bulk of the kernel mass — well-conditioned. The function-value estimate $\hat\beta_0$ is invariant under this rescaling because the first column is unchanged ($u_i^0 = 1 = (X_i - x)^0$). Higher coefficients pick up an $h^j$ factor: $\hat\beta_j^{\text{unscaled}} = \hat\beta_j^{\text{scaled}} / h^j$. The notebook's vectorized implementation uses scaled coordinates throughout.
+
+### §2.5 Reading off derivatives
+
+The Taylor identification from §2.1 said that, locally, $\beta_j^\star = m^{(j)}(x) / j!$. Plugging in the WLS estimate gives the local-polynomial *derivative* estimator,
+
+$$
+\hat m_h^{(j)}(x) = j! \, \hat\beta_j(x), \qquad j = 0, 1, \dots, p.
+$$
+
+Quick demonstration on the §1 toy. Fitting a local-cubic at $x_0 = 0.5$ with $h = 0.08$ gives all four coefficients in one solve. The truth at $x_0 = 0.5$ is $m(0.5) = 0.25$, $m'(0.5) = -2\pi + 0.5 \approx -5.78$, $m''(0.5) = 0$, and $m'''(0.5) = 8\pi^3 \approx 248$. The local-cubic recovers the function value and first derivative tightly; the second and third derivatives are recovered with substantially more variance, foreshadowing §9's formula $\operatorname{Var}(\hat m_h^{(j)}) = O(1/(n h^{2j+1}))$ — the bandwidth that's right for $\hat m$ is too small for $\hat m^{(j)}$ at $j \ge 1$.
+
+---
+
+## §3. The equivalent-kernel formulation
+
+### §3.1 Local polynomial estimators are linear smoothers
+
+Equation (2.2) gives the function-value estimate as
+
+$$
+\hat m_h(x) = \mathbf{e}_1^\top \big(\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x\big)^{-1}
+              \mathbf{X}_x^\top \mathbf{W}_x \, \mathbf{y}.
+$$
+
+Define
+
+$$
+\mathbf{a}(x)^\top
+ \;=\; \mathbf{e}_1^\top \big(\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x\big)^{-1}
+       \mathbf{X}_x^\top \mathbf{W}_x \;\in\; \mathbb{R}^{1 \times n}.
+$$
+
+Then $\hat m_h(x) = \mathbf{a}(x)^\top \mathbf{y} = \sum_{i=1}^n a_i(x)\, Y_i$, and crucially the weights $a_i(x)$ depend only on $\{X_j\}$ — through $\mathbf{X}_x$ and $\mathbf{W}_x$ — and on $(K, h, p)$, never on $\{Y_j\}$. So local polynomial estimators of every degree $p$ are **linear smoothers**: the fit at $x$ is a linear combination of the responses with design-determined weights.
+
+The $i$-th column of $\mathbf{X}_x^\top \mathbf{W}_x$ is $w_i (1, X_i - x, \ldots, (X_i - x)^p)^\top$. So
+
+$$
+a_i(x)
+ \;=\; w_i \cdot \mathbf{e}_1^\top \big(\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x\big)^{-1}
+                \big(1, \, X_i - x, \, \ldots, \, (X_i - x)^p\big)^\top.
+\qquad\quad (3.1)
+$$
+
+This is the *exact*, finite-sample equivalent-kernel weight. It depends on $x$, on $h$, on the kernel $K$, on the degree $p$, and on the *entire* design $\{X_j\}$ via the Gram matrix. It's not yet a clean kernel function — it doesn't factor as $K^\star\big((X_i-x)/h\big)$ for any fixed $K^\star$.
+
+### §3.2 The asymptotic equivalent kernel
+
+The clean factorization emerges in the population limit. Replace $\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x / n$ with its expectation; the $(j, k)$ entry is
+
+$$
+\mathbb{E}\big[K_h(X - x)\, (X - x)^{j+k}\big]
+ \;=\; \int K_h(z - x)\, (z - x)^{j+k}\, f_X(z)\, dz.
+$$
+
+Substitute $u = (z - x)/h$, so $z = x + hu$, $dz = h\, du$, $K_h(z - x) = K(u)/h$, and $(z - x)^{j+k} = h^{j+k} u^{j+k}$:
+
+$$
+= h^{j+k} \int u^{j+k}\, K(u)\, f_X(x + hu)\, du.
+$$
+
+To leading order in $h$, $f_X(x + hu) \approx f_X(x)$, so
+
+$$
+\mathbb{E}\big[K_h(X - x)\, (X - x)^{j+k}\big]
+ \;\approx\; h^{j+k} \, f_X(x) \, \mu_{j+k}(K),
+$$
+
+where $\mu_j(K) = \int u^j K(u)\, du$ are the kernel moments familiar from [Kernel Regression](/topics/kernel-regression). The Gram-matrix factorization is
+
+$$
+\frac{1}{n}\, \mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x
+ \;\approx\; f_X(x) \, \mathbf{D}_h \, \mathbf{S}_p \, \mathbf{D}_h,
+\qquad\quad (3.2)
+$$
+
+where $\mathbf{D}_h = \operatorname{diag}(1, h, h^2, \ldots, h^p)$ and $\mathbf{S}_p = [\mu_{j+k}(K)]_{j, k = 0}^{p}$ is the $(p+1) \times (p+1)$ kernel-moment matrix in the $u$-coordinate.
+
+Inverting and substituting into (3.1) and simplifying with $\mathbf{e}_1^\top \mathbf{D}_h^{-1} = \mathbf{e}_1^\top$ and $\mathbf{D}_h^{-1}(1, X_i - x, \ldots, (X_i - x)^p)^\top = (1, u_i, u_i^2, \ldots, u_i^p)^\top$:
+
+$$
+a_i(x) \;\approx\; \frac{1}{n\, h\, f_X(x)} \cdot K^*_p(u_i),
+$$
+
+where the **asymptotic equivalent kernel** is
+
+$$
+\boxed{\,K^*_p(u) \;=\; \mathbf{e}_1^\top \mathbf{S}_p^{-1}\, \big(1, \, u, \, u^2, \, \ldots, \, u^p\big)^\top \, K(u). \,}
+\qquad\quad (3.3)
+$$
+
+The equivalent-kernel form of the local-polynomial estimator is therefore
+
+$$
+\hat m_h(x)
+ \;\approx\; \frac{1}{n\, h\, f_X(x)} \sum_{i=1}^n K^*_p\!\left(\frac{X_i - x}{h}\right) Y_i.
+\qquad\quad (3.4)
+$$
+
+This is the headline result of the section. Local polynomial regression, at every degree $p$, is asymptotically a kernel smoother — but with $K^*_p$ in place of $K$. The original kernel $K$ enters only through $\mathbf{S}_p$ (the moment matrix) and through the $K(u)$ factor in (3.3); the polynomial degree $p$ enters through $\mathbf{e}_1^\top \mathbf{S}_p^{-1} (1, u, \ldots, u^p)^\top$, which is a polynomial of degree $p$ in $u$ multiplying the original kernel.
+
+The $1/(nh f_X(x))$ prefactor is worth flagging. NW had to manufacture this density correction explicitly, via the denominator $\sum_i K_h(X_i - x) \approx n h f_X(x)$. Local polynomial of any degree $p \ge 1$ produces it automatically through the normal equations. That's the algebraic source of the boundary-bias improvement we previewed in §1.
+
+### §3.3 Properties of $K^*_p$
+
+The equivalent kernel $K^*_p$ inherits three structural properties from the $\mathbf{S}_p^{-1}$ construction.
+
+**Property 1 — moment-matching identities.** For $j = 0, 1, \ldots, p$,
+
+$$
+\int u^j\, K^*_p(u)\, du \;=\; \delta_{j, 0}.
+$$
+
+*Proof.* Substitute (3.3): $\int u^j K^*_p(u) du = \mathbf{e}_1^\top \mathbf{S}_p^{-1} \int (1, u, \ldots, u^p)^\top u^j K(u) du = \mathbf{e}_1^\top \mathbf{S}_p^{-1} (\mu_j, \mu_{j+1}, \ldots, \mu_{j+p})^\top$. For $j \in \{0, 1, \ldots, p\}$, the vector $(\mu_j, \ldots, \mu_{j+p})^\top$ is exactly the $(j{+}1)$-th column of $\mathbf{S}_p$. So $\mathbf{S}_p^{-1} (\mu_j, \ldots, \mu_{j+p})^\top = \mathbf{e}_{j+1}$, and $\mathbf{e}_1^\top \mathbf{e}_{j+1} = \delta_{1, j+1} = \delta_{j, 0}$. $\square$
+
+The original kernel $K$ has only $\int K = 1$ guaranteed (and $\int u K = 0$ when $K$ is symmetric). The equivalent kernel $K^*_p$ has *all* moments up to order $p$ matched to those of a degree-$p$ polynomial that reproduces constants — far stronger. This is what kills the design-density and lower-order Taylor terms in the bias expansion of §4.
+
+**Property 2 — the odd-with-even pairing at interior with symmetric $K$.** When $K$ is symmetric ($K(u) = K(-u)$) and $x$ is an interior point of the support, the odd kernel moments $\mu_1, \mu_3, \mu_5, \ldots$ all vanish. The moment matrix $\mathbf{S}_p$ then has a checkerboard zero pattern: nonzero entries only at positions $(j, k)$ with $j + k$ even. The same checkerboard pattern persists in $\mathbf{S}_p^{-1}$, so $\mathbf{e}_1^\top \mathbf{S}_p^{-1}$ has nonzero entries only at even indices.
+
+In particular:
+
+- $K^*_0(u) = K(u)$ (trivially).
+- $K^*_1(u) = K(u)$ (symmetric $K$ at interior gives $\mathbf{S}_1 = \operatorname{diag}(1, \mu_2)$).
+- $K^*_2(u) = K^*_3(u)$, both equal to $\dfrac{\mu_4 - \mu_2 u^2}{\mu_4 - \mu_2^2}\, K(u)$.
+- $K^*_4(u) = K^*_5(u)$, and so on.
+
+The pairing $K^*_{2m} = K^*_{2m+1}$ at interior is a structural consequence of the checkerboard zeros: adding a $u^{2m+1}$ column to the design matrix extends $\mathbf{S}_p$ by an odd-indexed row and column whose only nonzero entries are odd moments — disconnected from the even-indexed rows that determine the first row of $\mathbf{S}_p^{-1}$. This algebraic fact is the seed of the **odd-vs-even degree story (§5)**: at interior, jumping from $p = 0$ to $p = 1$, or from $p = 2$ to $p = 3$, doesn't change the equivalent kernel — and therefore doesn't change the leading-order bias rate.
+
+**Property 3 — sometimes negative-valued.** For $p \ge 2$, the polynomial factor $\mathbf{e}_1^\top \mathbf{S}_p^{-1} (1, u, \ldots, u^p)^\top$ has zero crossings, so $K^*_p$ takes negative values. With the Gaussian kernel ($\mu_2 = 1$, $\mu_4 = 3$, $\mu_6 = 15$),
+
+$$
+K^*_2(u) = K^*_3(u) = \tfrac{1}{2}(3 - u^2)\, K(u),
+$$
+
+which is negative for $|u| > \sqrt{3} \approx 1.73$. This isn't a flaw — it's the price of the moment-matching identities. The original $K$ is non-negative and only matches the zeroth moment; $K^*_p$ matches $p$ moments, and the trade-off is negativity in the tails.
+
+### §3.4 Boundary behavior and the numerical demonstration
+
+At an interior point $x$, the kernel $K$ integrates to one over its full support. At a boundary point, say $x = ch$ for some $c \ge 0$ near the support boundary at $0$, only the portion $u \ge -c$ of the kernel mass falls within the support. The kernel-moment matrix becomes
+
+$$
+\mathbf{S}_p^{(c)} \;=\; \big[\mu_{j+k}^{(c)}\big]_{j,k=0}^{p},
+\qquad
+\mu_j^{(c)} \;=\; \int_{-c}^{\infty} u^j\, K(u)\, du,
+$$
+
+and the equivalent kernel becomes $c$-dependent:
+
+$$
+K^{*\,(c)}_p(u) \;=\; \mathbf{e}_1^\top \big(\mathbf{S}_p^{(c)}\big)^{-1} \big(1, u, \ldots, u^p\big)^\top K(u),
+\quad u \ge -c.
+$$
+
+Two things change from the interior case. First, the symmetry of $K$ no longer implies $\mu_1^{(c)} = 0$, so the checkerboard zero pattern is gone and the odd-with-even pairing breaks. Second, the equivalent kernel adapts its shape to compensate for the missing kernel mass on the truncated side. This is the *automatic boundary correction* — the equivalent kernel knows where the boundary is and reweights accordingly, without us having to do anything beyond solving the original normal equations.
+
+[FIGURE 3.1: Equivalent kernels $K^*_p$ for $p \in \{0, 1, 2, 3\}$ on the Gaussian. Left panel: interior ($c = \infty$). Right panel: boundary ($c = 0$). At interior, $K^*_0 = K^*_1 = K$ (overlaid) and $K^*_2 = K^*_3$ (overlaid, with negative tails for $|u| > \sqrt{3}$). At boundary, all four diverge — the equivalent kernel adapts to the missing left-tail mass.]
+
+The interior panel makes the §3.3 algebra visible. The boundary panel makes the §6 boundary-bias result visible: at the boundary, the equivalent kernel for local-linear and local-cubic absorbs the truncation, while the NW equivalent kernel ($K^*_0 = K$, just the truncated Gaussian) is asymmetric and biased. We return to this in §6 with the formal bias rates.
+
+---
+
+## §4. Bias and variance at general $p$
+
+### §4.1 The conditional bias and the residual decomposition
+
+The cleanest path from §3 to a sharp bias formula is the conditional approach of Ruppert & Wand (1994). Conditioning on the design $\{X_i\}$, the estimator's mean is
+
+$$
+\mathbb{E}\big[\hat m_h(x) \mid X_1, \dots, X_n\big]
+ \;=\; \mathbf{e}_1^\top (\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x)^{-1}
+       \mathbf{X}_x^\top \mathbf{W}_x\, \mathbf{m},
+$$
+
+where $\mathbf{m} = (m(X_1), \ldots, m(X_n))^\top$ collects the true regression function evaluated at the design points. Taylor-expanding $m$ about $x$,
+
+$$
+m(X_i)
+ \;=\; \underbrace{\sum_{j=0}^{p} \frac{m^{(j)}(x)}{j!}\, (X_i - x)^j}_{\text{in the column space of } \mathbf{X}_x}
+ \;+\; \underbrace{\frac{m^{(p+1)}(x)}{(p+1)!}\, (X_i - x)^{p+1} + o\!\big((X_i - x)^{p+1}\big)}_{r_i}.
+$$
+
+The first $p + 1$ Taylor terms are exactly degree-$p$ polynomials in $(X_i - x)$, so they live in the column space of $\mathbf{X}_x$. The projection $(\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x)^{-1} \mathbf{X}_x^\top \mathbf{W}_x$ fixes any vector in that column space, so it returns those coefficients exactly: $\mathbf{e}_1^\top$ projects out $m(x)$. The conditional bias collapses to the residual contribution alone:
+
+$$
+\text{Bias}\big(\hat m_h(x) \mid \{X_i\}\big)
+ \;=\; \mathbf{e}_1^\top
+       (\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x)^{-1}
+       \mathbf{X}_x^\top \mathbf{W}_x\, \mathbf{r},
+\qquad
+r_i \approx \frac{m^{(p+1)}(x)}{(p+1)!}\, (X_i - x)^{p+1}.
+\qquad (4.1)
+$$
+
+This is a purely local statement — the bias depends on $m$ only through its $(p+1)$-th derivative at $x$, not through any global properties of $m$.
+
+### §4.2 The leading-order bias formula
+
+To extract the leading-order asymptotic, we substitute the leading-order approximation $r_i \approx m^{(p+1)}(x)/(p+1)! \cdot (X_i - x)^{p+1}$ into (4.1). The vector $\mathbf{X}_x^\top \mathbf{W}_x \mathbf{r}$ has $j$-th component (for $j = 0, 1, \ldots, p$):
+
+$$
+\frac{m^{(p+1)}(x)}{(p+1)!}
+ \sum_{i=1}^n w_i\, (X_i - x)^{j + p + 1}.
+$$
+
+The empirical sum $\frac{1}{n}\sum_i w_i (X_i - x)^{j+p+1}$ converges (by LLN + change of variables, as in §3.2) to its expectation $h^{j+p+1} f_X(x) \mu_{j+p+1}(K)$ to leading order. Stacking and using the $\mathbf{D}_h \mathbf{S}_p \mathbf{D}_h$ factorization of the Gram matrix from (3.2),
+
+$$
+(\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x)^{-1}\, \mathbf{X}_x^\top \mathbf{W}_x\, \mathbf{r}
+ \;\approx\; \frac{m^{(p+1)}(x)\, h^{p+1}}{(p+1)!}\,
+            \mathbf{D}_h^{-1} \mathbf{S}_p^{-1}\, \mathbf{c}_p,
+$$
+
+where
+
+$$
+\mathbf{c}_p \;=\; \big(\mu_{p+1}(K),\, \mu_{p+2}(K),\, \ldots,\, \mu_{2p+1}(K)\big)^\top
+\;\in\; \mathbb{R}^{p+1}.
+$$
+
+Multiplying by $\mathbf{e}_1^\top$ on the left,
+
+$$
+\boxed{\;
+\text{Bias}(\hat m_h(x))
+ \;=\; \frac{h^{p+1}}{(p+1)!}\, m^{(p+1)}(x)\, b_p(K) \;+\; o(h^{p+1}),
+\quad
+b_p(K) \;=\; \mathbf{e}_1^\top \mathbf{S}_p^{-1}\, \mathbf{c}_p.
+\;}
+\qquad\quad (4.2)
+$$
+
+This is the **Ruppert–Wand (1994) interior bias formula**. Two remarks:
+
+**The asymptotic bias constant equals the $(p+1)$-th moment of $K^*_p$.** Reading $b_p(K) = \mathbf{e}_1^\top \mathbf{S}_p^{-1} \mathbf{c}_p$ alongside (3.3) gives
+
+$$
+b_p(K) \;=\; \int u^{p+1}\, K^*_p(u)\, du \;=:\; \mu^*_{p+1}(K^*_p).
+$$
+
+The bias is determined by the *first surviving* moment of the equivalent kernel — the first moment that the moment-matching identities of §3.3 don't kill. The §3 algebra and the §4 bias derivation are the same algebra read in two directions.
+
+**No design-density derivatives appear.** Unlike the NW bias formula (which has a $2 m'(x) f_X'(x)/f_X(x)$ term), (4.2) depends on $m$ only through $m^{(p+1)}(x)$ for any $p \ge 1$. Local polynomials are *design-adaptive*: the WLS solve absorbs the design-density correction automatically through the Gram-matrix inversion. This is the structural advantage that won local-linear regression its place as the default at the end of [Kernel Regression](/topics/kernel-regression) §8, and (4.2) shows the advantage extends to any $p \ge 1$.
+
+### §4.3 The interior rate ladder
+
+For symmetric $K$ at an interior point $x$, the moment matrix $\mathbf{S}_p$ has the checkerboard zero pattern from §3.3, and so does $\mathbf{S}_p^{-1}$. The first row of $\mathbf{S}_p^{-1}$ has nonzero entries only at even indices. The vector $\mathbf{c}_p = (\mu_{p+1}, \mu_{p+2}, \ldots, \mu_{2p+1})^\top$ has nonzero entries only where $p + 1 + k$ is even (for $k = 0, 1, \ldots, p$).
+
+- **Odd $p$**: $p + 1$ is even, so $\mathbf{c}_p$ has nonzero entries at even $k$. These pair with the even-indexed nonzero entries of $\mathbf{e}_1^\top \mathbf{S}_p^{-1}$, giving $b_p(K) \neq 0$ generically. The bias rate is $O(h^{p+1})$.
+
+- **Even $p$**: $p + 1$ is odd, so $\mathbf{c}_p$ has nonzero entries at odd $k$. These pair with the *zero* odd-indexed entries of $\mathbf{e}_1^\top \mathbf{S}_p^{-1}$ — every term vanishes, so $b_p(K) = 0$ identically. The leading $h^{p+1}$ term in (4.2) collapses, and the next-order analysis (one more term in the Taylor expansion of $m$) gives a bias of order $h^{p+2}$.
+
+Stitching this together, the **interior bias-rate ladder at symmetric $K$** is
+
+| $p$ | parity | leading rate | leading constant |
+|----:|:------:|:------------:|:----------------:|
+| 0 | even | $h^2$ | $\propto m''(x) + 2\,m'(x)\,f_X'(x)/f_X(x)$ |
+| 1 | odd | $h^2$ | $\propto m''(x)$ |
+| 2 | even | $h^4$ | $\propto m^{(4)}(x)$ + $f_X$ derivatives |
+| 3 | odd | $h^4$ | $\propto m^{(4)}(x)$ |
+| 4 | even | $h^6$ | $\propto m^{(6)}(x)$ + $f_X$ derivatives |
+| 5 | odd | $h^6$ | $\propto m^{(6)}(x)$ |
+
+The pairing $(0,1), (2,3), (4,5), \ldots$ is the §3 pairing $K^*_{2m} = K^*_{2m+1}$ rendered as a bias-rate identity. Within each pair, **odd $p$ is design-adaptive while even $p$ has design-density-dependent constants** — a constant-level advantage that grows in importance at the boundary (§5), where the parity bonus disappears and the design-density contamination becomes a rate-level penalty.
+
+The $p = 0$ row (NW) is the design-density-corrected formula already derived in [Kernel Regression](/topics/kernel-regression) §4.1 — included here for completeness, not re-derived. The $p = 0$ formula picks up its $f_X'/f_X$ term not from (4.2) (which would give $b_0(K) = 0$ at symmetric $K$ by parity) but from the next-order correction to the asymptotic equivalent-kernel form, which §3.2 explicitly truncated. NW is asymptotically *almost* a kernel smoother, but not exactly one — local-polynomial of any $p \ge 1$ is.
+
+> **Note on the original outline.** An earlier version of the outline stated "leading-order interior bias: $O(h^{p+1})$ at odd $p$, $O(h^p)$ at even $p$." That formulation conflates the interior and boundary cases — at *interior* with symmetric $K$, even $p$ has parity-bonus rate $O(h^{p+2})$, not $O(h^p)$. The $O(h^p)$ rate at even $p$ that the outline anticipated shows up at the *boundary*, where the kernel-symmetry argument fails. The boundary version is §5–§6's territory.
+
+### §4.4 Variance
+
+The conditional variance of the linear smoother is $\text{Var}(\hat m_h(x) \mid \{X_i\}) = \sum_{i=1}^n a_i(x)^2\, \sigma^2(X_i)$, where $a_i(x)$ is the equivalent-kernel weight from (3.1) and $\sigma^2(z) = \text{Var}(Y \mid X = z)$ is the conditional noise variance.
+
+For $X_i$ within the kernel's effective support of $x$, $\sigma^2(X_i) \approx \sigma^2(x)$ to leading order, so $\text{Var} \approx \sigma^2(x) \sum_i a_i(x)^2$. Substituting the asymptotic form $a_i(x) \approx K^*_p(u_i) / (n h f_X(x))$ and applying LLN + change of variables,
+
+$$
+\boxed{\;
+\text{Var}(\hat m_h(x))
+ \;=\; \frac{\sigma^2(x)\, R^*_p(K)}{n\, h\, f_X(x)} + o\!\big(\tfrac{1}{nh}\big),
+\qquad
+R^*_p(K) = \int K^*_p(u)^2\, du.
+\;}
+\qquad\quad (4.3)
+$$
+
+The variance rate is $O(1/(nh))$ at *every* $p$ — same scaling as NW. The constant $R^*_p(K)$ varies with $p$, and crucially **grows with $p$** because $K^*_p$ becomes more oscillatory to match more moments. For the Gaussian, $R^*_0 = R^*_1 = 1/(2\sqrt{\pi}) \approx 0.282$, while $R^*_2 = R^*_3 \approx 0.500$ — local-quadratic and local-cubic carry roughly $1.8 \times$ the variance of NW and local-linear at the same $h$. This is the variance side of the bias-variance ladder: higher $p$ buys faster bias decay at the cost of a bigger variance constant.
+
+### §4.5 The AMISE-optimal bandwidth
+
+Combining (4.2) and (4.3), the asymptotic mean squared error at an interior point $x$ at odd $p$ is
+
+$$
+\text{AMSE}(\hat m_h(x))
+ \;=\; \underbrace{\frac{h^{2(p+1)}}{[(p+1)!]^2}\, [m^{(p+1)}(x)]^2\, b_p(K)^2}_{\text{bias}^2}
+ \;+\; \underbrace{\frac{\sigma^2(x)\, R^*_p(K)}{n\, h\, f_X(x)}}_{\text{variance}}.
+$$
+
+Differentiating with respect to $h$ and setting to zero gives the local AMSE-optimal bandwidth
+
+$$
+h^*_p(x)
+ \;=\; \left[\frac{[(p+1)!]^2\, \sigma^2(x)\, R^*_p(K)}
+                 {2(p+1)\, n\, f_X(x)\, [m^{(p+1)}(x)]^2\, b_p(K)^2}\right]^{1 / (2p + 3)}
+ \;\asymp\; n^{-1 / (2p + 3)}.
+\qquad (4.4)
+$$
+
+For $p = 1$, $h^*_1 \asymp n^{-1/5}$ — the standard nonparametric scaling. For $p = 3$, $h^*_3 \asymp n^{-1/9}$. **Higher-degree estimators want wider bandwidths**, because their variance constant $R^*_p(K)$ has grown but their bias constant has shrunk faster — wider $h$ exploits the better bias rate.
+
+The AMSE at $h^*_p$ scales as $n^{-2(p+1)/(2p+3)}$:
+
+- $p = 1$: $n^{-4/5}$.
+- $p = 3$: $n^{-8/9}$.
+- $p = 5$: $n^{-12/13}$.
+
+This is the **Stone (1980, 1982) minimax rate** $n^{-2s/(2s+1)}$ for $s$-times-differentiable regression functions, with $s = p + 1$ at odd $p$. Local polynomial regression at degree $p$ is minimax-optimal over the class $\mathcal{F}_{p+1}^1$ of $(p+1)$-times-differentiable univariate functions — the canonical optimality result that makes local polynomial regression the modern frequentist nonparametric estimator of choice.
+
+---
+
+## §5. The boundary and the odd-vs-even degree story
+
+### §5.1 The question this section answers
+
+At interior points of the support, §4 gave us a clean rate ladder: odd $p$ delivers bias $O(h^{p+1})$, even $p$ collects a parity bonus to $O(h^{p+2})$, and within each pair the bias constant is identical. The boundary is a different story. [Kernel Regression](/topics/kernel-regression) §8 gave us part of it: NW at $x = 0$ has bias $O(h)$ — one order worse than its $O(h^2)$ interior rate — and local-linear regression restores $O(h^2)$ uniformly. What about higher $p$? Does the §4 rate ladder hold uniformly across the support, or does the boundary degrade some degrees more than others?
+
+This is the question. The answer turns on the boundary-truncated kernel moments and their interaction with the moment-matching identities of §3.
+
+### §5.2 The boundary-truncated equivalent kernel
+
+§3.4 already introduced the boundary-truncated equivalent kernel $K^{*,(c)}_p$, where $c = x/h \ge 0$ measures the distance from the support edge in bandwidth units. The truncated kernel moments are $\mu_j^{(c)}(K) = \int_{-c}^{\infty} u^j K(u) du$, the truncated moment matrix is $\mathbf{S}_p^{(c)} = [\mu_{j+k}^{(c)}]$, and the equivalent kernel satisfies the moment-matching identities
+
+$$
+\int_{-c}^{\infty} u^j\, K^{*,(c)}_p(u)\, du \;=\; \delta_{j,0},
+\qquad j = 0, 1, \ldots, p,
+$$
+
+by construction (§3.3, Property 1) — the proof only uses that the $(j+1)$-th column of $\mathbf{S}_p^{(c)}$ is $(\mu_j^{(c)}, \ldots, \mu_{j+p}^{(c)})^\top$, which is unchanged by truncation. What *doesn't* survive the truncation is the checkerboard zero pattern that gave us the parity bonus at interior. With $c$ finite, the odd moments $\mu_1^{(c)}, \mu_3^{(c)}, \ldots$ are no longer zero, $\mathbf{S}_p^{(c)}$ has full nonzero structure, and the first row of $(\mathbf{S}_p^{(c)})^{-1}$ has nonzero entries at every index — both odd and even.
+
+The §4 bias derivation goes through unchanged with the truncated moments. The leading-order bias formula
+
+$$
+\text{Bias}(\hat m_h(x))
+ \;=\; \frac{h^{p+1}}{(p+1)!}\, m^{(p+1)}(x)\, b_p^{(c)}(K) \;+\; o(h^{p+1}),
+\qquad
+b_p^{(c)}(K) \;=\; \mathbf{e}_1^\top \big(\mathbf{S}_p^{(c)}\big)^{-1}\, \mathbf{c}_p^{(c)},
+\qquad (5.1)
+$$
+
+becomes the boundary-bias formula on substitution. The constant $b_p^{(c)}(K)$ is the boundary analog of $b_p(K)$ from §4.2.
+
+### §5.3 The boundary-rate ladder
+
+Computing $b_p^{(0)}(K)$ for the Gaussian (the notebook does this via numerical integration) gives:
+
+| $p$ | $b_p^{(0)}(K_{\text{Gauss}})$ | leading rate |
+|----:|:-----------------------------:|:------------:|
+| 0 | $+0.797885$ | $h^1$ |
+| 1 | $-0.751938$ | $h^2$ |
+| 2 | $+0.822824$ | $h^3$ |
+| 3 | $-1.014838$ | $h^4$ |
+| 4 | $+1.380150$ | $h^5$ |
+
+All four constants are *nonzero* — the parity-zero pattern that simplified §4.3 is gone at boundary. The boundary bias rate, read off from (5.1), **increases monotonically with $p$**: $h, h^2, h^3, h^4$ for $p = 0, 1, 2, 3$. There is no "even $p$ gets stuck at $h^p$" effect at the leading-order asymptotic rate on the Gaussian-kernel-on-uniform-design setting that §1's toy provides.
+
+[FIGURE 5.1: Empirical bias rate at $x_0 = 0.005$ on the §1 toy. Log-log plot of $|\mathbb{E}[\hat m_h(x_0)] - m(x_0)|$ against $h$, $B = 500$ Monte Carlo replicates per $(p, h)$ combination, $p \in \{0, 1, 2, 3\}$, $h$ on a log-spaced grid. Theoretical slopes $h^{p+1}$ overlaid as dashed lines.]
+
+This isn't quite the picture an earlier version of the outline anticipated — that one predicted "no improvement at even $p$." The actual story turns out to be one degree more nuanced: even $p$ does improve the rate at boundary, but loses other structural advantages that odd $p$ retains.
+
+**The thing odd $p$ retains, even $p$ doesn't.** What separates odd from even $p$ at boundary is *design-adaptivity*. From the §4.2 derivation, the leading-bias formula (5.1) at odd $p$ involves only $m^{(p+1)}(x)$. At even $p$, the next-order $h^{p+2}$ term enters with a coefficient that involves $f_X'(x)/f_X(x)$ — the design-density correction that NW also carries.
+
+In the boundary regime where (5.1) is the dominant term, this is a constant-level distinction, not a rate-level one. But the §1 toy has uniform $f_X$ on $[0, 1]$, so $f_X'/f_X = 0$ inside the support and the design contamination vanishes. To see the design-adaptivity gap empirically would require a non-uniform $f_X$ — a candidate sidebar experiment for the implementation session if we want to drive the design-adaptivity point home (deferred for now).
+
+The simplest sharp statement is therefore: **odd $p$ gives uniform $O(h^{p+1})$ bias rate with design-adaptive constants across the support; even $p$ gives the same uniform rate at leading order but with non-adaptive boundary constants.**
+
+### §5.4 The practical recommendation: $p \in \{1, 3\}$
+
+Combining the §4 interior story and the §5.3 boundary story, the bias-rate ladder uniformly across the support is
+
+| $p$ | interior rate | boundary rate | uniform rate | design-adaptive? |
+|----:|:-------------:|:-------------:|:------------:|:----------------:|
+| 0 | $h^2$ | $h^1$ | $h^1$ | no |
+| 1 | $h^2$ | $h^2$ | $h^2$ | yes |
+| 2 | $h^4$ | $h^3$ | $h^3$ | partially |
+| 3 | $h^4$ | $h^4$ | $h^4$ | yes |
+| 4 | $h^6$ | $h^5$ | $h^5$ | partially |
+| 5 | $h^6$ | $h^6$ | $h^6$ | yes |
+
+Odd $p$ gives a *matched* uniform rate (interior and boundary both $h^{p+1}$); even $p$ gives a *mismatched* uniform rate (boundary one order worse than the parity-bonus interior). Combined with the variance penalty $R^*_p(K)$ growing with $p$, the Pareto-optimal degrees in the (uniform rate, complexity) trade-off are the odd ones.
+
+In practice:
+
+- **$p = 1$ — local-linear**: the workhorse. Uniform $h^2$ bias, $R^*_1(K) = R^*_0(K)$ (no variance penalty over NW), design-adaptive. R's `loess` and `statsmodels`'s nonparametric regression both default here.
+- **$p = 3$ — local-cubic**: when you need second derivatives (§9) or your application earns the $h^4$ rate. Variance constant $R^*_3 \approx 1.8 R^*_1$, but the bias improvement is usually worth it for moderate $n$.
+- **$p = 2$ skipped**: only marginal interior-rate improvement over $p = 1$ ($h^4$ vs $h^2$ at interior, but $h^3$ vs $h^2$ at boundary), variance penalty similar to $p = 3$, no second-derivative estimate.
+- **$p \ge 5$**: rarely worth it — variance constant grows fast, bandwidth sensitivity grows fast, and the $C^{p+1}$-smoothness assumption is hard to defend.
+
+---
+
+## §6. Boundary behavior across the full support
+
+§5 measured the bias rate at one boundary point $x_0 = 0.005$. This section zooms out: the bias as a function of $x$, plotted across the full support $[0, 1]$ at fixed bandwidth. The §3 equivalent kernel $K^{*,(c)}_p$ adapts smoothly to location through $c = x/h$, and that adaptation is what gives local polynomial regression its uniform rate.
+
+### §6.1 The location-aware equivalent kernel
+
+The boundary parameter $c = x/h$ is a smooth function of evaluation location. At the strict boundary $x = 0$, $c = 0$ — only $u \in [0, \infty)$ of the kernel mass is available. For $x \gg h$ (deep interior), $c$ is large and the truncation is invisible — $K^{*,(c)}_p \to K^*_p$, the interior form from §3. Between these extremes, $K^{*,(c)}_p$ interpolates continuously, reweighting itself to compensate for whichever portion of the kernel mass falls outside the support at the current $x$.
+
+[FIGURE 6.1: Equivalent kernels $K^{*,(c)}_1(u)$ and $K^{*,(c)}_3(u)$ at $c \in \{0, 0.5, 1, 2, \infty\}$. Two panels (one per degree). At $c = 0$ the kernel is one-sided and asymmetric; at $c = \infty$ it's the symmetric interior form; at intermediate $c$ it transitions smoothly.]
+
+The location-awareness is automatic — we never explicitly construct a "boundary kernel." We just solve the same WLS problem (2.2) at every evaluation point, and the kernel-moment matrix $\mathbf{X}_x^\top \mathbf{W}_x \mathbf{X}_x$ absorbs the boundary truncation through its empirical moments.
+
+### §6.2 Why $p \in \{1, 3\}$ removes the boundary asymmetry
+
+The moment-matching identities are the entire mechanism. From §3.3, for every $c \in [0, \infty]$,
+
+$$
+\int_{-c}^{\infty} u^j\, K^{*,(c)}_p(u)\, du \;=\; \delta_{j,0},
+\qquad j = 0, 1, \ldots, p.
+$$
+
+The Taylor-expansion bias derivation (§4.1) substitutes $m(x + hu)$ inside the equivalent-kernel integral, and the moment-matching identities kill the first $p$ powers of $u$ in the expansion. The first surviving term is at order $u^{p+1}$, contributing the $h^{p+1}$ leading bias.
+
+For NW ($p = 0$), the moment-matching identity covers only $\int K = 1$ — not $\int u K = 0$. At interior with symmetric $K$, $\int u K = 0$ holds for free by symmetry. At the boundary (truncated $K$ on $[-c, \infty)$ with $c < \infty$), the symmetry argument fails and $\int_{-c}^{\infty} u K(u) du \ne 0$. The first-order term in the Taylor expansion survives, contributing $h \cdot \mu_1^{(c)} \cdot m'(x)$ to the bias — the famous NW boundary bias.
+
+For local-linear ($p = 1$), the moment-matching identity now covers both $\int K^*_1 = 1$ and $\int u K^*_1 = 0$ regardless of $c$. The first-order bias term vanishes uniformly across the support. The remaining $h^2$ leading order is the same as interior — boundary bias and interior bias are at the same rate.
+
+For local-cubic ($p = 3$), all four identities $\int u^j K^*_3 du = \delta_{j,0}$ for $j = 0, 1, 2, 3$ hold uniformly. The first three Taylor terms vanish, leaving $h^4$ leading bias rate uniformly across the support.
+
+### §6.3 The full-domain bias figure
+
+The empirical bias profile $|\mathbb{E}[\hat m_h(x)] - m(x)|$ across $x \in [0, 1]$ at fixed $h = 0.08$ on the §1 toy makes the uniformity concrete.
+
+[FIGURE 6.2: Empirical bias vs $x$ at $h = 0.08$, $B = 500$ MC replicates, $p \in \{0, 1, 2, 3\}$. NW ($p = 0$) curve shows pronounced spikes at the boundaries $x = 0$ and $x = 1$ (the $h$-rate boundary bias) flanking a moderate-bias interior. Local-linear ($p = 1$) shows uniformly small bias across the support — boundaries no worse than interior. Local-cubic ($p = 3$) is uniformly the smallest of the three.]
+
+The takeaway, visible in one figure: NW pays a boundary tax that local-linear removes and local-cubic removes more thoroughly. The §1 close ("local-cubic does both — slope and curvature — and tracks the sine more tightly still") reflects this rate uniformity, not just constant improvements.
+
+---
+
+## §7. Bandwidth selection at general $p$
+
+[Kernel Regression](/topics/kernel-regression) §5 covered four bandwidth selectors for NW: Silverman's rule of thumb, plug-in, leave-one-out cross-validation, and generalized cross-validation. Three of the four — LOO-CV, GCV, and the plug-in family — extend essentially unchanged to general $p$ via the smoother-matrix machinery already implicit in §3. Silverman's rule is NW-specific (it borrows from kernel density estimation) and doesn't transfer; the others do.
+
+### §7.1 The smoother matrix at degree $p$
+
+Local polynomial regression at every $p$ is a linear smoother (§3.1). When we evaluate the estimator at the design points themselves, the values stack into
+
+$$
+\hat{\mathbf{m}}_h \;=\; \mathbf{H}_p\, \mathbf{y},
+$$
+
+where $\mathbf{H}_p \in \mathbb{R}^{n \times n}$ is the **smoother matrix** at degree $p$. Its $(i, j)$ entry is the equivalent-kernel weight on observation $j$ when evaluating at $X_i$. Each row sums to one (the moment-matching identity $\int K^*_p = 1$ at the empirical level — partition-of-unity for the $H_{ij}$).
+
+The diagonal collapses cleanly. At $j = i$, the design vector $(1, X_i - X_i, \ldots, (X_i - X_i)^p)^\top = \mathbf{e}_1$, and $w_{ii} = K_h(0) = K(0)/h$. So
+
+$$
+\boxed{\,
+H_{ii} \;=\; \frac{K(0)}{h}\, \big[(\mathbf{X}_{X_i}^\top \mathbf{W}_{X_i} \mathbf{X}_{X_i})^{-1}\big]_{0, 0}.
+\,}
+\qquad\quad (7.1)
+$$
+
+This is the "self-influence" of observation $i$ on its own fit. The trace $\operatorname{tr}(\mathbf{H}_p) = \sum_i H_{ii}$ is the **effective degrees of freedom** of the local-polynomial fit at bandwidth $h$ and degree $p$ — small $h$ gives large $\operatorname{tr}(\mathbf{H}_p)$ (close to $n$, near-interpolation), large $h$ gives small $\operatorname{tr}(\mathbf{H}_p)$ (close to $p + 1$, near-global-polynomial fit). Higher $p$ at fixed $h$ produces a larger $\operatorname{tr}(\mathbf{H}_p)$ — each evaluation point gets a more flexible local fit, making the smoother "hungrier" for degrees of freedom.
+
+### §7.2 Leave-one-out cross-validation
+
+The LOO-CV objective is
+
+$$
+\text{LOOCV}(h)
+ \;=\; \frac{1}{n} \sum_{i=1}^n \big(Y_i - \hat m_h^{(-i)}(X_i)\big)^2,
+$$
+
+where $\hat m_h^{(-i)}$ is the local polynomial fit excluding observation $i$. Computed naively, this requires $n$ separate fits per bandwidth — prohibitive in any sweep over $h$. The **leave-one-out identity** (Hastie & Tibshirani 1990, applicable to any linear smoother) reduces it to one fit:
+
+$$
+Y_i - \hat m_h^{(-i)}(X_i)
+ \;=\; \frac{Y_i - \hat m_h(X_i)}{1 - H_{ii}}.
+\qquad\quad (7.2)
+$$
+
+*Proof.* Construct a perturbed response vector $\tilde{\mathbf y}$ with $\tilde y_j = Y_j$ for $j \ne i$ and $\tilde y_i = \hat m_h^{(-i)}(X_i)$ (the LOO prediction at $X_i$). The local-polynomial fit using $\tilde{\mathbf y}$ must agree with $\hat m_h^{(-i)}$ at $X_i$, because replacing $Y_i$ by the prediction we'd have made anyway doesn't change the LOO fit there. So
+
+$$
+\hat m_h^{(-i)}(X_i)
+ \;=\; \big(\mathbf{H}_p\, \tilde{\mathbf{y}}\big)_i
+ \;=\; \sum_{j \ne i} H_{ij}\, Y_j \;+\; H_{ii}\, \tilde y_i
+ \;=\; \sum_{j \ne i} H_{ij}\, Y_j \;+\; H_{ii}\, \hat m_h^{(-i)}(X_i).
+$$
+
+Solving for $\hat m_h^{(-i)}(X_i)$,
+
+$$
+\hat m_h^{(-i)}(X_i)\, (1 - H_{ii})
+ \;=\; \sum_{j \ne i} H_{ij}\, Y_j
+ \;=\; \hat m_h(X_i) - H_{ii}\, Y_i.
+$$
+
+The LOO residual is therefore
+
+$$
+Y_i - \hat m_h^{(-i)}(X_i)
+ \;=\; Y_i - \frac{\hat m_h(X_i) - H_{ii}\, Y_i}{1 - H_{ii}}
+ \;=\; \frac{Y_i (1 - H_{ii}) - \hat m_h(X_i) + H_{ii}\, Y_i}{1 - H_{ii}}
+ \;=\; \frac{Y_i - \hat m_h(X_i)}{1 - H_{ii}}.
+\qquad\square
+$$
+
+The identity gives LOO-CV in closed form,
+
+$$
+\text{LOOCV}(h)
+ \;=\; \frac{1}{n} \sum_{i=1}^n \left(\frac{Y_i - \hat m_h(X_i)}{1 - H_{ii}}\right)^{\!2},
+\qquad\quad (7.3)
+$$
+
+at the cost of one full fit and the diagonal of $\mathbf{H}_p$.
+
+### §7.3 Generalized cross-validation
+
+GCV (Craven & Wahba 1979) replaces the per-point $H_{ii}$ in (7.3) with the average $\operatorname{tr}(\mathbf{H}_p)/n$:
+
+$$
+\text{GCV}(h)
+ \;=\; \frac{(1/n) \sum_{i=1}^n (Y_i - \hat m_h(X_i))^2}
+            {\big(1 - \operatorname{tr}(\mathbf{H}_p)/n\big)^2}.
+\qquad\quad (7.4)
+$$
+
+Two practical advantages over (7.3): only the trace is needed (one scalar per bandwidth), and GCV is invariant to orthogonal rotations of the response (more robust to outlier $H_{ii}$). The asymptotic minimizers of (7.3) and (7.4) coincide; GCV's choice tends to be slightly larger in finite samples and is the more common default in production smoothers.
+
+### §7.4 Plug-in selectors
+
+The Ruppert–Sheather–Wand (1995) plug-in family estimates the AMISE-optimal bandwidth (4.4) directly from data, by replacing the unknown functionals with pilot estimates. For $p = 1$ at interior with symmetric $K$, (4.4) reduces to
+
+$$
+h^*_1 \;=\; \left[\frac{\sigma^2\, R(K)\, (b - a)}
+                       {n\, \mu_2(K)^2\, \theta_2}\right]^{1/5},
+\qquad
+\theta_2 \;=\; \int_a^b [m''(x)]^2\, f_X(x)\, dx.
+$$
+
+Plug-in estimates the two unknown functionals: $\hat\sigma^2$ via Rice's estimator (consecutive-observation differences) and $\hat\theta_2$ via a pilot $m''$-fit at degree $p \ge 3$. The pilot bandwidth has its own selection problem; RSW solves the recursion via a normal-reference rule of thumb.
+
+For $p = 3$, (4.4) calls for $\theta_4 = \int [m^{(4)}(x)]^2 f_X(x) dx$ — a fourth-derivative estimate. The pilot recursion deepens, and the variance of $\hat\theta_4$ overwhelms the plug-in's nominal advantage. **For local-cubic, plug-in selectors are theoretically clean but practically fragile** — most software defaults to LOO-CV or GCV at $p = 3$.
+
+### §7.5 How $h^*_p$ shifts with $p$
+
+The §4.5 scaling $h^*_p \asymp n^{-1/(2p+3)}$ predicts that the AMISE-optimal bandwidth grows with $p$:
+
+| $p$ | $h^*_p$ AMISE scaling | $h^*_p$ at $n = 200$ (§1 toy, AMISE)¹ | LOO-CV minimizer at $n = 200$ ² |
+|----:|:--------------------:|:-------------------------------------:|:------------------------------:|
+| 0 | $n^{-1/3}$ | (NW; design-density-corrected) | $\approx 0.040$ |
+| 1 | $n^{-1/5}$ | $0.036$ | $\approx 0.040$ |
+| 3 | $n^{-1/9}$ | $0.093$ | $\approx 0.139$ |
+
+¹ AMISE constants from the §4.5 calculation, integrated over $[0.1, 0.9]$. Notebook Cell 33 produces the precise values: $h^*_1 = 0.0360$, $h^*_3 = 0.0931$.
+
+² The notebook's bandwidth-grid lower bound is $h_{\min} = 0.04$. The $p \in \{0, 1\}$ minimizers clip this lower bound — the actual $p = 1$ minimizer is likely closer to the AMISE prediction $h^*_1 \approx 0.036$. Widen the grid downward to 0.02 for a precise estimate; the $p = 3$ minimizer at 0.139 is well-resolved.
+
+[FIGURE 7.1: LOO-CV and GCV objective curves for $p \in \{0, 1, 3\}$ on the §1 toy at $n = 200$, $h$-grid log-spaced over $[0.04, 0.40]$. Three log-scale curves with their minimizers marked at $h \approx 0.040$ ($p \in \{0, 1\}$, both clipping the grid lower bound) and $h \approx 0.139$ ($p = 3$). GCV curves overlaid with dashed lines, minimizers nearly coincident.]
+
+In practice, the $h^*_p$ shift is a useful diagnostic: if you're running LOO-CV at multiple degrees on the same data and the minimizers don't shift right with $p$, something's wrong with your pilot or your CV implementation.
+
+---
+
+## §8. Multivariate local polynomials
+
+[Kernel Regression](/topics/kernel-regression) §6 already extended NW to $\mathbb{R}^d$ via product kernels and bandwidth matrices. Local-polynomial generalizes that extension cleanly: the design matrix grows from $p + 1$ columns to $\binom{d + p}{p}$ columns, the bandwidth becomes a $d \times d$ matrix or a $d$-vector, and everything else from §2–§7 carries over.
+
+### §8.1 The polynomial-feature design matrix
+
+In $\mathbb{R}^d$, a polynomial of total degree $p$ around evaluation point $\mathbf{x}$ is parameterized by multi-indices $\boldsymbol\alpha = (\alpha_1, \ldots, \alpha_d) \in \mathbb{Z}_{\ge 0}^d$ with $|\boldsymbol\alpha| := \alpha_1 + \cdots + \alpha_d \le p$. The corresponding monomial in centered coordinates is $(\mathbf{X}_i - \mathbf{x})^{\boldsymbol\alpha} = \prod_{j=1}^d (X_{ij} - x_j)^{\alpha_j}$. Stacking gives the **multivariate design matrix** $\boldsymbol\Phi_{\mathbf{x}} \in \mathbb{R}^{n \times M_{d, p}}$ with column count
+
+$$
+M_{d, p} \;=\; \binom{d + p}{p} \;=\; \frac{(d+p)!}{d!\, p!}.
+$$
+
+For canonical choices: $M_{1, 1} = 2$, $M_{1, 3} = 4$, $M_{2, 1} = 3$, $M_{2, 2} = 6$, $M_{2, 3} = 10$, $M_{5, 2} = 21$, $M_{10, 2} = 66$. The column count grows polynomially in $d$ at fixed $p$ — manageable at moderate $(d, p)$ but a real concern by $d \ge 5$ and $p \ge 3$.
+
+The local-polynomial WLS problem stays in the same form as (2.1):
+
+$$
+\hat{\boldsymbol\beta}(\mathbf{x})
+ \;=\; \arg\min_{\boldsymbol\beta \in \mathbb{R}^{M_{d, p}}}
+       \sum_{i=1}^n w_i \big(Y_i - \boldsymbol\Phi_{\mathbf{x}, i}^\top \boldsymbol\beta\big)^2,
+\qquad
+\hat m_{\mathbf{H}}(\mathbf{x}) \;=\; \mathbf{e}_1^\top \hat{\boldsymbol\beta}(\mathbf{x}),
+$$
+
+with closed-form $\hat{\boldsymbol\beta}(\mathbf{x}) = (\boldsymbol\Phi_{\mathbf{x}}^\top \mathbf{W} \boldsymbol\Phi_{\mathbf{x}})^{-1} \boldsymbol\Phi_{\mathbf{x}}^\top \mathbf{W} \mathbf{y}$.
+
+### §8.2 Kernel weights and bandwidth matrices
+
+Three standard ways to put kernel weights on $\mathbf{X}_i - \mathbf{x} \in \mathbb{R}^d$:
+
+**Product kernel with scalar bandwidth.** The simplest: $K_h(\mathbf{u}) = h^{-d} \prod_j K(u_j / h)$. One bandwidth, no scale awareness.
+
+**Product kernel with diagonal bandwidth.** When coordinates have different scales: $K_{\mathbf{H}}(\mathbf{u}) = (\prod_j h_j^{-1}) \prod_j K(u_j / h_j)$, $\mathbf{H} = \operatorname{diag}(h_1, \ldots, h_d)$. The most common choice in practice.
+
+**Full positive-definite bandwidth matrix.** When coordinates are correlated: $K_{\mathbf{H}}(\mathbf{u}) = |\mathbf{H}|^{-1/2} K(\mathbf{H}^{-1/2} \mathbf{u})$. Bandwidth-matrix selection is a real engineering problem at $d \ge 3$; diagonal $\mathbf{H}$ usually suffices.
+
+### §8.3 The 2-dim toy
+
+Generalize the §1 toy to two dimensions:
+
+$$
+\mathbf{X} \sim \mathrm{Uniform}([0, 1]^2),
+\qquad
+m(\mathbf{x}) = \sin(2\pi x_1) + \sin(2\pi x_2),
+\qquad \varepsilon \sim \mathcal{N}(0, 0.2^2),
+$$
+
+with $n = 400$ — twice the §1 sample size to fill the 2-dim cube.
+
+[FIGURE 8.1: Local-quadratic ($p = 2$) fit on the 2-dim toy at $n = 400$, isotropic bandwidth $\mathbf{H} = \operatorname{diag}(0.15, 0.15)$. Three panels: true $m(\mathbf{x})$ as heatmap, fitted $\hat m_{\mathbf{H}}(\mathbf{x})$, residual $\hat m - m$ with diverging colormap. Sample points overlaid on truth panel.]
+
+The headline: local-polynomial regression in 2-dim recovers the surface faithfully at this $n$, with residuals concentrated near the boundary of $[0, 1]^2$ — the multivariate analog of §6's univariate boundary-bias profile.
+
+### §8.4 The curse of dimensionality
+
+Stone (1980, 1982) showed that for $(p+1)$-times-continuously-differentiable regression functions on $\mathbb{R}^d$, no estimator can achieve a uniform AMSE rate faster than $n^{-2(p+1)/(2(p+1) + d)}$. Local polynomial of degree $p$ achieves this rate (at odd $p$) — minimax-optimal — but the rate degrades sharply with $d$:
+
+| $d$ | $p = 1$ rate | $p = 3$ rate | $n$ to match $(d=1, p=1, n=200)$ |
+|----:|:------------:|:------------:|:--------------------------------:|
+| 1 | $n^{-4/5}$ | $n^{-8/9}$ | 200 |
+| 2 | $n^{-2/3}$ | $n^{-4/5}$ | $\approx 600$ |
+| 3 | $n^{-4/7}$ | $n^{-8/11}$ | $\approx 1{,}600$ |
+| 5 | $n^{-4/9}$ | $n^{-8/13}$ | $\approx 9{,}200$ |
+| 10 | $n^{-2/7}$ | $n^{-4/9}$ | $\approx 700{,}000$ |
+| 20 | $n^{-1/6}$ | $n^{-2/7}$ | $\approx 5 \times 10^9$ |
+
+Higher polynomial degree softens the dimension penalty but only by replacing the curse with a different smoothness assumption. In practice, $p$ rarely exceeds $3$ in multivariate settings. The escape routes — additive structure (§11), low-rank tensor methods, neural surrogates — are the subject matter of §11 and the broader high-dimensional-statistics literature.
+
+---
+
+## §9. Derivative estimation
+
+The Taylor identification from §2.1 — $\beta_j^\star = m^{(j)}(x)/j!$ — gives local polynomial regression a useful side product: derivative estimates fall out of the WLS solve at no additional cost. A single local-cubic fit returns $\hat m, \hat m', \hat m'', \hat m'''$ at the evaluation point, in one solve.
+
+### §9.1 Reading derivatives off the WLS coefficients
+
+For any local polynomial fit of degree $p$,
+
+$$
+\hat m_h^{(j)}(x) \;=\; j! \, \hat\beta_j(x), \qquad j = 0, 1, \ldots, p.
+$$
+
+The §4 parity story extends: at interior with symmetric $K$, the leading bias of $\hat m_h^{(j)}$ at degree $p$ is
+
+$$
+\text{Bias}(\hat m_h^{(j)}(x))
+ \;=\; h^{p + 1 - j} \cdot \frac{j! \, c_{j, p}(K)}{(p+1)!} \, m^{(p+1)}(x)
+ \;+\; o(h^{p+1-j}),
+$$
+
+with $c_{j, p}(K)$ a kernel-moment-matrix combination, **whenever $p - j$ is odd**. When $p - j$ is even, the leading term involves a parity-zero moment, and the bias rate is one order better — but the next-order constant picks up design-density derivatives, the same design-adaptivity penalty of §4.3.
+
+The "good" parity rule for derivative estimation is therefore:
+
+- $\hat m$ ($j = 0$): want $p$ odd. Use $p = 1$ or $p = 3$.
+- $\hat m'$ ($j = 1$): want $p$ even for the cleanest rate. $p = 2$ is technically optimal at interior, but $p = 3$ is the practical choice because it covers $\hat m$ and $\hat m''$ at uniform rates and the rate-suboptimality for $\hat m'$ is mild.
+- $\hat m''$ ($j = 2$): want $p$ odd. Use $p = 3$.
+
+A single local-cubic ($p = 3$) fit therefore covers the practically interesting derivative range — $j = 0, 1, 2$ — with $\hat m$ and $\hat m''$ at clean uniform rates.
+
+### §9.2 Bias and variance of $\hat m_h^{(j)}$
+
+The leading-order bias is $O(h^{p+1-j})$ when $p - j$ is odd. The variance scales much worse than the function-value estimate. From the §3 equivalent-kernel argument with the $\mathbf{D}_h$ rescaling, $\hat\beta_j = h^{-j} \hat\beta_j^{\text{scaled}}$, and the scaled variance is $O(1/(nh))$. So
+
+$$
+\text{Var}(\hat m_h^{(j)}) \;=\; (j!)^2 \, \text{Var}(\hat\beta_j) \;=\; O\!\left(\frac{1}{n\, h^{2j+1}}\right).
+$$
+
+| $j$ | bias rate ($p$ odd, $p - j$ odd) | variance rate |
+|----:|:--------------------------------:|:-------------:|
+| 0 | $h^{p+1}$ | $1/(nh)$ |
+| 1 | $h^{p}$ | $1/(nh^3)$ |
+| 2 | $h^{p-1}$ | $1/(nh^5)$ |
+| 3 | $h^{p-2}$ | $1/(nh^7)$ |
+
+Variance grows by a factor of $1/h^2$ per derivative order. At $h = 0.15$, that's roughly a $44\times$ variance multiplier per derivative.
+
+### §9.3 The bandwidth shift for derivative estimation
+
+The AMISE-optimal bandwidth for $\hat m_h^{(j)}$ at degree $p$ scales as $n^{-1/(2p+3)}$ — same in $n$ as for $\hat m$ — but with a $j$-dependent constant that grows with $j$:
+
+$$
+h^{*\,(j)}_p
+ \;=\; \left[\frac{(2j+1)\, \sigma^2\, R^*_{j, p}(K)}{2(p+1-j)\, n\, [m^{(p+1)}(x)]^2\, c_{j, p}(K)^2}\right]^{1 / (2p + 3)}.
+$$
+
+For $p = 3$, $n = 200$, on the §1 toy:
+
+| $j$ | factor over $h^{*\,(0)}_3$ | $h^{*\,(j)}_3$ |
+|----:|:--------------------------:|:--------------:|
+| 0 | 1.00× | $\approx 0.20$ |
+| 1 | 1.16× | $\approx 0.23$ |
+| 2 | 1.29× | $\approx 0.26$ |
+
+Don't use a single bandwidth for everything. Run LOO-CV separately for each derivative target and use the $j$-specific bandwidth.
+
+### §9.4 Numerical demonstration on the §1 toy
+
+We test derivative recovery at $x_0 = 0.125$ — a point where all four of $m, m', m'', m'''$ are nonzero (unlike $x_0 = 0.5$ where the even derivatives vanish). The truth, computed analytically:
+
+$$
+m(0.125) = \sin(\pi/4) + 1/16 \approx 0.770,
+\qquad
+m'(0.125) = \pi\sqrt{2} + 1/2 \approx 4.94,
+$$
+$$
+m''(0.125) = -2\pi^2 \sqrt{2} \approx -27.92,
+\qquad
+m'''(0.125) = -4\pi^3 \sqrt{2} \approx -175.4.
+$$
+
+A single local-cubic fit at $h = 0.15$ on a 200-point sample reads off all four. The function value and second derivative recover cleanly (per §9.2's parity rule); the first derivative recovers with moderate noise; the third derivative is dominated by noise at this $n$.
+
+[TABLE 9.1 / FIGURE 9.1 in the notebook: Local-cubic coefficients with MC standard errors from $B = 500$ replicates, plus an AMSE($h$) plot for $\hat m, \hat m', \hat m''$ at $p = 3$ showing the bandwidth-shift visually.]
+
+---
+
+## §10. Connections to smoothing splines
+
+Smoothing splines are the other major family of frequentist nonparametric smoothers. They look very different from local polynomial regression — a penalty-based variational problem instead of a kernel-weighted local fit — but Silverman (1984) showed they're **asymptotically equivalent to local-cubic regression** with a specific location-adaptive bandwidth.
+
+### §10.1 The cubic smoothing-spline objective
+
+The cubic smoothing spline minimizes
+
+$$
+\mathcal{J}_\lambda(g)
+ \;=\; \sum_{i=1}^n \big(Y_i - g(X_i)\big)^2
+ \;+\; \lambda \int_a^b \big[g''(x)\big]^2\, dx
+\qquad (10.1)
+$$
+
+over $g \in W^2_2$. As $\lambda \to 0$: interpolation. As $\lambda \to \infty$: OLS line.
+
+**The minimizer is a natural cubic spline.** Schoenberg (1964) and Reinsch (1967) showed that the minimizer of (10.1) is piecewise cubic between the design points, continuous in value and first two derivatives across knots, and linear (zero curvature) outside $[X_{(1)}, X_{(n)}]$. The "natural" boundary condition is automatic.
+
+In matrix form, the fitted values at the design points satisfy
+
+$$
+\hat{\mathbf g}_\lambda \;=\; \big(\mathbf{I}_n + \lambda\, \mathbf{K}\big)^{-1} \mathbf{y},
+\qquad (10.2)
+$$
+
+where $\mathbf{K} \in \mathbb{R}^{n \times n}$ is a banded penalty matrix encoding $\int [g'']^2$ at the design points. The smoother matrix $\mathbf{S}_\lambda = (\mathbf{I}_n + \lambda \mathbf{K})^{-1}$ makes the smoothing spline a linear smoother. The Reinsch algorithm computes $\hat{\mathbf g}_\lambda$ in $O(n)$ time. The §7 LOO-CV / GCV machinery extends without change.
+
+### §10.2 Silverman's equivalent variable-kernel theorem
+
+**Theorem (Silverman 1984).** Suppose $f_X$ is bounded away from zero on $[a, b]$ and $\lambda = \lambda_n$ satisfies $n^{-4/5} \ll \lambda_n \ll 1$. Then the smoothing-spline weight on observation $i$ when evaluating at $x$ satisfies
+
+$$
+[\mathbf{S}_\lambda]_{ix} \;\approx\; \frac{1}{n\, h(x)\, f_X(x)}\,
+                                       K_S\!\left(\frac{X_i - x}{h(x)}\right),
+\qquad
+h(x) \;=\; \left[\frac{\lambda}{n\, f_X(x)}\right]^{1/4},
+$$
+
+where $K_S$ is the **Silverman kernel**
+
+$$
+K_S(u) \;=\; \tfrac{1}{2}\, \exp\!\left(-\tfrac{|u|}{\sqrt{2}}\right)
+            \, \sin\!\left(\tfrac{|u|}{\sqrt{2}} + \tfrac{\pi}{4}\right).
+\qquad (10.3)
+$$
+
+Two things to register about $K_S$.
+
+**It's a fourth-order kernel.** $\int K_S = 1$ and $\int u^j K_S = 0$ for $j = 1, 2, 3$, but $\int u^4 K_S \ne 0$. These are the same moment-matching identities the equivalent kernel $K^*_3$ satisfies at interior with a symmetric base kernel (§3.3, Property 1, with $p = 3$). Both produce $h^4$ leading bias and $1/(nh)$ variance.
+
+**The bandwidth is location-adaptive.** Where $f_X$ is large, $h(x)$ is small (tighter local neighborhood). Where $f_X$ is small, $h(x)$ is large. This adaptation is automatic — the global $\lambda$ becomes a local $h(x)$ through $f_X(x)^{-1/4}$ — and it's something local-polynomial regression doesn't do at fixed $h$.
+
+### §10.3 Practical comparison
+
+When $f_X$ is roughly uniform, smoothing splines and local-cubic produce nearly identical fits at matched smoothing levels.
+
+**Smoothing splines win when:** heterogeneous design density, boundary behavior matters, single hyperparameter is preferable, Sobolev-norm formulation is natural.
+
+**Local-polynomial regression wins when:** multivariate (thin-plate splines are harder), derivative estimation is needed, local control over smoothing is required, embarrassingly-parallel evaluation across a grid matters.
+
+[FIGURE 10.1: §1 toy with local-cubic and smoothing-spline fits at matched effective df. The two are visually indistinguishable across most of the support.]
+
+[FIGURE 10.2: Silverman kernel $K_S$ overlaid with $K^*_3$ for the Gaussian base kernel. Different shapes (exponential vs Gaussian decay) but the same fourth-order moment structure that produces the asymptotic equivalence.]
+
+---
+
+## §11. Connections to additive models
+
+§8.4 left us with the curse: at $d \ge 5$, the local-polynomial rate becomes too slow for realistic sample sizes. The **additive-model** trick is to assume the regression function has structure that escapes the dimension penalty.
+
+### §11.1 Additive structure as a curse dodge
+
+The additive model assumes
+
+$$
+m(\mathbf{x}) \;=\; \alpha \;+\; \sum_{j=1}^{d} m_j(x_j),
+\qquad
+\mathbb{E}[m_j(X_j)] \;=\; 0 \text{ for each } j.
+\qquad (11.1)
+$$
+
+Each $m_j$ depends on a single coordinate, so each can be estimated at the univariate Stone rate $n^{-2(p+1)/(2p+3)}$ — independent of $d$. At $d = 5$, $p = 1$, $n = 200$:
+
+| approach | AMSE rate | example AMSE |
+|---:|:---:|:---:|
+| Multivariate local-polynomial | $n^{-4/9}$ | $\approx 0.073$ |
+| Additive (GAM) with local-poly components | $n^{-4/5}$ | $\approx 0.014$ |
+
+A 5× improvement at $d = 5$, growing with $d$. The cost is the structural assumption: no interactions like $x_1 x_2$ or $\cos(x_1 + x_2)$. Misspecification bias is $O(1)$ — it doesn't go to zero with $n$.
+
+The additive form (11.1) goes by **GAM** (Hastie & Tibshirani 1990), with "generalized" referring to the extension to non-Gaussian responses via link functions. For the regression case, the GAM reduces to (11.1) with local-polynomial component estimators inside the **backfitting algorithm**.
+
+### §11.2 The backfitting algorithm
+
+Backfitting (Friedman & Stuetzle 1981; Buja, Hastie & Tibshirani 1989) solves (11.1) by iteratively smoothing partial residuals against each covariate.
+
+**Initialization.** $\hat\alpha = \bar Y$, $\hat m_j \equiv 0$.
+
+**Iteration.** Cycle $j = 1, \ldots, d$. Compute the **partial residual**
+
+$$
+r_i^{(j)} \;=\; Y_i - \hat\alpha - \sum_{k \ne j} \hat m_k(X_{ik}),
+$$
+
+then update $\hat m_j$ by smoothing the partial residuals against $X_{ij}$ via a univariate local polynomial:
+
+$$
+\hat m_j(x) \;=\; \big[\text{local-polynomial fit of } r^{(j)} \text{ on } X_{\cdot,j}\big](x)
+\;-\; \frac{1}{n} \sum_{i=1}^{n} [\cdots](X_{ij}),
+\qquad (11.2)
+$$
+
+with the centering subtraction enforcing $\mathbb{E}[\hat m_j(X_j)] \approx 0$.
+
+**Convergence.** Iterate until $\max_j \|\hat m_j^{(\text{new})} - \hat m_j^{(\text{old})}\|_\infty < \tau$ (typically $10^{-4}$). Under mild conditions (Buja–Hastie–Tibshirani 1989, Theorem 9), backfitting converges geometrically to the unique additive decomposition.
+
+### §11.3 Why the components have univariate rates
+
+On convergence, $\hat m_j$ equals the local-polynomial fit of the converged partial residuals against the univariate $X_{\cdot, j}$. The bias-variance analysis of §4 applies directly, with noise variance enlarged by the contribution of the other components — bounded if each component is estimable. **The bias rate is the univariate $n^{-2(p+1)/(2p+3)}$**, independent of $d$.
+
+The cost is the **misspecification bias**. If the true $m$ has interaction structure that (11.1) can't capture, $\hat m^{\text{GAM}}(\mathbf{x})$ converges to the *best additive approximation* of $m$, not to $m$ itself. The standard diagnostic is residual analysis on pairwise covariate plots; if systematic 2-dim structure shows up, the additive model is missing interactions.
+
+[FIGURE 11.1: GAM fit on a 3-dim additive toy, three panels showing recovered components $\hat m_j(x_j)$ overlaid with truth, partial-residual scatter for each $j$.]
+
+[FIGURE 11.2: Backfitting convergence trajectory — geometric decay of $\max_j \|\hat m_j^{(k+1)} - \hat m_j^{(k)}\|_\infty$ on a log scale. Typically 5–15 iterations to $10^{-4}$ tolerance.]
+
+---
+
+## §12. Connections, applications, and limits
+
+### §12.1 Local polynomials as nuisance estimators
+
+Local polynomial regression's most consequential modern role isn't as a final estimator — it's as a **nuisance estimator** in semiparametric and debiased-inference pipelines.
+
+The canonical setting is the **partially-linear model**:
+
+$$
+Y \;=\; \boldsymbol\beta^\top \mathbf{Z} \;+\; g(W) \;+\; \varepsilon,
+\qquad \mathbb{E}[\varepsilon \mid \mathbf{Z}, W] = 0,
+$$
+
+with $\boldsymbol\beta \in \mathbb{R}^q$ a low-dimensional parameter of interest. Robinson (1988) showed that $\boldsymbol\beta$ can be estimated at the parametric $\sqrt{n}$ rate — *despite* the nonparametric nuisance — by partialling out a local-polynomial estimate of $g$.
+
+The modern extension is **double/debiased machine learning** (Chernozhukov et al. 2018), which generalizes Robinson to high-dimensional $\mathbf{Z}$ via cross-fitting and Neyman orthogonality. Local-polynomial fits the framework: at $p \ge 1$ the bias rate $h^{p+1}$ is fast enough for the cross-fitted score to be Neyman-orthogonal at $h = h^*$ chosen by LOO-CV (§7).
+
+Forward pointer: **T6 `semiparametric-inference`** builds out the Robinson machinery and the modern Chernozhukov-style extensions.
+
+### §12.2 Varying-coefficient models
+
+Hastie & Tibshirani (1993) introduced the **varying-coefficient model**:
+
+$$
+Y \;=\; \beta_0(Z) \;+\; \beta_1(Z) X_1 \;+\; \cdots \;+\; \beta_q(Z) X_q \;+\; \varepsilon,
+$$
+
+where each $\beta_j(Z)$ is an unknown smooth function. The estimator is local-linear-in-$\mathbf{X}$ regression weighted by a univariate kernel in $Z$. Higher-degree variants extend to local polynomial in $Z$ as well.
+
+In time-series, varying-coefficient models go by **time-varying coefficient regression**. The §3 equivalent-kernel theory extends with the obvious modifications.
+
+### §12.3 Where local polynomials break down
+
+- **High dimension** at $d \ge 5$ without additive structure (§8.4 curse).
+- **Sparse design at boundary** — local Gram matrix becomes ill-conditioned.
+- **Heavy-tailed noise** — robust alternatives (LOESS with bisquare weights) handle this.
+- **Heteroscedastic noise** — variable-bandwidth local polynomial (Fan & Gijbels 1995) handles this.
+- **Discontinuities** — change-point detection + segment-wise fitting.
+
+### §12.4 Forward pointers within formalML
+
+| topic | track | relationship |
+|:------|:-----:|:-------------|
+| `kernel-regression` | T2 (shipped) | Predecessor; shared module |
+| `density-ratio-estimation` | T4 (planned) | Uses the same kernel-methods shared module |
+| `quantile-regression` | T4 (shipped) | Pinball-loss analog |
+| T6 `semiparametric-inference` | T6 (planned) | Local-cubic as nuisance estimator |
+
+### §12.5 Cross-site context
+
+This topic is the second of two T2 nonparametric-regression topics in formalML's ML-methodology layer. Together with `kernel-regression`, the two discharge the **formalstatistics nonparametric-regression forward-pointers** that originate in formalstatistics' Topics 22–32 (the ML-methodology forward-pointing block).
+
+The cross-site reciprocity (per CLAUDE.md) sits in the four prereq frontmatter entries listed at the top of this brief: `formalstatistics/linear-regression`, `formalstatistics/kernel-density-estimation`, `formalcalculus/multiple-integrals`, `formalcalculus/mean-value-taylor`. The implementation session adds the reciprocal forward-pointing entries on those sister-site topics' frontmatter (or logs deferred reciprocals via `pnpm audit:cross-site`).
+
+### Closing synthesis
+
+Local polynomial regression is the workhorse univariate nonparametric smoother of the modern toolkit. It generalizes [Kernel Regression](/topics/kernel-regression) §8's local-linear fix to arbitrary degree $p$, achieves Stone-minimax-optimal rates, gives derivative estimates as a single-fit byproduct, extends cleanly to multivariate via the polynomial-feature design matrix, and survives boundary effects via the equivalent-kernel adaptation that emerges automatically from the WLS structure.
+
+The practical recommendation distills to **$p = 1$ as the production default** and **$p = 3$ when derivative estimates are needed or the smoothness regime warrants the faster $h^4$ rate**. $p = 2$ doesn't earn its variance penalty under uniform-rate analysis; $p \ge 5$ is theoretically clean but practically fragile.
+
+The deeper structural fact — that every local polynomial estimator is asymptotically a kernel smoother with a degree-aware, location-aware equivalent kernel $K^*_p$ — is the conceptual centerpiece, and it's what ties the topic to its neighbors. Smoothing splines (§10) are local-cubic in disguise; GAMs (§11) are coordinate-wise local-polynomials chained by backfitting; semiparametric inference (§12.1) treats local-polynomial as the nuisance-estimator default. The equivalent kernel is the lens that makes all of these the same algebraic object, viewed from different angles.
+
+---
+
+## Visualization design intent
+
+Ten interactive visualizations across the topic, mapped section-by-section. The matplotlib versions in the notebook serve as the design intent for the React/D3 components to be built in the implementation session.
+
+1. **DegreeLadderExplorer** (§1–2) — toggle $p \in \{0, 1, 2, 3\}$ on the §1 toy at fixed $h$; see how higher degree captures local curvature and how the boundary behavior changes.
+2. **LocalPolynomialFit** (§2) — main estimator with $h$ slider AND $p$ toggle. Use commit-on-release pattern (display vs committed state) for the bandwidth slider since the WLS solve at every grid point is expensive at high $p$ and large $n$.
+3. **EquivalentKernelViewer** (§3) — for each $(h, p, x_0)$, show the equivalent kernel $K^*_{h, p, x_0}(\cdot)$ overlaid on the underlying $K_h$. Toggle between interior and boundary $x_0$.
+4. **BiasOrderComparison** (§4) — empirical bias from $B$ MC replicates vs the asymptotic $h^{p+1}$ rate. Log-log plot with theoretical slope overlaid; $p$ toggle to see the rate jump.
+5. **OddEvenDegreeBoundary** (§5) — log-log bias-rate at $x = 0.005$ for $p \in \{0, 1, 2, 3\}$ with theoretical slopes overlaid. The headline boundary-rate visualization.
+6. **BoundaryBiasUniform** (§6) — full-domain empirical bias as a function of $x$ for $p = 1$ vs $p = 3$ (with NW shown for reference). Generalizes `kernel-regression` §8.2.
+7. **BandwidthSelectorAtP** (§7) — LOO-CV / GCV objective curves at $p \in \{0, 1, 3\}$ on the same data; reader sees the optimal $h$ shift right as $p$ grows.
+8. **MultivariateLocalQuadratic** (§8) — local-quadratic fit on the §8 2-dim toy with $h$ slider. Show the fitted surface against the true $m(\mathbf{x})$ via heatmap difference. Toggle between isotropic and anisotropic bandwidth.
+9. **DerivativeEstimation** (§9) — local-cubic fit on the §1 toy at $x_0$ slider; read off $\hat m, \hat m', \hat m''$ from the polynomial coefficients and compare to analytical values.
+10. **SmoothingSplineBridge** (§10) — local-cubic vs cubic-smoothing-spline on the §1 toy. Slider for the smoothing-spline $\lambda$; reader sees the two converge as $\lambda$ tracks the matching effective degrees of freedom.
+
+Sections §11 (additive models) and §12 (connections) are intentionally text-only; §11 may benefit from a small backfitting-iteration animator if the math allows (deferred).
+
+---
+
+## Numerical-experiment summary
+
+The notebook produces ~13 figures via Monte-Carlo experiments. Total runtime budget: under 60s on a 2020-era laptop.
+
+Key experiments:
+- **§1.2** Three-fit demo (NW, LL, LC at $h = 0.08$).
+- **§3.4** Equivalent-kernel computation at interior and boundary, moment-matching identity verification.
+- **§4.3** Bias-rate verification at $x_0 = 0.5$ via $B = 500$ MC replicates over $H = 10$ bandwidths, $p \in \{0, 1, 2, 3\}$.
+- **§5.3** Boundary bias-rate verification at $x_0 = 0.005$ via $B = 500$ replicates.
+- **§6.3** Full-domain bias profile at $h = 0.08$ via $B = 500$ replicates over a 50-point $x$-grid.
+- **§7.5** Bandwidth-selector sweep — LOO-CV and GCV at $p \in \{0, 1, 3\}$ over $H = 25$ bandwidths.
+- **§8.3** Local-quadratic fit on the 2-dim toy at $n = 400$, 50×50 evaluation grid.
+- **§8.4** Curse-of-dimensionality table.
+- **§9.4** Derivative-readout demo at $x_0 = 0.125$ with MC standard errors, plus AMSE-bandwidth-shift figure.
+- **§10.3** Smoothing-spline vs local-cubic comparison at matched effective df.
+- **§11** Backfitting GAM on a 3-dim additive toy at $n = 400$.
+
+---
+
+## References
+
+Every entry has a verified DOI URL per the formalML `references` schema.
+
+**Foundational (1960s–80s).**
+
+- Schoenberg, I. J. (1964). "Spline functions and the problem of graduation." *Proceedings of the National Academy of Sciences* 52(4): 947–950. <https://doi.org/10.1073/pnas.52.4.947>
+- Stone, C. J. (1977). "Consistent nonparametric regression." *Annals of Statistics* 5(4): 595–620. <https://doi.org/10.1214/aos/1176343886>
+- Cleveland, W. S. (1979). "Robust locally weighted regression and smoothing scatterplots." *Journal of the American Statistical Association* 74(368): 829–836. <https://doi.org/10.2307/2286407>
+- Stone, C. J. (1980). "Optimal rates of convergence for nonparametric estimators." *Annals of Statistics* 8(6): 1348–1360. <https://doi.org/10.1214/aos/1176345206>
+- Stone, C. J. (1982). "Optimal global rates of convergence for nonparametric regression." *Annals of Statistics* 10(4): 1040–1053. <https://doi.org/10.1214/aos/1176345969>
+- Friedman, J. H., & Stuetzle, W. (1981). "Projection pursuit regression." *Journal of the American Statistical Association* 76(376): 817–823. <https://doi.org/10.2307/2287576>
+- Silverman, B. W. (1984). "Spline smoothing: The equivalent variable kernel method." *Annals of Statistics* 12(3): 898–916. <https://doi.org/10.1214/aos/1176346710>
+- Cleveland, W. S., & Devlin, S. J. (1988). "Locally weighted regression: An approach to regression analysis by local fitting." *Journal of the American Statistical Association* 83(403): 596–610. <https://doi.org/10.2307/2289282>
+- Robinson, P. M. (1988). "Root-N-consistent semiparametric regression." *Econometrica* 56(4): 931–954. <https://doi.org/10.2307/1912705>
+- Buja, A., Hastie, T., & Tibshirani, R. (1989). "Linear smoothers and additive models." *Annals of Statistics* 17(2): 453–510. <https://doi.org/10.1214/aos/1176347115>
+
+**Methodological (1990s).**
+
+- Hastie, T., & Tibshirani, R. (1990). *Generalized Additive Models*. Chapman & Hall. <https://doi.org/10.1201/9780203753781>
+- Fan, J. (1992). "Design-adaptive nonparametric regression." *Journal of the American Statistical Association* 87(420): 998–1004. <https://doi.org/10.2307/2290637>
+- Fan, J. (1993). "Local linear regression smoothers and their minimax efficiencies." *Annals of Statistics* 21(1): 196–216. <https://doi.org/10.1214/aos/1176349022>
+- Hastie, T., & Tibshirani, R. (1993). "Varying-coefficient models." *Journal of the Royal Statistical Society B* 55(4): 757–796. <https://doi.org/10.1111/j.2517-6161.1993.tb01939.x>
+- Ruppert, D., & Wand, M. P. (1994). "Multivariate locally weighted least squares regression." *Annals of Statistics* 22(3): 1346–1370. <https://doi.org/10.1214/aos/1176325632>
+- Wand, M. P., & Jones, M. C. (1995). *Kernel Smoothing*. Chapman & Hall. <https://doi.org/10.1201/b14876>
+- Fan, J., & Gijbels, I. (1995). "Data-driven bandwidth selection in local polynomial fitting: Variable bandwidth and spatial adaptation." *Journal of the Royal Statistical Society B* 57(2): 371–394. <https://doi.org/10.1111/j.2517-6161.1995.tb02034.x>
+- Ruppert, D., Sheather, S. J., & Wand, M. P. (1995). "An effective bandwidth selector for local least squares regression." *Journal of the American Statistical Association* 90(432): 1257–1270. <https://doi.org/10.2307/2291516>
+- Fan, J., & Gijbels, I. (1996). *Local Polynomial Modelling and Its Applications*. Chapman & Hall. <https://doi.org/10.1201/9780203748725>
+
+**Modern.**
+
+- Wood, S. N. (2006). *Generalized Additive Models: An Introduction with R*. Chapman & Hall. <https://doi.org/10.1201/9781315370279>
+- Tsybakov, A. B. (2009). *Introduction to Nonparametric Estimation*. Springer. <https://doi.org/10.1007/b13794>
+- Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W., & Robins, J. (2018). "Double/debiased machine learning for treatment and structural parameters." *Econometrics Journal* 21(1): C1–C68. <https://doi.org/10.1111/ectj.12097>
+
+---
+
+## Implementation notes for Claude Code
+
+A few items the implementation session should be aware of, beyond the brief content itself.
+
+**Source-of-truth precedence.** When the brief and the notebook disagree on a numerical value, **the notebook is authoritative**. Examples: the boundary $b_p^{(0)}(K)$ values in §5.3, the AMISE-optimal bandwidth values in §7.5, the GAM convergence ratio in §11. Use the notebook output to populate exact tabulated values in the MDX body.
+
+**Outline-vs-numerics divergence flagged in the brief.** §4.3 contains an explicit `> Note` block flagging that an earlier outline version stated the wrong even-$p$ interior rate. §5.3 contains analogous text noting that the numerics show monotone $h^{p+1}$ rate at boundary rather than the "no-improvement-at-even-$p$" pattern an earlier outline anticipated. The implementation session can scrub these notes from the public-facing MDX or keep them as historical anchors — they're informative for future maintainers but optional for shipped reader-facing prose.
+
+**Design-adaptivity sidebar (§5).** The §1 toy has uniform $f_X$, which means the design-adaptivity story (the substantive odd-vs-even distinction at boundary) doesn't manifest empirically. We left this as analytic-only. If the implementation session wants to add a non-uniform-$f_X$ sidebar experiment to drive the point home, the natural addition is a Beta(2,2) or similar non-uniform design with a small extra MC experiment — one or two more notebook cells and one figure. Otherwise, ship as-is.
+
+**Naming continuity with kernel-regression.** The notebook uses `local_polynomial(X, Y, x_eval, h, p, K_fn)` as the natural extension of kernel-regression's `nw(...)` and `local_linear(...)` API. The shared TypeScript module (`src/components/viz/shared/kernel-regression.ts`) should pick up the equivalent-kernel and degree-$p$ helpers from this topic. Suggested additions: `kernelMomentMatrix(K, p, c)`, `equivalentKernel(K, p, c)`, `localPolynomial(X, Y, xEval, h, p, K)`, `smootherDiagonal(X, h, p, K)`, `boundaryBiasConstant(K, p, c)`.
+
+**Asset paths.** Figures save to local notebook-relative paths during development. The implementation session should move them to `public/images/topics/local-regression/01_section1_teaser.png`, etc., per the established naming convention. Don't forget to track them via `git ls-files public/images/topics/local-regression/` before committing — the build doesn't fail on missing referenced assets per CLAUDE.md.
+
+**The frontmatter schema source-of-truth is the most recently shipped topic in `src/content/topics/`.** Per CLAUDE.md, that's `probabilistic-programming.mdx` as of late April 2026. Use its field structure (`subtitle`, `abstract`, `tags`, `connections`, `videoId`, `notebookPath`, `githubUrl`, `datePublished`, `estimatedReadTime`) and not whatever this brief informally suggests.
+
+**Theorem numbering.** This topic is straightforward enough that topic-local numbering (Theorem 1, Theorem 2, …) suffices. No section-prefixed scheme needed. Match `kernel-regression` for consistency with the predecessor.
+
+---
+
+*Brief generated 2026-05-09 in a Claude Chat brief-drafting session per the formalML topic-implementation workflow. Companion notebook at `notebooks/local-regression/01_local_regression.ipynb` is the source of truth for math, code, and figures.*

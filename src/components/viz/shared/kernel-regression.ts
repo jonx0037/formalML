@@ -681,3 +681,561 @@ export function splitConformalNw(
   }
   return { lower, upper, mean: mhatX, qHat };
 }
+
+// =============================================================================
+// LOCAL POLYNOMIAL REGRESSION (degree-p extension for the local-regression topic)
+//
+// Direct TypeScript ports of the verified Python helpers from
+//   notebooks/local-regression/01_local_regression.ipynb.
+// Verified by src/components/viz/shared/__tests__/verify-local-regression.ts
+// against the notebook's printed numerical outputs (Cells 21, 27, 31, 36, 47).
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Numerical integration — composite Simpson on [a, b] with N (even) panels.
+// Used for kernel-moment integrals and equivalent-kernel constants.
+//
+// For Gaussian K on [-8, 8] with N = 4000 panels, the integration error for
+// moments up to order 6 is well below 1e-12 — exceeds all verification
+// tolerances. For compact-support kernels, the natural [-1, 1] support is used.
+// -----------------------------------------------------------------------------
+
+function simpsonIntegrate(
+  f: (u: number) => number,
+  a: number,
+  b: number,
+  N: number = 2000,
+): number {
+  if (N % 2 !== 0) N += 1;
+  const h = (b - a) / N;
+  let s = f(a) + f(b);
+  for (let i = 1; i < N; i++) {
+    const x = a + i * h;
+    s += (i % 2 === 0 ? 2 : 4) * f(x);
+  }
+  return (s * h) / 3;
+}
+
+// Map kernel function reference to its natural integration domain, optionally
+// truncated on the left at -c (boundary case). The Gaussian is treated as
+// effectively bounded by ±8 (tail contribution < 1e-15); the four compact
+// kernels integrate exactly on [-min(c, 1), 1] ∩ support.
+function kernelDomain(K: KernelFn, c: number): [number, number] {
+  if (K === kGaussian) {
+    const lo = isFinite(c) ? Math.max(-c, -8) : -8;
+    return [lo, 8];
+  }
+  if (K === silvermanKernel) {
+    // Silverman kernel decays as exp(-|u|/√2); ±30 captures > 1 - 1e-9 of mass.
+    // Treated separately from compact kernels because its support is unbounded.
+    const lo = isFinite(c) ? Math.max(-c, -30) : -30;
+    return [lo, 30];
+  }
+  // Compact kernels: epanechnikov, box, triangular, quartic — support [-1, 1].
+  const lo = isFinite(c) ? Math.max(-Math.min(c, 1), -1) : -1;
+  return [lo, 1];
+}
+
+// -----------------------------------------------------------------------------
+// Linear-system solver — Gaussian elimination with partial pivoting.
+//
+// Used by the per-evaluation-point WLS solves in localPolynomial and the
+// moment-matrix inversion in equivalentKernel. The matrices are tiny
+// (typically (p+1)×(p+1) with p ≤ 5, so ≤ 6×6), making a generic solver more
+// robust than the existing choleskySolveInPlace which assumes SPD.
+// -----------------------------------------------------------------------------
+
+function solveLinearSystem(A: number[][], b: number[]): number[] {
+  const n = A.length;
+  // Augment [A | b] in a fresh matrix to avoid mutating inputs.
+  const M: number[][] = A.map((row, i) => [...row, b[i]]);
+  for (let k = 0; k < n; k++) {
+    // Partial pivot: find the row with max |M[i][k]| at or below k.
+    let pivotRow = k;
+    let pivotVal = Math.abs(M[k][k]);
+    for (let i = k + 1; i < n; i++) {
+      if (Math.abs(M[i][k]) > pivotVal) {
+        pivotVal = Math.abs(M[i][k]);
+        pivotRow = i;
+      }
+    }
+    if (pivotRow !== k) {
+      [M[k], M[pivotRow]] = [M[pivotRow], M[k]];
+    }
+    if (Math.abs(M[k][k]) < 1e-14) {
+      throw new Error(`solveLinearSystem: singular at row ${k}`);
+    }
+    // Eliminate.
+    for (let i = k + 1; i < n; i++) {
+      const factor = M[i][k] / M[k][k];
+      for (let j = k; j <= n; j++) M[i][j] -= factor * M[k][j];
+    }
+  }
+  // Back-substitute.
+  const x = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    let s = M[i][n];
+    for (let j = i + 1; j < n; j++) s -= M[i][j] * x[j];
+    x[i] = s / M[i][i];
+  }
+  return x;
+}
+
+// -----------------------------------------------------------------------------
+// Kernel moments and the equivalent kernel
+//
+//   mu_j^(c)(K)        = ∫_{-c}^{∞} u^j K(u) du
+//   S_p^(c)            = [mu_{j+k}^(c)(K)]_{j,k=0}^{p}    ((p+1)×(p+1) Hankel)
+//   K^*_p^(c)(u)       = e_1^T (S_p^(c))^{-1} (1, u, ..., u^p)^T K(u)
+//
+// The boundary parameter c controls truncation: c = ∞ gives interior moments
+// (full kernel mass); c = 0 gives the strict-boundary case (only u ≥ 0 mass).
+// -----------------------------------------------------------------------------
+
+export function kernelMoment(K: KernelFn, j: number, c: number = Infinity): number {
+  const [a, b] = kernelDomain(K, c);
+  return simpsonIntegrate((u) => Math.pow(u, j) * K(u), a, b, 4000);
+}
+
+export function kernelMomentMatrix(
+  K: KernelFn,
+  p: number,
+  c: number = Infinity,
+): number[][] {
+  const moments: number[] = [];
+  for (let j = 0; j <= 2 * p; j++) moments.push(kernelMoment(K, j, c));
+  const S: number[][] = [];
+  for (let j = 0; j <= p; j++) {
+    const row: number[] = [];
+    for (let k = 0; k <= p; k++) row.push(moments[j + k]);
+    S.push(row);
+  }
+  return S;
+}
+
+export function equivalentKernel(
+  K: KernelFn,
+  p: number,
+  c: number = Infinity,
+): KernelFn {
+  const S = kernelMomentMatrix(K, p, c);
+  const e1 = new Array(p + 1).fill(0);
+  e1[0] = 1;
+  // First row of S^{-1} ↔ S a = e_1 (since S is symmetric, S^T = S).
+  const a = solveLinearSystem(S, e1);
+  return (u: number) => {
+    let poly = 0;
+    let uk = 1;
+    for (let k = 0; k <= p; k++) {
+      poly += a[k] * uk;
+      uk *= u;
+    }
+    return poly * K(u);
+  };
+}
+
+// b_p^(c)(K) = ∫_{-c}^{∞} u^{p+1} K^*_p^(c)(u) du
+//            = "first surviving moment" of the equivalent kernel.
+// Drives the Ruppert–Wand (1994) leading-order bias formula.
+export function biasConstant(K: KernelFn, p: number, c: number = Infinity): number {
+  const Kstar = equivalentKernel(K, p, c);
+  const [a, b] = kernelDomain(K, c);
+  return simpsonIntegrate((u) => Math.pow(u, p + 1) * Kstar(u), a, b, 4000);
+}
+
+// R^*_p^(c)(K) = ∫_{-c}^{∞} K^*_p^(c)(u)^2 du
+//              — variance constant; grows with p as K^*_p becomes more oscillatory.
+export function varianceConstant(K: KernelFn, p: number, c: number = Infinity): number {
+  const Kstar = equivalentKernel(K, p, c);
+  const [a, b] = kernelDomain(K, c);
+  return simpsonIntegrate((u) => Kstar(u) * Kstar(u), a, b, 4000);
+}
+
+// Boundary-bias constant — alias for biasConstant with c = 0 default.
+export function boundaryBiasConstant(K: KernelFn, p: number, c: number = 0): number {
+  return biasConstant(K, p, c);
+}
+
+// -----------------------------------------------------------------------------
+// Local polynomial regression — degree-p WLS at each evaluation point.
+//
+// localPolynomialCoefs returns the full coefficient vector (p+1 entries per
+//   query) in the *unscaled* basis: beta_j ≈ m^(j)(x)/j!  for j = 0, ..., p.
+// localPolynomial is the function-value-only convenience wrapper.
+//
+// Implementation: per-query (p+1)×(p+1) Cholesky/Gaussian solve in scaled
+// coordinates u = (X_i - x)/h. The intercept beta_0 is invariant under this
+// rescaling; higher coefficients are rescaled on output: beta_j_unscaled =
+// beta_j_scaled / h^j (so that derivative readout m^(j) = j! · beta_j is
+// dimensionally correct).
+// -----------------------------------------------------------------------------
+
+export function localPolynomialCoefs(
+  X: Float64Array,
+  Y: Float64Array,
+  xEval: Float64Array,
+  h: number,
+  p: number,
+  K: KernelFn = kGaussian,
+): Float64Array {
+  // Returns flat row-major (G * (p+1)) — coefs for query g start at index g*(p+1).
+  const G = xEval.length;
+  const n = X.length;
+  const dim = p + 1;
+  const out = new Float64Array(G * dim);
+
+  // Hoist per-evaluation buffers outside the G-loop to eliminate G*n GC churn
+  // on slider-driven hot paths (catches PR #80 perf review feedback).
+  const A: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+  const bv = new Array(dim).fill(0);
+  const phi = new Array(dim);
+
+  for (let g = 0; g < G; g++) {
+    const xg = xEval[g];
+    for (let r = 0; r < dim; r++) A[r].fill(0);
+    bv.fill(0);
+    for (let i = 0; i < n; i++) {
+      const u = (X[i] - xg) / h;
+      const w = K(u) / h;
+      // phi[k] = u^k.
+      let uk = 1;
+      for (let k = 0; k < dim; k++) {
+        phi[k] = uk;
+        uk *= u;
+      }
+      for (let r = 0; r < dim; r++) {
+        bv[r] += w * phi[r] * Y[i];
+        for (let s = 0; s < dim; s++) {
+          A[r][s] += w * phi[r] * phi[s];
+        }
+      }
+    }
+    let beta: number[];
+    try {
+      beta = solveLinearSystem(A, bv);
+    } catch {
+      for (let k = 0; k < dim; k++) out[g * dim + k] = NaN;
+      continue;
+    }
+    // Rescale to unscaled basis.
+    for (let k = 0; k < dim; k++) {
+      out[g * dim + k] = beta[k] / Math.pow(h, k);
+    }
+  }
+  return out;
+}
+
+export function localPolynomial(
+  X: Float64Array,
+  Y: Float64Array,
+  xEval: Float64Array,
+  h: number,
+  p: number,
+  K: KernelFn = kGaussian,
+): Float64Array {
+  const coefs = localPolynomialCoefs(X, Y, xEval, h, p, K);
+  const dim = p + 1;
+  const G = xEval.length;
+  const out = new Float64Array(G);
+  for (let g = 0; g < G; g++) out[g] = coefs[g * dim + 0];
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Smoother-matrix diagonal at degree p
+//
+//   H_ii = K(0)/h * [(X_{X_i}^T W_{X_i} X_{X_i})^{-1}]_{0, 0}
+//
+// At evaluation point x = X_i, the (i, i) self-influence is the weighted
+// influence of observation i on its own fit. The trace ∑ H_ii is the
+// "effective degrees of freedom" of the local-polynomial smoother — used by
+// LOO-CV and GCV at general p (matrix-free version below).
+// -----------------------------------------------------------------------------
+
+export function smootherDiagonal(
+  X: Float64Array,
+  h: number,
+  p: number,
+  K: KernelFn = kGaussian,
+): Float64Array {
+  const n = X.length;
+  const dim = p + 1;
+  const out = new Float64Array(n);
+  const K0overH = K(0) / h;
+  // Hoist per-i buffers outside the n-loop (PR #80 perf review).
+  const A: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+  const phi = new Array(dim);
+  const e1 = new Array(dim).fill(0);
+  e1[0] = 1;
+  for (let i = 0; i < n; i++) {
+    const xi = X[i];
+    for (let r = 0; r < dim; r++) A[r].fill(0);
+    for (let j = 0; j < n; j++) {
+      const u = (X[j] - xi) / h;
+      const w = K(u) / h;
+      let uk = 1;
+      for (let k = 0; k < dim; k++) {
+        phi[k] = uk;
+        uk *= u;
+      }
+      for (let r = 0; r < dim; r++) {
+        for (let s = 0; s < dim; s++) A[r][s] += w * phi[r] * phi[s];
+      }
+    }
+    // Solve A·v = e_1 and pick v[0]; then H_ii = K(0)/h · v[0].
+    let v: number[];
+    try {
+      v = solveLinearSystem(A, e1);
+    } catch {
+      out[i] = NaN;
+      continue;
+    }
+    out[i] = K0overH * v[0];
+  }
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// LOO-CV and GCV at degree p — closed-form via the smoother diagonal
+//
+// LOO closed form (Hastie–Tibshirani 1990): for any linear smoother,
+//   Y_i - hat m^(-i)(X_i) = (Y_i - hat m(X_i)) / (1 - H_ii).
+// At p > 0, H_ii is computed via smootherDiagonal (not the simple K(0)/sum_j W_ij
+// shortcut that works for NW only).
+// -----------------------------------------------------------------------------
+
+export function localPolynomialLooCv(
+  X: Float64Array,
+  Y: Float64Array,
+  h: number,
+  p: number,
+  K: KernelFn = kGaussian,
+): number {
+  const n = X.length;
+  const fit = localPolynomial(X, Y, X, h, p, K);
+  const diag = smootherDiagonal(X, h, p, K);
+  let acc = 0;
+  for (let i = 0; i < n; i++) {
+    const denom = 1 - diag[i];
+    if (denom === 0) return Infinity;
+    const r = (Y[i] - fit[i]) / denom;
+    acc += r * r;
+  }
+  return acc / n;
+}
+
+export function localPolynomialGcv(
+  X: Float64Array,
+  Y: Float64Array,
+  h: number,
+  p: number,
+  K: KernelFn = kGaussian,
+): number {
+  const n = X.length;
+  const fit = localPolynomial(X, Y, X, h, p, K);
+  const diag = smootherDiagonal(X, h, p, K);
+  let rss = 0;
+  let trS = 0;
+  for (let i = 0; i < n; i++) {
+    const r = Y[i] - fit[i];
+    rss += r * r;
+    trS += diag[i];
+  }
+  const mse = rss / n;
+  const denom = (1 - trS / n) ** 2;
+  return denom > 0 ? mse / denom : Infinity;
+}
+
+// -----------------------------------------------------------------------------
+// Silverman's equivalent variable kernel (Silverman 1984, Theorem 5)
+//
+//   K_S(u) = (1/2) exp(-|u|/√2) sin(|u|/√2 + π/4)
+//
+// Fourth-order kernel — matches K^*_3 (the local-cubic equivalent kernel)
+// in moments: ∫ K_S = 1, ∫ u^j K_S = 0 for j = 1, 2, 3, ∫ u^4 K_S ≠ 0.
+// Drives the asymptotic equivalence between cubic smoothing splines and
+// local-cubic regression in §10.
+// -----------------------------------------------------------------------------
+
+export function silvermanKernel(u: number): number {
+  const a = Math.abs(u);
+  const r = a / Math.SQRT2;
+  return 0.5 * Math.exp(-r) * Math.sin(r + Math.PI / 4);
+}
+
+// -----------------------------------------------------------------------------
+// Multivariate local polynomial (degree-p in R^d via polynomial-feature design)
+//
+// Generates multi-indices α ∈ N^d with |α| ≤ p, builds the design row
+// φ_α(X_i - x) = ∏_j (X_{ij} - x_j)^{α_j} for each evaluation point, and
+// solves the (M × M) WLS where M = C(d+p, p). Default kernel is the isotropic
+// Gaussian product with per-coordinate bandwidths H[j].
+//
+// X is row-major flat: X[i*d + j] = i-th sample's j-th coordinate (length n*d).
+// xEval is row-major flat: xEval[g*d + j] = g-th query's j-th coordinate (length G*d).
+// -----------------------------------------------------------------------------
+
+function multiIndices(d: number, p: number): number[][] {
+  // All α ∈ N^d with α_1 + ... + α_d ≤ p, in lex order with (0,...,0) first.
+  const result: number[][] = [];
+  function recurse(prefix: number[], remaining: number, depth: number) {
+    if (depth === d) {
+      result.push([...prefix]);
+      return;
+    }
+    for (let k = 0; k <= remaining; k++) {
+      prefix.push(k);
+      recurse(prefix, remaining - k, depth + 1);
+      prefix.pop();
+    }
+  }
+  recurse([], p, 0);
+  return result;
+}
+
+export function localPolynomialMd(
+  X: Float64Array,
+  Y: Float64Array,
+  xEval: Float64Array,
+  H: number[],
+  p: number,
+): Float64Array {
+  const d = H.length;
+  const n = Y.length;
+  const G = xEval.length / d;
+  const indices = multiIndices(d, p);
+  const M = indices.length;
+  const out = new Float64Array(G);
+
+  // Constant kernel-normalization factor: (2π)^{-d/2} / ∏H_j.
+  let prodH = 1;
+  for (let j = 0; j < d; j++) prodH *= H[j];
+  const kernelNorm = 1 / (Math.pow(2 * Math.PI, d / 2) * prodH);
+
+  // Hoist per-(g, i) buffers outside the loops — multivariate is the most
+  // allocation-heavy of the four hot paths (PR #80 perf review).
+  const A: number[][] = Array.from({ length: M }, () => new Array(M).fill(0));
+  const bv = new Array(M).fill(0);
+  const diff = new Array(d);
+  const phi = new Array(M);
+
+  for (let g = 0; g < G; g++) {
+    for (let r = 0; r < M; r++) A[r].fill(0);
+    bv.fill(0);
+    for (let i = 0; i < n; i++) {
+      // Per-coordinate scaled diff and Gaussian weight.
+      let logW = 0;
+      for (let j = 0; j < d; j++) {
+        const dij = X[i * d + j] - xEval[g * d + j];
+        diff[j] = dij;
+        const uj = dij / H[j];
+        logW -= 0.5 * uj * uj;
+      }
+      const w = kernelNorm * Math.exp(logW);
+      // Design row in *unscaled* basis: φ_α = ∏_j (X_{ij} - x_{gj})^{α_j}.
+      for (let m = 0; m < M; m++) {
+        let val = 1;
+        const alpha = indices[m];
+        for (let j = 0; j < d; j++) {
+          if (alpha[j] > 0) val *= Math.pow(diff[j], alpha[j]);
+        }
+        phi[m] = val;
+      }
+      for (let r = 0; r < M; r++) {
+        bv[r] += w * phi[r] * Y[i];
+        for (let s = 0; s < M; s++) {
+          A[r][s] += w * phi[r] * phi[s];
+        }
+      }
+    }
+    let beta: number[];
+    try {
+      beta = solveLinearSystem(A, bv);
+    } catch {
+      out[g] = NaN;
+      continue;
+    }
+    // The constant multi-index (0,...,0) is at position 0 → β_0 is the function-value estimate.
+    out[g] = beta[0];
+  }
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Backfitting GAM (Friedman & Stuetzle 1981; Buja, Hastie & Tibshirani 1989)
+//
+// Iteratively smooth partial residuals against each coordinate via a univariate
+// local polynomial of degree p. Convergence: max ‖m̂_j^{new} - m̂_j^{old}‖_∞ < tol.
+//
+// Returns alpha (intercept), components (n × d, evaluated at design points),
+// iteration count, and the per-iteration max-component-change history (used by
+// the §11 backfitting-convergence figure).
+// -----------------------------------------------------------------------------
+
+export interface BackfitGamResult {
+  alpha: number;
+  components: number[][];   // n × d row-major: components[i][j] = m̂_j(X_{ij})
+  iterations: number;
+  history: number[];        // max-component-change per iteration
+}
+
+export function backfitGam(
+  X: Float64Array,
+  Y: Float64Array,
+  d: number,
+  h: number,
+  p: number,
+  K: KernelFn = kGaussian,
+  tol: number = 1e-5,
+  maxIter: number = 50,
+): BackfitGamResult {
+  const n = Y.length;
+  // Initialize alpha = mean(Y), components = 0.
+  let alpha = 0;
+  for (let i = 0; i < n; i++) alpha += Y[i];
+  alpha /= n;
+  const components: number[][] = Array.from({ length: n }, () => new Array(d).fill(0));
+  const history: number[] = [];
+
+  // Cache per-coordinate design vectors.
+  const xCols: Float64Array[] = [];
+  for (let j = 0; j < d; j++) {
+    const col = new Float64Array(n);
+    for (let i = 0; i < n; i++) col[i] = X[i * d + j];
+    xCols.push(col);
+  }
+
+  // Hoist the partial-residual buffer outside the iter and j loops
+  // (PR #80 perf review).
+  const rj = new Float64Array(n);
+  for (let iter = 0; iter < maxIter; iter++) {
+    let maxDelta = 0;
+    for (let j = 0; j < d; j++) {
+      // Partial residual against coordinate j.
+      for (let i = 0; i < n; i++) {
+        let s = Y[i] - alpha;
+        for (let k = 0; k < d; k++) if (k !== j) s -= components[i][k];
+        rj[i] = s;
+      }
+      // Smooth r^(j) against X_{·,j} via local polynomial.
+      const fit = localPolynomial(xCols[j], rj, xCols[j], h, p, K);
+      // Center: subtract the mean to enforce E[m̂_j(X_j)] ≈ 0.
+      let mean = 0;
+      for (let i = 0; i < n; i++) mean += fit[i];
+      mean /= n;
+      let delta = 0;
+      for (let i = 0; i < n; i++) {
+        const newVal = fit[i] - mean;
+        const change = Math.abs(newVal - components[i][j]);
+        if (change > delta) delta = change;
+        components[i][j] = newVal;
+      }
+      if (delta > maxDelta) maxDelta = delta;
+    }
+    history.push(maxDelta);
+    if (maxDelta < tol) {
+      return { alpha, components, iterations: iter + 1, history };
+    }
+  }
+  return { alpha, components, iterations: maxIter, history };
+}
