@@ -1,0 +1,1297 @@
+---
+title: "Kernel Regression"
+subtitle: "Nonparametric estimation of conditional means via the Nadaraya–Watson estimator — bias-variance decomposition with the design-density correction, AMISE-optimal bandwidth selection, the curse of dimensionality at higher d, and the local-linear fix for boundary bias."
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "concentration-inequalities"
+formalstatisticsPrereqs:
+  - topic: "kernel-density-estimation"
+    site: "formalstatistics"
+    relationship: "The §3 bias and §4 variance derivations are direct lifts of the kernel-density-estimation machinery applied to the conditional-mean ratio m̂_h(x) = r̂(x)/f̂_X(x). Same kernel moment conditions (∫K = 1, ∫uK = 0, ∫u²K = μ_2), same h² bias / 1/(nh) variance rates, and the Silverman bandwidth heuristic in §5.1 is the kernel-density-estimation rule applied directly."
+  - topic: "linear-regression"
+    site: "formalstatistics"
+    relationship: "The §2.3 reframing of NW as degree-zero local polynomial regression draws directly on weighted-least-squares theory from linear regression. The §8.2 local-linear extension is locally-weighted OLS with two parameters (intercept + slope); its WLS solution generalizes the single-coefficient form via the kernel-weighted normal equations."
+formalcalculusPrereqs:
+  - topic: "multiple-integrals"
+    site: "formalcalculus"
+    relationship: "The bias-variance asymptotics in §3-§4 integrate the kernel against the design density f_X(x) dx on the support of X. The change-of-variables substitution u = (z-x)/h used throughout §3.2 and the d-dimensional volume scaling h^d in §6.3 are standard multivariate-integration moves; the §6.1 product kernel R(K) = R(K_1)^d uses Fubini."
+  - topic: "mean-value-taylor"
+    site: "formalcalculus"
+    relationship: "The §3.2 second-order Taylor expansion of f_X(x+hu) and g(x+hu) = m(x+hu)f_X(x+hu) around x, with explicit h² remainder term, is the load-bearing technical move of the entire bias derivation. The §6.3 multivariate version uses the same expansion with the Hessian ∇²m replacing the second derivative. §8.2's local-linear bias also leans on Taylor."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "supervised-learning"
+  - "nonparametric-regression"
+  - "kernel-methods"
+  - "nadaraya-watson"
+  - "bandwidth-selection"
+  - "curse-of-dimensionality"
+  - "local-linear-regression"
+  - "kernel-ridge-regression"
+  - "cross-validation"
+  - "conformal-prediction"
+  - "machine-learning"
+domain: "supervised-learning"
+videoId: null
+notebookPath: "notebooks/kernel-regression/01_kernel_regression.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/kernel-regression.mdx"
+datePublished: 2026-05-09
+estimatedReadTime: 50
+abstract: "Kernel regression estimates the conditional mean function m(x) = E[Y | X = x] from iid pairs (X_i, Y_i) without assuming a parametric form for m. The Nadaraya–Watson estimator is the central object — a kernel-weighted average of Y values whose bandwidth controls the smoothing. We work through the full bias-variance machinery: the second-order Taylor expansion that produces an h² bias with a design-density correction term f_X'(x)/f_X(x), the variance scaling 1/(nh) controlled by the kernel-second-moment integral R(K), the AMISE-optimal bandwidth h* ≍ n^(-1/(4+d)), and the curse-of-dimensionality rate AMISE(h*) ≍ n^(-4/(4+d)) that limits naive kernel methods at d ≥ 10. We compare four bandwidth selectors on the §1 toy (Silverman, plug-in, leave-one-out CV, GCV), verify Marron–Nolan's canonical-kernel theorem that makes kernel choice a calibration on h, and derive the local-linear extension that fixes the O(h) boundary-bias degradation back to uniform O(h²). The topic closes by placing kernel regression in its broader family — kernel ridge regression as the RKHS counterpart, GP regression as the Bayesian counterpart, semi-parametric inference as the standard ML application, conformal prediction for distribution-free intervals — and forward-points to T2's local-regression and density-ratio-estimation topics that build on the same kernel substrate."
+connections:
+  - topic: "concentration-inequalities"
+    relationship: "Direct prerequisite for the convergence-rate machinery. The §3 bias and §4 variance derivations are stated to leading order, but the rigorous version (uniform consistency) requires concentration-inequality bounds for the kernel-weighted partial sums. concentration-inequalities provides the Hoeffding/Bernstein machinery that justifies the leading-order approximations used throughout §3-§6."
+  - topic: "gaussian-processes"
+    relationship: "GP regression's posterior mean is identical to KRR with λ = σ². §9.1-9.2 develop the connection: NW is the kernel-weighted-average sibling of GP/KRR; both use the same kernel families (RBF, Matérn, etc.) but differ in how the weights are computed. §9.2 forwards readers to the gaussian-processes topic for the full Bayesian treatment."
+  - topic: "conformal-prediction"
+    relationship: "§9.4 implements split conformal prediction with NW as the base estimator on the §1 toy and verifies the marginal-coverage guarantee empirically. Conformal prediction's distribution-free finite-sample guarantee complements NW's asymptotic-normality CI from §4.4. The kernel-regression topic provides the natural base estimator for conformal prediction's smoothing step."
+references:
+  - type: paper
+    authors: "Hodges, J. L., Jr. & Lehmann, E. L."
+    title: "The efficiency of some nonparametric competitors of the t-test"
+    year: 1956
+    venue: "Annals of Mathematical Statistics 27(2), 324–335"
+    url: "https://doi.org/10.1214/aoms/1177728261"
+  - type: paper
+    authors: "Nadaraya, E. A."
+    title: "On estimating regression"
+    year: 1964
+    venue: "Theory of Probability and Its Applications 9(1), 141–142"
+    url: "https://doi.org/10.1137/1109020"
+  - type: paper
+    authors: "Watson, G. S."
+    title: "Smooth regression analysis"
+    year: 1964
+    venue: "Sankhyā: The Indian Journal of Statistics, Series A 26(4), 359–372"
+    url: "https://www.jstor.org/stable/25049340"
+  - type: paper
+    authors: "Epanechnikov, V. A."
+    title: "Non-parametric estimation of a multivariate probability density"
+    year: 1969
+    venue: "Theory of Probability and Its Applications 14(1), 153–158"
+    url: "https://doi.org/10.1137/1114019"
+  - type: paper
+    authors: "Craven, P. & Wahba, G."
+    title: "Smoothing noisy data with spline functions: estimating the correct degree of smoothing by the method of generalized cross-validation"
+    year: 1979
+    venue: "Numerische Mathematik 31(4), 377–403"
+    url: "https://doi.org/10.1007/BF01404567"
+  - type: paper
+    authors: "Stone, C. J."
+    title: "Optimal rates of convergence for nonparametric estimators"
+    year: 1980
+    venue: "Annals of Statistics 8(6), 1348–1360"
+    url: "https://doi.org/10.1214/aos/1176345206"
+  - type: paper
+    authors: "Stone, C. J."
+    title: "Optimal global rates of convergence for nonparametric regression"
+    year: 1982
+    venue: "Annals of Statistics 10(4), 1040–1053"
+    url: "https://doi.org/10.1214/aos/1176345969"
+  - type: paper
+    authors: "Härdle, W. & Marron, J. S."
+    title: "Optimal bandwidth selection in nonparametric regression function estimation"
+    year: 1985
+    venue: "Annals of Statistics 13(4), 1465–1481"
+    url: "https://doi.org/10.1214/aos/1176349749"
+  - type: book
+    authors: "Silverman, B. W."
+    title: "Density Estimation for Statistics and Data Analysis"
+    year: 1986
+    venue: "Chapman & Hall"
+    url: "https://doi.org/10.1201/9781315140919"
+  - type: paper
+    authors: "Marron, J. S. & Nolan, D."
+    title: "Canonical kernels for density estimation"
+    year: 1988
+    venue: "Statistics & Probability Letters 7(3), 195–199"
+    url: "https://doi.org/10.1016/0167-7152(88)90050-8"
+  - type: paper
+    authors: "Robinson, P. M."
+    title: "Root-N-consistent semiparametric regression"
+    year: 1988
+    venue: "Econometrica 56(4), 931–954"
+    url: "https://doi.org/10.2307/1912705"
+  - type: book
+    authors: "Härdle, W."
+    title: "Applied Nonparametric Regression"
+    year: 1990
+    venue: "Cambridge University Press"
+    url: "https://doi.org/10.1017/CCOL0521382483"
+  - type: paper
+    authors: "Hall, P. & Marron, J. S."
+    title: "Local minima in cross-validation functions"
+    year: 1991
+    venue: "Journal of the Royal Statistical Society Series B 53(1), 245–252"
+    url: "https://doi.org/10.1111/j.2517-6161.1991.tb01821.x"
+  - type: paper
+    authors: "Fan, J."
+    title: "Design-adaptive nonparametric regression"
+    year: 1992
+    venue: "Journal of the American Statistical Association 87(420), 998–1004"
+    url: "https://doi.org/10.1080/01621459.1992.10476255"
+  - type: paper
+    authors: "Ruppert, D. & Wand, M. P."
+    title: "Multivariate locally weighted least squares regression"
+    year: 1994
+    venue: "Annals of Statistics 22(3), 1346–1370"
+    url: "https://doi.org/10.1214/aos/1176325632"
+  - type: paper
+    authors: "Ruppert, D., Sheather, S. J. & Wand, M. P."
+    title: "An effective bandwidth selector for local least squares regression"
+    year: 1995
+    venue: "Journal of the American Statistical Association 90(432), 1257–1270"
+    url: "https://doi.org/10.1080/01621459.1995.10476630"
+  - type: book
+    authors: "Wand, M. P. & Jones, M. C."
+    title: "Kernel Smoothing"
+    year: 1995
+    venue: "Chapman & Hall"
+    url: "https://doi.org/10.1201/b14876"
+  - type: book
+    authors: "Fan, J. & Gijbels, I."
+    title: "Local Polynomial Modelling and Its Applications"
+    year: 1996
+    venue: "Chapman & Hall"
+    url: "https://doi.org/10.1201/9780203748725"
+  - type: paper
+    authors: "Williams, C. K. I. & Seeger, M."
+    title: "Using the Nyström method to speed up kernel machines"
+    year: 2001
+    venue: "Advances in Neural Information Processing Systems 13, 682–688"
+    url: "https://proceedings.neurips.cc/paper/2000/hash/19de10adbaa1b2ee13f77f679fa1483a-Abstract.html"
+  - type: book
+    authors: "Vovk, V., Gammerman, A. & Shafer, G."
+    title: "Algorithmic Learning in a Random World"
+    year: 2005
+    venue: "Springer"
+    url: "https://doi.org/10.1007/b106715"
+  - type: paper
+    authors: "Rahimi, A. & Recht, B."
+    title: "Random features for large-scale kernel machines"
+    year: 2007
+    venue: "Advances in Neural Information Processing Systems 20, 1177–1184"
+    url: "https://proceedings.neurips.cc/paper/2007/hash/013a006f03dbc5392effeb8f18fda755-Abstract.html"
+  - type: paper
+    authors: "Sugiyama, M., Suzuki, T., Nakajima, S., Kashima, H., von Bünau, P. & Kawanabe, M."
+    title: "Direct importance estimation for covariate shift adaptation"
+    year: 2008
+    venue: "Annals of the Institute of Statistical Mathematics 60(4), 699–746"
+    url: "https://doi.org/10.1007/s10463-008-0197-x"
+  - type: paper
+    authors: "Kanamori, T., Hido, S. & Sugiyama, M."
+    title: "A least-squares approach to direct importance estimation"
+    year: 2009
+    venue: "Journal of Machine Learning Research 10, 1391–1445"
+    url: "https://www.jmlr.org/papers/v10/kanamori09a.html"
+  - type: book
+    authors: "Tsybakov, A. B."
+    title: "Introduction to Nonparametric Estimation"
+    year: 2009
+    venue: "Springer"
+    url: "https://doi.org/10.1007/b13794"
+  - type: paper
+    authors: "Lei, J., G'Sell, M., Rinaldo, A., Tibshirani, R. J. & Wasserman, L."
+    title: "Distribution-free predictive inference for regression"
+    year: 2018
+    venue: "Journal of the American Statistical Association 113(523), 1094–1111"
+    url: "https://doi.org/10.1080/01621459.2017.1307116"
+  - type: paper
+    authors: "Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W. & Robins, J."
+    title: "Double/debiased machine learning for treatment and structural parameters"
+    year: 2018
+    venue: "Econometrics Journal 21(1), C1–C68"
+    url: "https://doi.org/10.1111/ectj.12097"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import LocalAveragingExplorer from '../../components/viz/LocalAveragingExplorer.tsx';
+import NadarayaWatsonBandwidthExplorer from '../../components/viz/NadarayaWatsonBandwidthExplorer.tsx';
+import BiasVarianceMonteCarloExplorer from '../../components/viz/BiasVarianceMonteCarloExplorer.tsx';
+import AmiseUCurveExplorer from '../../components/viz/AmiseUCurveExplorer.tsx';
+import BandwidthSelectorComparison from '../../components/viz/BandwidthSelectorComparison.tsx';
+import CurseOfDimensionalityExplorer from '../../components/viz/CurseOfDimensionalityExplorer.tsx';
+import KernelShapePicker from '../../components/viz/KernelShapePicker.tsx';
+import BoundaryBiasDiagnostic from '../../components/viz/BoundaryBiasDiagnostic.tsx';
+
+## 1. From parametric to nonparametric: the local-averaging idea
+
+This section motivates kernel regression by showing that parametric assumptions fail badly when the shape of $m(x) = \mathbb{E}[Y \mid X = x]$ is genuinely unknown. We introduce the synthetic toy that runs through the topic, walk through the local-averaging intuition geometrically, and motivate why a smooth kernel weight is preferable to a hard-edged box. No algebra yet — that arrives with the Nadaraya–Watson estimator in §2.
+
+### 1.1 The regression problem when shape is unknown
+
+We observe $n$ iid pairs $(X_i, Y_i) \in \mathbb{R}^d \times \mathbb{R}$ for $i = 1, \dots, n$, drawn from a joint distribution with marginal density $f_X$ for $X$ and conditional mean function
+
+$$
+m(x) = \mathbb{E}[Y \mid X = x].
+$$
+
+The regression problem is to estimate $m$ from the sample. Parametric regression assumes $m$ lives in some finite-dimensional family — affine in $x$, polynomial of fixed degree, additive across coordinates, and so on. If the assumption holds, parametric estimators are efficient: they converge at the parametric rate $n^{-1/2}$, and standard inference machinery just works. If it fails, the estimator is biased in a way that doesn't go away with more data; we'd be efficiently converging to the wrong answer.
+
+The whole topic runs on the toy
+
+$$
+X \sim \text{Uniform}(0, 1), \qquad m(x) = \sin(2\pi x) + x/2, \qquad Y = m(X) + \varepsilon, \qquad \varepsilon \sim \mathcal{N}(0, 0.2^2),
+$$
+
+with $n = 200$. The figure below scatters the data and overlays three polynomial fits — degree-1, degree-3, degree-7. Low degrees underfit the sinusoid, the high-degree fit over-oscillates at the boundaries (a preview of the Runge phenomenon and the boundary-bias story we revisit in §8). None of them gets the shape right uniformly.
+
+<Figure
+  src="/images/topics/kernel-regression/01_parametric_misspecification.png"
+  alt="Three polynomial fits (degree 1, 3, 7) overlaid on the §1 toy scatter, with the true sinusoidal m(x) shown for reference."
+  caption="The parametric-misspecification trap on the §1 toy. Degree-1 underfits the sinusoid, degree-3 captures most of the curvature, and degree-7 over-oscillates near the boundaries — none recovers the shape uniformly. Without committing to a global parametric family, we need a local-averaging approach."
+/>
+
+### 1.2 What "local averaging" means geometrically
+
+If we don't know the shape of $m$ globally, we can still use a weak local assumption: $m$ is continuous (or smoother), so observations whose $X_i$ sits close to a target $x_0$ should carry $Y_i$ values close to $m(x_0)$ on average. The basic idea behind every kernel-smoothing method falls out of this — to estimate $m(x_0)$, average the $Y_i$ values for which $X_i$ is "near" $x_0$. The noise mostly cancels and what's left is approximately $m(x_0)$.
+
+The simplest "near" predicate is the box: include $X_i$ in the average when $|X_i - x_0| \le h_0$ for some half-width $h_0$. This gives the **box-average estimator**.
+
+<TheoremBlock type="example" number={1} title="Box-average estimator">
+For a target point $x_0$ and bandwidth $h_0 > 0$, the box-average estimator of $m(x_0)$ is
+
+$$
+\hat m_{\text{box}}(x_0) = \frac{\sum_{i=1}^{n} Y_i \,\mathbb{I}\{|X_i - x_0| \le h_0\}}{\sum_{i=1}^{n} \mathbb{I}\{|X_i - x_0| \le h_0\}},
+$$
+
+where $\mathbb{I}\{\cdot\}$ is the indicator function (1 when the condition holds, 0 otherwise). The estimator averages the $Y_i$ values whose $X_i$ falls inside $[x_0 - h_0,\; x_0 + h_0]$.
+</TheoremBlock>
+
+The viz below lets you drag the target $x_0$ along the support and adjust the band half-width $h_0$. The highlighted points (orange) are the in-band observations whose $Y$ values get averaged; the blue segment marks $\hat m_{\text{box}}(x_0)$ and the red ring marks the true $m(x_0)$. When the band is small enough that $m$ is nearly constant inside it but wide enough to contain enough points, the average lands close to $m(x_0)$.
+
+<LocalAveragingExplorer client:visible />
+
+<Figure
+  src="/images/topics/kernel-regression/02_local_averaging_three_snapshots.png"
+  alt="Three snapshots of the box-average estimator at x_0 in {0.2, 0.5, 0.8} with h_0 = 0.05, showing the in-band points highlighted, the local average, and the true m(x_0) for each."
+  caption="Static counterpart of the viz above: three snapshots at x₀ ∈ {0.2, 0.5, 0.8} with h₀ = 0.05. At each target point, the box average sits within one standard error of m(x₀) — the simplest realization of the local-averaging idea."
+/>
+
+This is the core idea. The next subsection points out where it falls short and what to do about it.
+
+### 1.3 From boxes to kernels: why we don't just bin
+
+The box-average estimator from §1.2 has two problems that motivate the kernel approach.
+
+**Problem 1: Discontinuity.** As the target $x_0$ slides smoothly across the support, individual observations enter and leave the band abruptly. Each entry or exit shifts the local average by a discrete amount. The resulting $x_0 \mapsto \hat m_{\text{box}}(x_0)$ curve is visibly jagged even though the underlying $m$ is smooth — we've imposed our own discontinuity onto the estimator through the indicator function.
+
+**Problem 2: Information loss at the band edge.** Within the band, the box treats every observation as equally relevant. A point at $X_i = x_0 + h_0 - \epsilon$ contributes the same weight as one at $X_i = x_0$, even though the latter is far more informative about $m(x_0)$ when $m$ is continuous. The "closer is more informative" intuition we used to motivate local averaging is precisely what the box discards.
+
+Both problems have the same fix. Replace the indicator $\mathbb{I}\{|X_i - x_0| \le h_0\}$ with a smooth, decreasing weight function $K\!\left(\frac{X_i - x_0}{h}\right)$ — a **kernel**. The kernel returns a high value when $X_i$ is close to $x_0$, a low value when $X_i$ is far, and varies continuously in between. The estimator inherits the kernel's smoothness in $x_0$ (problem 1 fixed) and observations are weighted by proximity rather than treated as equivalent (problem 2 fixed).
+
+<Figure
+  src="/images/topics/kernel-regression/03_box_vs_kernel.png"
+  alt="Box-average smoother (jagged) vs Gaussian-kernel-weighted smoother (smooth) on the §1 toy at matched effective bandwidth."
+  caption="Box-average vs Gaussian-kernel-weighted average over the same toy at matched effective bandwidth. The box smoother is visibly jaggier (total variation 3.97 vs 3.37 for the Gaussian) — a consequence of in-band/out-of-band membership flipping discretely as x₀ slides."
+/>
+
+This sets up §2, where we make the kernel-weight idea precise — the moment conditions a kernel must satisfy, the resulting Nadaraya–Watson formula, and its closed-form expression as a degree-zero local polynomial regression.
+
+## 2. The Nadaraya–Watson estimator
+
+This section formalizes the kernel-weighting idea from §1.3. We define the kernel function via four standard moment conditions, derive the Nadaraya–Watson estimator two ways — as a plug-in conditional-mean estimator (ratio of joint and marginal density estimates) and as a locally-weighted least-squares solution — and show the two derivations agree. The locally-weighted-OLS view is what makes §8's local-linear extension natural.
+
+### 2.1 Kernel functions and their four moment conditions
+
+<TheoremBlock type="definition" number={1} title="Kernel">
+A (one-dimensional, second-order) **kernel** is a function $K: \mathbb{R} \to \mathbb{R}$ satisfying:
+
+1. **Nonnegativity and symmetry:** $K(u) \ge 0$ for all $u$, and $K(-u) = K(u)$.
+2. **Normalization:** $\int_{-\infty}^{\infty} K(u)\, du = 1$.
+3. **Zero first moment:** $\int u\, K(u)\, du = 0$. (This follows from symmetry but is worth stating separately — it's what makes the leading-order bias term in §3 quadratic in $h$ rather than linear.)
+4. **Finite second moment:** $\mu_2(K) := \int u^2\, K(u)\, du < \infty$.
+
+A fifth quantity used repeatedly is the **kernel-second-moment integral** $R(K) := \int K(u)^2\, du < \infty$, which controls the variance term in the AMISE.
+</TheoremBlock>
+
+The rescaled kernel is
+
+$$
+K_h(u) := \frac{1}{h}\, K\!\left(\frac{u}{h}\right),
+$$
+
+so that $\int K_h(u)\, du = 1$ for any bandwidth $h > 0$. We write the NW estimator using either $K_h(\cdot)$ or the explicit form $K(\cdot/h)/h$ depending on which is cleaner in context.
+
+Five kernels appear throughout the topic — Gaussian, Epanechnikov, box (uniform), triangular, quartic. We compare them systematically in §7. The figure below introduces the cast and tabulates $\mu_2(K)$ and $R(K)$ for each.
+
+<Figure
+  src="/images/topics/kernel-regression/04_standard_kernels.png"
+  alt="The five standard kernels (Gaussian, Epanechnikov, box, triangular, quartic) overlaid on u in [-3, 3]."
+  caption="The five standard one-dimensional kernels. Gaussian has unbounded support and tails decay faster than any polynomial; the other four have compact support [−1, 1]. Their second moments and squared-norms differ by constants that drive the §7 canonical-kernel theorem."
+/>
+
+### 2.2 The NW formula as a closed-form weighted average
+
+<TheoremBlock type="definition" number={2} title="Nadaraya–Watson estimator">
+The Nadaraya (1964) / Watson (1964) estimator of $m(x) = \mathbb{E}[Y \mid X = x]$ is
+
+$$
+\hat m_h(x) = \frac{\sum_{i=1}^{n} K_h(X_i - x)\, Y_i}{\sum_{i=1}^{n} K_h(X_i - x)} = \frac{\sum_{i=1}^{n} K\!\left(\frac{X_i - x}{h}\right)\, Y_i}{\sum_{i=1}^{n} K\!\left(\frac{X_i - x}{h}\right)}.
+$$
+</TheoremBlock>
+
+The cleanest derivation is as a plug-in estimator. The conditional mean factors as
+
+$$
+m(x) = \mathbb{E}[Y \mid X = x] = \int y \cdot \frac{f_{X,Y}(x, y)}{f_X(x)}\, dy.
+$$
+
+Replace the unknown densities by their kernel density estimates:
+
+$$
+\hat f_X(x) = \frac{1}{n} \sum_{i=1}^{n} K_h(X_i - x), \qquad
+\hat f_{X,Y}(x, y) = \frac{1}{n} \sum_{i=1}^{n} K_h(X_i - x)\, K_h(y - Y_i),
+$$
+
+and integrate $y$ against $\hat f_{X,Y} / \hat f_X$. Using the kernel's first-moment condition — $\int u\, K(u)\, du = 0$ implies $\int v\, K_h(v)\, dv = 0$, and a change of variables $v = y - Y_i$ gives $\int y\, K_h(y - Y_i)\, dy = Y_i$ — the integral collapses to the ratio above. NW is exactly the plug-in version of $\mathbb{E}[Y \mid X = x]$ where the joint density is replaced by its KDE.
+
+This is why kernel regression sits where it does in the curriculum: it's the conditional-mean sequel to <ExternalLink href="https://formalstatistics.com/topics/kernel-density-estimation" site="formalstatistics" topic="Kernel Density Estimation" /> — same kernel machinery, applied one level up.
+
+The viz below shows NW at three bandwidth regimes — under-smoothed, well-smoothed, over-smoothed — on the §1 toy. The pattern is the bias-variance trade-off in caricature, formalized asymptotically in §3–§4. Drag the bandwidth slider across log-space; click the "snap to $h^*$" button to jump to the AMISE-optimal value (we derive $h^*$ in §4.4).
+
+<NadarayaWatsonBandwidthExplorer client:visible />
+
+<Figure
+  src="/images/topics/kernel-regression/05_nw_three_bandwidths.png"
+  alt="NW estimator at three bandwidths (h = 0.01, 0.05, 0.5) on the §1 toy."
+  caption="NW at three bandwidths on the §1 toy. Under-smoothing (h = 0.01) chases noise into a near-interpolating spike-train; over-smoothing (h = 0.5) flattens the sinusoid into a near-constant line. The well-smoothed fit (h = 0.05) recovers the shape with grid-MSE 0.008 — about 25× lower than the degree-1 polynomial baseline."
+/>
+
+### 2.3 NW as degree-zero local polynomial regression
+
+The same estimator falls out of a different optimization problem. Fix a target $x$ and consider the locally-weighted least-squares problem
+
+$$
+\hat\alpha(x) = \arg\min_{\alpha \in \mathbb{R}} \sum_{i=1}^{n} K_h(X_i - x)\, (Y_i - \alpha)^2.
+$$
+
+We're fitting a single scalar $\alpha$ — a constant approximation to $Y$ — with each observation weighted by its kernel-proximity to $x$.
+
+<TheoremBlock type="lemma" number={1} title="NW = degree-zero local polynomial regression">
+The NW estimator $\hat m_h(x)$ equals the kernel-weighted least-squares minimizer $\hat\alpha(x)$ above.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Take the derivative of the objective with respect to $\alpha$ and set it to zero:
+
+$$
+-2 \sum_{i=1}^{n} K_h(X_i - x)\, (Y_i - \hat\alpha) = 0
+\;\Longrightarrow\;
+\hat\alpha = \frac{\sum_i K_h(X_i - x)\, Y_i}{\sum_i K_h(X_i - x)} = \hat m_h(x).
+$$
+
+The second equality is the definition of NW from Definition 2.
+</TheoremBlock>
+
+So NW is exactly **degree-zero local polynomial regression**: at each $x$, fit the best constant approximation to $Y$ over a kernel-weighted neighborhood.
+
+This reframing pays off twice. It motivates §8's local-linear regression — instead of a constant, fit a line $\alpha + \beta(X_i - x)$ over the same kernel neighborhood, which corrects the boundary-bias problem we'll see in §3.4. And it lets us re-use any weighted-least-squares solver to compute NW, giving us a check on the direct implementation.
+
+In NumPy, the vectorized form is a single matrix multiply per query grid:
+
+```python
+def nadaraya_watson(X, Y, x_eval, h, K=K_gaussian):
+    """Vectorized NW: returns hat m_h(x) for each entry of x_eval."""
+    U = (X[None, :] - x_eval[:, None]) / h          # shape (|x_eval|, n)
+    W = K(U) / h                                    # rescaled kernel weights
+    return (W @ Y) / W.sum(axis=1)                  # weighted average per row
+```
+
+A numerical sanity check: pick a single target $x_0 = 0.5$, compute $\hat m_h(x_0)$ via the direct NW formula, and compute it again via the explicit WLS solution with design matrix $\mathbf{X} = \mathbf{1}_n$ (a column of ones) and weight matrix $\mathbf{W} = \mathrm{diag}(K_h(X_i - x_0))$. Verification: NW direct $=0.29968713$, WLS $=0.29968713$, gap $< 10^{-15}$ — agreement to numerical precision.
+
+## 3. Pointwise bias at an interior point
+
+This section derives the asymptotic bias of NW at an interior point $x$ of the support of $X$. The argument has three substeps — Taylor expansion of the joint density estimate, change of variables to kernel-scaled coordinates, and a ratio expansion that combines the two — followed by a boundary preview that motivates §8's local-linear fix.
+
+<TheoremBlock type="theorem" number={1} title="Pointwise bias of NW (interior)">
+Let $x$ be an interior point of the support of $X$ with $f_X(x) > 0$ and $m, f_X \in C^2$. As $h \to 0$ and $nh \to \infty$,
+
+$$
+\mathrm{Bias}\big[\hat m_h(x)\big] = \mathbb{E}[\hat m_h(x)] - m(x) = \frac{h^2}{2}\, \mu_2(K) \left[\, m''(x) + 2\, m'(x)\, \frac{f_X'(x)}{f_X(x)}\, \right] + o(h^2).
+$$
+
+The first term $m''(x)$ is the **curvature bias** — present in any kernel-based estimator, including KDE for density estimation. The second term $2 m'(x) f_X'(x)/f_X(x)$ is the **design-density correction** — unique to regression. It vanishes when $f_X$ is uniform (the §1 toy), but in general the asymmetry of the design density tilts the local average toward the more-densely-sampled side.
+</TheoremBlock>
+
+We work through the proof in three substeps, then discuss the two terms separately.
+
+### 3.1 The Taylor expansion of $m$ around $x$
+
+Write the NW estimator as a ratio. Define
+
+$$
+r(x) := m(x)\, f_X(x), \qquad \hat r(x) := \frac{1}{n} \sum_{i=1}^{n} K_h(X_i - x)\, Y_i,
+$$
+
+so that $\hat m_h(x) = \hat r(x) / \hat f_X(x)$, where $\hat f_X(x) = n^{-1} \sum_i K_h(X_i - x)$ is the kernel density estimate of $f_X(x)$. The strategy is to expand $\mathbb{E}[\hat r(x)]$ and $\mathbb{E}[\hat f_X(x)]$ to second order in $h$, then combine them via a ratio expansion.
+
+Because the $X_i$ are iid:
+
+$$
+\mathbb{E}[\hat f_X(x)] = \mathbb{E}[K_h(X - x)] = \int K_h(z - x)\, f_X(z)\, dz.
+$$
+
+For $\hat r(x)$, use the tower property $\mathbb{E}[Y \mid X] = m(X)$ to integrate $Y$ out first:
+
+$$
+\mathbb{E}[\hat r(x)] = \mathbb{E}[K_h(X - x)\, m(X)] = \int K_h(z - x)\, m(z)\, f_X(z)\, dz = \int K_h(z - x)\, g(z)\, dz,
+$$
+
+where $g(z) := m(z)\, f_X(z) = r(z)$. Both expectations are integrals against $K_h$ centered at $x$. The next move turns these integrals into closed-form polynomials in $h$.
+
+### 3.2 Change of variables to scaled coordinates
+
+Substitute $u = (z - x)/h$, so $z = x + hu$ and $dz = h\, du$. The integrals become
+
+$$
+\mathbb{E}[\hat f_X(x)] = \int K(u)\, f_X(x + hu)\, du, \qquad \mathbb{E}[\hat r(x)] = \int K(u)\, g(x + hu)\, du.
+$$
+
+The $1/h$ factor inside $K_h$ exactly cancels the $h$ from the $du$, leaving clean integrals against the unscaled kernel $K$. Now Taylor-expand both integrands around $u = 0$ (i.e., around $z = x$) to second order in $h$:
+
+$$
+f_X(x + hu) = f_X(x) + hu\, f_X'(x) + \tfrac{1}{2} h^2 u^2\, f_X''(x) + o(h^2),
+$$
+
+$$
+g(x + hu) = g(x) + hu\, g'(x) + \tfrac{1}{2} h^2 u^2\, g''(x) + o(h^2).
+$$
+
+By the product rule applied to $g = m \cdot f_X$:
+
+$$
+g(x) = m(x)\, f_X(x), \qquad g'(x) = m'(x)\, f_X(x) + m(x)\, f_X'(x),
+$$
+
+$$
+g''(x) = m''(x)\, f_X(x) + 2\, m'(x)\, f_X'(x) + m(x)\, f_X''(x).
+$$
+
+Integrate term by term against $K(u)$ and apply the four kernel moment conditions from Definition 1: $\int K(u)\, du = 1$ keeps the constant term, $\int u\, K(u)\, du = 0$ kills the linear term, and $\int u^2\, K(u)\, du = \mu_2(K)$ scales the quadratic term. The result:
+
+$$
+\mathbb{E}[\hat f_X(x)] = f_X(x) + \tfrac{1}{2} h^2 \mu_2(K)\, f_X''(x) + o(h^2),
+$$
+
+$$
+\mathbb{E}[\hat r(x)] = g(x) + \tfrac{1}{2} h^2 \mu_2(K)\, g''(x) + o(h^2).
+$$
+
+This is the technical heart of the proof. Taylor expansion plus the kernel moment conditions reduce a complicated integral to a polynomial in $h$ whose leading correction is quadratic — that's where the $h^2$ rate comes from, and why the zero-first-moment condition is so important.
+
+### 3.3 The design-density correction $f_X'(x)/f_X(x)$
+
+Take the ratio. The exact bias of $\hat m_h(x) = \hat r(x)/\hat f_X(x)$ involves $\mathbb{E}[\hat r(x)/\hat f_X(x)]$, which doesn't factor cleanly. The standard move — justified by KDE consistency $\hat f_X(x) \to f_X(x)$ in probability (a foundational result from <ExternalLink href="https://formalstatistics.com/topics/kernel-density-estimation" site="formalstatistics" topic="Kernel Density Estimation" />) plus uniform integrability — is to take the leading-order approximation
+
+$$
+\mathbb{E}[\hat m_h(x)] - m(x) \approx \frac{\mathbb{E}[\hat r(x)] - m(x)\, \mathbb{E}[\hat f_X(x)]}{f_X(x)}.
+$$
+
+Plug in §3.2's expansions. The constant term $g(x) = m(x) f_X(x)$ in $\mathbb{E}[\hat r(x)]$ cancels exactly with $m(x) f_X(x)$ from the second numerator term, leaving
+
+$$
+\mathbb{E}[\hat r(x)] - m(x)\, \mathbb{E}[\hat f_X(x)] = \tfrac{1}{2} h^2 \mu_2(K)\, \big[\, g''(x) - m(x)\, f_X''(x)\, \big] + o(h^2).
+$$
+
+Substitute the formula for $g''(x)$ from §3.2:
+
+$$
+g''(x) - m(x)\, f_X''(x) = \underbrace{m''(x) f_X(x)}_{\text{curvature}} + \underbrace{2\, m'(x)\, f_X'(x)}_{\text{design}} + \underbrace{m(x)\, f_X''(x) - m(x)\, f_X''(x)}_{=\,0}.
+$$
+
+The $m(x) f_X''(x)$ terms cancel. Divide by $f_X(x)$ to recover the bias formula stated in Theorem 1.
+
+The two terms have different physical interpretations.
+
+**Curvature bias** ($m''(x)$ term). The kernel-weighted average of a curved function is biased toward the side the function curves toward. At a local maximum ($m'' < 0$), the average pulls down; at a local minimum ($m'' > 0$), it pulls up. This is universal — it appears in KDE, in NW, and in any kernel-smoothing operation.
+
+**Design-density correction** ($2 m'(x) f_X'(x)/f_X(x)$ term). When $f_X$ is non-uniform, the kernel neighborhood around $x$ contains more $X_i$ values on the side where $f_X$ is larger. The local average is pulled toward $m$-values from that side. The sign is determined by the product $m'(x) f_X'(x)$: positive correlation pushes $\hat m_h(x)$ above $m(x)$, negative pushes below. The correction vanishes when $f_X$ is uniform and grows where $f_X$ varies steeply.
+
+We verify the formula numerically on the §1 toy. With $X \sim \text{Uniform}(0,1)$, $f_X'(x) = 0$ on the interior, so the design correction drops out and the prediction collapses to
+
+$$
+\mathrm{Bias}\big[\hat m_h(x)\big] \approx \tfrac{1}{2} h^2 \mu_2(K)\, m''(x) = -2 \pi^2 h^2 \sin(2\pi x),
+$$
+
+using $\mu_2(K_{\text{Gaussian}}) = 1$ and $m''(x) = -4\pi^2 \sin(2\pi x)$. At $x = 0.25, 0.5, 0.75$, where $\sin(2\pi x) \in \{1, 0, -1\}$ respectively, we predict bias $\approx -0.0494, 0, +0.0494$ at $h = 0.05$.
+
+<Figure
+  src="/images/topics/kernel-regression/06_bias_verification.png"
+  alt="Distributions of empirical bias at three target points x in {0.25, 0.5, 0.75} from B = 500 replicate fits at h = 0.05, with theoretical predictions overlaid."
+  caption="Monte Carlo verification of the interior bias formula at h = 0.05, B = 500 replicates. Empirical bias at x ∈ {0.25, 0.5, 0.75}: −0.052, −0.004, +0.048; theoretical prediction −0.049, 0, +0.049. Gaps below 0.005 — the asymptotic formula tracks the empirical bias to within MC noise."
+/>
+
+### 3.4 Preview: why the boundary breaks this
+
+The expansion in §3.1–3.3 assumed $x$ is an *interior* point of the support — far enough from the boundary that the kernel mass within one bandwidth is fully contained in the support of $X$. Concretely: $\int K(u)\, du = 1$ over the relevant range, $\int u\, K(u)\, du = 0$, and so on.
+
+At a **boundary point** — for the §1 toy this means $x$ within one bandwidth of $0$ or $1$, since $X \sim \text{Uniform}(0, 1)$ — half of the kernel mass falls outside the support. The effective kernel is one-sided. Two of the four moment conditions break:
+
+- The normalization $\int K(u)\, du = 1$ becomes $\int_0^\infty K(u)\, du = 1/2$ (for symmetric $K$ centered at the boundary).
+- The zero first moment $\int u\, K(u)\, du = 0$ becomes $\int_0^\infty u\, K(u)\, du > 0$.
+
+The linear-in-$h$ term in the Taylor expansion of §3.2 no longer vanishes. The bias becomes $O(h)$ instead of $O(h^2)$ — an order worse than at the interior. This is the **boundary bias problem** for the Nadaraya–Watson estimator.
+
+<Figure
+  src="/images/topics/kernel-regression/07_boundary_bias.png"
+  alt="Empirical bias of NW as a function of x on the §1 toy at h = 0.05, B = 500 replicates, with the interior asymptotic formula overlaid."
+  caption="Empirical bias vs x with the interior formula overlaid. The two curves track tightly for x > h = 0.05 but diverge sharply for x < h. At x ≈ 0.25 the formula matches to within 0.001; at x ≈ 0.015 the formula breaks by 0.20 absolute. This is the O(h) boundary blow-up that §8's local-linear fix removes."
+/>
+
+We revisit this in §8 with the local-linear regression fix that restores $O(h^2)$ behavior all the way to the boundary.
+
+## 4. Pointwise variance and the AMISE
+
+We complete the bias-variance decomposition by computing the pointwise variance of $\hat m_h(x)$, combining it with §3's bias to form the asymptotic mean integrated squared error (AMISE), deriving the optimal bandwidth $h^* \asymp n^{-1/(4+d)}$, and stating asymptotic normality.
+
+<TheoremBlock type="theorem" number={2} title="Pointwise variance of NW">
+Under the conditions of Theorem 1 plus $\sigma^2(x) := \mathrm{Var}[Y \mid X = x] < \infty$,
+
+$$
+\mathrm{Var}\big[\hat m_h(x)\big] = \frac{\sigma^2(x)\, R(K)}{n\, h\, f_X(x)} + o\!\left(\frac{1}{nh}\right),
+$$
+
+where $R(K) = \int K(u)^2\, du$ from Definition 1.
+</TheoremBlock>
+
+### 4.1 The kernel-second-moment integral $R(K)$
+
+Repeat the §3 setup: $\hat m_h(x) - m(x) = \big[\hat r(x) - m(x)\, \hat f_X(x)\big] / \hat f_X(x)$. To leading order,
+
+$$
+\mathrm{Var}\big[\hat m_h(x)\big] \approx \frac{1}{f_X(x)^2}\, \mathrm{Var}\big[\hat r(x) - m(x)\, \hat f_X(x)\big].
+$$
+
+Write $\hat r(x) - m(x)\, \hat f_X(x) = n^{-1} \sum_i K_h(X_i - x)\,[Y_i - m(x)]$. The summands are iid, so
+
+$$
+\mathrm{Var}\big[\hat r(x) - m(x)\, \hat f_X(x)\big] = \frac{1}{n}\, \mathrm{Var}\big[K_h(X - x)\,(Y - m(x))\big].
+$$
+
+Compute the second moment of the summand by conditioning on $X$. Decompose
+
+$$
+(Y - m(x))^2 = (Y - m(X))^2 + 2\,(Y - m(X))(m(X) - m(x)) + (m(X) - m(x))^2.
+$$
+
+The cross term has zero conditional mean (since $\mathbb{E}[Y - m(X) \mid X] = 0$); the third term contributes $O(h^2)$ and is dominated by the variance scale. The leading contribution is
+
+$$
+\mathbb{E}\big[K_h(X - x)^2\, \sigma^2(X)\big] = \int K_h(z - x)^2\, \sigma^2(z)\, f_X(z)\, dz.
+$$
+
+Change variables $u = (z - x)/h$. The factor $K_h(z - x)^2 = K(u)^2 / h^2$ combined with $dz = h\, du$ produces a $1/h$ in front:
+
+$$
+= \frac{1}{h} \int K(u)^2\, \sigma^2(x + hu)\, f_X(x + hu)\, du = \frac{\sigma^2(x)\, f_X(x)\, R(K)}{h} + o\!\left(\frac{1}{h}\right),
+$$
+
+where the $hu$ corrections to $\sigma^2$ and $f_X$ get absorbed into the $o(1/h)$ remainder. Combining with the $1/(n f_X^2)$ prefactor gives the variance formula in Theorem 2. The $1/h$ scaling is the same one that makes KDE variance scale as $1/(nh)$ — the "kernel mass concentrated in an $h$-wide window over $n$ data points" rate.
+
+### 4.2 The conditional-variance factor $\sigma^2(x)/f_X(x)$
+
+Three components in the variance formula, each with its own physical interpretation.
+
+The factor $\sigma^2(x)/f_X(x)$ is the **noise-to-density ratio at $x$**. Higher conditional noise inflates the variance — local averaging produces a noisier estimate when underlying responses are noisier. Lower design density inflates the variance — fewer $X_i$ values within one bandwidth means less data to average over. The two factors are local: both can vary across $x$, and their ratio captures the effective sample size near $x$.
+
+The kernel-dependent constant $R(K)$ measures how much variance the kernel passes through. Smaller $R(K)$ means tighter weight concentration and smaller estimator variance. Among kernels with $\mu_2(K) = 1$, the Epanechnikov kernel minimizes $R(K)$ — the §7 optimality result.
+
+The $1/(nh)$ rate ties the variance to the effective number of points within one bandwidth, roughly $n h f_X(x)$ in $d = 1$. More data (larger $n$) or wider bandwidth (larger $h$) gives more averaging and lower variance — the "wider-is-less-variable" half of the bias-variance trade-off. This is what fights against the $h^4$ growth of squared bias as $h$ increases, producing the U-shaped AMISE curve we see next.
+
+### 4.3 Combining bias-squared and variance into AMISE
+
+The pointwise mean squared error decomposes as
+
+$$
+\mathrm{MSE}\big[\hat m_h(x)\big] = \mathrm{Bias}^2 + \mathrm{Var} = \frac{h^4}{4}\, \mu_2(K)^2\, B(x)^2 + \frac{\sigma^2(x)\, R(K)}{n\, h\, f_X(x)} + o(h^4) + o\!\left(\frac{1}{nh}\right),
+$$
+
+where $B(x) := m''(x) + 2 m'(x) f_X'(x)/f_X(x)$ collects the bias coefficient from Theorem 1.
+
+The **asymptotic mean integrated squared error** is the integral of MSE against the design density:
+
+$$
+\mathrm{AMISE}(h) := \int \mathrm{MSE}\big[\hat m_h(x)\big]\, f_X(x)\, dx = \frac{h^4}{4}\, \mu_2(K)^2\, \theta_{m,f} + \frac{R(K)}{n h}\, \nu_\sigma,
+$$
+
+where $\theta_{m,f} := \int B(x)^2\, f_X(x)\, dx$ and $\nu_\sigma := \int \sigma^2(x)\, dx$ are problem-specific constants depending on the unknown $m$, $f_X$, and $\sigma^2$.
+
+The two terms move in opposite directions in $h$: squared bias grows as $h^4$ (wider bandwidth → more curvature-induced bias), variance shrinks as $1/(nh)$ (wider bandwidth → more effective averaging). The U-curve has a unique minimum at the optimal bandwidth $h^*$.
+
+The viz below visualizes the decomposition empirically. Drag the bandwidth slider to see the replicate cloud spread (variance) and the empirical mean drift away from $m$ (bias). Crank $B$ up for tighter variance estimates.
+
+<BiasVarianceMonteCarloExplorer client:visible />
+
+<Figure
+  src="/images/topics/kernel-regression/08_bias_variance_decomposition.png"
+  alt="Bias-variance Monte Carlo decomposition on the §1 toy at h = 0.05, B = 200 replicates: replicate fits + empirical mean + ±2 SD band; bias², variance, MSE on log-y."
+  caption="Static counterpart with B = 200 replicates at h = 0.05. The replicate cloud spreads with width ≈ 2σ; the empirical mean (green) tracks the true m(x) closely. Integrated empirical bias² ≈ 0.001 and variance ≈ 0.001 over [0.1, 0.9] match the analytical formulas to within MC tolerance."
+/>
+
+### 4.4 The optimal bandwidth $h^* \asymp n^{-1/(4+d)}$ and asymptotic normality
+
+Differentiate AMISE in $h$ and set the derivative to zero:
+
+$$
+\frac{d}{dh}\, \mathrm{AMISE}(h) = h^3\, \mu_2(K)^2\, \theta_{m,f} - \frac{R(K)\, \nu_\sigma}{n\, h^2} = 0.
+$$
+
+Solving in $d = 1$:
+
+$$
+h^* = \left(\frac{R(K)\, \nu_\sigma}{\mu_2(K)^2\, \theta_{m,f}\, n}\right)^{1/5} \asymp n^{-1/5}.
+$$
+
+The general $d$-dimensional rate (proven in §6) is $h^* \asymp n^{-1/(4+d)}$, with corresponding minimum AMISE at the rate $\mathrm{AMISE}(h^*) \asymp n^{-4/(4+d)}$.
+
+This rate is **slower than the parametric rate $n^{-1}$** — the price for not assuming a parametric form for $m$. In $d = 1$, kernel regression converges as $n^{-4/5}$. In $d = 5$ it slows to $n^{-4/9}$. By $d = 10$ it's $n^{-2/7}$ — barely better than the random-guess rate. This is the curse of dimensionality, formalized in §6.
+
+For the §1 toy ($X \sim \text{Uniform}(0, 1)$, $m(x) = \sin(2\pi x) + x/2$, $\sigma^2 = 0.04$, $K = K_{\text{Gaussian}}$):
+
+- $\mu_2(K) = 1, \quad R(K) = 1/(2\sqrt\pi) \approx 0.282$
+- $\theta_{m,f} = \int_0^1 16\pi^4 \sin^2(2\pi x)\, dx = 8\pi^4 \approx 779.3$
+- $\nu_\sigma = 0.04$
+- $h^* = \big(0.282 \cdot 0.04 / (1 \cdot 779.3 \cdot 200)\big)^{1/5} \approx 0.038$
+
+The viz below shows the AMISE U-curve in closed form. Move the $n$ scrubber: as $n$ grows, the variance curve drops, $h^*$ shifts left, and AMISE($h^*$) shrinks at the slow $n^{-4/5}$ rate.
+
+<AmiseUCurveExplorer client:visible />
+
+<Figure
+  src="/images/topics/kernel-regression/09_amise_ucurve.png"
+  alt="AMISE U-curve over h in [0.005, 0.2] at n = 200, with empirical AMISE from B = 100 replicates per bandwidth and analytical curve overlaid."
+  caption="Empirical AMISE (markers) vs analytical (line) at n = 200, B = 100 per bandwidth. The empirical optimum h^*_emp = 0.0369 lies within 2% of the analytical h^* = 0.0363 — the U-curve has a stable minimum that bandwidth selectors in §5 try to estimate from data."
+/>
+
+<TheoremBlock type="theorem" number={3} title="Asymptotic normality of NW (Wand–Jones 1995, Theorem 5.4)">
+Under the conditions of Theorems 1 and 2, plus $h \to 0$ and $nh \to \infty$ as $n \to \infty$,
+
+$$
+\sqrt{nh}\, \big[\hat m_h(x) - m(x) - \tfrac{h^2}{2}\, \mu_2(K)\, B(x)\big] \xrightarrow{\,d\,} \mathcal{N}\!\left(0,\, \frac{\sigma^2(x)\, R(K)}{f_X(x)}\right),
+$$
+
+where $B(x) = m''(x) + 2 m'(x) f_X'(x)/f_X(x)$ from Theorem 1.
+</TheoremBlock>
+
+This gives the asymptotic confidence interval
+
+$$
+\hat m_h(x) - \tfrac{h^2}{2}\, \mu_2(K)\, \hat B(x) \pm z_{\alpha/2}\, \sqrt{\frac{R(K)\, \hat\sigma^2(x)}{n h\, \hat f_X(x)}}.
+$$
+
+The bias-correction term is usually estimated by plug-in or eliminated via undersmoothing (choose $h$ small enough that bias is dominated by variance, at the cost of slower convergence). The CI machinery is what links kernel regression to §9.4's conformal-prediction interval construction.
+
+## 5. Bandwidth selection in practice
+
+The AMISE-optimal bandwidth $h^*$ from §4.4 depends on unknown functionals of $m$, $f_X$, and $\sigma^2$, so we can't use it directly on real data. Three families of selectors estimate $h^*$ from observations:
+
+- **Reference-rule selectors** (Silverman): substitute a parametric proxy for the unknowns. Fast, biased, no data adaptation.
+- **Plug-in selectors** (Ruppert–Sheather–Wand DPI): estimate the unknowns from a pilot bandwidth, plug into the AMISE formula. Faster asymptotic convergence than CV but heavier to implement.
+- **Cross-validation selectors** (LOO-CV, GCV): minimize an out-of-sample squared loss directly. Generalize cleanly to higher dimensions and don't require pilot estimation.
+
+We discuss Silverman in §5.1, plug-in conceptually in §5.2, and implement LOO-CV and GCV from scratch in §5.3–§5.4 using the smoother-matrix infrastructure $\hat{\mathbf{m}} = \mathbf{S}_h \mathbf{y}$. §5.5 compares all four on the §1 toy and assesses stability across replicate samples.
+
+### 5.1 Silverman's rule of thumb (and where it fails)
+
+Silverman's (1986) rule of thumb for KDE in $d = 1$ is
+
+$$
+h_{\text{Silverman}} = 1.06 \cdot \hat\sigma_X \cdot n^{-1/5},
+$$
+
+where $\hat\sigma_X = \min(\hat\sigma, \mathrm{IQR}/1.34)$ is a robust spread estimate of $X$ (the IQR/1.34 reduces sensitivity to outliers). The 1.06 constant comes from optimizing AMISE for KDE under a Gaussian-reference assumption on $f_X$.
+
+Three reasons the rule falls short for NW regression.
+
+**Wrong objective.** Silverman is optimal for density estimation, not for conditional-mean estimation. The AMISE-optimal NW bandwidth depends on $m''$, $m' f_X'/f_X$, and $\sigma^2/f_X$ — none of which the rule sees.
+
+**Gaussian-reference is overly smooth.** Real densities and regression functions typically have more curvature than Gaussian, calling for smaller $h$. The rule oversmooths in those cases.
+
+**No data adaptation.** The bandwidth is fixed across $x$, ignoring local variation in $|m''|$ or $\sigma^2$.
+
+For the §1 toy ($\hat\sigma_X \approx 1/\sqrt{12} \approx 0.289$, $n = 200$), Silverman gives $h \approx 0.107$. That's about $3\times$ the analytical $h^* \approx 0.038$ from §4.4 — a meaningful oversmoothing. Despite the limitations, Silverman remains useful as an order-of-magnitude reference and as a starting pilot bandwidth for plug-in estimators.
+
+<Figure
+  src="/images/topics/kernel-regression/10_silverman_vs_amise.png"
+  alt="NW with Silverman bandwidth (oversmoothed) vs NW with AMISE-optimal bandwidth on the §1 toy."
+  caption="Silverman (oversmoothing ratio 2.78×) flattens the sinusoid at the peaks; AMISE-optimal h* recovers the curvature. Silverman is a useful order-of-magnitude reference but not a serious selector for kernel regression on smooth-but-curved m."
+/>
+
+### 5.2 Plug-in selectors
+
+The plug-in idea: substitute consistent estimates of the unknown functionals into the AMISE formula
+
+$$
+h^* = \left(\frac{R(K)\, \nu_\sigma}{\mu_2(K)^2\, \theta_{m,f}\, n}\right)^{1/5}.
+$$
+
+The challenge is estimating $\theta_{m,f} = \int B(x)^2 f_X(x)\, dx$ — this requires estimating $m''$, a higher-order derivative that is itself harder to estimate than $m$. The canonical solution is **Ruppert–Sheather–Wand (1995)** direct plug-in (DPI):
+
+1. Pick a pilot bandwidth $g$ (typically Silverman's rule).
+2. Fit a degree-4 local polynomial at $g$ to estimate $\hat m''(x)$ at each $X_i$.
+3. Estimate $\hat\sigma^2$ from residuals at $g$, and $\hat f_X(x)$ from a KDE at $g$.
+4. Form $\hat\theta_{m,f} = n^{-1} \sum_i \hat B(X_i)^2$ and $\hat\nu_\sigma$ from the residual variance.
+5. Plug into the AMISE formula to get $\hat h^*$.
+
+Plug-in selectors converge to $h^*$ at faster rates than CV ($O(n^{-5/14})$ for RSW vs $O(n^{-3/10})$ for CV; see Härdle, Marron & Park 1992), but they require non-trivial implementation. The chicken-and-egg problem of pilot-bandwidth selection is well-studied (Ruppert 1997's EBBS iterates the pilot to convergence).
+
+For this topic we mention plug-in selectors conceptually and reference RSW; the full implementation is heavy enough to warrant a sister-topic extension. The remainder of §5 focuses on cross-validation selectors, which generalize more naturally to higher-dimensional settings and don't require pilot estimation.
+
+### 5.3 Leave-one-out cross-validation
+
+Cross-validation estimates the integrated squared prediction error directly from data by holding out one observation at a time. The leave-one-out CV objective is
+
+$$
+\mathrm{CV}(h) = \frac{1}{n} \sum_{i=1}^{n} \big(Y_i - \hat m_h^{-i}(X_i)\big)^2,
+$$
+
+where $\hat m_h^{-i}$ is the NW estimator computed without the $i$-th observation. The selected bandwidth is $\hat h_{\text{CV}} := \arg\min_h \mathrm{CV}(h)$.
+
+Naively this requires $n$ refits per bandwidth — expensive. But for kernel smoothers there's a closed-form leave-one-out trick. Define the kernel weight matrix $W_{ij} := K_h(X_j - X_i)$. The full and leave-one-out NW estimates at a training point $X_i$ are
+
+$$
+\hat m_h(X_i) = \frac{\sum_j W_{ij} Y_j}{\sum_j W_{ij}}, \qquad \hat m_h^{-i}(X_i) = \frac{\sum_j W_{ij} Y_j - W_{ii} Y_i}{\sum_j W_{ij} - W_{ii}},
+$$
+
+with $W_{ii} = K_h(0)$ (the kernel at zero, e.g., $1/\sqrt{2\pi h^2}$ for Gaussian). Cost per bandwidth: $O(n^2)$ — one kernel-weight matrix and a vectorized adjustment.
+
+Asymptotic optimality (Härdle–Marron 1985): under regularity conditions, $\hat h_{\text{CV}} / h^* \to 1$ in probability. The convergence rate is slow ($n^{-3/10}$, per Hall–Marron 1991), so $\hat h_{\text{CV}}$ has high variance across replicate samples — a property the §5.5 stability comparison highlights.
+
+<Figure
+  src="/images/topics/kernel-regression/11_loo_cv_objective.png"
+  alt="LOO-CV objective curve over a log-spaced bandwidth grid on the §1 toy, with vertical markers at the CV minimizer, AMISE-optimal h*, and Silverman."
+  caption="LOO-CV objective on the §1 toy. The minimum sits at h_CV ≈ 0.024 — well below Silverman (h_S ≈ 0.104) and within a factor of 2 of the analytical h^* = 0.037. The slow n^{-3/10} convergence rate means h_CV has visible variance across replicates."
+/>
+
+### 5.4 Generalized cross-validation
+
+GCV (Craven–Wahba 1979) replaces the per-point leave-one-out adjustment with a global one:
+
+$$
+\mathrm{GCV}(h) = \frac{n^{-1} \sum_i (Y_i - \hat m_h(X_i))^2}{\big(1 - n^{-1}\, \mathrm{tr}(\mathbf{S}_h)\big)^2},
+$$
+
+where $\mathbf{S}_h$ is the smoother matrix: $\hat{\mathbf{m}} = \mathbf{S}_h \mathbf{y}$ with $(\mathbf{S}_h)_{ij} = W_{ij}/\sum_k W_{ik}$. The denominator is a degrees-of-freedom correction; the trace measures how much each observation influences its own fit.
+
+GCV is computationally simpler than LOO-CV (no per-point adjustment, just the trace of the smoother matrix) but asymptotically equivalent to leading order. For most smoothers of practical interest, the two selectors agree to within their own variability across replicates.
+
+The trace has a clean closed form for NW:
+
+$$
+\mathrm{tr}(\mathbf{S}_h) = \sum_{i=1}^{n} \frac{W_{ii}}{\sum_j W_{ij}} = \sum_{i=1}^{n} \frac{K_h(0)}{\sum_j K_h(X_j - X_i)}.
+$$
+
+When the design is roughly uniform over $[0, 1]$ and $h$ is small, $\sum_j W_{ij} \approx n f_X(X_i)$, so $\mathrm{tr}(\mathbf{S}_h) \approx \sum_i K(0)/(n h f_X(X_i))$ — proportional to $1/(nh)$, the "effective number of parameters" the bandwidth $h$ uses up. This is the heuristic that $\mathrm{tr}(\mathbf{S}_h)$ plays the role of degrees of freedom in nonparametric regression — useful for AIC/BIC-like extensions.
+
+<Figure
+  src="/images/topics/kernel-regression/12_loo_cv_vs_gcv.png"
+  alt="LOO-CV and GCV objective curves overlaid on the §1 toy, both normalized by their minima."
+  caption="LOO-CV and GCV objectives on the §1 toy, normalized by their minima. The two curves nearly coincide; their minimizers differ by at most one grid point. GCV's algebraic simplicity makes it the practical favorite where both apply."
+/>
+
+### 5.5 Comparing selectors on the §1 toy
+
+We compare the four selectors on a fixed sample, then assess stability across $B = 100$ replicate samples. Two questions:
+
+1. **On a single sample**, how do the selectors compare to the analytical AMISE optimum?
+2. **Across replicates**, how variable is each selector's bandwidth choice?
+
+Silverman is essentially deterministic — it depends only on $\hat\sigma_X$, which has small variance for $n = 200$. LOO-CV and GCV inherit non-trivial variance from the slow $n^{-3/10}$ convergence rate. The AMISE-optimal $h^*$ is fixed (a property of the DGP, not the sample).
+
+The viz below runs the head-to-head comparison and the stability experiment. Toggle individual selectors to isolate their behavior; scrub $n$ and $B$ to see how stability scales.
+
+<BandwidthSelectorComparison client:visible />
+
+<Figure
+  src="/images/topics/kernel-regression/13_selector_comparison.png"
+  alt="Two-panel selector comparison on the §1 toy: top is single-sample LOO-CV / GCV objective curves; bottom is bandwidth-selection histograms across B = 100 replicates."
+  caption="Top: single-sample LOO-CV and GCV objectives with vertical markers at all four selectors and the analytical h^*. Bottom: stability across B = 100 replicates. Silverman: median 0.106, IQR 0.004 (essentially deterministic). LOO-CV: median 0.027, IQR 0.008. GCV mirrors LOO-CV (same formula at the minimum). Both CV-based selectors track h^* on average but with visible spread."
+/>
+
+## 6. Multivariate regression and the curse of dimensionality
+
+The bias-variance machinery from §3–§4 extends naturally from $\mathbb{R}$ to $\mathbb{R}^d$, but with one critical change: the kernel-neighborhood volume scales as $h^d$, so the effective number of points within one bandwidth shrinks exponentially in dimension. The AMISE rate becomes $n^{-4/(4+d)}$ — slower than the parametric $n^{-1}$ at any $d$, and noticeably slower than the $d = 1$ rate $n^{-4/5}$ once $d$ gets above 2 or 3. This is the **curse of dimensionality**.
+
+We work through the multivariate extension in §6.1–6.2, derive the AMSE rate in §6.3 with empirical verification at $d \in \{1, 2, 5, 10\}$, and state Stone's minimax-optimality theorem in §6.4 — the result that says the curse is fundamental, not a defect of NW.
+
+### 6.1 Product kernels in $\mathbb{R}^d$
+
+For multivariate $\mathbf{X} \in \mathbb{R}^d$, the simplest multivariate kernel is a product of univariate kernels:
+
+$$
+K(\mathbf{u}) = \prod_{j=1}^d K_1(u_j), \qquad K_h(\mathbf{u}) = \frac{1}{h^d} K\!\left(\frac{\mathbf{u}}{h}\right) = \prod_{j=1}^d K_{1, h}(u_j),
+$$
+
+where $K_1$ is a univariate kernel from Definition 1 and we use a single isotropic bandwidth $h$ for all coordinates.
+
+The Nadaraya–Watson estimator generalizes:
+
+$$
+\hat m_h(\mathbf{x}) = \frac{\sum_{i=1}^n K_h(\mathbf{X}_i - \mathbf{x})\, Y_i}{\sum_{i=1}^n K_h(\mathbf{X}_i - \mathbf{x})}.
+$$
+
+The kernel moment conditions extend coordinate-wise: $\int K(\mathbf{u})\, d\mathbf{u} = 1$, $\int u_j K(\mathbf{u})\, d\mathbf{u} = 0$, and $\int u_j u_k K(\mathbf{u})\, d\mathbf{u} = \mu_2(K_1)\, \delta_{jk}$ (diagonal — no cross-correlations from a product kernel). The kernel-second-moment integral becomes
+
+$$
+R(K) = \int K(\mathbf{u})^2\, d\mathbf{u} = \prod_{j=1}^d \int K_1(u_j)^2\, du_j = R(K_1)^d.
+$$
+
+The exponent $d$ in $R(K_1)^d$ is the **first hint of the curse**: the variance constant grows exponentially in dimension. We see the load-bearing $h^d$ factor in the variance formula in §6.3. A sanity check: in $d = 1$, the multivariate NW reduces exactly to the univariate NW from §2, with maximum gap $4 \times 10^{-16}$ across a 400-point grid.
+
+### 6.2 Bandwidth matrices and anisotropy
+
+Real data often has different scales or smoothness across coordinates. Two extensions of the scalar bandwidth handle this.
+
+**Anisotropic product kernel.** Per-coordinate bandwidths $h_j$:
+
+$$
+K_{\mathbf{h}}(\mathbf{u}) = \prod_{j=1}^d K_{1, h_j}(u_j) = \prod_{j=1}^d \frac{1}{h_j} K_1\!\left(\frac{u_j}{h_j}\right).
+$$
+
+The bandwidths can be tuned individually — typically by per-coordinate Silverman or coordinate-wise cross-validation.
+
+**Full bandwidth matrix.** A positive-definite $d \times d$ matrix $\mathbf{H}$ rotates and scales the kernel ellipsoid:
+
+$$
+K_\mathbf{H}(\mathbf{u}) = |\mathbf{H}|^{-1/2} \, K\!\left(\mathbf{H}^{-1/2} \mathbf{u}\right).
+$$
+
+This handles correlated covariates: when $X_1$ and $X_2$ are strongly correlated, an axis-aligned product kernel under-uses the joint information; rotating $\mathbf{H}$ to the principal-component basis recovers it.
+
+In practice these refinements adjust the **constant** in front of the AMISE rate but rarely change the rate itself. The asymptotic curse-of-dimensionality story in §6.3 is unchanged whether we use a scalar bandwidth, an anisotropic product kernel, or a full bandwidth matrix. We focus on the isotropic case in §6.3–6.4 because it cleanly exposes the rate.
+
+A pragmatic compromise that captures most of the gain available from anisotropy without the full machinery: rescale each coordinate to unit variance via $X_j \to (X_j - \bar X_j) / \mathrm{sd}(X_j)$, then use an isotropic bandwidth on the rescaled data. This is the multivariate analog of Silverman's rule.
+
+### 6.3 The AMSE rate $n^{-4/(4+d)}$
+
+The bias-variance decomposition extends from §3–§4 with the following changes.
+
+**Bias.** Replace the single-coordinate $m''(x)$ with the trace of the Hessian $\mathrm{tr}(\nabla^2 m(\mathbf{x}))$, and the design-density correction with $\nabla m(\mathbf{x}) \cdot \nabla f_X(\mathbf{x}) / f_X(\mathbf{x})$:
+
+$$
+\mathrm{Bias}\big[\hat m_h(\mathbf{x})\big] = \frac{h^2}{2}\, \mu_2(K_1) \left[\, \mathrm{tr}(\nabla^2 m(\mathbf{x})) + 2\, \frac{\nabla m(\mathbf{x}) \cdot \nabla f_X(\mathbf{x})}{f_X(\mathbf{x})}\, \right] + o(h^2).
+$$
+
+Same $h^2$ rate as in $d = 1$.
+
+**Variance.** The kernel "neighborhood" has volume $\propto h^d$, so the effective number of points within one bandwidth is $n h^d f_X(\mathbf{x})$:
+
+$$
+\mathrm{Var}\big[\hat m_h(\mathbf{x})\big] = \frac{\sigma^2(\mathbf{x})\, R(K_1)^d}{n\, h^d\, f_X(\mathbf{x})} + o\!\left(\frac{1}{n h^d}\right).
+$$
+
+The $h^d$ in the denominator is the **load-bearing change**. As $d$ increases, the kernel needs to be much wider to capture enough points, but wider kernels mean higher bias.
+
+**AMISE.** Combining squared bias and variance:
+
+$$
+\mathrm{AMISE}(h) = \frac{h^4}{4}\, \mu_2(K_1)^2\, \theta_{m,f} + \frac{R(K_1)^d\, \nu_\sigma}{n h^d}.
+$$
+
+Differentiating: $h^{4+d} \propto d \cdot R^d \nu_\sigma / (n \mu_2^2 \theta_{m,f})$, giving
+
+$$
+h^* \asymp n^{-1/(4+d)}, \qquad \mathrm{AMISE}(h^*) \asymp n^{-4/(4+d)}.
+$$
+
+**The curse of dimensionality** is the rate slowing as $d$ grows. To halve the AMISE in $d$ dimensions, multiply $n$ by $2^{(4+d)/4}$: $2.4\times$ at $d = 1$, $4.8\times$ at $d = 5$, $11\times$ at $d = 10$, $64\times$ at $d = 20$.
+
+**Geometric intuition.** In $\mathbb{R}^d$, capturing fraction $p$ of uniform random points within an axis-aligned hypercube of edge $r$ requires $r = p^{1/d}$. To capture 1% of points: $r = 0.01$ in $d = 1$, $r = 0.398$ in $d = 5$, $r = 0.631$ in $d = 10$, $r = 0.794$ in $d = 20$. The kernel "neighborhood" stops being local — at $d \ge 10$ it consumes most of the support to find any neighbors at all.
+
+The viz below verifies the rate empirically across $d \in \{1, 2, 5, 10\}$ at the test point $\mathbf{x}_0 = (0.25, \ldots, 0.25)$ on the multivariate sin-sum toy. The left panel shows the empirical AMSE-vs-$n$ slopes; the right panel shows the kernel-cube edge $r = p^{1/d}$ that quantifies "where are my neighbors."
+
+<CurseOfDimensionalityExplorer client:visible />
+
+<Figure
+  src="/images/topics/kernel-regression/14_curse_of_dimensionality.png"
+  alt="Two-panel curse-of-dimensionality figure: log-log AMSE vs n at d in {1, 2, 5, 10} with theoretical-rate slopes overlaid; kernel-cube edge r = p^(1/d) vs p curves."
+  caption="Empirical verification of the n^(-4/(4+d)) rate at d ∈ {1, 2, 5, 10}, B = 100 replicates per (d, n). Empirical slopes: −0.83, −0.74, −0.61, −0.33; theoretical: −0.80, −0.67, −0.44, −0.29. The d = 10 curve hasn't reached its asymptotic regime even at n = 2000; ratio degradation is severe but not as severe as theory predicts at finite n. Right: capturing 1% of uniform points needs r = 1% at d = 1 vs r = 63% at d = 10."
+/>
+
+### 6.4 Stone's minimax-optimality theorem
+
+Stone (1980, 1982) proved a strong negative result.
+
+<TheoremBlock type="theorem" number={4} title="Stone's minimax-optimality (1980, 1982)">
+For the class $\mathcal{F}_p^d$ of $p$-times-continuously-differentiable functions on $\mathbb{R}^d$ with bounded derivatives, no estimator can achieve a uniform convergence rate faster than $n^{-2p/(2p+d)}$ in the minimax sense.
+</TheoremBlock>
+
+For $p = 2$ — the standard regularity assumed throughout §3–§4 — this rate is exactly $n^{-4/(4+d)}$, the rate kernel regression achieves with a second-order kernel.
+
+So NW is **rate-optimal in the minimax sense** for $p = 2$ functions. The curse of dimensionality isn't a defect of the estimator — it's a fundamental information-theoretic property of nonparametric regression. Without assuming more structure on $m$, no method (kernel, spline, neural network, anything) can do better in the worst case.
+
+The rate-versus-smoothness ladder:
+
+- **$p$-times-differentiable, second-order kernel**: $n^{-4/(4+d)}$ — what NW achieves.
+- **$p$-times-differentiable, $p$-th-order kernel** (with $\int u^j K(u)\, du = 0$ for $j = 1, \ldots, p-1$): $n^{-2p/(2p+d)}$. Faster for smoother $m$, but higher-order kernels take negative values and lose interpretability.
+- **Lipschitz only** ($p = 1$): $n^{-2/(2+d)}$ — slower than NW.
+- **Compositionally structured** (additive models, deep networks under approximation theory, etc.): potentially much faster, depending on the structural assumption.
+
+The takeaway is concrete. Kernel regression is rate-optimal at $d \le 5$ or so, useful but slow at $d \in [5, 10]$, and impractical at $d \ge 10$ without additional structure on $m$. The standard structural alternatives — additivity, sparsity, single-index models, deep compositional structure — are themselves the subject of T2 Supervised Learning's later topics. We connect kernel regression to its broader family of methods in §9.
+
+## 7. Kernel choice: what matters and what doesn't
+
+This section finishes the story §2.1 started — comparing the five standard kernels and quantifying how much kernel choice actually matters. The headline result is the **canonical-kernel theorem** (Marron–Nolan 1988): when each kernel uses its own AMISE-optimal bandwidth, the resulting NW smoothers are nearly indistinguishable. Kernel shape is essentially a calibration choice for the bandwidth, not an estimator-design choice. The exception is the box kernel, which inherits §1.3's jaggedness even at its optimal bandwidth.
+
+We tabulate the kernel-quality constants $\delta(K)$ and $C(K)$ in §7.1, derive and verify the canonical-kernel theorem in §7.2, and discuss the practical exceptions in §7.3.
+
+### 7.1 The standard zoo: Gaussian, Epanechnikov, box, triangular, quartic
+
+Recall the five kernels introduced in §2.1: Gaussian $K_G(u) = e^{-u^2/2}/\sqrt{2\pi}$, Epanechnikov $K_E(u) = (3/4)(1 - u^2)\mathbb{I}\{|u| \le 1\}$, box $K_B(u) = (1/2)\mathbb{I}\{|u| \le 1\}$, triangular $K_T(u) = (1 - |u|)\mathbb{I}\{|u| \le 1\}$, and quartic $K_Q(u) = (15/16)(1 - u^2)^2\mathbb{I}\{|u| \le 1\}$.
+
+The viz below tabulates four kernel-quality constants:
+
+- $\mu_2(K) = \int u^2 K(u)\, du$ — second moment, controls the bias (§3).
+- $R(K) = \int K(u)^2\, du$ — kernel-second-moment integral, controls the variance (§4).
+- $\delta(K) := (R(K)/\mu_2(K)^2)^{1/5}$ — canonical bandwidth (defined in §7.2).
+- $C(K) := R(K)^{4/5}\, \mu_2(K)^{2/5}$ — kernel-efficiency constant.
+
+The first two come from §2.1's numerical integration; the last two are simple combinations. Toggle individual kernels to isolate their behavior; switch between canonical mode (each kernel uses its own $h^*_K$) and shared-$h$ mode (all kernels share one user-chosen $h$) to see the canonical-kernel theorem in action.
+
+<KernelShapePicker client:visible />
+
+### 7.2 Asymptotic equivalence and the canonical kernel
+
+The AMISE-optimal bandwidth from §4.4 is
+
+$$
+h^*(K) = \left(\frac{R(K)\, \nu_\sigma}{\mu_2(K)^2\, \theta_{m,f}\, n}\right)^{1/5}.
+$$
+
+For two kernels $K_1, K_2$ on the same problem ($\nu_\sigma$, $\theta_{m,f}$, $n$ shared), the ratio of optimal bandwidths is
+
+$$
+\frac{h^*(K_1)}{h^*(K_2)} = \left(\frac{R(K_1)\, \mu_2(K_2)^2}{R(K_2)\, \mu_2(K_1)^2}\right)^{1/5} = \frac{\delta(K_1)}{\delta(K_2)}, \qquad \delta(K) := \left(\frac{R(K)}{\mu_2(K)^2}\right)^{1/5}.
+$$
+
+$\delta(K)$ is the **canonical bandwidth** of $K$ — a kernel-specific, problem-independent rescaling factor. Define the **rescaled bandwidth** $\bar h := h / \delta(K)$.
+
+<TheoremBlock type="theorem" number={5} title="Canonical-kernel theorem (Marron–Nolan 1988)">
+With $C(K) := R(K)^{4/5}\, \mu_2(K)^{2/5}$ and $\mathrm{AMISE}_{\rm std}(\bar h) := \bar h^4 \theta_{m,f}/4 + \nu_\sigma/(n \bar h)$,
+
+$$
+\mathrm{AMISE}_K(\bar h\, \delta(K)) = C(K) \cdot \mathrm{AMISE}_{\rm std}(\bar h).
+$$
+
+Up to the multiplicative constant $C(K)$ and the bandwidth rescaling $h \mapsto \bar h \cdot \delta(K)$, all NW smoothers with kernels satisfying the standard moment conditions behave identically.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Substitute $h = \bar h \cdot \delta(K)$ into the AMISE formula from §4.3:
+
+$$
+\mathrm{AMISE}_K(h) = \frac{h^4}{4}\, \mu_2(K)^2\, \theta_{m,f} + \frac{R(K)}{n h}\, \nu_\sigma.
+$$
+
+The bias-squared term becomes
+
+$$
+\frac{(\bar h \delta(K))^4}{4}\, \mu_2(K)^2\, \theta_{m,f} = \frac{\bar h^4}{4}\, \delta(K)^4\, \mu_2(K)^2\, \theta_{m,f}.
+$$
+
+Using $\delta(K)^5 = R(K)/\mu_2(K)^2$, we get $\delta(K)^4 \mu_2(K)^2 = R(K)/\delta(K) \cdot \mu_2(K)^2 / \mu_2(K)^2 = R(K)/\delta(K)$. Wait — more directly: $\delta(K)^4 \mu_2(K)^2 = (R(K)/\mu_2(K)^2)^{4/5} \mu_2(K)^2 = R(K)^{4/5} \mu_2(K)^{2/5} = C(K)$. So the bias-squared term equals $\bar h^4 C(K) \theta_{m,f}/4$.
+
+Similarly, the variance term:
+
+$$
+\frac{R(K)}{n \bar h \delta(K)}\, \nu_\sigma = \frac{R(K)}{\delta(K)} \cdot \frac{\nu_\sigma}{n \bar h} = R(K)^{4/5} \mu_2(K)^{2/5} \cdot \frac{\nu_\sigma}{n \bar h} = C(K) \cdot \frac{\nu_\sigma}{n \bar h},
+$$
+
+using $R(K)/\delta(K) = R(K) / (R(K)/\mu_2(K)^2)^{1/5} = R(K)^{4/5} \mu_2(K)^{2/5} = C(K)$.
+
+Combining: $\mathrm{AMISE}_K(\bar h \delta(K)) = C(K) \cdot [\bar h^4 \theta_{m,f}/4 + \nu_\sigma/(n \bar h)] = C(K) \cdot \mathrm{AMISE}_{\rm std}(\bar h)$, as claimed.
+</TheoremBlock>
+
+Two consequences. The **optimal rescaled bandwidth** $\bar h^* = (\nu_\sigma/(n\, \theta_{m,f}))^{1/5}$ is kernel-independent — every kernel shares the same optimum in canonical units. The **AMISE value at the optimum** scales by $C(K)$ — different kernels achieve different AMISE values, but the shape of the AMISE-vs-$\bar h$ curve is identical.
+
+**Epanechnikov optimality** (Hodges–Lehmann 1956 / Epanechnikov 1969): among kernels satisfying the standard moment conditions, the Epanechnikov kernel minimizes $C(K)$. Other kernels lose 1–7% efficiency relative to Epanechnikov, as the §7.1 table shows.
+
+<Figure
+  src="/images/topics/kernel-regression/15_canonical_kernel.png"
+  alt="Two-panel canonical-kernel verification on the §1 toy: NW smoothers at each kernel's AMISE-optimal h^*_K nearly coincide; rescaled AMISE curves overlay onto the canonical curve."
+  caption="Canonical-kernel theorem verified on the §1 toy. Left: NW smoothers at each kernel's own h^*_K = δ(K) · h̄^* nearly coincide on the interior — Gaussian, Triangular, Quartic match Epanechnikov within 0.02 absolute. Right: rescaled AMISE curves overlay onto AMISE_std(h̄) up to a kernel-specific scale C(K), confirming the theorem."
+/>
+
+### 7.3 When kernel choice actually moves the needle
+
+Three settings where kernel choice *does* matter despite the canonical-kernel theorem.
+
+**At suboptimal bandwidth.** The theorem says kernels are equivalent **at their respective optima**. If you fix one bandwidth across kernels (say $h = 0.05$ for all), the smoothers can differ noticeably because different kernels have different effective neighborhoods at the same $h$. The §1.3 box-vs-Gaussian comparison at matched bandwidth was an instance of this — both achieve smooth fits at their respective optima, but at the same $h$ the box looks much rougher because its effective rescaled bandwidth is different. In practice this means: don't compare kernels at the same $h$ — compare each at its own AMISE-optimal $h$.
+
+**Box-kernel jaggedness.** Even at its AMISE-optimal bandwidth, the box kernel produces a piecewise-constant smoother because the indicator-function weighting is discontinuous in the target point. This is a finite-$n$ artifact, not asymptotic — the box kernel converges to the true $m$ at the same $n^{-4/5}$ rate as the others, but the per-sample smoother always has visible jumps. Avoid the box for any application where smoothness of $\hat m$ matters, including visualization and derivative estimation.
+
+**Higher-order kernels.** Beyond the standard second-order family, **higher-order kernels** — those with $\int u^j K(u)\, du = 0$ for $j = 1, \ldots, p-1$ and $\int u^p K(u)\, du \ne 0$ — can achieve faster convergence rates ($n^{-2p/(2p+d)}$) when $m$ is sufficiently smooth ($p$-times differentiable). A fourth-order example: $K_4(u) = (15/32)(3 - 10u^2 + 7u^4)\mathbb{I}\{|u| \le 1\}$. These take negative values, can produce $\hat m_h(x)$ outside the range of the data, and lose the "weighted average" interpretability. They're rarely used in practice except in theoretical work (Tsybakov 2009, §1.2).
+
+**Pragmatic recommendation.** Use the **Gaussian** kernel for everyday work — smooth, no support boundary, only a 5% efficiency loss vs Epanechnikov. Use **Epanechnikov** when you want the AMISE optimum and can tolerate the support-boundary discontinuity. Use **Quartic** if you need a smoother kernel with compact support (e.g., for derivative estimation where $K'$ should be continuous). Avoid the **box kernel** outside introductory examples. Avoid **higher-order kernels** unless theory specifically demands them.
+
+## 8. Boundary bias and the local-linear fix
+
+§3.4 previewed that the §3 bias derivation breaks at the boundary of the support of $X$: the $O(h^2)$ rate degrades to $O(h)$, an order worse. This section formalizes the breakdown via the **boundary kernel moments** $\mu_j(c)$, derives the **local-linear** estimator that fixes the problem by reproducing both constants and linear functions exactly, and forwards to the canonical Fan–Gijbels treatment in `local-regression`.
+
+The headline result: local-linear regression has bias $O(h^2)$ uniformly across the support, including at the boundary — same asymptotic rate as NW at the interior, but without the boundary degradation. It also has a cleaner interior bias formula (no design-density correction term). When deploying a kernel smoother on data, use local-linear, not Nadaraya–Watson.
+
+### 8.1 What goes wrong at the boundary of the support
+
+Define the **boundary kernel moments** at distance $c = x/h$ from the boundary at $0$:
+
+$$
+\mu_j(c) := \int_{-c}^{\infty} u^j\, K(u)\, du, \qquad j = 0, 1, 2.
+$$
+
+(For compactly supported $K$ on $[-1, 1]$, the upper limit becomes $1$ for $c < 1$; for unbounded support like Gaussian, contributions from beyond $1$ are negligible.)
+
+At the **interior** ($c \ge 1$, kernel mass entirely inside the support): $\mu_0 = 1$, $\mu_1 = 0$, $\mu_2 = \mu_2(K)$ — the standard moment conditions from Definition 1.
+
+At a **boundary point** ($c \in [0, 1)$, kernel partially outside the support): $\mu_0(c) < 1$, $\mu_1(c) > 0$, $\mu_2(c) < \mu_2(K)$. The zero-first-moment condition $\int u K(u)\, du = 0$ fails — this is what kills the §3 derivation.
+
+The Taylor expansion of $\mathbb{E}[\hat r(x)]$ from §3.2 picks up a non-vanishing linear-in-$h$ term at the boundary:
+
+$$
+\mathbb{E}[\hat r(x)] = g(x)\, \mu_0(c) + h\, g'(x)\, \mu_1(c) + \tfrac{h^2}{2}\, g''(x)\, \mu_2(c) + o(h^2),
+$$
+
+and similarly for $\mathbb{E}[\hat f_X(x)]$. After the ratio expansion, the leading-order bias is
+
+$$
+\mathrm{Bias}\big[\hat m_h(x)\big] = h\, \frac{\mu_1(c)}{\mu_0(c)}\, m'(x) + O(h^2) = O(h),
+$$
+
+instead of the interior $O(h^2)$. For the §1 toy at $x = 0$ (i.e., $c = 0$) with the Gaussian kernel: $\mu_1(0)/\mu_0(0) = (1/\sqrt{2\pi}) / (1/2) = \sqrt{2/\pi} \approx 0.798$. With $m'(0) = 2\pi + 0.5 \approx 6.78$, the leading-order boundary bias at $h = 0.05$ is $\approx 0.05 \times 0.798 \times 6.78 \approx 0.27$ — exactly the order-of-magnitude §3.4 found empirically.
+
+<Figure
+  src="/images/topics/kernel-regression/16_boundary_moments.png"
+  alt="Gaussian boundary kernel moments mu_0(c), mu_1(c), mu_2(c) as functions of distance c = x/h from the boundary."
+  caption="Boundary kernel moments for the Gaussian kernel. At c = 0: μ₀ = 0.5, μ₁ = 1/√(2π) ≈ 0.399, μ₂ = 0.5. Beyond c ≈ 1.5 the moments converge to their interior values (1, 0, 1). The non-vanishing μ₁(c) for c < 1 is what generates the O(h) boundary-bias term."
+/>
+
+### 8.2 Local-linear regression as the leading-order correction
+
+The fix: instead of fitting a constant in the kernel-weighted neighborhood (degree-zero local polynomial = NW), fit a **line** (degree-one local polynomial = local-linear regression).
+
+At target $x$, solve
+
+$$
+(\hat\alpha, \hat\beta) = \arg\min_{\alpha, \beta} \sum_{i=1}^n K_h(X_i - x)\, [Y_i - \alpha - \beta(X_i - x)]^2,
+$$
+
+and define $\hat m_h^{LL}(x) := \hat\alpha$. The slope estimate $\hat\beta$ approximates $m'(x)$ but isn't used directly — we discard it and keep only the intercept.
+
+Define the kernel-weighted moments $S_j(x) := \sum_i K_h(X_i - x)\, (X_i - x)^j$ for $j = 0, 1, 2$ and $T_j(x) := \sum_i K_h(X_i - x)\, (X_i - x)^j Y_i$ for $j = 0, 1$. The LL estimate is
+
+$$
+\hat m_h^{LL}(x) = \hat\alpha = \frac{S_2(x)\, T_0(x) - S_1(x)\, T_1(x)}{S_0(x)\, S_2(x) - S_1(x)^2}.
+$$
+
+<TheoremBlock type="lemma" number={2} title="Local-linear weights reproduce constants and linear functions">
+Equivalently, $\hat m_h^{LL}(x) = \sum_i w_i^{LL}(x)\, Y_i$ with **adjusted weights** $w_i^{LL}(x)$ satisfying
+
+$$
+\sum_i w_i^{LL}(x) = 1, \qquad \sum_i w_i^{LL}(x)\, (X_i - x) = 0.
+$$
+</TheoremBlock>
+
+The first identity says LL reproduces constants (same as NW). The second says LL reproduces linear functions — the new property. Together these are the discrete analogs of $\int K = 1$ and $\int u K = 0$. The LL weights restore the zero-first-moment condition automatically, **even at the boundary** where the underlying kernel violates it.
+
+<TheoremBlock type="theorem" number={6} title="Bias of local-linear regression (Fan 1992, Ruppert–Wand 1994)">
+Under the conditions of Theorem 1, at the **interior**
+
+$$
+\mathrm{Bias}\big[\hat m_h^{LL}(x)\big] = \frac{h^2}{2}\, \mu_2(K)\, m''(x) + o(h^2).
+$$
+
+This is **simpler than NW's interior bias** — the design-density correction $2 m'(x) f_X'(x)/f_X(x)$ from Theorem 1 is gone. At the **boundary** $x = ch$ the bias is still $O(h^2)$ with a different boundary-corrected coefficient. So the bias is $O(h^2)$ uniformly across the support — the boundary problem is fixed.
+</TheoremBlock>
+
+**Variance of LL.** Same order as NW: $\mathrm{Var}[\hat m_h^{LL}(x)] = O(1/(nh))$, with a slightly larger constant at the boundary.
+
+The vectorized implementation is a small extension of NW — accumulate the kernel-weighted moments $S_0, S_1, S_2, T_0, T_1$ in a single sweep, then a closed-form $2 \times 2$ solve per evaluation point:
+
+```python
+def local_linear(X, Y, x_eval, h, K=K_gaussian):
+    """Local-linear regression, vectorized over x_eval."""
+    diff = X[None, :] - x_eval[:, None]            # shape (|x_eval|, n)
+    w = K(diff / h) / h
+    s0 = w.sum(axis=1)
+    s1 = (w * diff).sum(axis=1)
+    s2 = (w * diff**2).sum(axis=1)
+    t0 = (w * Y[None, :]).sum(axis=1)
+    t1 = (w * diff * Y[None, :]).sum(axis=1)
+    return (s2 * t0 - s1 * t1) / (s0 * s2 - s1**2)
+```
+
+The viz below shows NW vs LL fits with the boundary regions shaded; the bottom panel plots empirical bias as a function of $x$ from $B$ replicates. NW pulls dramatically away from $m$ inside the boundary regions; LL stays close.
+
+<BoundaryBiasDiagnostic client:visible />
+
+<Figure
+  src="/images/topics/kernel-regression/17_local_linear_boundary.png"
+  alt="NW vs local-linear fits on the §1 toy at h = 0.05, full-domain plus boundary-zoom panels."
+  caption="NW (orange) vs local-linear (blue) on the §1 toy at h = 0.05. The two estimators agree closely on the interior; at the boundaries (shaded) NW pulls dramatically away from m while LL stays close. The boundary-zoom panel makes the gap explicit at x ∈ [0, 0.2]."
+/>
+
+<Figure
+  src="/images/topics/kernel-regression/18_ll_vs_nw_boundary_bias.png"
+  alt="Empirical bias of NW vs LL as a function of x from B = 500 replicates at h = 0.05."
+  caption="Empirical bias from B = 500 replicates. NW bias spikes to ~0.25 at x ≈ 0.005 (the boundary); LL bias stays under 0.02. Boundary ratio NW/LL ≈ 23×. At interior x the two are indistinguishable — both O(h²) with the same μ₂(K) m''(x) leading coefficient."
+/>
+
+### 8.3 Forward pointer: `local-regression` (Fan–Gijbels)
+
+Local-linear is the simplest member of a family — degree-$p$ **local polynomial regression**. The general estimator solves
+
+$$
+\min_{\alpha, \beta_1, \ldots, \beta_p} \sum_{i=1}^n K_h(X_i - x)\, \Big[Y_i - \alpha - \sum_{j=1}^p \beta_j (X_i - x)^j\Big]^2,
+$$
+
+with $\hat m_h^{LP_p}(x) := \hat\alpha$. The Fan–Gijbels (1996) book is the canonical treatment. Three key results:
+
+**Even degrees offer no boundary improvement** over the next-lower odd degree. So degree-2 (local-quadratic) at the interior matches LL at the boundary, while degree-3 (local-cubic) at the interior is what's needed to match local-quadratic at the boundary. The standard practical choice is degree $p = 1$ (local-linear) — the simplest estimator that fixes the boundary problem without adding complexity.
+
+**Higher-degree local polynomials achieve faster rates** ($n^{-2(p+1)/(2p+3)}$ for odd $p$ in $d = 1$) under stronger smoothness, paralleling the higher-order kernel story from §7.3. Rarely useful in practice.
+
+**The equivalent-kernel formulation.** Every local-polynomial estimator can be rewritten as a kernel smoother $\hat m_h(x) = \sum_i K^*_{h, x}(X_i)\, Y_i$ where $K^*_{h, x}$ depends on $x$ — it's location-adaptive. NW's equivalent kernel is just $K_h$; LL's equivalent kernel is automatically boundary-corrected (and at the interior reduces to $K_h$ exactly).
+
+**Local Regression** *(coming soon)* will derive the boundary-corrected bias formula explicitly, prove the AMSE rate uniformity, treat the equivalent-kernel formulation, and discuss the practical choice of $p = 1$ vs $p = 3$. It will also extend to multivariate covariates and show how local-polynomial regression underwrites the GAM (generalized additive models) machinery for high-$d$ regression with additive structure.
+
+For the present topic, the takeaway is concrete. **When you actually deploy a kernel smoother on data, use local-linear, not Nadaraya–Watson.** It costs nothing extra computationally (one $2 \times 2$ linear solve per evaluation point), it has the same asymptotic rate at the interior, it eliminates the design-density correction term in the bias, and it fixes the boundary-bias problem entirely. Nadaraya–Watson is the right pedagogical entry point — it's the simplest kernel smoother and the one that makes the bias-variance machinery cleanest to derive — but local-linear is the production estimator.
+
+## 9. Connections and applications
+
+The Nadaraya–Watson estimator sits in a rich ecosystem of related methods. This section maps four explicit connections — kernel ridge regression as the RKHS counterpart, Gaussian-process regression as the Bayesian counterpart, semi-parametric inference as the most common ML application, and conformal prediction as the natural way to construct distribution-free prediction intervals — plus a forward pointer to T2's `density-ratio-estimation`.
+
+### 9.1 Kernel ridge regression as the RKHS counterpart
+
+Kernel ridge regression (KRR) fits a function $f$ in a Reproducing Kernel Hilbert Space (RKHS) $\mathcal{H}_K$ with a norm penalty:
+
+$$
+\hat f = \arg\min_{f \in \mathcal{H}_K} \sum_{i=1}^n \big(Y_i - f(X_i)\big)^2 + \lambda \|f\|_{\mathcal{H}_K}^2.
+$$
+
+The **Representer Theorem** reduces this infinite-dimensional optimization to a finite linear system: the minimizer takes the form $\hat f(x) = \sum_{i=1}^n \alpha_i\, K(x, X_i)$, where the coefficients $\boldsymbol\alpha \in \mathbb{R}^n$ solve
+
+$$
+\boldsymbol\alpha = (K + \lambda I)^{-1}\, \mathbf{Y},
+$$
+
+with $K$ the $n \times n$ Gram matrix $K_{ij} = K(X_i, X_j)$ and $\lambda > 0$ a regularization parameter. So KRR is a closed-form linear-algebra solution, parallel in spirit to NW but quite different in mechanics.
+
+**KRR vs NW.** Both methods use kernels but apply them differently. NW computes a kernel-weighted average of the $Y_i$'s; KRR solves a regularized least-squares problem in the RKHS. NW's smoothing parameter is the bandwidth $h$; KRR's is the regularization $\lambda$ (and the kernel may carry its own length-scale parameter $\ell$). NW weights sum to $1$ at every target $x$ — interpretable as a weighted average; KRR weights don't have this property in general. As $\lambda \to 0$, KRR interpolates the data (overfits); as $\lambda \to \infty$, KRR shrinks to a constant (oversmooths). NW's bandwidth $h$ plays the analogous role: $h \to 0$ over-fits, $h \to \infty$ over-smooths.
+
+**Asymptotic equivalence.** For squared-exponential kernel with length scale $\ell$ and ridge $\lambda$, KRR has bias $O(\ell^2)$ and variance $O(1/(n\ell))$ in $d = 1$ — same rates as NW with $h = \ell$. KRR can also be derived as the **MAP estimate** under a Gaussian-process prior with kernel $K(\cdot, \cdot)$ and noise variance $\lambda$ — the bridge to §9.2.
+
+<Figure
+  src="/images/topics/kernel-regression/19_nw_vs_krr.png"
+  alt="NW vs kernel ridge regression on the §1 toy at matched length scale (h = ell = 0.038, lambda = sigma^2)."
+  caption="NW vs KRR at matched length scale ℓ = h = 0.038, λ = σ² = 0.04. Both estimators achieve grid-MSE 0.005–0.008 — same fits up to small finite-sample differences. KRR is the regularized-least-squares face of the same kernel substrate; the GP posterior mean of §9.2 is yet another face."
+/>
+
+### 9.2 Gaussian-process regression as the Bayesian counterpart
+
+Place a Gaussian-process prior $f \sim \mathrm{GP}(0, K)$ on the regression function and observe $y_i = f(x_i) + \varepsilon_i$ with $\varepsilon_i \sim \mathcal{N}(0, \sigma^2)$. The closed-form posterior at a test point $x_*$ is Gaussian with mean and variance
+
+$$
+\bar f(x_*) = K(x_*, X)\, (K(X, X) + \sigma^2 I)^{-1}\, \mathbf{Y},
+$$
+
+$$
+\mathrm{Var}(f(x_*) \mid \mathbf{Y}) = K(x_*, x_*) - K(x_*, X)\, (K(X, X) + \sigma^2 I)^{-1}\, K(X, x_*).
+$$
+
+The posterior mean is **identical** to KRR with $\lambda = \sigma^2$. The GP is the Bayesian view of the same point estimate; KRR is the frequentist regularized-RKHS view. Same prediction; the GP additionally provides a posterior variance for uncertainty quantification.
+
+**NW vs GP.** NW is *like* a GP posterior mean where the implicit prior is a "kernel-density-like" object rather than a proper GP. NW lacks the formal Bayesian interpretation but produces qualitatively similar fits at well-chosen bandwidths. The §4.4 asymptotic CI for NW is the analog of GP's posterior variance, derived from frequentist asymptotic-normality theory.
+
+For the full Bayesian treatment — GP as a prior over functions, posterior inference, hyperparameter learning via marginal likelihood, kernel design (Matérn, periodic, ARD), scaling tricks (sparse GPs, inducing points, SVGP) — see [Gaussian Processes](/topics/gaussian-processes) in T5 Bayesian ML. GPs sit in T5 rather than T2 because they're properly Bayesian estimators, but they share the kernel-methods substrate with this topic and with KRR.
+
+### 9.3 Smoothing in semi-parametric inference
+
+Semi-parametric models combine parametric and nonparametric components. Three common forms:
+
+- **Partial linear model** $Y = X^\top \beta + g(Z) + \varepsilon$, with $g$ unknown and estimated nonparametrically.
+- **Single-index model** $Y = g(X^\top \beta) + \varepsilon$.
+- **Varying-coefficient model** $Y = X^\top \beta(Z) + \varepsilon$, with $\beta(\cdot)$ a smooth function of $Z$.
+
+In all three, kernel smoothing handles the nonparametric component and a parametric estimator handles the rest.
+
+**The key trade-off.** Kernel regression converges at $n^{-2/5}$ in $d = 1$ — slower than the parametric $n^{-1/2}$. To recover $n^{-1/2}$ for the parametric component in a semi-parametric model, the nonparametric component must be **undersmoothed** — bandwidth chosen smaller than AMISE-optimal so that bias doesn't contaminate the parametric estimator.
+
+This is the **Robinson (1988)** double-residual approach for partial linear models: regress $Y$ on $Z$ nonparametrically, regress $X$ on $Z$ nonparametrically, then OLS the residuals against each other. The undersmoothing condition $h = o(n^{-1/4})$ ensures the kernel bias is asymptotically negligible against the OLS noise.
+
+The modern **double-machine-learning** literature (Chernozhukov et al. 2018) generalizes this to high-dimensional plug-in nuisance estimation. The kernel regression at the heart of the double-residual machinery can be replaced by lasso, random forests, neural networks — but the orthogonality-and-undersmoothing logic carries over directly.
+
+The general principle: **AMISE-optimal bandwidth is right for prediction; it's wrong for inference about a parametric component.** When you're using NW as a tool inside a larger inferential procedure, the optimal bandwidth depends on what the inferential target is — not always what the kernel regression itself is solving.
+
+### 9.4 Conformal-prediction interval construction
+
+Conformal prediction (Vovk, Gammerman & Shafer 2005) gives finite-sample, distribution-free prediction intervals for any base estimator. The key idea: calibrate prediction-interval widths from out-of-sample residuals on held-out data.
+
+<TheoremBlock type="algorithm" number={1} title="Split-conformal NW prediction interval">
+Given training data $\{(X_i, Y_i)\}_{i=1}^n$, miscoverage level $\alpha$, bandwidth $h$, and a new test point $x$:
+
+1. Permute the data and split into proper training set $\mathcal{T}$ and calibration set $\mathcal{C}$, typically 50/50.
+2. Fit the NW estimator $\hat m_h$ on $\mathcal{T}$.
+3. Compute calibration residuals $r_i = |Y_i - \hat m_h(X_i)|$ for $i \in \mathcal{C}$.
+4. Compute $\hat q := r_{(\lceil (n_\mathcal{C} + 1)(1 - \alpha) \rceil)}$ — the $\lceil (n_\mathcal{C} + 1)(1-\alpha) \rceil$-th smallest residual (with the finite-sample correction).
+5. Return the $1 - \alpha$ prediction interval $[\hat m_h(x) - \hat q,\ \hat m_h(x) + \hat q]$.
+</TheoremBlock>
+
+The finite-sample-corrected quantile in step 4 is what makes the marginal-coverage guarantee exact:
+
+$$
+\Pr\big[Y \in \mathrm{PI}(X)\big] \ge 1 - \alpha
+$$
+
+for any joint distribution over $(X, Y)$ and any base estimator $\hat m_h$. No assumption that NW is correctly specified, no asymptotic regularity conditions — just exchangeability of the calibration sample and the new test point.
+
+**Connection to kernel regression.** Kernel regression is a natural base estimator for conformal prediction: the NW smoother is differentiable in the data and tends to produce calibration residuals that vary smoothly in $x$, which is what the locally-adaptive variants of conformal prediction (Lei et al. 2018) exploit. The §4.4 asymptotic-normality CI is a parallel construction with stronger assumptions — it uses the NW asymptotic distribution to construct the interval — and produces tighter intervals at the cost of distribution-free guarantees.
+
+For full coverage of the conformal machinery — split conformal, jackknife+, CV+, locally-adaptive conformal, conformal classification — see [Conformal Prediction](/topics/conformal-prediction) in T4 Nonparametric & Distribution-Free.
+
+<Figure
+  src="/images/topics/kernel-regression/20_split_conformal_nw.png"
+  alt="Split conformal prediction interval band on the §1 toy with NW as base estimator at h = 0.04, alpha = 0.1."
+  caption="Split conformal NW with α = 0.1 on the §1 toy. Empirical coverage across B = 100 replicates × n_test = 50 = 0.91, matching the 0.90 nominal target within MC tolerance. The interval band has constant width q̂ ≈ 0.37 — split conformal is marginally valid but not locally adaptive (CQR or locally-adaptive conformal would shrink the band where σ²(x) is small)."
+/>
+
+### 9.5 Forward pointer: `density-ratio-estimation` (KLIEP / LSIF / uLSIF)
+
+The next T2 Supervised Learning topic after `local-regression` is `density-ratio-estimation` — estimating $r(x) := p_1(x) / p_0(x)$ from samples of $p_1$ and $p_0$ without estimating either density separately. Three classical kernel-based approaches:
+
+- **KLIEP** (Sugiyama et al. 2008) — minimizes $\mathrm{KL}(p_1 \| \hat r \cdot p_0)$ over a kernel basis. Iterative.
+- **LSIF** (Kanamori, Hido & Sugiyama 2009) — least-squares importance fitting in a kernel basis. Closed-form.
+- **uLSIF** (Kanamori, Hido & Sugiyama 2009) — unconstrained LSIF, dropping the positivity constraint for numerical stability. Closed-form, the practical favorite.
+
+All three use the same kernel machinery as kernel regression: same kernel families (Gaussian, Epanechnikov), same bandwidth-selection considerations (LOO-CV, GCV port over directly), same curse of dimensionality. The mathematical structure is parallel — instead of estimating $\mathbb{E}[Y \mid X]$, we estimate $p_1(x) / p_0(x)$, but both are conditional functionals of underlying density estimates and both are well-served by the same kernel-weighted-least-squares framework.
+
+**Applications** of density-ratio estimation: covariate-shift correction in supervised learning (where train and test distributions differ); change-point detection in time series; anomaly detection (low ratio signals out-of-distribution); off-policy evaluation in reinforcement learning (importance ratio of behavior to target policy); importance-weighted classification; two-sample tests (the ratio acts as a test statistic).
+
+## Connections and Further Reading
+
+**Within formalML, this topic feeds into:**
+
+- **Local Regression** *(coming soon)*. The Fan–Gijbels boundary-bias fix from §8, generalizing local-linear to higher-degree polynomials with full coverage of the equivalent-kernel formulation, multivariate extension, and the connection to GAMs. The kernel-methods shared module from this topic is the substrate.
+
+- **Density-Ratio Estimation** *(coming soon)*. KLIEP / LSIF / uLSIF importance-ratio estimators that use the kernel machinery from §2 and the bandwidth-selection methods from §5 for a parallel functional ($p_1/p_0$ instead of $\mathbb{E}[Y\mid X]$) — see §9.5.
+
+- [Gaussian Processes](/topics/gaussian-processes) (T5). The Bayesian counterpart of kernel ridge regression; same closed-form posterior mean as KRR with $\lambda = \sigma^2$, plus a closed-form posterior covariance for uncertainty quantification — see §9.2.
+
+- [Conformal Prediction](/topics/conformal-prediction) (T4). Finite-sample distribution-free prediction intervals using NW (or any base estimator) at the calibration step — see §9.4 and Algorithm 1.
+
+**Cross-site prerequisites:**
+
+- <ExternalLink href="https://formalstatistics.com/topics/kernel-density-estimation" site="formalstatistics" topic="Kernel Density Estimation" /> — the density-estimation sibling. Same kernel moment conditions (∫K = 1, ∫uK = 0, μ₂(K)) and the same h² bias / 1/(nh) variance machinery, applied to $f_X$ instead of $\mathbb{E}[Y \mid X]$. The Silverman bandwidth heuristic in §5.1 is the KDE rule applied directly. The §3 bias derivation runs in parallel to KDE's: same Taylor expansion, same change of variables.
+
+- <ExternalLink href="https://formalstatistics.com/topics/linear-regression" site="formalstatistics" topic="Linear Regression" /> — the parametric counterpart. The §2.3 NW-as-WLS reframing draws directly on weighted-least-squares theory; the §8.2 local-linear extension is locally-weighted OLS with two parameters.
+
+- <ExternalLink href="https://formalcalculus.com/topics/multiple-integrals" site="formalcalculus" topic="Multiple Integrals" /> — the multivariate-integration toolkit. The change-of-variables substitution $u = (z-x)/h$ used throughout §3.2 and the d-dimensional volume scaling $h^d$ in §6.3 are standard multivariate-integration moves; the §6.1 product-kernel identity $R(K) = R(K_1)^d$ uses Fubini.
+
+- <ExternalLink href="https://formalcalculus.com/topics/mean-value-taylor" site="formalcalculus" topic="Mean Value Theorem and Taylor Expansion" /> — the Taylor-expansion machinery. The §3.2 second-order expansion of $f_X(x+hu)$ and $g(x+hu) = m(x+hu)f_X(x+hu)$ around $x$, with explicit $h^2$ remainder, is the load-bearing technical move of the entire bias derivation. The §6.3 multivariate version uses the same expansion with the Hessian $\nabla^2 m$ replacing the second derivative.
+
+**Internal prerequisites:**
+
+- [Concentration Inequalities](/topics/concentration-inequalities). Direct prerequisite for the convergence-rate machinery. The §3 bias and §4 variance derivations are stated to leading order, but the rigorous version (uniform consistency, asymptotic normality) requires concentration-inequality bounds for the kernel-weighted partial sums. Concentration inequalities provide the Hoeffding/Bernstein machinery that justifies the leading-order approximations used throughout §3–§6.
