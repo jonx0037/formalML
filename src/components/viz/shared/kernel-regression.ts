@@ -202,12 +202,13 @@ export function nadarayaWatson(
   const n = X.length;
   const m = xEval.length;
   const out = new Float64Array(m);
+  const invH = 1 / h;
   for (let j = 0; j < m; j++) {
     const xj = xEval[j];
     let num = 0;
     let den = 0;
     for (let i = 0; i < n; i++) {
-      const w = K((X[i] - xj) / h) / h;
+      const w = K((X[i] - xj) * invH) * invH;
       num += w * Y[i];
       den += w;
     }
@@ -265,10 +266,12 @@ export function localLinear(
 // -----------------------------------------------------------------------------
 // Smoother-matrix infrastructure (used by LOO-CV and GCV)
 //
-//   W[i, j] = K_h(X[j] - X[i]) / h    (row-major, length n*n)
+//   W[i, j] = K_h(X[j] - X[i]) = K((X[j] - X[i]) / h) / h
 //
 // Returned as a flat Float64Array to keep allocation tight; address as
-// W[i * n + j].
+// W[i * n + j]. For large n, prefer the matrix-free LOO/GCV computations
+// in `looCvScore` / `gcvScore` / `looCvAndGcvScores` which avoid
+// materializing the full n*n matrix.
 // -----------------------------------------------------------------------------
 
 export function kernelWeightMatrix(
@@ -278,9 +281,10 @@ export function kernelWeightMatrix(
 ): Float64Array {
   const n = X.length;
   const W = new Float64Array(n * n);
+  const invH = 1 / h;
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      W[i * n + j] = K((X[j] - X[i]) / h) / h;
+      W[i * n + j] = K((X[j] - X[i]) * invH) * invH;
     }
   }
   return W;
@@ -317,7 +321,8 @@ export function silvermanRule(X: Float64Array): number {
   const sd = Math.sqrt(sumSq / (n - 1));
 
   // IQR via linear interpolation (numpy default).
-  const sorted = Array.from(X).slice().sort((a, b) => a - b);
+  // Float64Array.prototype.sort is numeric by default — no comparator needed.
+  const sorted = X.slice().sort();
   const q = (p: number): number => {
     const idx = p * (n - 1);
     const lo = Math.floor(idx);
@@ -330,6 +335,18 @@ export function silvermanRule(X: Float64Array): number {
   return 1.06 * sigmaHat * Math.pow(n, -1 / 5);
 }
 
+// Matrix-free LOO-CV / GCV implementations.
+//
+// Both selectors only need each row's sum, weighted-Y sum, and the diagonal
+// W[i, i] = K_h(0). Materializing the full n*n weight matrix wastes O(n^2)
+// memory and triggers heavy GC pressure when called inside an MC sweep
+// (visualizations: B replicates × H bandwidth grid = thousands of calls).
+// The single-pass form computes the same quantities in O(n^2) time but only
+// O(1) memory per call — catches the GCV trace via diag/rowSum directly.
+//
+// Note: K_h(0) = K(0) / h, a scalar that's constant across all i since
+// X[i] - X[i] = 0.
+
 export function looCvScore(
   X: Float64Array,
   Y: Float64Array,
@@ -337,17 +354,18 @@ export function looCvScore(
   K: KernelFn,
 ): number {
   const n = X.length;
-  const W = kernelWeightMatrix(X, h, K);
+  const invH = 1 / h;
+  const wii = K(0) * invH;
   let acc = 0;
   for (let i = 0; i < n; i++) {
+    const xi = X[i];
     let rowSum = 0;
     let weightedY = 0;
     for (let j = 0; j < n; j++) {
-      const w = W[i * n + j];
+      const w = K((X[j] - xi) * invH) * invH;
       rowSum += w;
       weightedY += w * Y[j];
     }
-    const wii = W[i * n + i];
     const denom = rowSum - wii;
     if (denom === 0) return Infinity;
     const mhatLoo = (weightedY - wii * Y[i]) / denom;
@@ -364,14 +382,16 @@ export function gcvScore(
   K: KernelFn,
 ): number {
   const n = X.length;
-  const W = kernelWeightMatrix(X, h, K);
+  const invH = 1 / h;
+  const wii = K(0) * invH;
   let rss = 0;
   let trS = 0;
   for (let i = 0; i < n; i++) {
+    const xi = X[i];
     let rowSum = 0;
     let weightedY = 0;
     for (let j = 0; j < n; j++) {
-      const w = W[i * n + j];
+      const w = K((X[j] - xi) * invH) * invH;
       rowSum += w;
       weightedY += w * Y[j];
     }
@@ -379,11 +399,57 @@ export function gcvScore(
     const mhat = weightedY / rowSum;
     const r = Y[i] - mhat;
     rss += r * r;
-    trS += W[i * n + i] / rowSum;
+    trS += wii / rowSum;
   }
   const mse = rss / n;
   const denom = (1 - trS / n) ** 2;
   return denom > 0 ? mse / denom : Infinity;
+}
+
+/**
+ * Joint LOO-CV and GCV scores in a single pass — avoids two separate
+ * weight-matrix sweeps when both selectors are needed (e.g., in the §5.5
+ * stability viz). Returns {looCv, gcv}. Same O(n^2) time as one call to
+ * `looCvScore`, half the work of calling both separately.
+ */
+export function looCvAndGcvScores(
+  X: Float64Array,
+  Y: Float64Array,
+  h: number,
+  K: KernelFn,
+): { looCv: number; gcv: number } {
+  const n = X.length;
+  const invH = 1 / h;
+  const wii = K(0) * invH;
+  let looAcc = 0;
+  let rss = 0;
+  let trS = 0;
+  for (let i = 0; i < n; i++) {
+    const xi = X[i];
+    let rowSum = 0;
+    let weightedY = 0;
+    for (let j = 0; j < n; j++) {
+      const w = K((X[j] - xi) * invH) * invH;
+      rowSum += w;
+      weightedY += w * Y[j];
+    }
+    if (rowSum === 0) return { looCv: Infinity, gcv: Infinity };
+    const denom = rowSum - wii;
+    if (denom === 0) return { looCv: Infinity, gcv: Infinity };
+    const mhatLoo = (weightedY - wii * Y[i]) / denom;
+    const rLoo = Y[i] - mhatLoo;
+    looAcc += rLoo * rLoo;
+    const mhatFull = weightedY / rowSum;
+    const rFull = Y[i] - mhatFull;
+    rss += rFull * rFull;
+    trS += wii / rowSum;
+  }
+  const mse = rss / n;
+  const gcvDenom = (1 - trS / n) ** 2;
+  return {
+    looCv: looAcc / n,
+    gcv: gcvDenom > 0 ? mse / gcvDenom : Infinity,
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -599,7 +665,8 @@ export function splitConformalNw(
   for (let i = 0; i < nC; i++) residuals[i] = Math.abs(YC[i] - mhatAtC[i]);
 
   // q_hat = ceil((nC + 1)(1 - alpha))-th smallest residual (1-indexed).
-  const sorted = Array.from(residuals).sort((a, b) => a - b);
+  // Float64Array.prototype.sort is numeric by default — no comparator needed.
+  const sorted = residuals.slice().sort();
   let qIdx = Math.ceil((nC + 1) * (1 - alpha)) - 1;
   if (qIdx >= nC) qIdx = nC - 1;
   if (qIdx < 0) qIdx = 0;

@@ -46,15 +46,18 @@ export default function AmiseUCurveExplorer() {
     const vr = new Float64Array(NPTS);
     const am = new Float64Array(NPTS);
     const nuSigma = SIGMA * SIGMA;
+    // Hoist coefficients out of the loop — they're invariant in h.
+    const bsCoeff = (mu2 * mu2 * THETA_MF) / 4;
+    const vrCoeff = (R * nuSigma) / N;
     for (let i = 0; i < NPTS; i++) {
       const h = Math.exp(lo + ((hi - lo) * i) / (NPTS - 1));
       grid[i] = h;
-      bs[i] = (Math.pow(h, 4) / 4) * mu2 * mu2 * THETA_MF;
-      vr[i] = (R * nuSigma) / (N * h);
+      bs[i] = Math.pow(h, 4) * bsCoeff;
+      vr[i] = vrCoeff / h;
       am[i] = bs[i] + vr[i];
     }
     const hS = hStarAmiseUni(N, SIGMA);
-    const amiseAt = (Math.pow(hS, 4) / 4) * mu2 * mu2 * THETA_MF + (R * SIGMA * SIGMA) / (N * hS);
+    const amiseAt = Math.pow(hS, 4) * bsCoeff + vrCoeff / hS;
     return { hGrid: grid, biasSq: bs, variance: vr, amise: am, hStar: hS, amiseAtHStar: amiseAt };
   }, [N, mu2, R]);
 

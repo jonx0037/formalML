@@ -2,10 +2,9 @@ import { useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  gcvScore,
   hStarAmiseUni,
   kGaussian,
-  looCvScore,
+  looCvAndGcvScores,
   mulberry32,
   paletteKR,
   sampleToyUni,
@@ -60,8 +59,13 @@ const SELECTOR_LABELS: Record<SelectorKey, string> = {
 
 export default function BandwidthSelectorComparison() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const [nIdx, setNIdx] = useState(1); // default 200
-  const [bIdx, setBIdx] = useState(1); // default 60
+  // Display state (cheap — updates on every drag tick) vs committed state
+  // (drives the heavy MC sweep — only updates on slider release). Pattern
+  // mirrors FiniteSampleBiasExplorer / SGLDBatchSizeExplorer in this repo.
+  const [nIdxDisplay, setNIdxDisplay] = useState(1);
+  const [nIdxCommitted, setNIdxCommitted] = useState(1);
+  const [bIdxDisplay, setBIdxDisplay] = useState(1);
+  const [bIdxCommitted, setBIdxCommitted] = useState(1);
   const [enabled, setEnabled] = useState<Record<SelectorKey, boolean>>({
     silverman: true,
     loocv: true,
@@ -70,8 +74,8 @@ export default function BandwidthSelectorComparison() {
 
   const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
   const w = containerWidth;
-  const N = N_OPTIONS[nIdx];
-  const B = B_OPTIONS[bIdx];
+  const N = N_OPTIONS[nIdxCommitted];
+  const B = B_OPTIONS[bIdxCommitted];
 
   const hGrid = useMemo(() => {
     const arr = new Float64Array(H_GRID_SIZE);
@@ -84,6 +88,9 @@ export default function BandwidthSelectorComparison() {
   }, []);
 
   // Single canonical sample for the top panel + B replicates for the bottom.
+  // Each h evaluation calls looCvAndGcvScores which does a single matrix-free
+  // O(n^2) pass returning both selectors' scores — half the work of two
+  // separate calls and zero n*n allocation.
   const { topPanel, hStar, hSilvermanCanonical, selectedSilverman, selectedCv, selectedGcv } =
     useMemo(() => {
       const rngTop = mulberry32(2026);
@@ -91,8 +98,9 @@ export default function BandwidthSelectorComparison() {
       const cvScores = new Float64Array(H_GRID_SIZE);
       const gcvScores = new Float64Array(H_GRID_SIZE);
       for (let k = 0; k < H_GRID_SIZE; k++) {
-        cvScores[k] = looCvScore(Xc, Yc, hGrid[k], kGaussian);
-        gcvScores[k] = gcvScore(Xc, Yc, hGrid[k], kGaussian);
+        const { looCv, gcv } = looCvAndGcvScores(Xc, Yc, hGrid[k], kGaussian);
+        cvScores[k] = looCv;
+        gcvScores[k] = gcv;
       }
 
       // Replicate sweep for the bottom panel.
@@ -109,8 +117,7 @@ export default function BandwidthSelectorComparison() {
         let bestGcv = Infinity;
         let bestGcvIdx = 0;
         for (let k = 0; k < H_GRID_SIZE; k++) {
-          const sc = looCvScore(X, Y, hGrid[k], kGaussian);
-          const sg = gcvScore(X, Y, hGrid[k], kGaussian);
+          const { looCv: sc, gcv: sg } = looCvAndGcvScores(X, Y, hGrid[k], kGaussian);
           if (sc < bestCv) {
             bestCv = sc;
             bestCvIdx = k;
@@ -124,11 +131,6 @@ export default function BandwidthSelectorComparison() {
         gcv[b] = hGrid[bestGcvIdx];
       }
 
-      const median = (arr: Float64Array) => {
-        const sorted = Array.from(arr).slice().sort((a, b) => a - b);
-        const m = sorted.length;
-        return m % 2 === 0 ? (sorted[m / 2 - 1] + sorted[m / 2]) / 2 : sorted[Math.floor(m / 2)];
-      };
       return {
         topPanel: { Xc, Yc, cvScores, gcvScores },
         hStar: hStarAmiseUni(N, SIGMA),
@@ -136,9 +138,6 @@ export default function BandwidthSelectorComparison() {
         selectedSilverman: silv,
         selectedCv: cv,
         selectedGcv: gcv,
-        medianSilverman: median(silv),
-        medianCv: median(cv),
-        medianGcv: median(gcv),
       };
     }, [N, B, hGrid]);
 
@@ -327,27 +326,39 @@ export default function BandwidthSelectorComparison() {
         style={{ flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center' }}
       >
         <label className="flex items-center gap-2">
-          <span className="text-[var(--color-text-secondary)] whitespace-nowrap">n: {N}</span>
+          <span className="text-[var(--color-text-secondary)] whitespace-nowrap">
+            n: {N_OPTIONS[nIdxDisplay]}
+          </span>
           <input
             type="range"
             min={0}
             max={N_OPTIONS.length - 1}
             step={1}
-            value={nIdx}
-            onChange={(e) => setNIdx(Number(e.target.value))}
+            value={nIdxDisplay}
+            onChange={(e) => setNIdxDisplay(Number(e.target.value))}
+            onMouseUp={(e) => setNIdxCommitted(Number((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => setNIdxCommitted(Number((e.target as HTMLInputElement).value))}
+            onKeyUp={(e) => setNIdxCommitted(Number((e.target as HTMLInputElement).value))}
             className="accent-[var(--color-accent)]"
+            aria-label="Sample size n"
           />
         </label>
         <label className="flex items-center gap-2">
-          <span className="text-[var(--color-text-secondary)] whitespace-nowrap">B: {B}</span>
+          <span className="text-[var(--color-text-secondary)] whitespace-nowrap">
+            B: {B_OPTIONS[bIdxDisplay]}
+          </span>
           <input
             type="range"
             min={0}
             max={B_OPTIONS.length - 1}
             step={1}
-            value={bIdx}
-            onChange={(e) => setBIdx(Number(e.target.value))}
+            value={bIdxDisplay}
+            onChange={(e) => setBIdxDisplay(Number(e.target.value))}
+            onMouseUp={(e) => setBIdxCommitted(Number((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => setBIdxCommitted(Number((e.target as HTMLInputElement).value))}
+            onKeyUp={(e) => setBIdxCommitted(Number((e.target as HTMLInputElement).value))}
             className="accent-[var(--color-accent)]"
+            aria-label="Number of replicates B"
           />
         </label>
         <div className="flex items-center gap-3 ml-auto text-xs">

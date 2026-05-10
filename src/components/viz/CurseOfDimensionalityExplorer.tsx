@@ -22,10 +22,10 @@ import {
 //          for the chosen d. Capturing 1% of uniform points needs r = 1% of
 //          edge at d = 1, but r ≈ 63% at d = 10.
 //
-// Compute notes: the heavy MC sweep (4 dimensions × 5 sample sizes × 80
-// replicates) is computed once on mount and cached; scrubbing d only changes
-// which curve is highlighted, not the underlying simulation. Test point
-// x_0 = (0.25, ..., 0.25) per the brief's gotcha.
+// Compute notes: the heavy MC sweep (4 dimensions × 5 sample sizes × 60
+// replicates, see B_PER below) is computed once on mount and cached;
+// scrubbing d only changes which curve is highlighted, not the underlying
+// simulation. Test point x_0 = (0.25, ..., 0.25) per the brief's gotcha.
 //
 // Numerical anchor: notebook §6.3 reports empirical slopes
 //   d = 1: -0.83  (theory -0.80)

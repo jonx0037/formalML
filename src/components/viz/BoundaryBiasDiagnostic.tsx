@@ -38,11 +38,19 @@ const SIGMA = 0.2;
 
 export default function BoundaryBiasDiagnostic() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const [logH, setLogH] = useState(Math.log10(0.05));
-  const [B, setB] = useState(150);
+  // Display state (cheap top-panel single-fit) vs committed state (heavy
+  // B-replicate MC sweep for the bottom panel). The top panel reads `hDisplay`
+  // so dragging stays responsive; the bottom panel reads `hCommitted` and `B`
+  // and only updates on slider release. Pattern mirrors
+  // FiniteSampleBiasExplorer / SGLDBatchSizeExplorer in this repo.
+  const [logHDisplay, setLogHDisplay] = useState(Math.log10(0.05));
+  const [logHCommitted, setLogHCommitted] = useState(Math.log10(0.05));
+  const [BDisplay, setBDisplay] = useState(150);
+  const [BCommitted, setBCommitted] = useState(150);
   const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
   const w = containerWidth;
-  const h = Math.pow(10, logH);
+  const hDisplay = Math.pow(10, logHDisplay);
+  const hCommitted = Math.pow(10, logHCommitted);
 
   // Single canonical sample for the top panel.
   const { X, Y } = useMemo(() => {
@@ -61,23 +69,24 @@ export default function BoundaryBiasDiagnostic() {
     return arr;
   }, [xGrid]);
 
+  // Top panel: cheap single-fit at the display bandwidth — updates live.
   const { mNw, mLl } = useMemo(() => {
     return {
-      mNw: nadarayaWatson(X, Y, xGrid, h, kGaussian),
-      mLl: localLinear(X, Y, xGrid, h, kGaussian),
+      mNw: nadarayaWatson(X, Y, xGrid, hDisplay, kGaussian),
+      mLl: localLinear(X, Y, xGrid, hDisplay, kGaussian),
     };
-  }, [X, Y, xGrid, h]);
+  }, [X, Y, xGrid, hDisplay]);
 
-  // MC sweep for the bottom panel — empirical bias at every grid point.
+  // Bottom panel: heavy MC sweep — only recomputes on slider release.
   const { biasNw, biasLl } = useMemo(() => {
     const G = xGrid.length;
     const sumNw = new Float64Array(G);
     const sumLl = new Float64Array(G);
     const rng = mulberry32(20260601);
-    for (let b = 0; b < B; b++) {
+    for (let b = 0; b < BCommitted; b++) {
       const { X: Xb, Y: Yb } = sampleToyUni(N, SIGMA, rng);
-      const fitNw = nadarayaWatson(Xb, Yb, xGrid, h, kGaussian);
-      const fitLl = localLinear(Xb, Yb, xGrid, h, kGaussian);
+      const fitNw = nadarayaWatson(Xb, Yb, xGrid, hCommitted, kGaussian);
+      const fitLl = localLinear(Xb, Yb, xGrid, hCommitted, kGaussian);
       for (let j = 0; j < G; j++) {
         sumNw[j] += fitNw[j];
         sumLl[j] += fitLl[j];
@@ -86,11 +95,11 @@ export default function BoundaryBiasDiagnostic() {
     const bNw = new Float64Array(G);
     const bLl = new Float64Array(G);
     for (let j = 0; j < G; j++) {
-      bNw[j] = sumNw[j] / B - mGrid[j];
-      bLl[j] = sumLl[j] / B - mGrid[j];
+      bNw[j] = sumNw[j] / BCommitted - mGrid[j];
+      bLl[j] = sumLl[j] / BCommitted - mGrid[j];
     }
     return { biasNw: bNw, biasLl: bLl };
-  }, [xGrid, mGrid, h, B]);
+  }, [xGrid, mGrid, hCommitted, BCommitted]);
 
   // Top-panel render — NW vs LL fits with boundary shading.
   const topRef = useRef<SVGSVGElement>(null);
@@ -106,18 +115,18 @@ export default function BoundaryBiasDiagnostic() {
     const xScale = d3.scaleLinear().domain([0, 1]).range([0, innerW]);
     const yScale = d3.scaleLinear().domain([-1.6, 1.7]).range([innerH, 0]);
 
-    // Boundary shading.
+    // Boundary shading — top panel uses hDisplay (live).
     g.append('rect')
       .attr('x', xScale(0))
       .attr('y', 0)
-      .attr('width', xScale(h))
+      .attr('width', xScale(hDisplay))
       .attr('height', innerH)
       .style('fill', paletteKR.truth)
       .style('opacity', 0.08);
     g.append('rect')
-      .attr('x', xScale(1 - h))
+      .attr('x', xScale(1 - hDisplay))
       .attr('y', 0)
-      .attr('width', xScale(1) - xScale(1 - h))
+      .attr('width', xScale(1) - xScale(1 - hDisplay))
       .attr('height', innerH)
       .style('fill', paletteKR.truth)
       .style('opacity', 0.08);
@@ -197,7 +206,7 @@ export default function BoundaryBiasDiagnostic() {
       .style('text-anchor', 'middle')
       .style('font-size', '13px')
       .style('font-weight', '600')
-      .text(`NW vs local-linear,  h = ${h.toFixed(3)} (boundary regions shaded)`);
+      .text(`NW vs local-linear,  h = ${hDisplay.toFixed(3)} (boundary regions shaded)`);
 
     // Legend.
     const legendG = g.append('g').attr('transform', `translate(${innerW - 130}, 8)`);
@@ -224,7 +233,7 @@ export default function BoundaryBiasDiagnostic() {
         .style('font-size', '10px')
         .text(it.label);
     });
-  }, [w, X, Y, xGrid, mGrid, mNw, mLl, h]);
+  }, [w, X, Y, xGrid, mGrid, mNw, mLl, hDisplay]);
 
   // Bottom-panel render — empirical bias.
   const bottomRef = useRef<SVGSVGElement>(null);
@@ -251,18 +260,18 @@ export default function BoundaryBiasDiagnostic() {
       .style('stroke', 'var(--color-border)')
       .style('stroke-width', 1);
 
-    // Boundary shading.
+    // Boundary shading — bottom panel uses hCommitted (matches MC sweep).
     g.append('rect')
       .attr('x', xScale(0))
       .attr('y', 0)
-      .attr('width', xScale(h))
+      .attr('width', xScale(hCommitted))
       .attr('height', innerH)
       .style('fill', paletteKR.truth)
       .style('opacity', 0.08);
     g.append('rect')
-      .attr('x', xScale(1 - h))
+      .attr('x', xScale(1 - hCommitted))
       .attr('y', 0)
-      .attr('width', xScale(1) - xScale(1 - h))
+      .attr('width', xScale(1) - xScale(1 - hCommitted))
       .attr('height', innerH)
       .style('fill', paletteKR.truth)
       .style('opacity', 0.08);
@@ -320,8 +329,8 @@ export default function BoundaryBiasDiagnostic() {
       .style('text-anchor', 'middle')
       .style('font-size', '13px')
       .style('font-weight', '600')
-      .text(`Empirical bias vs x,  B = ${B} replicates`);
-  }, [w, xGrid, biasNw, biasLl, h, B]);
+      .text(`Empirical bias vs x,  B = ${BCommitted} replicates`);
+  }, [w, xGrid, biasNw, biasLl, hCommitted, BCommitted]);
 
   // Read-out: bias ratio at boundary x = 0.005.
   const boundaryIdx = useMemo(() => {
@@ -353,28 +362,36 @@ export default function BoundaryBiasDiagnostic() {
       >
         <label className="flex items-center gap-2 flex-1 min-w-[200px]">
           <span className="text-[var(--color-text-secondary)] whitespace-nowrap">
-            bandwidth h: {h.toFixed(3)}
+            bandwidth h: {hDisplay.toFixed(3)}
           </span>
           <input
             type="range"
             min={Math.log10(0.01)}
             max={Math.log10(0.2)}
             step={0.02}
-            value={logH}
-            onChange={(e) => setLogH(Number(e.target.value))}
+            value={logHDisplay}
+            onChange={(e) => setLogHDisplay(Number(e.target.value))}
+            onMouseUp={(e) => setLogHCommitted(Number((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => setLogHCommitted(Number((e.target as HTMLInputElement).value))}
+            onKeyUp={(e) => setLogHCommitted(Number((e.target as HTMLInputElement).value))}
             className="flex-1 accent-[var(--color-accent)]"
+            aria-label="Bandwidth h"
           />
         </label>
         <label className="flex items-center gap-2 flex-1 min-w-[180px]">
-          <span className="text-[var(--color-text-secondary)] whitespace-nowrap">B: {B}</span>
+          <span className="text-[var(--color-text-secondary)] whitespace-nowrap">B: {BDisplay}</span>
           <input
             type="range"
             min={50}
             max={400}
             step={25}
-            value={B}
-            onChange={(e) => setB(Number(e.target.value))}
+            value={BDisplay}
+            onChange={(e) => setBDisplay(Number(e.target.value))}
+            onMouseUp={(e) => setBCommitted(Number((e.target as HTMLInputElement).value))}
+            onTouchEnd={(e) => setBCommitted(Number((e.target as HTMLInputElement).value))}
+            onKeyUp={(e) => setBCommitted(Number((e.target as HTMLInputElement).value))}
             className="flex-1 accent-[var(--color-accent)]"
+            aria-label="Number of replicates B"
           />
         </label>
         <span className="ml-auto text-xs text-[var(--color-text-secondary)] font-mono">
