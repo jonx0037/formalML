@@ -44,7 +44,7 @@ pnpm preview                                        # Preview production build
 pnpm verify:nonparametric-ml                        # Numerical regression tests for src/components/viz/shared/nonparametric-ml.ts vs notebook printed outputs
 pnpm verify:<topic>                                 # Per-topic numerical-regression suite. New topics: write src/components/viz/shared/__tests__/verify-<slug>.ts (standalone, process.exit(0/1)), register a matching verify:<slug> script in package.json. Tolerances reflect notebook printed outputs; brief tabulated values may differ if the notebook seed changed during scoping.
 pnpm audit:cross-site                               # Cross-site reciprocity validator. AUTO-REWRITES docs/plans/deferred-reciprocals.md, docs/plans/cross-site-audit-report.md, and docs/plans/audit-output/*.json — don't hand-edit those files.
-node ./node_modules/typescript/lib/tsc.js --noEmit --project tsconfig.json   # Ad-hoc TypeScript check. pnpx tsc / pnpm dlx tsc both fail with "This is not the tsc command you are looking for".
+pnpm exec tsc --noEmit --project tsconfig.json      # Ad-hoc TypeScript check. `pnpm exec` runs the local `tsc` binary from node_modules/.bin; `pnpx tsc` and `pnpm dlx tsc` both fetch the wrong global package and fail with "This is not the tsc command you are looking for".
 
 # Notebook Python — each topic ships its own .venv
 cd notebooks/<topic-slug> && .venv/bin/python <script>.py                                  # Run a notebook-local Python script (no project-wide venv)
@@ -52,7 +52,7 @@ cd notebooks/<topic-slug> && nohup .venv/bin/python <script>.py </dev/null >out.
 cd notebooks/<topic-slug> && uv pip install <pkg>                                          # Add a package to the notebook venv. uv-managed venvs lack pip directly — `python -m pip install` returns "No module named pip".
 ```
 
-**Bash cwd persists across tool calls.** A `cd notebooks/<slug>` from earlier in the session silently breaks later relative-path operations (e.g., `git add path/from/repo-root` runs from the notebook dir and fails with "pathspec did not match"). Use absolute paths or `cd /Users/jonathanrocha/Developer/Sites/formalML` at the top of any compound staging command in long sessions.
+**Bash cwd persists across tool calls.** A `cd notebooks/<slug>` from earlier in the session silently breaks later relative-path operations (e.g., `git add path/from/repo-root` runs from the notebook dir and fails with "pathspec did not match"). Use absolute paths or `cd "$(git rev-parse --show-toplevel)"` at the top of any compound staging command in long sessions.
 
 ## Preview before publish (non-negotiable)
 
