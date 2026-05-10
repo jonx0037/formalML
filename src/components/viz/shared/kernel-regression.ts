@@ -878,16 +878,21 @@ export function localPolynomialCoefs(
   const dim = p + 1;
   const out = new Float64Array(G * dim);
 
+  // Hoist per-evaluation buffers outside the G-loop to eliminate G*n GC churn
+  // on slider-driven hot paths (catches PR #80 perf review feedback).
+  const A: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+  const bv = new Array(dim).fill(0);
+  const phi = new Array(dim);
+
   for (let g = 0; g < G; g++) {
     const xg = xEval[g];
-    const A: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
-    const bv = new Array(dim).fill(0);
+    for (let r = 0; r < dim; r++) A[r].fill(0);
+    bv.fill(0);
     for (let i = 0; i < n; i++) {
       const u = (X[i] - xg) / h;
       const w = K(u) / h;
       // phi[k] = u^k.
       let uk = 1;
-      const phi = new Array(dim);
       for (let k = 0; k < dim; k++) {
         phi[k] = uk;
         uk *= u;
@@ -951,14 +956,18 @@ export function smootherDiagonal(
   const dim = p + 1;
   const out = new Float64Array(n);
   const K0overH = K(0) / h;
+  // Hoist per-i buffers outside the n-loop (PR #80 perf review).
+  const A: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+  const phi = new Array(dim);
+  const e1 = new Array(dim).fill(0);
+  e1[0] = 1;
   for (let i = 0; i < n; i++) {
     const xi = X[i];
-    const A: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+    for (let r = 0; r < dim; r++) A[r].fill(0);
     for (let j = 0; j < n; j++) {
       const u = (X[j] - xi) / h;
       const w = K(u) / h;
       let uk = 1;
-      const phi = new Array(dim);
       for (let k = 0; k < dim; k++) {
         phi[k] = uk;
         uk *= u;
@@ -968,8 +977,6 @@ export function smootherDiagonal(
       }
     }
     // Solve A·v = e_1 and pick v[0]; then H_ii = K(0)/h · v[0].
-    const e1 = new Array(dim).fill(0);
-    e1[0] = 1;
     let v: number[];
     try {
       v = solveLinearSystem(A, e1);
@@ -1099,13 +1106,19 @@ export function localPolynomialMd(
   for (let j = 0; j < d; j++) prodH *= H[j];
   const kernelNorm = 1 / (Math.pow(2 * Math.PI, d / 2) * prodH);
 
+  // Hoist per-(g, i) buffers outside the loops — multivariate is the most
+  // allocation-heavy of the four hot paths (PR #80 perf review).
+  const A: number[][] = Array.from({ length: M }, () => new Array(M).fill(0));
+  const bv = new Array(M).fill(0);
+  const diff = new Array(d);
+  const phi = new Array(M);
+
   for (let g = 0; g < G; g++) {
-    const A: number[][] = Array.from({ length: M }, () => new Array(M).fill(0));
-    const bv = new Array(M).fill(0);
+    for (let r = 0; r < M; r++) A[r].fill(0);
+    bv.fill(0);
     for (let i = 0; i < n; i++) {
       // Per-coordinate scaled diff and Gaussian weight.
       let logW = 0;
-      const diff = new Array(d);
       for (let j = 0; j < d; j++) {
         const dij = X[i * d + j] - xEval[g * d + j];
         diff[j] = dij;
@@ -1114,7 +1127,6 @@ export function localPolynomialMd(
       }
       const w = kernelNorm * Math.exp(logW);
       // Design row in *unscaled* basis: φ_α = ∏_j (X_{ij} - x_{gj})^{α_j}.
-      const phi = new Array(M);
       for (let m = 0; m < M; m++) {
         let val = 1;
         const alpha = indices[m];
@@ -1187,11 +1199,13 @@ export function backfitGam(
     xCols.push(col);
   }
 
+  // Hoist the partial-residual buffer outside the iter and j loops
+  // (PR #80 perf review).
+  const rj = new Float64Array(n);
   for (let iter = 0; iter < maxIter; iter++) {
     let maxDelta = 0;
     for (let j = 0; j < d; j++) {
       // Partial residual against coordinate j.
-      const rj = new Float64Array(n);
       for (let i = 0; i < n; i++) {
         let s = Y[i] - alpha;
         for (let k = 0; k < d; k++) if (k !== j) s -= components[i][k];
