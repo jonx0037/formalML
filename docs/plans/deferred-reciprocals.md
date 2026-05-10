@@ -611,14 +611,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Positive-definite kernels induce metrics on feature spaces. The RKHS norm distance is a metric-space distance, and kernel methods exploit metric-space completeness._
 
-## When `formalml/local-regression` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/kernel-density-estimation** declares `formalmlConnections` → `local-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Fan–Gijbels 1996 local polynomial regression corrects KDE's boundary bias and generalizes to the regression setting. §30.5 Rem 9 name-checks the local-linear-at-boundary estimator; forthcoming on f…_
-
 ## When `formalml/logistic-regression` ships
 
 Add the reciprocal pointer back to:
