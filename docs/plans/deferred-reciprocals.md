@@ -611,14 +611,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Positive-definite kernels induce metrics on feature spaces. The RKHS norm distance is a metric-space distance, and kernel methods exploit metric-space completeness._
 
-## When `formalml/kernel-regression` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/kernel-density-estimation** declares `formalmlConnections` → `kernel-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Nadaraya–Watson kernel regression is the covariate-conditional extension of KDE: average $Y_i$ values weighted by $K_h(x - X_i)$. §30.9 Rem 17 pointer; full development forthcoming on formalml._
-
 ## When `formalml/local-regression` ships
 
 Add the reciprocal pointer back to:
