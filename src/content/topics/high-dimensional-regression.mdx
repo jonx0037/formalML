@@ -1,0 +1,553 @@
+---
+title: "High-Dimensional Regression"
+subtitle: "The lasso at $p \\gg n$ — definition, geometry, and ISTA / FISTA / coordinate-descent solvers; the Bickel–Ritov–Tsybakov (2009) oracle inequality at the $\\sigma^2 s \\log(p)/n$ rate under the restricted-eigenvalue condition; the variable-selection story under the irrepresentable condition; ridge / elastic-net / adaptive-lasso variants; and the Zhang–Zhang / Javanmard–Montanari / van de Geer–Bühlmann–Ritov–Dezeure (2014) debiased lasso for valid $\\sqrt n$-confidence inference on individual coefficients."
+status: "draft"
+difficulty: "advanced"
+prerequisites:
+  - "kernel-regression"
+  - "local-regression"
+formalstatisticsPrereqs:
+  - topic: "regularization-and-penalized-estimation"
+    site: "formalstatistics"
+    relationship: "Covers ridge / lasso / elastic net at the standard $n > p$ regime — KKT subgradient, soft-thresholding for orthogonal designs, coordinate-descent solvers, cross-validated $\\lambda$ selection. This ML topic extends the parametric lasso to the $p \\gg n$ regime where standard inference breaks down, adds the oracle inequality + restricted-eigenvalue / irrepresentable conditions, and adds debiased-lasso inference."
+  - topic: "linear-regression"
+    site: "formalstatistics"
+    relationship: "OLS, normal equations, geometric picture of projection onto column space — same prerequisite used by kernel-regression and local-regression. Reference for the §1 \"OLS overfits when $p > n$\" geometric hook and for the §10 OLS-baseline confidence-interval comparison."
+  - topic: "hypothesis-testing"
+    site: "formalstatistics"
+    relationship: "The inferential apparatus — Type I / Type II errors, confidence intervals, p-values, Wald and likelihood-ratio tests under normal asymptotics. The §10 debiased lasso produces a $\\sqrt n$-consistent normal estimator; the resulting CI / hypothesis test is the formalstatistics testing-theory framework applied to a high-dimensional setting, with the PoSI undercoverage demonstration and debiased-lasso fix appealing directly to the standard testing framework."
+formalcalculusPrereqs:
+  - topic: "convex-optimization"
+    site: "formalcalculus"
+    relationship: "KKT subgradient calculus, soft-thresholding derivation from convex optimality conditions, Lagrangian duality between penalized and constrained forms, ISTA / FISTA convergence analysis via the descent lemma and Lyapunov-function arguments. The §3 FISTA convergence proof leans heavily on the descent lemma and the proximal-gradient inequality from this foundation topic."
+  - topic: "multiple-integrals"
+    site: "formalcalculus"
+    relationship: "The high-dimensional probability / concentration substrate — sub-Gaussian tail bounds, union-bound deviation inequalities, multivariate-integration moves used in the lasso oracle inequality's deviation step (§5.5) for controlling $\\|\\mathbf{X}^\\top \\boldsymbol\\varepsilon / n\\|_\\infty$. Same use as in kernel-regression's §3.3 Taylor-with-remainder bias derivation."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "supervised-learning"
+  - "high-dimensional-regression"
+  - "lasso"
+  - "sparse-regression"
+  - "regularization"
+  - "ista-fista"
+  - "coordinate-descent"
+  - "oracle-inequality"
+  - "restricted-eigenvalue"
+  - "irrepresentable-condition"
+  - "elastic-net"
+  - "adaptive-lasso"
+  - "debiased-lasso"
+  - "post-selection-inference"
+  - "machine-learning"
+domain: "supervised-learning"
+videoId: null
+notebookPath: "notebooks/high-dimensional-regression/01_high_dimensional_regression.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/high-dimensional-regression.mdx"
+datePublished: 2026-05-10
+estimatedReadTime: 65
+abstract: "When the number of features $p$ is comparable to or much larger than the sample size $n$, ordinary least squares fails — the normal equations are rank-deficient and predictions explode. The lasso (Tibshirani 1996) replaces the squared-loss objective with an L1-penalized version, producing sparse solutions whose support adapts to the unknown active set of the true regression vector. We work the lasso pipeline end-to-end: (i) the estimator's geometry — convex objective, L1-ball corners, KKT subgradient conditions, soft-thresholding closed form on orthogonal designs — and the ISTA / FISTA / coordinate-descent solvers that handle the general case; (ii) the headline non-asymptotic prediction-risk theory — the Bickel-Ritov-Tsybakov (2009) oracle inequality at rate $\\sigma^2 s \\log(p)/n$ under the restricted-eigenvalue condition, plus the parallel variable-selection story under the irrepresentable condition (Zhao-Yu 2006); (iii) practical $\\lambda$-selection by cross-validation and information criteria, plus the ridge / elastic-net / adaptive-lasso variants that fix the lasso's failure modes on correlated features and biased active coefficients; (iv) the inferential payoff — the debiased lasso (Zhang-Zhang 2014; Javanmard-Montanari 2014; van de Geer-Bühlmann-Ritov-Dezeure 2014), a one-step Newton correction that produces $\\sqrt n$-consistent normal estimates of individual coefficients suitable for confidence intervals and hypothesis tests in the $p \\gg n$ regime where naive post-selection inference undercovers by 20-50 percentage points. The lasso is the workhorse high-dimensional regression tool of the modern statistical toolkit and the canonical sparse nuisance estimator in semiparametric and double/debiased machine-learning inference."
+connections:
+  - topic: "kernel-regression"
+    relationship: "T2 #1 predecessor. Established the bias-variance / cross-validation discipline carried over here; §7's named-section convention for cross-validation parallels kernel-regression §5's LOO-CV / GCV section. The toy-DGP convention (controlled signal-to-noise, fixed seed, modular helper functions) is shared."
+  - topic: "local-regression"
+    relationship: "T2 #2 predecessor and freshest May-2026 exemplar. Established the §-prefix heading style, the verification-suite-against-notebook discipline, and the figure-styling baseline. This topic ports the structural template; the algorithmic substrate (sparsity / convex optimization / concentration) is independent."
+  - topic: "sparse-bayesian-priors"
+    relationship: "Bayesian counterpart with horseshoe / spike-and-slab / R2-D2 priors. The lasso's L1 penalty is the negative log-prior of an iid Laplace prior; sparse-Bayesian methods replace the Laplace with heavier-tailed continuous shrinkage priors (horseshoe) or discrete-mixture spike-and-slab. §12.3 below is the explicit cross-link; sparse-bayesian-priors §5 contrasts horseshoe vs Bayesian-LASSO geometry as the prior-side dual of this topic's L1 penalty."
+  - topic: "concentration-inequalities"
+    relationship: "Foundations-layer prerequisite. The §5.5 deviation step for the oracle inequality uses the sub-Gaussian maximal inequality on $\\|\\mathbf{X}^\\top \\boldsymbol\\varepsilon / n\\|_\\infty$; the §6.3 sign-consistency proof uses an analogous deviation bound on the noise term in the primal-dual witness construction."
+  - topic: "convex-analysis"
+    relationship: "Foundations-layer prerequisite. The §2.4 KKT subgradient conditions, §3.1 soft-thresholding derivation, and §3 ISTA / FISTA convergence proofs all rest on the convex-analysis substrate (subdifferentials, the descent lemma, proximal operators, Lagrangian duality)."
+  - topic: "gradient-descent"
+    relationship: "Foundations-layer prerequisite. §3.3 ISTA is the proximal-gradient generalization of gradient descent; §3.4 FISTA layers Nesterov momentum on top of it for the $O(1/k^2)$ rate. The descent-lemma machinery and the $L$-smoothness convergence analysis port directly."
+  - topic: "proximal-methods"
+    relationship: "Foundations-layer prerequisite. The §3 lasso solvers (ISTA, FISTA, coordinate descent) all reduce to repeated application of the soft-thresholding operator $S(\\cdot, \\lambda)$ — the proximal operator of the L1 norm developed in proximal-methods. The shared `proximalUtils.softThreshold` helper used in this topic's viz components is exported from the proximal-methods topic's substrate."
+references:
+  - type: paper
+    authors: "Baraniuk, R., Davenport, M., DeVore, R. & Wakin, M."
+    title: "A simple proof of the restricted isometry property for random matrices"
+    year: 2008
+    venue: "Constructive Approximation 28(3), 253–263"
+    url: "https://doi.org/10.1007/s00365-007-9003-x"
+  - type: paper
+    authors: "Beck, A. & Teboulle, M."
+    title: "A fast iterative shrinkage-thresholding algorithm for linear inverse problems"
+    year: 2009
+    venue: "SIAM Journal on Imaging Sciences 2(1), 183–202"
+    url: "https://doi.org/10.1137/080716542"
+  - type: paper
+    authors: "Belloni, A. & Chernozhukov, V."
+    title: "ℓ1-penalized quantile regression in high-dimensional sparse models"
+    year: 2011
+    venue: "Annals of Statistics 39(1), 82–130"
+    url: "https://doi.org/10.1214/10-AOS827"
+  - type: paper
+    authors: "Belloni, A., Chernozhukov, V. & Wang, L."
+    title: "Pivotal estimation via square-root lasso in nonparametric regression"
+    year: 2014
+    venue: "Annals of Statistics 42(2), 757–788"
+    url: "https://doi.org/10.1214/14-AOS1204"
+  - type: paper
+    authors: "Berk, R., Brown, L., Buja, A., Zhang, K. & Zhao, L."
+    title: "Valid post-selection inference"
+    year: 2013
+    venue: "Annals of Statistics 41(2), 802–837"
+    url: "https://doi.org/10.1214/12-AOS1077"
+  - type: paper
+    authors: "Bickel, P. J."
+    title: "On adaptive estimation"
+    year: 1982
+    venue: "Annals of Statistics 10(3), 647–671"
+    url: "https://doi.org/10.1214/aos/1176345863"
+  - type: paper
+    authors: "Bickel, P. J., Ritov, Y. & Tsybakov, A. B."
+    title: "Simultaneous analysis of lasso and Dantzig selector"
+    year: 2009
+    venue: "Annals of Statistics 37(4), 1705–1732"
+    url: "https://doi.org/10.1214/08-AOS620"
+  - type: paper
+    authors: "Boyd, S., Parikh, N., Chu, E., Peleato, B. & Eckstein, J."
+    title: "Distributed optimization and statistical learning via the alternating direction method of multipliers"
+    year: 2011
+    venue: "Foundations and Trends in Machine Learning 3(1), 1–122"
+    url: "https://doi.org/10.1561/2200000016"
+  - type: book
+    authors: "Breiman, L., Friedman, J., Olshen, R. & Stone, C."
+    title: "Classification and Regression Trees"
+    year: 1984
+    venue: "Wadsworth (reprint Routledge)"
+    url: "https://www.routledge.com/Classification-and-Regression-Trees/Breiman-Friedman-Olshen-Stone/p/book/9780412048418"
+  - type: paper
+    authors: "Breiman, L."
+    title: "Better subset regression using the nonnegative garrote"
+    year: 1995
+    venue: "Technometrics 37(4), 373–384"
+    url: "https://doi.org/10.2307/1269730"
+  - type: book
+    authors: "Bühlmann, P. & van de Geer, S."
+    title: "Statistics for High-Dimensional Data: Methods, Theory and Applications"
+    year: 2011
+    venue: "Springer"
+    url: "https://doi.org/10.1007/978-3-642-20192-9"
+  - type: paper
+    authors: "Candès, E. J. & Tao, T."
+    title: "Decoding by linear programming"
+    year: 2005
+    venue: "IEEE Transactions on Information Theory 51(12), 4203–4215"
+    url: "https://doi.org/10.1109/TIT.2005.858979"
+  - type: paper
+    authors: "Carvalho, C. M., Polson, N. G. & Scott, J. G."
+    title: "The horseshoe estimator for sparse signals"
+    year: 2010
+    venue: "Biometrika 97(2), 465–480"
+    url: "https://doi.org/10.1093/biomet/asq017"
+  - type: book
+    authors: "Catoni, O."
+    title: "PAC-Bayesian Supervised Classification: The Thermodynamics of Statistical Learning"
+    year: 2007
+    venue: "IMS Lecture Notes-Monograph Series 56"
+    url: "https://doi.org/10.1214/074921707000000391"
+  - type: paper
+    authors: "Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W. & Robins, J."
+    title: "Double/debiased machine learning for treatment and structural parameters"
+    year: 2018
+    venue: "Econometrics Journal 21(1), C1–C68"
+    url: "https://doi.org/10.1111/ectj.12097"
+  - type: paper
+    authors: "Dezeure, R., Bühlmann, P., Meier, L. & Meinshausen, N."
+    title: "High-dimensional inference: Confidence intervals, p-values and R-software hdi"
+    year: 2015
+    venue: "Statistical Science 30(4), 533–558"
+    url: "https://doi.org/10.1214/15-STS527"
+  - type: paper
+    authors: "Donoho, D. L. & Johnstone, I. M."
+    title: "Ideal spatial adaptation by wavelet shrinkage"
+    year: 1994
+    venue: "Biometrika 81(3), 425–455"
+    url: "https://doi.org/10.1093/biomet/81.3.425"
+  - type: paper
+    authors: "Efron, B., Hastie, T., Johnstone, I. & Tibshirani, R."
+    title: "Least angle regression"
+    year: 2004
+    venue: "Annals of Statistics 32(2), 407–499"
+    url: "https://doi.org/10.1214/009053604000000067"
+  - type: paper
+    authors: "Fan, J. & Lv, J."
+    title: "Sure independence screening for ultrahigh dimensional feature space"
+    year: 2008
+    venue: "Journal of the Royal Statistical Society Series B 70(5), 849–911"
+    url: "https://doi.org/10.1111/j.1467-9868.2008.00674.x"
+  - type: paper
+    authors: "Friedman, J., Hastie, T. & Tibshirani, R."
+    title: "Regularization paths for generalized linear models via coordinate descent"
+    year: 2010
+    venue: "Journal of Statistical Software 33(1), 1–22"
+    url: "https://doi.org/10.18637/jss.v033.i01"
+  - type: paper
+    authors: "George, E. I. & McCulloch, R. E."
+    title: "Variable selection via Gibbs sampling"
+    year: 1993
+    venue: "Journal of the American Statistical Association 88(423), 881–889"
+    url: "https://doi.org/10.1080/01621459.1993.10476353"
+  - type: book
+    authors: "Hastie, T., Tibshirani, R. & Friedman, J."
+    title: "The Elements of Statistical Learning: Data Mining, Inference, and Prediction"
+    year: 2009
+    venue: "Springer (2nd edition)"
+    url: "https://doi.org/10.1007/978-0-387-84858-7"
+  - type: paper
+    authors: "Javanmard, A. & Montanari, A."
+    title: "Confidence intervals and hypothesis testing for high-dimensional regression"
+    year: 2014
+    venue: "Journal of Machine Learning Research 15, 2869–2909"
+    url: "https://www.jmlr.org/papers/v15/javanmard14a.html"
+  - type: paper
+    authors: "Le Cam, L."
+    title: "On the asymptotic theory of estimation and testing hypotheses"
+    year: 1956
+    venue: "Proceedings of the Third Berkeley Symposium on Mathematical Statistics and Probability vol. 1, 129–156"
+    url: "https://projecteuclid.org/proceedings/berkeley-symposium-on-mathematical-statistics-and-probability/Proceedings-of-the-Third-Berkeley-Symposium-on-Mathematical-Statistics-and/Chapter/On-the-asymptotic-theory-of-estimation-and-testing-hypotheses/bsmsp/1200501652"
+  - type: book
+    authors: "McCullagh, P. & Nelder, J. A."
+    title: "Generalized Linear Models"
+    year: 1989
+    venue: "Chapman & Hall (2nd edition; reprint Routledge)"
+    url: "https://www.routledge.com/Generalized-Linear-Models/McCullagh-Nelder/p/book/9780412317606"
+  - type: paper
+    authors: "Meinshausen, N. & Bühlmann, P."
+    title: "High-dimensional graphs and variable selection with the lasso"
+    year: 2006
+    venue: "Annals of Statistics 34(3), 1436–1462"
+    url: "https://doi.org/10.1214/009053606000000281"
+  - type: paper
+    authors: "Meinshausen, N. & Bühlmann, P."
+    title: "Stability selection"
+    year: 2010
+    venue: "Journal of the Royal Statistical Society Series B 72(4), 417–473"
+    url: "https://doi.org/10.1111/j.1467-9868.2010.00740.x"
+  - type: paper
+    authors: "Mitchell, T. J. & Beauchamp, J. J."
+    title: "Bayesian variable selection in linear regression"
+    year: 1988
+    venue: "Journal of the American Statistical Association 83(404), 1023–1032"
+    url: "https://doi.org/10.1080/01621459.1988.10478694"
+  - type: paper
+    authors: "Raskutti, G., Wainwright, M. J. & Yu, B."
+    title: "Restricted eigenvalue properties for correlated Gaussian designs"
+    year: 2010
+    venue: "Journal of Machine Learning Research 11, 2241–2259"
+    url: "https://www.jmlr.org/papers/v11/raskutti10a.html"
+  - type: paper
+    authors: "Raskutti, G., Wainwright, M. J. & Yu, B."
+    title: "Minimax rates of estimation for high-dimensional linear regression over ℓq-balls"
+    year: 2011
+    venue: "IEEE Transactions on Information Theory 57(10), 6976–6994"
+    url: "https://doi.org/10.1109/TIT.2011.2165799"
+  - type: paper
+    authors: "Reid, S., Tibshirani, R. & Friedman, J."
+    title: "A study of error variance estimation in lasso regression"
+    year: 2016
+    venue: "Statistica Sinica 26, 35–67"
+    url: "https://doi.org/10.5705/ss.2014.042"
+  - type: paper
+    authors: "Robins, J. M., Rotnitzky, A. & Zhao, L. P."
+    title: "Estimation of regression coefficients when some regressors are not always observed"
+    year: 1994
+    venue: "Journal of the American Statistical Association 89(427), 846–866"
+    url: "https://doi.org/10.1080/01621459.1994.10476818"
+  - type: paper
+    authors: "Rudelson, M. & Zhou, S."
+    title: "Reconstruction from anisotropic random measurements"
+    year: 2013
+    venue: "IEEE Transactions on Information Theory 59(6), 3434–3447"
+    url: "https://doi.org/10.1109/TIT.2013.2243201"
+  - type: paper
+    authors: "Stone, M."
+    title: "An asymptotic equivalence of choice of model by cross-validation and Akaike's criterion"
+    year: 1977
+    venue: "Journal of the Royal Statistical Society Series B 39(1), 44–47"
+    url: "https://doi.org/10.1111/j.2517-6161.1977.tb01603.x"
+  - type: paper
+    authors: "Tibshirani, R."
+    title: "Regression shrinkage and selection via the lasso"
+    year: 1996
+    venue: "Journal of the Royal Statistical Society Series B 58(1), 267–288"
+    url: "https://doi.org/10.1111/j.2517-6161.1996.tb02080.x"
+  - type: paper
+    authors: "Tibshirani, R. J."
+    title: "The lasso problem and uniqueness"
+    year: 2013
+    venue: "Electronic Journal of Statistics 7, 1456–1490"
+    url: "https://doi.org/10.1214/13-EJS815"
+  - type: paper
+    authors: "Tseng, P."
+    title: "Convergence of a block coordinate descent method for nondifferentiable minimization"
+    year: 2001
+    venue: "Journal of Optimization Theory and Applications 109(3), 475–494"
+    url: "https://doi.org/10.1023/A:1017501703105"
+  - type: paper
+    authors: "van de Geer, S. A."
+    title: "High-dimensional generalized linear models and the lasso"
+    year: 2008
+    venue: "Annals of Statistics 36(2), 614–645"
+    url: "https://doi.org/10.1214/009053607000000929"
+  - type: paper
+    authors: "van de Geer, S., Bühlmann, P., Ritov, Y. & Dezeure, R."
+    title: "On asymptotically optimal confidence regions and tests for high-dimensional models"
+    year: 2014
+    venue: "Annals of Statistics 42(3), 1166–1202"
+    url: "https://doi.org/10.1214/14-AOS1221"
+  - type: book
+    authors: "Vershynin, R."
+    title: "High-Dimensional Probability: An Introduction with Applications in Data Science"
+    year: 2018
+    venue: "Cambridge University Press"
+    url: "https://doi.org/10.1017/9781108231596"
+  - type: paper
+    authors: "Wainwright, M. J."
+    title: "Sharp thresholds for high-dimensional and noisy sparsity recovery using ℓ1-constrained quadratic programming (lasso)"
+    year: 2009
+    venue: "IEEE Transactions on Information Theory 55(5), 2183–2202"
+    url: "https://doi.org/10.1109/TIT.2009.2016018"
+  - type: book
+    authors: "Wainwright, M. J."
+    title: "High-Dimensional Statistics: A Non-Asymptotic Viewpoint"
+    year: 2019
+    venue: "Cambridge University Press"
+    url: "https://doi.org/10.1017/9781108627771"
+  - type: paper
+    authors: "Wang, H., Li, R. & Tsai, C.-L."
+    title: "Tuning parameter selectors for the smoothly clipped absolute deviation method"
+    year: 2007
+    venue: "Biometrika 94(3), 553–568"
+    url: "https://doi.org/10.1093/biomet/asm053"
+  - type: paper
+    authors: "Wong, K. C., Li, Z. & Tewari, A."
+    title: "Lasso guarantees for β-mixing heavy-tailed time series"
+    year: 2020
+    venue: "Annals of Statistics 48(2), 1124–1142"
+    url: "https://doi.org/10.1214/19-AOS1840"
+  - type: paper
+    authors: "Yuan, G.-X., Ho, C.-H. & Lin, C.-J."
+    title: "An improved GLMNET for L1-regularized logistic regression"
+    year: 2012
+    venue: "Journal of Machine Learning Research 13, 1999–2030"
+    url: "https://www.jmlr.org/papers/v13/yuan12a.html"
+  - type: paper
+    authors: "Zhang, C.-H. & Zhang, S. S."
+    title: "Confidence intervals for low dimensional parameters in high dimensional linear models"
+    year: 2014
+    venue: "Journal of the Royal Statistical Society Series B 76(1), 217–242"
+    url: "https://doi.org/10.1111/rssb.12026"
+  - type: paper
+    authors: "Zhao, P. & Yu, B."
+    title: "On model selection consistency of lasso"
+    year: 2006
+    venue: "Journal of Machine Learning Research 7, 2541–2563"
+    url: "https://www.jmlr.org/papers/v7/zhao06a.html"
+  - type: paper
+    authors: "Zou, H."
+    title: "The adaptive lasso and its oracle properties"
+    year: 2006
+    venue: "Journal of the American Statistical Association 101(476), 1418–1429"
+    url: "https://doi.org/10.1198/016214506000000735"
+  - type: paper
+    authors: "Zou, H. & Hastie, T."
+    title: "Regularization and variable selection via the elastic net"
+    year: 2005
+    venue: "Journal of the Royal Statistical Society Series B 67(2), 301–320"
+    url: "https://doi.org/10.1111/j.1467-9868.2005.00503.x"
+  - type: paper
+    authors: "Zou, H., Hastie, T. & Tibshirani, R."
+    title: "On the degrees of freedom of the lasso"
+    year: 2007
+    venue: "Annals of Statistics 35(5), 2173–2192"
+    url: "https://doi.org/10.1214/009053607000000127"
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+
+## §1. From OLS to penalized regression
+
+When the predictor matrix has more columns than rows, ordinary least squares stops being a single estimator and becomes a degenerate family — infinitely many vectors fit the training data perfectly, none of them generalize. This section establishes the high-dimensional regime, shows OLS failing on the canonical sparse-Gaussian-design problem we'll reuse for the next eight sections, and introduces the two classical regularization remedies: ridge (L2-penalized) and lasso (L1-penalized). Ridge gives a unique solution and shrinks every coefficient smoothly toward zero; lasso gives a sparse solution and shrinks small coefficients all the way to zero. The geometric difference between those two penalties — corners on the L1 ball, smooth curvature on the L2 ball — is what makes the lasso the central object of this topic.
+
+*Section content in development. The full §1 prose ports from the [verified handoff brief](https://github.com/jonx0037/formalML/blob/main/docs/plans/formalml-high-dimensional-regression-handoff-brief.md). DGP-1 specification: $n = 200$, $p = 500$, $s = 10$, AR(1) Toeplitz $\boldsymbol\Sigma_{jk} = 0.5^{|j-k|}$, $\beta^*_j = 1$ for $j \in \{0, \ldots, 9\}$, noise $\sigma = 0.5$, seed `np.random.default_rng(42)`. Population $R^2 \approx 0.99$.*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_01_01_ols_overfit.png"
+  alt="OLS train MSE drops to zero while test MSE explodes as the active feature count p_used approaches the sample size n on DGP-1."
+  caption="OLS on DGP-1 (n = 200, s = 10) as the active feature count p_used varies from 10 to 199. Train MSE drops monotonically toward zero as p_used → n; test MSE bottoms out near p_used ≈ s (the truth) and explodes by orders of magnitude as p_used → n. OLS cannot exploit the sparsity structure — given enough degrees of freedom it overfits aggressively."
+/>
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_01_02_03_ridge_vs_lasso_coefs.png"
+  alt="Side-by-side coefficient bar charts of ridge (three penalty levels, all dense) versus lasso (three penalty levels, sparse) on DGP-1."
+  caption="Ridge (top row, three α levels) versus lasso (bottom row, three λ levels) coefficient estimates on DGP-1. The ten true active coordinates are highlighted in black. Ridge produces 500 nonzero coefficients at every α — continuous shrinkage but no selection. The lasso at CV-selected λ ≈ 0.05 produces ~12 nonzero coefficients, mostly concentrated at the true active coordinates S = {0, …, 9}. The contrast is the visual punchline: same data, two penalties, two completely different solution structures."
+/>
+
+## §2. The lasso estimator
+
+The lasso is convex L1-penalized least squares — a well-defined, well-studied estimator with a clean geometric story and a precise first-order characterization. This section establishes the formal definition (in both penalized and constrained forms), develops the geometric intuition for why L1 penalization produces sparse solutions (corners on the L1 ball, smooth curvature on the L2 ball), addresses existence and uniqueness (Tibshirani 2013), and works out the KKT subgradient conditions that characterize every lasso solution. The KKT conditions are the load-bearing technical machinery for the rest of the topic — the soft-thresholding closed form in §3.1, the basic inequality in the oracle inequality proof of §5.2, and the debiased-lasso construction of §10.2 all derive from them.
+
+*Section content in development. Includes Definition 2.1 (lasso estimator), the L1-vs-L2-ball geometric picture, Tibshirani (2013) uniqueness, KKT subgradient conditions (active vs equicorrelation set), and the dual-certificate construction used in §6.*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_02_01_l1_vs_l2_geometry.png"
+  alt="2D pedagogical picture of the L1 diamond and L2 disk with elliptical loss contours, illustrating sparse vs dense solutions."
+  caption="2D pedagogical picture: β̂_OLS = (0.4, 1.6), Hessian H = XᵀX/n with off-diagonal 0.4. At budget t = 1: the L1 contact lands at the vertex (0, 1) (sparse, one coordinate exactly zero); the L2 contact lands at approximately (0.39, 0.92) (dense, both coordinates nonzero). The L1 ball's corners are the geometric source of sparsity."
+/>
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_02_02_kkt_verification.png"
+  alt="Histogram of residual-feature correlations c_j on the §1 lasso fit at lambda_CV. Active coordinates concentrate at |c_j| = lambda; inactive coordinates spread within (-lambda, lambda)."
+  caption="KKT verification on the §1 DGP at λ_CV: residual-feature correlations ĉⱼ = (1/n) Xⱼᵀ r̂. Active coordinates (red) sit at |ĉⱼ| = λ to within 10⁻³; inactive coordinates (gray) are strictly bounded by λ, with the bulk well inside the dead zone. The KKT subgradient conditions are satisfied numerically as expected."
+/>
+
+## §3. Solving the lasso
+
+The lasso has no closed-form solution for general $\mathbf{X}$, so we need iterative algorithms. This section develops the four solvers that matter in practice, in increasing order of sophistication: the **soft-thresholding closed form** for orthogonal designs (§3.1, conceptually load-bearing because every general-purpose solver reduces to it inside the inner loop); **coordinate descent** (§3.2, the `glmnet` workhorse and the default in scikit-learn); **ISTA**, the proximal-gradient method (§3.3, simple and slow at $O(1/k)$); and **FISTA** with Nesterov momentum (§3.4, the same proximal-gradient framework with a momentum trick that improves the rate to $O(1/k^2)$, with full convergence proof). §3.5 gives practical solver-choice notes.
+
+A common thread: every solver in this section is some application of the **soft-thresholding operator** $S(z, \lambda) = \mathrm{sign}(z) \cdot \max(|z| - \lambda, 0)$, the proximal operator of the L1 norm. ISTA / FISTA / coordinate descent differ only in *what* they soft-threshold and *how often*.
+
+*Section content in development. Includes Theorem 3.1 (soft-thresholding closed form, full proof), Theorem 3.2 (ISTA $O(1/k)$ rate via descent lemma + telescoping), Theorem 3.3 (FISTA $O(1/k^2)$ rate via Lyapunov-function argument with the $t_{k+1}^2 - t_{k+1} = t_k^2$ recursion), and the practical solver-choice field guide.*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_03_01_solver_convergence.png"
+  alt="Log-log convergence trace: ISTA at slope -1, FISTA at slope -2, coordinate descent asymptotically linear after active-set stabilization."
+  caption="ISTA, FISTA, and coordinate descent on the §1 DGP at λ = λ_CV, 300 iterations each, with a high-precision FISTA reference (10000 iterations) for F*. Log-log axes: ISTA slope ≈ −1 (matching the O(1/k) rate from Theorem 3.2); FISTA slope ≈ −2 (O(1/k²) from Theorem 3.3); coordinate descent converges faster than either after the active set stabilizes — the lasso restricted to a fixed active set is a smooth strictly-convex quadratic, and CD converges linearly on those."
+/>
+
+## §4. Bias-variance for the lasso
+
+The lasso's central trade-off is between **bias** (from L1 shrinkage of active coefficients) and **variance** (controlled by the size of the data-adapted active set). As $\lambda$ ranges from $0$ to $\lambda_{\max}$ — the smallest penalty at which the solution is identically zero — the prediction risk traces the canonical U-curve familiar from any bias-variance analysis. This section formalizes both halves of the trade-off, computes $\lambda_{\max}$ in closed form from the KKT conditions, and develops the lasso solution path $\hat{\boldsymbol\beta}(\lambda)$ as a piecewise-linear function of $\lambda$.
+
+The U-curve is the practical bridge between §3 (we can compute the lasso) and §5 (the oracle inequality bounds the bottom of the U). The solution path is what `LassoCV` (§7) and `LassoLarsIC` (§7) operate on when they pick a $\lambda$.
+
+*Section content in development. Includes the bias contribution from constant L1 shrinkage (the active-coefficient pathology), the variance reduction from sparsity adaptation (degrees-of-freedom $= |\hat A_\lambda|$ per Zou-Hastie-Tibshirani 2007), the U-curve numerical demonstration, $\lambda_{\max} = \|\mathbf{X}^\top \mathbf{y}/n\|_\infty$ in closed form, and Theorem 4.1 (piecewise linearity of the lasso path; Efron-Hastie-Johnstone-Tibshirani 2004).*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_04_01_u_curve.png"
+  alt="Empirical bias-squared, variance, and total MSE on a held-out test set as a function of lambda on DGP-1, traced over 50 Monte Carlo replicates."
+  caption="Empirical bias², variance, and total test-set MSE as a function of λ on DGP-1, computed by Monte Carlo over B = 50 replicate draws. Bias² grows monotonically with λ (constant shrinkage hurts more when applied harder); variance decays monotonically with λ (heavier penalization shrinks the active set); their sum traces the canonical U-curve. The minimum of the empirical U-curve coincides — within MC noise — with the value of λ that LassoCV selects automatically (§7)."
+/>
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_04_02_solution_path.png"
+  alt="Lasso solution path on DGP-1: coefficient paths beta_j(lambda) versus log lambda, with active and inactive coordinates color-coded."
+  caption="The lasso solution path on DGP-1: β̂ⱼ(λ) vs log λ for all 500 coordinates. The 10 true active coordinates are plotted in black; the 490 inactive coordinates in light gray. Vertical line marks λ_CV. The true active features are consistently the first to enter the path as λ decreases; at λ_CV the active set is a tight superset of the true S."
+/>
+
+## §5. The lasso oracle inequality
+
+This is the topic's headline theoretical result: under a restricted-eigenvalue condition on the design and a deviation bound on the noise, the lasso achieves prediction risk of order $\sigma^2 s \log(p) / n$ — comparable to what an oracle that knew the true active set $S$ in advance could achieve, up to a logarithmic factor in $p$. The bound is **non-asymptotic** (holds with high probability for any finite $n$, $p$), **dimension-free** (the dependence on $p$ is only logarithmic), and **rate-optimal** for the sparse high-dimensional regression problem.
+
+The proof has four steps and follows Bickel-Ritov-Tsybakov (2009) closely. **Step 1 (the basic inequality)** uses the lasso's defining optimality to bound the prediction error in terms of the L1 estimation error and a noise term. **Step 2 (the cone condition)** shows that the error vector $\hat{\boldsymbol\beta} - \boldsymbol\beta^*$ has most of its L1 mass concentrated on the true support $S$. **Step 3 (the restricted-eigenvalue condition)** lets us convert L1 estimation error on $S$ into a lower bound on the prediction error. **Step 4 (the deviation step)** controls the noise term using a maximal sub-Gaussian inequality. Combining gives the rate.
+
+*Section content in development. Includes the basic inequality $(\star)$ from lasso optimality, the cone condition $\|\boldsymbol\delta_{S^c}\|_1 \le 3\|\boldsymbol\delta_S\|_1$, Definition 5.1 (RE condition; Bickel-Ritov-Tsybakov 2009), the sub-Gaussian maximal inequality (Lemma 5.1), and Theorem 5.1 (lasso oracle inequality; full BRT 2009 proof) at the $72 \sigma^2 s \log(2p/\delta)/(n\kappa^2)$ rate. The L1 estimation rate $\|\hat{\boldsymbol\beta} - \boldsymbol\beta^*\|_1 = O(s \sqrt{\log(p)/n})$ is a corollary used in §10.4.*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_05_01_oracle_inequality_rate.png"
+  alt="Empirical prediction risk versus theoretical bound on log-log axes, illustrating the lasso oracle inequality rate on DGP-1."
+  caption="Empirical lasso prediction risk ‖X_test (β̂_lasso − β*)‖² / n_test vs sample size n on DGP-1 (p = 500, s = 10, σ = 0.5 fixed; n from 50 to 800), at the theory-guided λ = 2σ√(2 log(p)/n). Both empirical risk and the theoretical BRT bound (constant 72) plus a calibrated bound (constant fit empirically) on log-log axes. The empirical curve sits one to two orders of magnitude below the BRT bound (the constant 72 is mathematically clean but practically loose); the slope match — both lines parallel on log-log — is the substantive confirmation of the oracle-inequality rate."
+/>
+
+## §6. Variable-selection consistency
+
+The §5 oracle inequality bounds the lasso's **prediction risk** but does **not** say the lasso correctly recovers the support $S$ itself. These are different statements with different sufficient conditions, and confusing them is the most common conceptual error in lasso applications. Two highly correlated features can both be predictive of the response; the lasso might select either one, or alternate between them across resampled training sets, while keeping the prediction error small. The prediction-risk bound is robust to this kind of selection instability. The support-recovery question — does $\hat A_\lambda = S$? — is sensitive to it.
+
+This section formalizes **sign-consistency** (the strongest form of support recovery), introduces the **irrepresentable condition** (Zhao-Yu 2006) that's both sufficient and essentially necessary for it, states the sample-size scaling for support recovery, and contrasts the prediction-risk bound (RE-based) against the support-recovery bound (IC-based) so the difference is visible.
+
+*Section content in development. Includes the duplicate-features counterexample showing prediction consistency does not imply sign consistency, Definition 6.1 (irrepresentable condition; Zhao-Yu 2006 / Meinshausen-Bühlmann 2006), Theorem 6.1 (lasso sign-consistency under strong IC; Wainwright 2009 primal-dual witness construction), the necessity-of-IC converse (Wainwright 2009 Theorem 3), and the §6.4 prediction-vs-recovery contrast table.*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_06_01_irrepresentable_condition.png"
+  alt="Population irrepresentable condition quantity versus correlation strength rho for AR(1) Toeplitz designs, with the IC = 1 threshold marked."
+  caption="Population irrepresentable quantity (the ℓ_∞ norm of the off-support × on-support normal-equation coupling, ‖Σ_{Sᶜ S} Σ_{S S}⁻¹ sign(β*_S)‖_∞) for DGP-1-style designs (AR(1) Toeplitz Σⱼₖ = ρ^|j−k|, contiguous active set S = {0, …, 9}) as ρ varies from 0 to 0.95. Horizontal line at 1 is the IC threshold: below the line the lasso is sign-consistent; above the line it provably fails. At ρ = 0.5 (DGP-1 default) the IC quantity is comfortably below 1 and the lasso reliably recovers most of the support; at ρ > 0.7 the IC starts to bind and support recovery degrades dramatically."
+/>
+
+## §7. Cross-validation for $\lambda$
+
+The §5 oracle inequality recommends $\lambda \asymp \sigma \sqrt{\log(p)/n}$ for prediction-optimal performance — a *rate*, not a constant. The constant matters in practice (a factor of 2 in $\lambda$ can change the active-set size by a factor of 2 or more), and the noise scale $\sigma$ is rarely known. Practical $\lambda$-selection uses **data-driven criteria**: cross-validation (the default in scikit-learn and `glmnet`), the **one-standard-error rule** (a parsimony-favoring variant), and **information criteria** like AIC/BIC computed along the lasso path (`LassoLarsIC`). This section covers all three.
+
+The CV / 1-SE / BIC distinction maps directly onto the §6 discussion: CV optimizes prediction error and tends to select more features than necessary; BIC penalizes model size more aggressively and is sometimes selection-consistent; the 1-SE rule is a Hastie-Tibshirani-Friedman compromise that gives a smaller model than CV-min at minimal prediction-performance cost. None is "right" — the right choice depends on whether you care about prediction or model interpretability.
+
+This is a **named-section** of the topic per the formalML "no separate `cross-validation` topic" convention. The same structural pattern is used in [Kernel Regression](/topics/kernel-regression) §5 for LOO-CV / GCV bandwidth selection.
+
+*Section content in development. Includes K-fold CV with `LassoCV` (§7.1), the one-standard-error rule and the $\lambda_{1\text{SE}}$ vs $\lambda_{\min}$ trade-off (§7.2), BIC selection with `LassoLarsIC` and the Wang-Li-Tsai (2007) selection-consistency result for BIC (§7.3), and the §1-DGP comparison of all four selectors (§7.4).*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_07_01_cv_curve.png"
+  alt="LassoCV curve on DGP-1 with one-standard-error band, vertical markers at lambda_min and lambda_1SE."
+  caption="The 10-fold LassoCV curve CV(λ) on DGP-1 with shaded ±1 SE band. Vertical markers at λ_min (CV-MSE minimizer) and λ_1SE (largest λ within one SE of the minimum). The canonical U-shape; the 1-SE rule's choice sits in the relatively flat region near the minimum and gives a substantially sparser model at minimal prediction-performance cost."
+/>
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_07_02_selector_comparison.png"
+  alt="Bar chart of CV-selected lambda values across five selectors (LassoCV-min, LassoCV-1SE, LassoLarsIC-AIC, LassoLarsIC-BIC, theory-guided RIC) on DGP-1."
+  caption="Selected λ across five selectors on DGP-1: LassoCV (λ_min, smallest), LassoCV (λ_1SE), LassoLarsIC AIC, LassoLarsIC BIC, and the theory-guided RIC (λ = 2σ√(2 log(p)/n), largest). λ_min produces the largest active set with smallest test MSE; BIC produces the smallest active set; AIC sits in between. The selector choice trades off prediction error against model parsimony."
+/>
+
+## §8. Ridge, elastic net, and adaptive lasso
+
+The lasso has three practical limitations: it can be unstable when features are highly correlated (the §6.1 collinearity counterexample); it biases active coefficients toward zero by a constant $\lambda$ (the §4.1 shrinkage bias); and it requires the irrepresentable condition for support recovery (the §6.2 IC, often violated in real data). Each of these motivates a variant.
+
+**Ridge** (introduced in §1.3) keeps the L2 penalty, gives a unique dense solution under any design, and is robust to correlated features — but doesn't select. **Elastic net** (Zou-Hastie 2005) combines L1 + L2 penalties, getting the lasso's sparsity with ridge's stability under correlated features. **Adaptive lasso** (Zou 2006) uses data-driven feature-specific weights to remove the constant shrinkage bias and achieve the oracle property under weaker conditions than IC.
+
+*Section content in development. Includes ridge's continuous-shrinkage / dense-solution properties (§8.1), elastic net's grouping inequality and the design-augmentation reduction-to-lasso trick (§8.2), Theorem 8.1 (oracle property of adaptive lasso; Zou 2006), and the side-by-side path comparison on DGP-1 (§8.4). The decision tree: dense truth → ridge; sparse with separated features → lasso; sparse with correlated groups → elastic net; sparse and unbiased → adaptive lasso.*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_08_01_ridge_lasso_enet_paths.png"
+  alt="Three-panel solution-path comparison on DGP-1: ridge path (smooth dense), lasso path (piecewise linear sparse), elastic-net path (hybrid)."
+  caption="Solution paths on DGP-1: ridge (left, smooth and dense everywhere), lasso (middle, piecewise-linear and sparse at moderate λ), elastic net (right, sparse but with smoother corners than the lasso). The 10 true active coordinates are highlighted in black; 490 inactive in light gray. Ridge cannot distinguish active from inactive without a thresholding step; lasso and elastic net both select the active coordinates as the first to leave zero as λ decreases."
+/>
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_08_02_adaptive_vs_vanilla.png"
+  alt="Adaptive lasso vs vanilla lasso active-coefficient estimates on DGP-1; adaptive substantially closer to the true beta = 1."
+  caption="Adaptive lasso vs vanilla lasso on the 10 active coordinates of DGP-1. Vanilla lasso underestimates |β*ⱼ| by approximately λ (the constant shrinkage bias from §4.1); adaptive lasso (with LassoCV initial and weights wⱼ = 1/(|β̂ⱼ_init| + ε)^γ, γ = 1, ε = 10⁻⁴) gets much closer to the true value β*ⱼ = 1. The ε-floor is a numerical-stability choice that doesn't materially affect the demo."
+/>
+
+## §9. Geometry of the high-dimensional regime
+
+§§5–6 introduced two structural conditions on the design matrix $\mathbf{X}$ — the restricted-eigenvalue condition (RE) for prediction-risk bounds and the irrepresentable condition (IC) for support recovery — and stated when they hold (random Gaussian, sub-Gaussian, RIP-bounded designs) without unpacking the geometry. This section deepens the picture: it introduces the **restricted isometry property** (RIP) from compressed sensing, traces the implication chain $\mathrm{RIP} \Rightarrow \mathrm{RE}$, gives the standard concentration arguments for sub-Gaussian random designs, and sketches when each condition fails in practice.
+
+The section is text-heavy and relatively short — there are no new theorems beyond §§5–6, just structural unpacking. The payoff is a cleaner picture of what makes a "good" design for the lasso and what doesn't, useful for diagnosing real-data failures.
+
+*Section content in development. Includes Definition 9.1 (RIP; Candès-Tao 2005), Proposition 9.1 (RIP $\Rightarrow$ RE), Lemma 9.1 (sub-Gaussian design concentration; Vershynin 2018), Theorem 9.1 (RE for sub-Gaussian designs; Raskutti-Wainwright-Yu 2010), and the diagnostic toolkit (§9.4) for spotting design pathologies in practice. No interactive viz — the geometry deepens earlier conceptual material rather than introducing new content.*
+
+## §10. Post-selection inference and the debiased lasso
+
+This is the inferential payoff section. Up to this point, the lasso has been a *prediction* tool — point estimates of $\boldsymbol\beta^*$ that minimize a penalized squared loss, with rate-optimal prediction risk under RE (§5). When practitioners want to do *inference* — confidence intervals for individual $\beta^*_j$, hypothesis tests of $\beta^*_j = 0$ — the natural impulse is to treat the lasso fit like an OLS fit and apply the standard normal-theory machinery: confidence interval $\hat\beta_j \pm 1.96 \cdot \widehat{\mathrm{se}}(\hat\beta_j)$.
+
+This naive approach **fails dramatically**. The lasso's bias (§4.1) shifts $\hat\beta_j$ away from $\beta^*_j$ by $-\lambda \, \mathrm{sign}(\beta^*_j)$; the naive standard error doesn't account for the selection step that determined which features are in the model; and the resulting CIs undercover by 20–50 percentage points at typical signal levels. Empirical coverage of nominally 95% naive lasso CIs lands at 50–70%.
+
+The fix is the **debiased lasso** (Zhang-Zhang 2014; Javanmard-Montanari 2014; van de Geer-Bühlmann-Ritov-Dezeure 2014, three nearly-simultaneous papers): a one-step Newton correction $\hat{\boldsymbol\beta}^{\text{db}} = \hat{\boldsymbol\beta} + (1/n) \hat{\mathbf{M}} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta})$ that explicitly removes the lasso's bias and produces $\sqrt n$-consistent normal estimates of individual coefficients.
+
+*Section content in development. Includes the PoSI framing (Berk et al. 2013) and three sources of failure for naive post-selection CIs (§10.1), Definition 10.1 (debiased lasso; Zhang-Zhang 2014) and the bias-variance decomposition into normal-asymptotic + remainder terms (§10.2), the nodewise-lasso construction for $\hat{\mathbf{M}}$ at $p > n$ (van de Geer et al. 2014; §10.3), Theorem 10.1 (asymptotic normality at $\sqrt n$ rate under $n \gg s_M (\log p)^2$; §10.4), and the coverage demonstration on DGP-1-style data at $(n, p, s) = (200, 100, 5)$ (§10.5).*
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_10_01_debiased_coverage.png"
+  alt="Empirical 95% CI coverage rates for OLS, naive post-selection, and debiased lasso, separated by signal versus noise coordinates."
+  caption="Empirical 95% CI coverage rates on DGP-1-style data at (n, p, s) = (200, 100, 5), B = 200 Monte Carlo replicates. OLS CI (gold standard) covers near 95% at both signal and noise coords. Naive post-selection CI undercovers signal coords at 50–70% (selection-induced bias); the noise-coord coverage is degenerate (lasso usually doesn't select them, so the implicit CI is {0} which trivially covers β*ⱼ = 0). Debiased lasso CI (with M̂ = Σ̂⁻¹, the OLS Hessian inverse available since p < n) covers near 95% at both signal and noise coords — recovers OLS-quality inference from a biased lasso initial."
+/>
+
+## §11. Generalized lasso for non-Gaussian responses
+
+Everything in §§1–10 was developed for the **Gaussian linear model**: $\mathbf{y} = \mathbf{X} \boldsymbol\beta^* + \boldsymbol\varepsilon$ with $\boldsymbol\varepsilon$ iid $\mathcal{N}(\mathbf{0}, \sigma^2 \mathbf{I})$, squared-error loss, soft-thresholding KKT solution. The lasso framework extends naturally to **generalized linear models** (GLMs) — replacing the squared-error loss with the negative log-likelihood of any GLM family — and most of the topic's results carry over. This section covers two specific extensions (logistic, Poisson), the general IRLS-with-soft-thresholding solver, and the GLM-debiased-lasso construction for inference.
+
+The math is mostly mechanical: substitute the GLM log-likelihood for the Gaussian one, re-derive the KKT conditions with the new gradient/Hessian, run a similar oracle-inequality argument with sub-Gaussian-replaced-by-sub-exponential noise tail bounds. The conclusions are qualitatively the same — sparsity-adaptive prediction risk under RE, sign-consistency under IC, debiased-lasso CIs at the same $\sqrt n$ rate.
+
+*Section content in development. Includes the logistic lasso (`LogisticRegression(penalty='l1')`; van de Geer 2008 oracle inequality), the Poisson lasso for count data, the IRLS-with-coordinate-descent solver for general GLM-lasso (Friedman-Hastie-Tibshirani 2010, the `glmnet` reference), and the GLM-debiased lasso (van de Geer et al. 2014 Theorem 3.1) with weighted nodewise lasso for the GLM-Hessian-inverse $\hat{\mathbf{M}}$. No interactive viz — the section is mostly methodological extension.*
+
+## §12. Connections, applications, and limits
+
+The lasso is one of the most widely-used algorithms in modern statistics — a standalone estimator, a nuisance estimator inside larger inferential pipelines, and the conceptual ancestor of an entire family of penalized methods. The §§5–10 results we've developed for the standard L1-penalized lasso transfer with appropriate modifications to most descendants.
+
+This section traces five sets of connections. **§12.1** covers the lasso's role inside double/debiased ML (Chernozhukov et al. 2018) — the dominant modern framework for inference on causal and structural parameters with high-dim nuisance. **§12.2** zooms in on causal inference with high-dim confounders, the most consequential DML application. **§12.3** points at the [Sparse Bayesian Priors](/topics/sparse-bayesian-priors) topic for the Bayesian counterpart, where horseshoe and spike-and-slab priors achieve approximate sparsity through a different mechanism. **§12.4** catalogs where the lasso breaks down in practice. **§12.5** lists the forward pointers in formalML — the planned topics that build on this one.
+
+*Section content in development. Includes DML setup with Neyman-orthogonal scores and cross-fitting (§12.1), the AIPW representation for ATE estimation under unconfoundedness (§12.2), the Laplace-prior-MAP interpretation of the lasso and its contrast with horseshoe / spike-and-slab continuous-shrinkage priors (§12.3), the §12.4 catalog of failure modes (highly correlated features, ultra-high-dimensional regimes, heavy-tailed noise, dependent observations, causal-interpretation pitfalls), and the §12.5 forward-pointer list (T6 `semiparametric-inference`, T6 `causal-inference-methods`, T6 `pac-bayes-bounds`, T5 `bayesian-neural-networks`, T5 `density-ratio-estimation`).*
+
+The closing thesis: the lasso occupies a sweet spot in the bias-variance-computability triangle. Sparsity bias is small under reasonable conditions; sparsity-adapted variance is the lowest of any L1-style estimator; the convex-optimization formulation makes computation tractable at scales where every pre-2000 alternative was infeasible. The §5 oracle inequality and the §10 debiased-lasso construction together make the lasso the standard tool for both *prediction* and *inference* in the sparse high-dim regime, with adaptations (elastic net, adaptive lasso, GLM-lasso, DML-lasso) covering the cases where the basic version doesn't fit.
