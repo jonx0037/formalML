@@ -376,6 +376,7 @@ import LassoUCurve from '../../components/viz/LassoUCurve.tsx';
 import LassoSolutionPath from '../../components/viz/LassoSolutionPath.tsx';
 import OracleInequalityRiskBound from '../../components/viz/OracleInequalityRiskBound.tsx';
 import IrrepresentableConditionViewer from '../../components/viz/IrrepresentableConditionViewer.tsx';
+import CvLambdaSelector from '../../components/viz/CvLambdaSelector.tsx';
 
 ## §1. From OLS to penalized regression
 
@@ -1337,13 +1338,96 @@ The CV / 1-SE / BIC distinction maps directly onto the §6 discussion: CV optimi
 
 This is a **named-section** of the topic per the formalML "no separate `cross-validation` topic" convention. The same structural pattern is used in [Kernel Regression](/topics/kernel-regression) §5 for LOO-CV / GCV bandwidth selection.
 
-*Section content in development. Includes K-fold CV with `LassoCV` (§7.1), the one-standard-error rule and the $\lambda_{1\text{SE}}$ vs $\lambda_{\min}$ trade-off (§7.2), BIC selection with `LassoLarsIC` and the Wang-Li-Tsai (2007) selection-consistency result for BIC (§7.3), and the §1-DGP comparison of all four selectors (§7.4).*
+### §7.1 K-fold cross-validation with `LassoCV`
+
+**$K$-fold CV** estimates the prediction risk at each $\lambda$ in a candidate grid by holdout. The procedure:
+
+1. Partition the training data into $K$ folds of approximately equal size.
+2. For each fold $k = 1, \dots, K$ and each candidate $\lambda$:
+   - Fit the lasso on the data minus fold $k$, obtaining $\hat{\boldsymbol\beta}^{(-k)}(\lambda)$.
+   - Compute the held-out MSE: $\mathrm{MSE}_k(\lambda) = \frac{1}{|\text{fold } k|} \sum_{i \in \text{fold } k} (y_i - \mathbf{x}_i^\top \hat{\boldsymbol\beta}^{(-k)}(\lambda))^2$.
+3. Average over folds: $\mathrm{CV}(\lambda) = \frac{1}{K} \sum_k \mathrm{MSE}_k(\lambda)$.
+4. Select $\lambda_{\min} = \arg\min_\lambda \mathrm{CV}(\lambda)$.
+
+Standard choices: $K = 10$ for general use, $K = 5$ if computation is constrained, leave-one-out ($K = n$) only when $n$ is small (otherwise computationally wasteful and statistically unstable). The candidate $\lambda$-grid is typically log-spaced from $\lambda_{\max}$ (largest, all coefficients zero) down to $\lambda_{\max} \cdot 10^{-3}$ or so, with 100 grid points — `LassoCV(n_alphas=100)`'s default.
+
+**Why CV works.** $\mathrm{CV}(\lambda)$ is an estimator of the test prediction error $\mathrm{PE}(\lambda) = \mathbb{E}[(y - \mathbf{x}^\top \hat{\boldsymbol\beta})^2]$, with bias of order $1/n$ (because each fold-fit uses $(K-1)/K \cdot n$ samples instead of $n$). At the fold sizes used in practice ($K \ge 5$), the bias is negligible compared to the variance of the CV estimate.
+
+**Computational efficiency.** Naively, $K$-fold CV requires $K \times |\Lambda_{\text{grid}}|$ lasso fits. The `glmnet` and scikit-learn implementations use **warm starts along the $\lambda$ path** (recall §3.2) — fitting the lasso at the entire $\lambda$-grid for one fold is barely more expensive than fitting at a single $\lambda$, so the practical cost is more like $K$ path computations. For DGP-1 with $K = 10$, $|\Lambda| = 100$, $p = 500$: about 1–3 seconds total, dominated by the matrix-vector multiplies inside coordinate descent.
+
+### §7.2 The one-standard-error rule: $\lambda_{1\mathrm{SE}}$ vs $\lambda_{\min}$
+
+The CV estimate $\mathrm{CV}(\lambda)$ is itself a random quantity — it has variance over the choice of fold partition and over the training data. A useful uncertainty quantification is the **standard error across folds**:
+
+$$
+\mathrm{SE}(\lambda) := \frac{\mathrm{sd}_k(\mathrm{MSE}_k(\lambda))}{\sqrt{K}}.
+$$
+
+The **one-standard-error rule** (Breiman et al. 1984; popularized by Hastie-Tibshirani-Friedman, *Elements of Statistical Learning*, §7.10) selects the most parsimonious model whose CV error is within one standard error of the minimum:
+
+$$
+\lambda_{1\mathrm{SE}} := \max\{\lambda : \mathrm{CV}(\lambda) \le \mathrm{CV}(\lambda_{\min}) + \mathrm{SE}(\lambda_{\min})\}.
+$$
+
+Since $\mathrm{CV}(\lambda)$ is roughly U-shaped in $\lambda$, $\lambda_{1\mathrm{SE}} > \lambda_{\min}$ — the 1-SE-selected model is *more* regularized, hence sparser.
+
+**The motivation.** The CV minimizer $\lambda_{\min}$ is the unbiased "MSE-optimal" choice but tends to be unstable across resampled training data — a small perturbation in the training set can shift $\lambda_{\min}$ by a factor of 2 in either direction. The 1-SE rule trades this instability for a small, controlled increase in prediction error: the resulting model has CV-MSE within one standard error of optimal (i.e., not statistically distinguishable from $\lambda_{\min}$'s prediction performance) but is more parsimonious and reproducible.
+
+In the lasso context, $\lambda_{1\mathrm{SE}}$ typically gives an active set 10–30% smaller than $\lambda_{\min}$, with test prediction error 5–15% larger. For interpretability-driven applications (variable selection, communication of results, downstream modeling), the 1-SE rule is the standard recommendation.
+
+**A practical caveat.** The 1-SE rule is a heuristic, not a theorem. Its bias-variance trade-off is empirically reasonable but doesn't have a sharp theoretical justification — it doesn't, for instance, give support consistency under weaker conditions than CV-min. If you need provable support recovery, use BIC (§7.3) or stability selection (mentioned in §6.4). If you need provable prediction risk, the §5 oracle inequality is the right reference and CV-min is the right selector.
+
+<CvLambdaSelector client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_07_01_cv_curve.png"
   alt="LassoCV curve on DGP-1 with one-standard-error band, vertical markers at lambda_min and lambda_1SE."
-  caption="The 10-fold LassoCV curve CV(λ) on DGP-1 with shaded ±1 SE band. Vertical markers at λ_min (CV-MSE minimizer) and λ_1SE (largest λ within one SE of the minimum). The canonical U-shape; the 1-SE rule's choice sits in the relatively flat region near the minimum and gives a substantially sparser model at minimal prediction-performance cost."
+  caption="The 10-fold LassoCV curve CV(λ) on DGP-1 with shaded ±1 SE band. Vertical markers at λ_min (CV-MSE minimizer) and λ_1SE (largest λ within one SE of the minimum). The canonical U-shape; the 1-SE rule's choice sits in the relatively flat region near the minimum and gives a substantially sparser model at minimal prediction-performance cost. (Static fallback at p = 500, two-panel; the interactive viz above runs at p = 200 with all five selector markers in one panel.)"
 />
+
+### §7.3 BIC selection with `LassoLarsIC`
+
+Information criteria offer a different selection philosophy: rather than estimating prediction error directly via holdout, they balance **model fit** against **model complexity** through an explicit complexity penalty.
+
+**The criteria.** For a candidate $\lambda$ with active-set size $k_\lambda := |\hat A_\lambda|$ and residual sum of squares $\mathrm{RSS}_\lambda := \|\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}(\lambda)\|_2^2$:
+
+$$
+\mathrm{AIC}(\lambda) = n \log(\mathrm{RSS}_\lambda / n) + 2 k_\lambda,
+$$
+
+$$
+\mathrm{BIC}(\lambda) = n \log(\mathrm{RSS}_\lambda / n) + k_\lambda \log n.
+$$
+
+Both penalize larger models; BIC penalizes more aggressively as soon as $n > e^2 \approx 7.4$, so BIC selects smaller models than AIC.
+
+The use of $k_\lambda = |\hat A_\lambda|$ as the lasso's effective degrees of freedom rests on **Zou-Hastie-Tibshirani (2007)**, who showed that $\mathbb{E}[k_\lambda] = \mathrm{df}(\hat{\boldsymbol\beta}^{\text{lasso}}(\lambda))$ exactly — the size of the active set is an unbiased estimator of the lasso's degrees of freedom. This is a non-trivial result; for a generic non-linear estimator, dof is not the count of nonzero parameters. The lasso's piecewise-linear path makes the result exact.
+
+**`LassoLarsIC`.** The scikit-learn implementation computes the entire lasso path via **LARS** (Least Angle Regression — Efron-Hastie-Johnstone-Tibshirani 2004), which exploits piecewise linearity to enumerate every knot $\lambda_{(k)}$ in $O(np \min(n, p))$ total time. The IC value is computed at each knot, and the $\lambda$ minimizing the chosen criterion is returned. The path-based approach is exact (no $\lambda$-grid discretization error) but only practical for moderate $p$ — at $p > 10^4$, coordinate descent on a $\lambda$-grid is much faster.
+
+**Selection consistency.** BIC for the lasso is **selection-consistent** under additional conditions: $\mathbb{P}(\hat A_{\lambda_{\mathrm{BIC}}} = S) \to 1$ as $n \to \infty$ if the design satisfies a slightly stronger condition than IC and the minimum signal is bounded below (Wang-Li-Tsai 2007). AIC and CV are not selection-consistent in general — they tend to over-select features (include all of $S$ plus some noise features) even asymptotically. For variable-selection applications, this is BIC's main virtue.
+
+**Caveats.** BIC's selection consistency is asymptotic; at finite samples, BIC can over- or under-select depending on the signal strength. AIC is roughly equivalent to leave-one-out CV in expectation (Stone 1977) and tends to choose larger models than $K$-fold CV with $K \ll n$.
+
+### §7.4 Comparison on the §1 toy DGP
+
+The four selectors — `LassoCV` $\lambda_{\min}$, `LassoCV` $\lambda_{1\mathrm{SE}}$, `LassoLarsIC` BIC, `LassoLarsIC` AIC — make different trade-offs and select different $\lambda$ values on the same data. On DGP-1 ($n=200, p=500, s=10, \sigma=0.5$), the typical pattern (see Figure 7.2):
+
+| Selector | Selected $\lambda$ | Active set size $|\hat A_\lambda|$ | Test MSE |
+|---|---|---|---|
+| `LassoCV` ($\lambda_{\min}$) | smallest | largest (~12–18, includes some false positives) | smallest |
+| `LassoCV` ($\lambda_{1\mathrm{SE}}$) | medium | medium (~10–13, close to true $s = 10$) | small (5–15% above $\lambda_{\min}$) |
+| `LassoLarsIC` (AIC) | smallish | medium-to-large | small (close to $\lambda_{\min}$) |
+| `LassoLarsIC` (BIC) | largest | smallest (~8–11, may miss weak signal coords) | medium (10–25% above $\lambda_{\min}$) |
+
+**Recommendation.**
+
+- **If prediction is the goal:** use `LassoCV` with $\lambda_{\min}$. The §5 oracle inequality says this achieves the optimal rate; in practice it gives the smallest test MSE on most problems.
+- **If prediction is the goal but you want a smaller, more interpretable model:** use the 1-SE rule. Trades a small amount of prediction performance for a substantially smaller active set and more reproducible variable selection.
+- **If selection consistency is the goal:** use BIC via `LassoLarsIC(criterion='bic')`. The selected model is asymptotically the true support under stronger conditions; finite-sample behavior depends on signal strength.
+- **For everything else:** start with `LassoCV` $\lambda_{\min}$. It's the default in almost every lasso application; the alternatives are refinements for specific use cases.
+
+The §10 debiased lasso uses `LassoCV` $\lambda_{\min}$ as its initial estimator, then corrects the resulting bias to produce valid CIs. The choice of $\lambda$ for the initial fit isn't critical for the debiased lasso's coverage — the one-step correction substantially compensates for the lasso's selection idiosyncrasies.
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_07_02_selector_comparison.png"
