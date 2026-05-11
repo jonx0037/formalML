@@ -1,0 +1,1451 @@
+---
+title: "Normalizing Flows"
+subtitle: "Invertible neural networks for explicit-density generative modeling — from the change-of-variables formula to coupling layers (NICE/RealNVP), autoregressive flows (MAF/IAF), and Glow's multi-scale architecture, with the 2-moons worked example end-to-end"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "gradient-descent"
+formalstatisticsPrereqs:
+  - topic: "kernel-density-estimation"
+    site: "formalstatistics"
+    relationship: "Nonparametric density estimation by averaging kernel functions at training points; flows are the neural-parametric heir to this classical method. §10.2 contrasts the two: KDE's minimax rate degrades polynomially with dimension (the curse), while flows achieve parametric $O(n^{-1/2})$ at the cost of model-misspecification bias when the target lies outside the representable class."
+  - topic: "maximum-likelihood"
+    site: "formalstatistics"
+    relationship: "The training objective in §7 is plain MLE applied to a flow's parametric family. Consistency, asymptotic efficiency, the bias-variance trade-off, and the consistency-under-regularity-conditions theorem all inherit directly from classical MLE theory; flows are just a particular choice of parametric family that supports closed-form gradient computation."
+  - topic: "multivariate-distributions"
+    site: "formalstatistics"
+    relationship: "Standard multivariate Gaussian $\\mathcal{N}(0, I_d)$ as the base distribution, the multivariate change-of-variables for the pushforward, and the joint / marginal / conditional decomposition used in the autoregressive form (§5). Multivariate Gaussian theory underlies almost every step of the flow framework."
+  - topic: "random-variables"
+    site: "formalstatistics"
+    relationship: "Foundational framework for continuous random variables, distributions, and densities. Flows model continuous random variables $X$ on $\\mathbb{R}^d$ as deterministic transformations $X = T_\\phi(Z)$ of a base random variable $Z \\sim p_Z$; the basic theory of $X$, $Z$, and their densities is taken from this prerequisite."
+  - topic: "continuous-distributions"
+    site: "formalstatistics"
+    relationship: "Catalog of continuous probability distributions (Gaussian, mixtures, Student-$t$, and so on) along with their densities and standard properties. Each trained flow $p_\\phi$ defines a continuous distribution on $\\mathbb{R}^d$ whose density we evaluate via §2's change-of-variables formula; the §1 trichotomy and §10's KDE/GMM contrasts position flows within this catalog."
+formalcalculusPrereqs:
+  - topic: "change-of-variables"
+    site: "formalcalculus"
+    relationship: "The substitution rule for densities under a diffeomorphism — every flow's log-density formula in this topic is downstream of $p_X(x) = p_Z(T^{-1}(x)) \\cdot |\\det \\partial T^{-1}/\\partial x|$. We derive the $d$-dimensional version in §2.2 by taking the substitution rule as a load-bearing tool from formalcalculus."
+  - topic: "jacobian"
+    site: "formalcalculus"
+    relationship: "The Jacobian determinant as the local volume-distortion factor, and the architectural design pressure for triangular Jacobians (coupling layers in §4, autoregressive flows in §5). Flows engineer their Jacobian structure to make $\\log|\\det \\partial T/\\partial z|$ computable in $O(d)$ time instead of $O(d^3)$."
+  - topic: "sigma-algebras"
+    site: "formalcalculus"
+    relationship: "Measure-theoretic foundation for densities, pushforwards, and the absolute-continuity hypothesis that makes the change-of-variables formula meaningful. We use the framework implicitly: the pushforward of an absolutely continuous measure under a diffeomorphism is again absolutely continuous, and its density is given by the Jacobian-determinant formula of §2.2."
+  - topic: "inverse-implicit"
+    site: "formalcalculus"
+    relationship: "The inverse-function theorem underpins the local-invertibility argument that justifies parameterizing flows by their forward direction: if $\\det \\partial T/\\partial z > 0$ everywhere, $T$ is locally a diffeomorphism with smooth inverse, and the algebraic invertibility of the layer parameterization (§4.5) extends this to global invertibility."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "generative-models"
+  - "normalizing-flows"
+  - "density-estimation"
+  - "variational-inference"
+  - "change-of-variables"
+  - "coupling-layers"
+  - "realnvp"
+  - "glow"
+  - "maf"
+  - "iaf"
+  - "machine-learning"
+domain: "unsupervised"
+videoId: null
+notebookPath: "notebooks/normalizing-flows/01_normalizing_flows.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/normalizing-flows.mdx"
+datePublished: 2026-05-11
+estimatedReadTime: 50
+abstract: "Normalizing flows learn an invertible transformation that pushes a simple base distribution (almost always a standard Gaussian) into the data distribution. Unlike VAEs which give a bound on the density and GANs which give no density at all, flows give exact log p_phi(x) via the change-of-variables formula. We derive the framework from the multivariable substitution rule, build the dominant architectures (coupling layers / RealNVP, autoregressive flows / MAF / IAF, Glow's multi-scale primitives), train a flow on the 2-moons dataset end-to-end, and discuss applications (image generation, molecular sampling, RL policies, simulation-based inference), computational trade-offs, and limits. The 2-moons worked example in §11 trains a 6-layer affine-coupling RealNVP from scratch in under thirty seconds of CPU time and visualizes the learned diffeomorphism's forward and inverse maps simultaneously."
+connections:
+  - topic: "variational-inference"
+    relationship: "§9 is the bridge: flows can serve as flexible variational families that strictly improve over Gaussian mean-field VI when the posterior is curved, multimodal, or heavy-tailed. The flow-VI ELBO derivation in §9.3 reuses the change-of-variables formula from §2 with the entropy sign-flip — same machinery, opposite sign in front of the log-det. Rezende and Mohamed's 2015 paper that coined 'normalizing flow' is a VI paper, not a density-estimation paper."
+  - topic: "bayesian-neural-networks"
+    relationship: "Both topics use neural networks to parameterize probability distributions, but with different architectural pressure. BNNs put a prior on the network weights and approximate the posterior (Laplace / MC dropout / SG-MCMC / deep ensembles); flows fix the weights deterministically and put structure on the function the network represents (an invertible map). The two are complementary tools — a Bayesian neural flow is a flow with a posterior over its weights."
+  - topic: "high-dimensional-regression"
+    relationship: "Both topics confront the high-$d$ regime, but the structural pressure differs. High-dim regression uses sparsity (lasso) or low-rank structure (PCA) to identify a low-dimensional signal subspace; flows preserve full dimensionality and use the triangular-Jacobian trick to keep the log-det $O(d)$ instead of $O(d^3)$. The lasso's restricted-eigenvalue condition and the flow's triangular Jacobian are both architectural devices for taming high-dimensional joint distributions."
+references:
+  - type: "paper"
+    title: "Density Estimation by Dual Ascent of the Log-Likelihood"
+    authors: "Tabak & Vanden-Eijnden"
+    year: 2010
+    url: "https://doi.org/10.4310/CMS.2010.v8.n1.a11"
+    note: "Communications in Mathematical Sciences. The pre-deep-learning origin of cascaded-diffeomorphism density estimation."
+  - type: "paper"
+    title: "A Family of Nonparametric Density Estimation Algorithms"
+    authors: "Tabak & Turner"
+    year: 2013
+    url: "https://doi.org/10.1002/cpa.21423"
+    note: "Communications on Pure and Applied Mathematics. Continues the §3.4 historical line — flows as cascaded invertible maps in applied math."
+  - type: "paper"
+    title: "Variational Inference with Normalizing Flows"
+    authors: "Rezende & Mohamed"
+    year: 2015
+    url: "https://proceedings.mlr.press/v37/rezende15.html"
+    note: "ICML. The paper that coined the name and brought flows into deep learning; the VI use case in §9."
+  - type: "paper"
+    title: "NICE: Non-linear Independent Components Estimation"
+    authors: "Dinh, Krueger & Bengio"
+    year: 2015
+    url: "https://arxiv.org/abs/1410.8516"
+    note: "ICLR workshop. Additive coupling — the volume-preserving precursor to RealNVP (§4.2)."
+  - type: "paper"
+    title: "Density Estimation Using Real NVP"
+    authors: "Dinh, Sohl-Dickstein & Bengio"
+    year: 2017
+    url: "https://openreview.net/forum?id=HkpbnH9lx"
+    note: "ICLR. Affine coupling — the load-bearing architecture for §4 and §11's worked example."
+  - type: "paper"
+    title: "Glow: Generative Flow with Invertible 1x1 Convolutions"
+    authors: "Kingma & Dhariwal"
+    year: 2018
+    url: "https://papers.nips.cc/paper/2018/hash/d139db6a236200b21cc7f752979132d0-Abstract.html"
+    note: "NeurIPS. Multi-scale architecture, 1×1 invertible convolutions, and ActNorm — the §6 primitives."
+  - type: "paper"
+    title: "MADE: Masked Autoencoder for Distribution Estimation"
+    authors: "Germain, Gregor, Murray & Larochelle"
+    year: 2015
+    url: "https://proceedings.mlr.press/v37/germain15.html"
+    note: "ICML. The masked-autoencoder substrate MAF and IAF condition through (§5)."
+  - type: "paper"
+    title: "Masked Autoregressive Flow for Density Estimation"
+    authors: "Papamakarios, Pavlakou & Murray"
+    year: 2017
+    url: "https://papers.nips.cc/paper/2017/hash/6c1da886822c67822bcf3679d04369fa-Abstract.html"
+    note: "NeurIPS. MAF — parallel density evaluation, sequential sampling (§5.2)."
+  - type: "paper"
+    title: "Improving Variational Inference with Inverse Autoregressive Flow"
+    authors: "Kingma, Salimans, Jozefowicz, Chen, Sutskever & Welling"
+    year: 2016
+    url: "https://papers.nips.cc/paper/2016/hash/ddeebdeefdb7e7e7a697e1c3e3d8ef54-Abstract.html"
+    note: "NeurIPS. IAF — the MAF-dual built for VI use cases (§5.3, §9.4)."
+  - type: "paper"
+    title: "Neural Spline Flows"
+    authors: "Durkan, Bekasov, Murray & Papamakarios"
+    year: 2019
+    url: "https://papers.nips.cc/paper/2019/hash/7ac71d433f282034e088473244df8c02-Abstract.html"
+    note: "NeurIPS. Rational-quadratic monotone update inside coupling layers — §6.4's expressivity sweet spot."
+  - type: "paper"
+    title: "Neural Ordinary Differential Equations"
+    authors: "Chen, Rubanova, Bettencourt & Duvenaud"
+    year: 2018
+    url: "https://papers.nips.cc/paper/2018/hash/69386f6bb1dfed68692a24c8686939b9-Abstract.html"
+    note: "NeurIPS. Continuous-time flow precursor — §8.4's instantaneous change-of-variables formula."
+  - type: "paper"
+    title: "FFJORD: Free-form Continuous Dynamics for Scalable Reversible Generative Models"
+    authors: "Grathwohl, Chen, Bettencourt, Sutskever & Duvenaud"
+    year: 2019
+    url: "https://openreview.net/forum?id=rJxgknCcK7"
+    note: "ICLR. Hutchinson trace trick brings continuous-flow log-det to $O(d)$ stochastically (§8.4)."
+  - type: "paper"
+    title: "Coupling-Based Invertible Neural Networks Are Universal Diffeomorphism Approximators"
+    authors: "Teshima, Ishikawa, Tojo, Oono, Ikeda & Sugiyama"
+    year: 2020
+    url: "https://papers.nips.cc/paper/2020/hash/2290a7385ed77cc5592dc2153229f082-Abstract.html"
+    note: "NeurIPS. Universality theorem for affine-coupling flows in §8.1."
+  - type: "paper"
+    title: "Normalizing Flows for Probabilistic Modeling and Inference"
+    authors: "Papamakarios, Nalisnick, Rezende, Mohamed & Lakshminarayanan"
+    year: 2021
+    url: "https://jmlr.org/papers/v22/19-1028.html"
+    note: "JMLR. The standard survey — comprehensive framework treatment."
+  - type: "paper"
+    title: "Normalizing Flows: An Introduction and Review of Current Methods"
+    authors: "Kobyzev, Prince & Brubaker"
+    year: 2021
+    url: "https://doi.org/10.1109/TPAMI.2020.2992934"
+    note: "IEEE TPAMI. Complementary survey to Papamakarios et al. (2021)."
+  - type: "paper"
+    title: "Equivariant Flows: Exact Likelihood Generative Learning for Symmetric Densities"
+    authors: "Köhler, Klein & Noé"
+    year: 2020
+    url: "https://proceedings.mlr.press/v119/kohler20a.html"
+    note: "ICML. Rotation/translation-equivariant flows for molecular Boltzmann sampling (§12.1)."
+  - type: "paper"
+    title: "The Frontier of Simulation-Based Inference"
+    authors: "Cranmer, Brehmer & Louppe"
+    year: 2020
+    url: "https://doi.org/10.1073/pnas.1912789117"
+    note: "PNAS. Survey of simulation-based inference — flows as the conditional density estimator (§12.1)."
+  - type: "paper"
+    title: "Automatic Posterior Transformation for Likelihood-Free Inference"
+    authors: "Greenberg, Nonnenmacher & Macke"
+    year: 2019
+    url: "https://proceedings.mlr.press/v97/greenberg19a.html"
+    note: "ICML. SNPE algorithm — flows as the amortized posterior density estimator (§12.1)."
+  - type: "paper"
+    title: "Do Deep Generative Models Know What They Don't Know?"
+    authors: "Nalisnick, Matsukawa, Teh, Gorur & Lakshminarayanan"
+    year: 2019
+    url: "https://openreview.net/forum?id=H1xwNhCcYm"
+    note: "ICLR. The CIFAR-vs-SVHN OOD-counterexample paper (§12.1, §12.4)."
+  - type: "paper"
+    title: "Leveraging Exploration in Off-Policy Algorithms via Normalizing Flows"
+    authors: "Mazoure, Doan, Durand, Pineau & Hjelm"
+    year: 2020
+    url: "https://proceedings.mlr.press/v100/mazoure20a.html"
+    note: "CoRL. RL policy parameterization with IAF — the §12.1 RL application."
+  - type: "paper"
+    title: "Deep Unsupervised Learning using Nonequilibrium Thermodynamics"
+    authors: "Sohl-Dickstein, Weiss, Maheswaranathan & Ganguli"
+    year: 2015
+    url: "https://proceedings.mlr.press/v37/sohl-dickstein15.html"
+    note: "ICML. The original diffusion-model paper — the architectural successor to flows (§12.5)."
+  - type: "paper"
+    title: "Denoising Diffusion Probabilistic Models"
+    authors: "Ho, Jain & Abbeel"
+    year: 2020
+    url: "https://papers.nips.cc/paper/2020/hash/4c5bcfec8584af0d967f1ab10179ca4b-Abstract.html"
+    note: "NeurIPS. DDPM — the canonical modern diffusion model that flows forward-point to in §12.5."
+  - type: "paper"
+    title: "Generative Modeling by Estimating Gradients of the Data Distribution"
+    authors: "Song & Ermon"
+    year: 2019
+    url: "https://papers.nips.cc/paper/2019/hash/3001ef257407d5a371a96dcd947c7d93-Abstract.html"
+    note: "NeurIPS. Score-based generative modeling — diffusion's gradient-of-log-density formulation (§12.5)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import Figure from '../../components/ui/Figure.astro';
+import GenerativeModelTrichotomy from '../../components/viz/GenerativeModelTrichotomy.tsx';
+import BimodalPreview from '../../components/viz/BimodalPreview.tsx';
+import ChangeOfVariablesAnimator from '../../components/viz/ChangeOfVariablesAnimator.tsx';
+import InvertibilityConstraintExplorer from '../../components/viz/InvertibilityConstraintExplorer.tsx';
+import FlowComposition from '../../components/viz/FlowComposition.tsx';
+import SamplingVsDensityToggle from '../../components/viz/SamplingVsDensityToggle.tsx';
+import CouplingLayerExplorer from '../../components/viz/CouplingLayerExplorer.tsx';
+import MaskAlternationDemo from '../../components/viz/MaskAlternationDemo.tsx';
+import AutoregressiveFlowExplorer from '../../components/viz/AutoregressiveFlowExplorer.tsx';
+import MAFvsCouplingTriangularJacobian from '../../components/viz/MAFvsCouplingTriangularJacobian.tsx';
+import SqueezeAnimator from '../../components/viz/SqueezeAnimator.tsx';
+import Conv1x1Demo from '../../components/viz/Conv1x1Demo.tsx';
+import MultiscaleSchematic from '../../components/viz/MultiscaleSchematic.tsx';
+import SignFlipExplainer from '../../components/viz/SignFlipExplainer.tsx';
+import FlowVsGenerativeModelsMatrix from '../../components/viz/FlowVsGenerativeModelsMatrix.tsx';
+
+## Motivation: explicit-density generative models
+
+Generative modeling asks two questions about a distribution we cannot write down: can you draw a sample, and can you tell me how likely a given point is? The two questions sound symmetric but the methods that answer them are not, and the difference between them defines the major families of generative models in modern ML. This topic builds out the family that answers both questions with closed-form, exactly: normalizing flows.
+
+### What a generative model is asked to do
+
+Suppose we have a dataset $\{x_1, \dots, x_n\}$ drawn from some unknown distribution $p_{\text{data}}$ on $\mathbb{R}^d$ — images, audio waveforms, molecular structures, posterior samples from a Bayesian model, anything. A generative model is a learned object that tries to mimic $p_{\text{data}}$, and the two operations we typically want from it are:
+
+**Sampling.** Produce a fresh draw $x \sim p_\phi$ from the model's distribution, where $\phi$ are the learned parameters. Cheap sampling is what makes a generative model useful as a data simulator, an imagination engine, or a proposal distribution for downstream Monte Carlo.
+
+**Density evaluation.** Compute $\log p_\phi(x)$ for an arbitrary point $x$. Density evaluation is what makes a generative model useful as an anomaly detector, a likelihood-ratio building block, a compression scheme via Shannon coding, or a likelihood term for downstream inference.
+
+A model that can do *both* operations cheaply and exactly is a strictly stronger object than one that can do only one. Almost all of the deep generative landscape splits on which of these two capabilities it sacrifices.
+
+### The VAE / GAN / flow trichotomy
+
+Three families dominate generative modeling for continuous data.
+
+**Variational autoencoders (VAEs)** pair an encoder $q_\phi(z \mid x)$ with a decoder $p_\theta(x \mid z)$ over a latent variable $z$. They train by maximizing the evidence lower bound (ELBO), a lower bound on $\log p_\theta(x)$. Sampling is cheap (draw $z \sim p(z)$, push through the decoder). Density evaluation is *bounded*, not exact — marginalizing the latent $z$ to obtain $\log p_\theta(x) = \log \int p_\theta(x \mid z)\,p(z)\,dz$ is intractable, so we have the ELBO instead of the truth. The VAE pays for tractable training by accepting a bound.
+
+**Generative adversarial networks (GANs)** train a generator $G_\phi: z \mapsto x$ against a discriminator that tries to tell real from generated. The generator is a sampler — push noise through, get a sample — but there is no density to query. GANs are *implicit* models: they parameterize the sampler directly and never write down a density. Sampling is cheap and often produces the sharpest synthetic outputs of any family. Density evaluation is unavailable.
+
+**Normalizing flows** parameterize an invertible map $T_\phi: \mathbb{R}^d \to \mathbb{R}^d$ that transforms a simple base distribution $p_Z$ — almost always a standard Gaussian on $\mathbb{R}^d$ — into the model distribution $p_\phi$ on the data space. Sampling means drawing $z \sim p_Z$ and computing $x = T_\phi(z)$, a single forward pass. Density evaluation uses the change-of-variables formula
+
+$$
+\log p_\phi(x) = \log p_Z(T_\phi^{-1}(x)) + \log\left|\det \frac{\partial T_\phi^{-1}}{\partial x}\right|, \qquad\qquad (1.1)
+$$
+
+which is exact provided we can invert $T_\phi$ and compute the log-determinant of its Jacobian. The entire architectural project of normalizing flows is making these two operations cheap.
+
+What flows offer that the other two families don't is the conjunction: a sampler and an exact $\log p_\phi(x)$ in one model. The cost is a fixed-dimension constraint (the input and output of every flow layer have the same dimension as the data, no bottleneck) and architectural design pressure to keep both $T_\phi^{-1}$ and $\det \partial T_\phi^{-1} / \partial x$ tractable. The next eleven sections are about how to discharge that pressure.
+
+| Family | Sampling | Density evaluation | Training objective |
+|---|---|---|---|
+| VAE   | Cheap, exact            | Lower bound (ELBO) only        | Max ELBO     |
+| GAN   | Cheap, exact            | Unavailable                    | Adversarial  |
+| Flow  | Cheap, exact            | Cheap, **exact**               | Exact MLE    |
+
+<GenerativeModelTrichotomy client:visible />
+
+### The 1-D bimodal preview
+
+Before formalizing anything, here's the geometric picture flows operate by. Take a standard Gaussian $Z \sim \mathcal{N}(0, 1)$ on the line. Its density is the familiar bell. Now suppose our target $X$ is a two-mode mixture, $X \sim 0.5\,\mathcal{N}(-2, 0.5^2) + 0.5\,\mathcal{N}(2, 0.5^2)$ — two narrow bumps centered at $\pm 2$, with a valley in between. We'd like a smooth invertible map $T: \mathbb{R} \to \mathbb{R}$ that pushes the Gaussian mass into the bimodal shape.
+
+Geometrically, $T$ has to **stretch** the regions of the line where the target wants more mass (near $\pm 2$) and **squish** the regions where the target wants less (near $0$ and out in the tails). The change-of-variables formula will make this precise in §2: the Jacobian $T'(z)$ is exactly the local stretch factor, and the target density at $x = T(z)$ is $p_Z(z) / |T'(z)|$ — the base density divided by how much $T$ stretched the neighborhood around $z$. The whole machinery of flows is parameterizing the right $T$ and computing $T'$ (or $\det \partial T / \partial z$ in higher dimensions) efficiently.
+
+<BimodalPreview client:visible />
+
+### Roadmap
+
+The plan from here:
+
+- **§2** derives the change-of-variables formula on $\mathbb{R}^d$ in full, including the Jacobian-determinant volume-distortion factor. This is the only piece of math everything else builds on.
+- **§3** turns the formula into an architectural design constraint and shows how composing diffeomorphisms lets us build expressive flows from simple building blocks.
+- **§4** and **§5** cover the two dominant flow architectures: coupling layers (RealNVP) and autoregressive flows (MAF / IAF). Both work by engineering a triangular Jacobian.
+- **§6** elaborates these for high-dimensional image data — Glow's multi-scale architecture.
+- **§7** is the training recipe — maximum likelihood, no ELBO needed.
+- **§8**, **§9**, and **§10** cover what flows can express, how they plug into variational inference, and how they compare to nonparametric density estimation.
+- **§11** is the full worked example: a six-layer affine-coupling RealNVP on 2-moons, end-to-end, in 30 seconds of CPU time.
+- **§12** closes with applications, computational trade-offs, and the diffusion-model successor.
+
+## Change of variables in $d$ dimensions
+
+The whole story of normalizing flows is downstream of one identity: when a smooth invertible map $T$ pushes a known density forward, the new density at the pushed-out point equals the old density at the pulled-back point, divided by how much $T$ stretched local volume. The 1-D version is calculus 101. The $d$-dimensional version replaces "stretching" with "Jacobian determinant" — but the geometry is the same, and the proof is the same change-of-variables substitution we'd use to evaluate any multivariable integral.
+
+### The 1-D substitution rule as a geometric stretching factor
+
+Start in one dimension. Let $Z$ be a continuous random variable on $\mathbb{R}$ with density $p_Z$, and let $T: \mathbb{R} \to \mathbb{R}$ be a smooth, strictly increasing function. Define $X = T(Z)$. We want $p_X$.
+
+The geometric reasoning is short. Consider a small interval $[z, z + dz]$ in $Z$-space. $T$ maps this to $[T(z), T(z + dz)] \approx [T(z), T(z) + T'(z)\,dz]$ — a small interval in $X$-space of length $T'(z)\,dz$. The probability mass in the input interval is $p_Z(z)\,dz$; the same mass has to land in the output interval (no probability appears or disappears under a deterministic map), so the density times the length of the output interval has to give back $p_Z(z)\,dz$:
+
+$$
+p_X\!\bigl(T(z)\bigr) \cdot T'(z)\,dz = p_Z(z)\,dz.
+$$
+
+Solving for $p_X$:
+
+$$
+p_X(x) = \frac{p_Z(T^{-1}(x))}{T'(T^{-1}(x))}. \qquad\qquad (2.1)
+$$
+
+The factor $T'(z)$ in the denominator is exactly the **local stretch factor**: it tells us how much $T$ enlarged the neighborhood around $z$. If $T'(z) > 1$, $T$ stretched the neighborhood, so the mass thinned out — the density at $x = T(z)$ is smaller than at $z$. If $T'(z) < 1$, $T$ compressed the neighborhood, so the mass piled up — the density at $x = T(z)$ is larger than at $z$.
+
+When $T$ is decreasing rather than increasing, the same argument runs with $|T'(z)|$ in place of $T'(z)$; the absolute value handles the orientation flip. So in full generality:
+
+$$
+p_X(x) = \frac{p_Z(T^{-1}(x))}{\lvert T'(T^{-1}(x))\rvert}. \qquad\qquad (2.2)
+$$
+
+Two readings of this formula sit side-by-side. The **analytic** reading: the density transforms via the substitution rule for integrals. The **geometric** reading: mass is conserved, and the density adjusts inversely to the local stretch. Both readings will generalize to $\mathbb{R}^d$ in the next subsection — we just have to replace "local stretch" with "local volume distortion," and the absolute value becomes the absolute value of a Jacobian determinant.
+
+<Figure
+  src="/images/topics/normalizing-flows/02_one_d_change_of_variables.png"
+  alt="Three-panel 1-D change-of-variables verification: base Gaussian density on the left, the smooth invertible map T(z) = 2z + 0.5 sin(z) in the middle, and the pushed-forward density on the right computed both numerically (histogram) and analytically (curve) — they agree to floating-point precision."
+  caption="Numerical verification of equation (2.2) in 1-D. The pushed-forward density (right) matches the closed-form change-of-variables computation; mass conservation under T is visible as the stretch-and-squish of the bell."
+/>
+
+### The $d$-dimensional pushforward and the Jacobian-determinant volume distortion
+
+Now lift to $\mathbb{R}^d$. Let $Z \in \mathbb{R}^d$ have density $p_Z$, and let $T: \mathbb{R}^d \to \mathbb{R}^d$ be a smooth bijection with smooth inverse $T^{-1}$. Define $X = T(Z)$.
+
+<TheoremBlock type="theorem" number={1} title="Change of variables for densities">
+Under the conditions above, the density of $X$ is
+
+$$
+p_X(x) = p_Z\!\bigl(T^{-1}(x)\bigr) \cdot \left\lvert \det \frac{\partial T^{-1}}{\partial x}(x) \right\rvert, \qquad\qquad (2.3)
+$$
+
+where $\partial T^{-1}/\partial x$ is the Jacobian matrix of $T^{-1}$ at $x$ — the $d \times d$ matrix whose $(i, j)$ entry is $\partial (T^{-1})_i / \partial x_j$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For any bounded measurable function $f: \mathbb{R}^d \to \mathbb{R}$, the law of the unconscious statistician gives
+
+$$
+\mathbb{E}[f(X)] = \mathbb{E}[f(T(Z))] = \int_{\mathbb{R}^d} f(T(z))\, p_Z(z)\, dz. \qquad\qquad (2.4)
+$$
+
+Apply the multivariable substitution $x = T(z)$ to the right-hand side. Under the substitution, $z = T^{-1}(x)$, and the volume element transforms as $dz = |\det \partial T^{-1}/\partial x|\, dx$ — this is the multivariable change-of-variables theorem we are taking on as a load-bearing tool from formal calculus. The integral becomes
+
+$$
+\int_{\mathbb{R}^d} f(x)\, p_Z\!\bigl(T^{-1}(x)\bigr)\, \left\lvert \det \frac{\partial T^{-1}}{\partial x}(x) \right\rvert\, dx. \qquad\qquad (2.5)
+$$
+
+By definition $\mathbb{E}[f(X)] = \int f(x)\, p_X(x)\, dx$, and equation (2.5) gives the same expectation in terms of an integrand involving $p_Z$ and the Jacobian factor. Two integrals of the form $\int f(x) g(x)\, dx = \int f(x) h(x)\, dx$ agree for all bounded measurable $f$ if and only if $g = h$ almost everywhere, so
+
+$$
+p_X(x) = p_Z\!\bigl(T^{-1}(x)\bigr) \cdot \left\lvert \det \frac{\partial T^{-1}}{\partial x}(x) \right\rvert
+$$
+
+almost everywhere, which establishes the identity.
+</TheoremBlock>
+
+**Equivalent forward form.** Often it's easier to evaluate the Jacobian of $T$ itself (the forward map) than of $T^{-1}$. The inverse-function theorem gives
+
+$$
+\frac{\partial T^{-1}}{\partial x}\bigl(T(z)\bigr) = \left[ \frac{\partial T}{\partial z}(z) \right]^{-1}, \qquad\qquad (2.6)
+$$
+
+and taking determinants on both sides:
+
+$$
+\left\lvert \det \frac{\partial T^{-1}}{\partial x}(T(z)) \right\rvert = \frac{1}{\lvert \det \partial T/\partial z\,(z) \rvert}. \qquad\qquad (2.7)
+$$
+
+Substituting into (2.3):
+
+$$
+p_X(T(z)) = \frac{p_Z(z)}{\lvert \det \partial T/\partial z\,(z) \rvert}, \qquad\qquad (2.8)
+$$
+
+or equivalently, taking logs and writing $z = T^{-1}(x)$:
+
+$$
+\log p_X(x) = \log p_Z\!\bigl(T^{-1}(x)\bigr) - \log\left\lvert \det \frac{\partial T}{\partial z}(T^{-1}(x)) \right\rvert. \qquad\qquad (2.9)
+$$
+
+Equations (2.3) and (2.9) say the same thing two ways. The implementation choice — Jacobian of the inverse (2.3), or Jacobian of the forward (2.9) — depends on which direction of the flow is easier to differentiate. Coupling layers (§4) and autoregressive flows (§5) both engineer the forward Jacobian to be triangular, so (2.9) is the form we'll reach for in the architectural sections.
+
+**Geometric reading.** The factor $|\det \partial T/\partial z|$ is the local volume-distortion factor: it tells us, locally near $z$, how much the map $T$ scales infinitesimal $d$-dimensional volume elements. A small box of volume $dV$ in $Z$-space gets mapped to a small parallelepiped of volume $|\det \partial T/\partial z|\, dV$ in $X$-space. The density adjusts inversely — mass is conserved, so where $T$ stretches volume, density thins; where $T$ compresses volume, density piles up. This is exactly the 1-D story from §2.1, lifted from intervals to volume elements via the Jacobian determinant.
+
+<ChangeOfVariablesAnimator client:visible />
+
+### Diffeomorphisms, the inverse-function theorem, and what fails without invertibility
+
+The "smooth bijection with smooth inverse" condition in Theorem 1 is the definition of a **diffeomorphism**. Flows are parameterizing diffeomorphisms; everything in the architecture sections is engineered to keep that property under composition.
+
+The local form is the inverse-function theorem: if $T: \mathbb{R}^d \to \mathbb{R}^d$ is $C^1$ near $z_0$ and $\det \partial T/\partial z(z_0) \neq 0$, then $T$ is a $C^1$ diffeomorphism on some neighborhood of $z_0$, and its inverse satisfies the matrix identity (2.6). The global version — $T$ being a diffeomorphism on all of $\mathbb{R}^d$ — is stronger than the local one, but for almost every flow architecture used in practice, $\det \partial T/\partial z$ is *globally* nonzero by construction (the affine-coupling Jacobian we'll see in §4 is $\prod_i \exp(s_i(\cdot))$, strictly positive for all inputs), which combines with algebraic invertibility of the parameterization to give global invertibility.
+
+What goes wrong without invertibility is the geometric fold-and-density-blowup picture. Consider $T: \mathbb{R} \to \mathbb{R}$ with $T(z) = z^3 - z$ — smooth, but not injective: $T(-1) = T(0) = T(1) = 0$, and the derivative $T'(z) = 3z^2 - 1$ vanishes at $z = \pm 1/\sqrt{3}$. Push a standard Gaussian through $T$. Near $z = \pm 1/\sqrt{3}$, the inverse local-stretch factor $1/|T'(z)|$ blows up — equation (2.2) predicts an infinite density at the corresponding $x$-values. This isn't a bug in the formula; it's a genuine pathology of pushing forward through a non-diffeomorphism. The pushed-forward measure isn't even absolutely continuous near the fold points, so there is no honest density there at all.
+
+For flow architectures, this pathology is what we have to avoid. Every layer must be a diffeomorphism with $\det \partial T/\partial z$ bounded away from zero on the parameter regime the optimizer can reach. §4 and §5 will show how the coupling and autoregressive parameterizations satisfy this automatically.
+
+<Figure
+  src="/images/topics/normalizing-flows/02_fold_pathology.png"
+  alt="Two-panel illustration of the fold-and-density-blowup pathology: the non-injective map T(z) = z³ - z (left) and the resulting pushed-forward density (right) showing vertical asymptotes at the fold images."
+  caption="The fold pathology of §2.3 — T(z) = z³ - z folds the line; equation (2.2) predicts infinite density at the fold images. Flow architectures avoid this by parameterizing T so that ∂T/∂z is bounded away from zero everywhere."
+/>
+
+<InvertibilityConstraintExplorer client:visible />
+
+### Numerical sanity: a linear map and a known closed-form pushed-forward density
+
+To check (2.3) against a known closed form, take the simplest possible case: a linear (well, affine) map. Let $Z \sim \mathcal{N}(0, I_2)$ on $\mathbb{R}^2$, and define $X = AZ + b$ for fixed $A \in \mathbb{R}^{2 \times 2}$ and $b \in \mathbb{R}^2$. The forward map is $T(z) = Az + b$; its Jacobian is the constant matrix $\partial T/\partial z = A$, so $|\det \partial T/\partial z| = |\det A|$ everywhere. The inverse is $T^{-1}(x) = A^{-1}(x - b)$, with Jacobian $A^{-1}$, so $|\det \partial T^{-1}/\partial x| = 1/|\det A|$.
+
+Plugging into (2.3):
+
+$$
+p_X(x) = p_Z\!\bigl(A^{-1}(x - b)\bigr) \cdot \frac{1}{|\det A|}. \qquad\qquad (2.10)
+$$
+
+Substituting the standard-Gaussian density $p_Z(z) = (2\pi)^{-d/2} \exp(-\|z\|^2 / 2)$:
+
+$$
+p_X(x) = \frac{1}{(2\pi)^{d/2} |\det A|} \exp\!\left( -\tfrac{1}{2} \|A^{-1}(x - b)\|^2 \right). \qquad\qquad (2.11)
+$$
+
+The exponent is a quadratic form. Using $\|A^{-1}(x-b)\|^2 = (x-b)^\top A^{-\top} A^{-1} (x-b) = (x-b)^\top (AA^\top)^{-1}(x-b)$ and $|\det A| = \sqrt{\det(AA^\top)}$:
+
+$$
+p_X(x) = \frac{1}{(2\pi)^{d/2} \sqrt{\det(AA^\top)}} \exp\!\left( -\tfrac{1}{2} (x - b)^\top (AA^\top)^{-1} (x - b) \right). \qquad\qquad (2.12)
+$$
+
+This is exactly the density of $\mathcal{N}(b, AA^\top)$ — which is what we knew: a linear combination of independent Gaussians is Gaussian, with mean $b$ and covariance $AA^\top$. The change-of-variables formula has reproduced the elementary fact, but importantly via the same machinery we'll apply to flows where no closed form is available.
+
+The notebook code computes both sides of (2.10) — the change-of-variables right-hand side using $p_Z$ at the pulled-back point and the constant Jacobian factor, and the closed-form Gaussian density of $\mathcal{N}(b, AA^\top)$ via `scipy.stats.multivariate_normal` — for a batch of 1000 test points and confirms they agree to floating-point precision. This is the simplest sanity check we have on the change-of-variables formula; it also previews the structure of §4.3's coupling-layer test, which computes a log-det two ways (closed-form $\sum_i s_i$ vs autograd-Jacobian plus `slogdet`) and checks they match.
+
+<Figure
+  src="/images/topics/normalizing-flows/02_two_d_affine_pushforward.png"
+  alt="Two-panel scatter showing the base standard-Gaussian samples on the left and the affine pushforward AZ + b on the right, with closed-form mean and covariance overlaid."
+  caption="2-D affine pushforward verification: the closed-form Gaussian density of N(b, AA⊤) (right) matches the change-of-variables computation from p_Z and the constant Jacobian factor."
+/>
+
+## The normalizing-flow framework
+
+Equation (2.3) tells us how a density transforms under a diffeomorphism. To turn this into a generative model, we need to (i) parameterize a family of diffeomorphisms $T_\phi$ rich enough to interpolate between any practical base $p_Z$ and any practical target $p_{\text{data}}$, and (ii) keep both the inverse $T_\phi^{-1}$ and the log-det-Jacobian $\log|\det \partial T_\phi / \partial z|$ cheap enough that we can train by maximum likelihood and sample by forward evaluation. Those two requirements — invertibility and tractable log-det — are the entire architectural design pressure on flows. The rest of this topic is about meeting them.
+
+### Invertibility + tractable log-det as architectural pressure
+
+Suppose for a moment we parameterized $T_\phi$ as an unconstrained multilayer perceptron $f: \mathbb{R}^d \to \mathbb{R}^d$ — a fully connected network with ReLU activations, the standard workhorse. Two things go wrong.
+
+**Invertibility is not guaranteed.** A ReLU MLP can collapse multiple inputs onto the same output: any $z$ that gets an all-negative pre-activation at the first layer maps to whatever bias the next layer carries forward, and many such $z$ exist. There is no architectural reason a generic MLP should be a bijection. We could try to detect non-invertibility post hoc, but training would have no signal to keep $f$ invertible — gradient descent on log-likelihood doesn't see the invertibility constraint.
+
+**The Jacobian determinant is expensive.** Even if $f$ were invertible, computing $\det \partial f / \partial z$ for a fully connected MLP costs $O(d^3)$ — the determinant of a generic $d \times d$ matrix requires LU decomposition or the equivalent. For $d = 784$ (MNIST pixels), that's billions of multiplications per evaluation, repeated for every training point in a batch and every step of optimization. The training loop is dead before it starts.
+
+Flow architectures are engineered to dispatch both failures at once. The dominant trick is to constrain $\partial T / \partial z$ to be triangular (or block-triangular with simple blocks), so that the determinant is the product of the diagonal entries,
+
+$$
+\det \frac{\partial T}{\partial z} = \prod_{i=1}^d \frac{\partial T_i}{\partial z_i}, \qquad\qquad (3.1)
+$$
+
+and the log-determinant is a sum over $d$ scalar logs — $O(d)$ rather than $O(d^3)$. The two ways to engineer a triangular Jacobian — partitioning dimensions into "pass-through" and "transform" blocks (coupling layers, §4), and ordering dimensions autoregressively (autoregressive flows, §5) — are the two main flow architectures.
+
+Invertibility comes along for the ride if the diagonal entries $\partial T_i / \partial z_i$ are always strictly positive. The triangular Jacobian then has positive determinant, the map is locally invertible by the inverse-function theorem, and the parameterization gives a closed-form inverse *algebraically* — by inverting the layer's elementwise update rule, not by running a numerical solver. Coupling and autoregressive flows both produce strictly positive diagonal Jacobians by construction.
+
+### Composing diffeomorphisms — the log-det of a product is a sum
+
+One simple flow layer is rarely expressive enough. We build expressive flows by stacking many layers and using the chain rule plus determinant multiplicativity to keep the log-det a sum of layerwise contributions.
+
+Let $T = T_K \circ T_{K-1} \circ \cdots \circ T_1$ where each $T_k: \mathbb{R}^d \to \mathbb{R}^d$ is a diffeomorphism. Write $h_0 = z$ and $h_k = T_k(h_{k-1})$, so $x = h_K$. The chain rule gives
+
+$$
+\frac{\partial T}{\partial z}(z) = \frac{\partial T_K}{\partial h_{K-1}}(h_{K-1}) \cdot \frac{\partial T_{K-1}}{\partial h_{K-2}}(h_{K-2}) \cdots \frac{\partial T_1}{\partial z}(z), \qquad\qquad (3.2)
+$$
+
+a product of $K$ Jacobian matrices, each evaluated at the appropriate intermediate point. Taking determinants and using $\det(AB) = \det A \cdot \det B$:
+
+$$
+\det \frac{\partial T}{\partial z}(z) = \prod_{k=1}^K \det \frac{\partial T_k}{\partial h_{k-1}}(h_{k-1}). \qquad\qquad (3.3)
+$$
+
+Taking logs of absolute values:
+
+$$
+\log \left\lvert \det \frac{\partial T}{\partial z}(z) \right\rvert = \sum_{k=1}^K \log \left\lvert \det \frac{\partial T_k}{\partial h_{k-1}}(h_{k-1}) \right\rvert. \qquad\qquad (3.4)
+$$
+
+This is the **composition rule** for log-det-Jacobians. It has two consequences the architecture sections rely on:
+
+1. **Layerwise composition is additive in log-det.** Doubling the depth of a flow doubles the per-layer log-det cost, but doesn't introduce any cross-layer determinant computation. The log-det stays $O(K \cdot d)$ if each layer's log-det is $O(d)$.
+
+2. **The inverse of a composition is the reverse composition of inverses.** $T^{-1} = T_1^{-1} \circ T_2^{-1} \circ \cdots \circ T_K^{-1}$, with intermediate quantities $h_{K-1} = T_K^{-1}(x)$, $h_{K-2} = T_{K-1}^{-1}(h_{K-1})$, and so on. If each layer's inverse is closed-form and cheap, so is the composition's.
+
+Equation (3.4) is the *engineering* reason flows exist as a viable model class. We get expressivity by stacking; we don't pay a determinant-of-a-product price for stacking.
+
+<Figure
+  src="/images/topics/normalizing-flows/03_composition_pushforward.png"
+  alt="Three-panel scatter of intermediate flow states z = h₀ → h₁ → x = h₂ under a two-layer composition; the running log-det sum is annotated on each arrow."
+  caption="Composition of diffeomorphisms (§3.2). The total log-det across the two-layer stack is the sum of the per-layer log-dets (eq. 3.4); no cross-layer determinant computation is needed."
+/>
+
+<FlowComposition client:visible />
+
+### The forward (sampling) direction and the reverse (density) direction
+
+A flow has two distinct evaluation modes, and they're not symmetric.
+
+**Forward (sampling).** Draw $z \sim p_Z$, compute $x = T(z) = T_K(T_{K-1}(\cdots T_1(z)))$ by applying each layer in turn. This is one neural-network forward pass per layer; if each layer is cheap to evaluate forward, sampling is cheap.
+
+**Reverse (density evaluation).** Given $x$, compute $z = T^{-1}(x)$ by applying the inverse of each layer in reverse order, then evaluate $\log p_X(x) = \log p_Z(z) + \sum_k \log|\det \partial T_k^{-1}/\partial h_k|$ (equation (2.3) layered). This requires each $T_k^{-1}$ to be cheap to evaluate, and each layer's inverse log-det to be cheap.
+
+For coupling layers (§4), both directions are cheap by construction — the inverse has the same arithmetic complexity as the forward, and the log-det is a sum of $d/2$ scalars either way. This is the property that makes coupling flows attractive: density evaluation and sampling are *both* parallelizable across the spatial dimensions.
+
+Autoregressive flows (§5) are asymmetric. MAF makes density evaluation cheap (one parallel pass over $d$ dimensions) and sampling expensive (sequential, one dimension at a time). IAF inverts the asymmetry: sampling is cheap, density evaluation is sequential. The choice between the two depends on which direction the application calls more often:
+
+- **Density estimation / MLE training:** density evaluation is in the hot loop, so MAF wins.
+- **Sampling-heavy applications (RL policies, image generation):** sampling is in the hot loop, so IAF wins.
+- **Variational inference:** the variational distribution $q_\phi$ needs both cheap sampling (to take Monte Carlo gradients of the ELBO) and cheap density evaluation of its own samples (to compute the entropy term). IAF was designed for this exact use case — see §9.
+
+Coupling layers sit above the trade-off: both directions are cheap. The price they pay is in the partition structure (half the dimensions pass through every layer unchanged), which gets compensated for by stacking layers with alternating masks.
+
+<SamplingVsDensityToggle client:visible />
+
+### Why "normalizing"? The pushforward picture and the historical genealogy
+
+The terminology can briefly trip up newcomers: "normalizing flow" doesn't mean *probability-normalizing* (every density we write down is normalized by construction). It means *transporting toward a normal distribution* — toward $\mathcal{N}(0, I_d)$ specifically. The map $T^{-1}: x \mapsto z$ takes data-space points and *normalizes* them to standard-Gaussian-distributed latents. Some authors call $T^{-1}$ the "normalizing direction" and $T$ the "generative direction," which makes the verb explicit.
+
+The intuition is worth pausing on. Training a flow by MLE is equivalent to finding a diffeomorphism $T$ such that $T^{-1}$ pushes the unknown data distribution as close to $\mathcal{N}(0, I_d)$ as possible — measured in KL divergence; see §7.1. At convergence, the residual non-Gaussianity of $T^{-1}(\{x_i\})$ measures how well the flow has fit the data. This is a productive picture to keep in mind when looking at training curves and trained-flow diagnostics: a well-fit flow produces *Gaussian-looking* latent residuals, and the failure modes of flow training tend to be visible as residual non-Gaussianity.
+
+Three historical waypoints anchor the framework:
+
+- **Tabak and Vanden-Eijnden (2010)** and **Tabak and Turner (2013)** introduced the construction in applied math as a *nonparametric* density estimator built from compositions of smooth invertible maps — no neural networks. Their motivation was numerical: cascade simple maps to slowly normalize a complicated density toward a tractable one.
+
+- **Rezende and Mohamed (2015)** brought the framework into deep learning, named it "normalizing flows," and proposed *planar* and *radial* flows as the first neural-net-parameterized examples. Their use case was variational inference (§9): the family of variational posteriors that the ELBO can be optimized over is much larger if $q_\phi$ is a flow.
+
+- **Dinh, Krueger, and Bengio (2014; NICE)** and **Dinh, Sohl-Dickstein, and Bengio (2017; RealNVP)** introduced the coupling-layer construction, which made flows competitive as density estimators for high-dimensional structured data. Glow (Kingma and Dhariwal 2018) added 1×1 invertible convolutions and multi-scale architecture; MAF and IAF (Papamakarios, Pavlakou, and Murray 2017; Kingma et al. 2016) added the autoregressive variants.
+
+The next two sections build the load-bearing architectures: coupling layers in §4, autoregressive flows in §5.
+
+## Coupling layers — NICE and RealNVP
+
+Coupling layers are the dominant flow architecture in practice, for one reason: they make both directions (forward and inverse) cheap, with a closed-form log-det that costs the same as a single forward pass through a small MLP. The construction is a simple trick — partition the dimensions, transform half of them conditioned on the other half — but the trick produces a lower-triangular Jacobian, and once the Jacobian is triangular, the load-bearing math snaps into place.
+
+### Splitting dimensions with a binary mask $b$ and what each block does
+
+Fix a binary mask $b \in \{0, 1\}^d$. We'll use the convention that $b_i = 1$ marks dimension $i$ as **pass-through** (it goes through the layer unchanged) and $b_i = 0$ marks it as **transformed** (it gets modified by an invertible scalar update conditioned on the pass-through dimensions). Let $A = \{i : b_i = 1\}$ and $B = \{i : b_i = 0\}$ be the two index sets, with $|A| + |B| = d$.
+
+The coupling layer $T: \mathbb{R}^d \to \mathbb{R}^d$ takes input $z$ and produces output $x$ with the following block structure:
+
+$$
+x_A = z_A, \qquad x_B = g\bigl(z_B;\; \theta(z_A)\bigr), \qquad\qquad (4.1)
+$$
+
+where $g(\cdot; \theta)$ is any invertible function parameterized by $\theta$, and $\theta(z_A)$ is the output of a neural network that takes only the pass-through dimensions as input. The key architectural fact is that **the transformed dimensions depend on the pass-through dimensions but not on each other** through the coupling layer (they may depend on each other through later layers, after the masks alternate).
+
+The Jacobian of (4.1) has block-triangular structure. Order the dimensions so that $A$ comes first and $B$ comes second; then
+
+$$
+\frac{\partial x}{\partial z} = \begin{pmatrix} I_{|A|} & 0 \\ \star & \frac{\partial g}{\partial z_B} \end{pmatrix}, \qquad\qquad (4.2)
+$$
+
+where the upper-left block is the identity (pass-through dimensions), the upper-right block is zero (pass-through doesn't depend on transformed), and the lower-right block is the Jacobian of $g$ with respect to its first argument (transformed-dim updates depend on transformed-dim inputs). The lower-left block $\star$ is whatever it is — the transformed-dim updates depend on the pass-through inputs through $\theta(z_A)$, but the determinant doesn't care because of the upper-right zero block.
+
+<TheoremBlock type="lemma" title="Block-triangular determinant">
+For a square matrix of the form $M = \begin{pmatrix} P & 0 \\ Q & R \end{pmatrix}$ with $P$ and $R$ square, $\det M = \det P \cdot \det R$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Use the Leibniz formula $\det M = \sum_\sigma \operatorname{sgn}(\sigma) \prod_i M_{i, \sigma(i)}$, the sum over permutations $\sigma$ of $\{1, \ldots, d\}$. Any $\sigma$ that sends some row $i$ in the upper block to a column $\sigma(i)$ in the lower block hits the upper-right zero block at entry $M_{i, \sigma(i)} = 0$, and the corresponding term in the sum vanishes. The only surviving permutations are those that preserve the block structure: $\sigma$ restricted to the upper block permutes the upper-block columns, and $\sigma$ restricted to the lower block permutes the lower-block columns. The Leibniz sum factorizes over the two sub-permutations, giving $\det M = \det P \cdot \det R$.
+</TheoremBlock>
+
+Applying the lemma to (4.2) with $P = I_{|A|}$ and $R = \partial g/\partial z_B$:
+
+$$
+\det \frac{\partial x}{\partial z} = 1 \cdot \det \frac{\partial g}{\partial z_B}. \qquad\qquad (4.3)
+$$
+
+Now we just need $g$ to have a cheap log-det. The standard choice — both NICE and RealNVP make it — is for $g$ to act *element-wise* on $z_B$, with each scalar update conditioned on $z_A$:
+
+$$
+x_i = g_i\bigl(z_i;\; \theta_i(z_A)\bigr) \quad\text{for } i \in B. \qquad\qquad (4.4)
+$$
+
+With $g$ acting element-wise, $\partial g/\partial z_B$ is diagonal, and its determinant is the product of the diagonal entries.
+
+### Additive coupling (NICE): the simplest invertible nonlinearity
+
+The simplest element-wise invertible $g$ is a shift:
+
+$$
+x_i = z_i + t_i(z_A) \quad\text{for } i \in B, \qquad\qquad (4.5)
+$$
+
+where $t: \mathbb{R}^{|A|} \to \mathbb{R}^{|B|}$ is an arbitrary neural network. This is **additive coupling**, introduced by Dinh, Krueger, and Bengio (2014) under the name NICE.
+
+The Jacobian of (4.5) on the transformed block is the identity (each $z_i$ enters $x_i$ with coefficient $1$), so $\partial g/\partial z_B = I_{|B|}$ and (4.3) gives
+
+$$
+\det \frac{\partial x}{\partial z} = 1, \qquad \log\left\lvert \det \frac{\partial x}{\partial z} \right\rvert = 0. \qquad\qquad (4.6)
+$$
+
+NICE is **volume-preserving** — each layer has determinant exactly $1$. This is appealing (no log-det term to track), but it limits expressivity: the entire pushforward $T$ can only redistribute mass, never concentrate or dilate it locally. NICE compensates by stacking many layers and adding a final non-volume-preserving diagonal rescaling.
+
+The inverse of (4.5) is immediate: $z_A = x_A$ and $z_i = x_i - t_i(x_A)$ for $i \in B$. The same network $t$ is used in both directions. Both forward and inverse cost one network evaluation.
+
+### Affine coupling (RealNVP): scale, translate, and the lower-triangular Jacobian
+
+Affine coupling generalizes additive coupling by adding a scale factor:
+
+$$
+x_i = z_i \cdot \exp\bigl(s_i(z_A)\bigr) + t_i(z_A) \quad\text{for } i \in B, \qquad\qquad (4.7)
+$$
+
+where $s, t: \mathbb{R}^{|A|} \to \mathbb{R}^{|B|}$ are neural networks (in practice, a shared trunk with two output heads). This is **affine coupling**, introduced by Dinh, Sohl-Dickstein, and Bengio (2017) under the name RealNVP — Real-valued Non-Volume Preserving.
+
+The element-wise Jacobian on the transformed block:
+
+$$
+\frac{\partial g_i}{\partial z_j} = \delta_{ij} \exp\bigl(s_i(z_A)\bigr) \quad\text{for } i, j \in B, \qquad\qquad (4.8)
+$$
+
+so $\partial g/\partial z_B = \operatorname{diag}\bigl(\exp(s_B(z_A))\bigr)$ — a diagonal matrix with strictly positive entries. Plugging into (4.3):
+
+$$
+\det \frac{\partial x}{\partial z} = \prod_{i \in B} \exp\bigl(s_i(z_A)\bigr) = \exp\!\left( \sum_{i \in B} s_i(z_A) \right), \qquad\qquad (4.9)
+$$
+
+and taking logs:
+
+$$
+\boxed{\;\log\left\lvert \det \frac{\partial x}{\partial z} \right\rvert \;=\; \sum_{i \in B} s_i(z_A).\;} \qquad\qquad (4.10)
+$$
+
+This is **the** load-bearing identity for coupling flows. The log-det-Jacobian is a sum of $|B|$ scalar outputs from the network $s$ — no matrix determinant computation, no autograd-on-the-Jacobian, just a sum over scalars the forward pass already computed. The cost of evaluating the log-det is essentially zero on top of the cost of evaluating $s$ and $t$.
+
+A few small points worth noticing. First, $\det \partial x/\partial z > 0$ always (the exponential is strictly positive), so the affine coupling layer is always orientation-preserving and locally invertible by the inverse-function theorem. Second, the upper-left $I_{|A|}$ block in (4.2) doesn't contribute to the log-det — the pass-through dimensions are free, in the sense that they cost nothing per layer. Third, expressivity per layer is bounded by the expressivity of $s$ and $t$ as functions of $z_A$: a layer can scale and shift transformed dims as flexibly as $s$ and $t$ can vary across the pass-through input.
+
+<CouplingLayerExplorer client:visible />
+
+### Stacking: alternating masks and why a single layer is not enough
+
+A single coupling layer leaves $|A| = d/2$ dimensions unchanged. So a single layer cannot model any density whose marginal on the $A$ dimensions doesn't match the base's marginal — specifically, if $p_Z = \mathcal{N}(0, I_d)$ and the target $p_X$ has a non-Gaussian marginal on dimension $1$, a single layer with $1 \in A$ cannot fix that.
+
+The fix is to **alternate the mask** between layers. Layer $1$ uses mask $b^{(1)}$; layer $2$ uses mask $b^{(2)} = 1 - b^{(1)}$; layer $3$ alternates back to $b^{(1)}$; and so on. After $K$ layers, every dimension has been transformed roughly $K/2$ times, and through the pass-through-to-transformed conditioning every dimension's value depends on every other dimension.
+
+For vector-valued data, the simplest alternation is the contiguous split $b^{(1)} = (\underbrace{1, \ldots, 1}_{d/2}, \underbrace{0, \ldots, 0}_{d/2})$ and $b^{(2)} = 1 - b^{(1)}$. For image data, the standard alternations are *checkerboard* masks (alternate pixels at the spatial scale) and *channel-wise* masks (alternate channels at the channel scale); Glow uses both at different scales of the architecture (§6).
+
+The composition rule (3.4) applied to a stack of coupling layers gives
+
+$$
+\log\left\lvert \det \frac{\partial T}{\partial z} \right\rvert = \sum_{k=1}^K \sum_{i \in B^{(k)}} s^{(k)}_i\bigl(h^{(k-1)}_{A^{(k)}}\bigr), \qquad\qquad (4.11)
+$$
+
+a sum over $K \cdot d/2$ scalar outputs from the per-layer scale networks. Empirically, $K \approx 4\text{–}8$ coupling layers suffice for 2-D toy targets like 2-moons (§11); image-scale flows like Glow use $K \approx 32$ across multiple resolution scales (§6).
+
+<Figure
+  src="/images/topics/normalizing-flows/04_coupling_stack_pushforward.png"
+  alt="Three-panel scatter showing the pushforward through a two-layer coupling stack: base Gaussian z ~ N(0, I_2) on the left, after layer 1 (mask [1, 0]) in the middle, and after layer 2 (mask [0, 1]) on the right."
+  caption="Two coupling layers with alternating masks — every dimension has been transformed once after two layers (§4.4)."
+/>
+
+<MaskAlternationDemo client:visible />
+
+### Inverse pass in closed form — and why this is the whole point
+
+The inverse of (4.7) is closed-form:
+
+$$
+z_A = x_A, \qquad z_i = \bigl(x_i - t_i(x_A)\bigr) \cdot \exp\bigl(-s_i(x_A)\bigr) \quad\text{for } i \in B. \qquad\qquad (4.12)
+$$
+
+Two things deserve emphasis. **First**, the inverse uses the same networks $s$ and $t$ — no separately-trained "inverse network." The forward and inverse share parameters; what changes is the algebraic operation, not the function being learned. **Second**, the cost of evaluating $T^{-1}(x)$ is identical to the cost of evaluating $T(z)$: one forward pass through the $s/t$ MLP and one element-wise scale-shift (forward direction) or scale-divide-shift (inverse direction). For a stack of $K$ coupling layers, the inverse cost is $K$ MLP evaluations in reverse order — the same as the forward cost.
+
+This is the property that gives coupling flows their dominance: density evaluation (which uses the inverse) and sampling (which uses the forward) are both $O(K \cdot d)$, both parallelizable across the spatial dimensions, both differentiable end-to-end. Compare this to autoregressive flows (§5), where the forward and inverse have asymmetric costs by construction, and the reason RealNVP became the workhorse it did is immediate.
+
+The log-det of the inverse, by (2.7), is minus the log-det of the forward at the corresponding point:
+
+$$
+\log\left\lvert \det \frac{\partial T^{-1}}{\partial x} \right\rvert = -\sum_{i \in B} s_i(x_A), \qquad\qquad (4.13)
+$$
+
+where we've used $x_A = z_A$ for any affine coupling layer (the pass-through dimensions are literally the same in $z$ and $x$, so $s(x_A) = s(z_A)$).
+
+## Autoregressive flows — MAF and IAF
+
+The same triangular-Jacobian trick that makes coupling layers work also produces a second major flow family: **autoregressive flows**. Where coupling partitions the dimensions into two fixed blocks and transforms one block conditioned on the other, autoregressive flows transform dimensions one at a time in a fixed order — dimension $i$ is updated conditioned on all *earlier* dimensions $1, \ldots, i-1$. The Jacobian is still lower-triangular, the log-det is still a sum of $d$ scalars, but the sampling-vs-density asymmetry becomes the architectural feature instead of being engineered away.
+
+### The autoregressive density decomposition
+
+The chain rule of probability writes any joint density as a product of conditionals along an arbitrary ordering of the variables:
+
+$$
+p_X(x) = p_X(x_1, \ldots, x_d) = \prod_{i=1}^d p_X(x_i \mid x_1, \ldots, x_{i-1}) = \prod_{i=1}^d p_X(x_i \mid x_{<i}). \qquad\qquad (5.1)
+$$
+
+If we parameterize each conditional as a Gaussian,
+
+$$
+p_X(x_i \mid x_{<i}) = \mathcal{N}\bigl(x_i;\; \mu_i(x_{<i}),\; \sigma_i^2(x_{<i})\bigr), \qquad\qquad (5.2)
+$$
+
+the reparameterization trick gives sampling and density evaluation a single common form:
+
+$$
+x_i = \mu_i(x_{<i}) + \sigma_i(x_{<i}) \cdot z_i, \qquad z_i = \frac{x_i - \mu_i(x_{<i})}{\sigma_i(x_{<i})}, \qquad\qquad (5.3)
+$$
+
+with $z_i \sim \mathcal{N}(0, 1)$ independent across $i$. The forward (sampling) map is $T: z \mapsto x$; the inverse is $T^{-1}: x \mapsto z$. Writing $\sigma_i(x_{<i}) = \exp(s_i(x_{<i}))$ to ensure positivity, the forward update becomes
+
+$$
+x_i = z_i \cdot \exp\bigl(s_i(x_{<i})\bigr) + t_i(x_{<i}) \quad\text{for each } i, \qquad\qquad (5.4)
+$$
+
+an affine update on each dimension conditioned on the earlier ones. (We've relabeled $\mu_i$ as $t_i$ for symmetry with §4.) Comparing with the coupling-layer update (4.7), the structural similarity is striking: both are element-wise affine maps with scale $\exp(s)$ and shift $t$. The difference is in what each update is conditioned on — fixed partition $z_A$ in coupling, growing prefix $x_{<i}$ in autoregressive.
+
+The Jacobian of $T$ in (5.4) is **lower triangular**: $\partial x_i / \partial z_j = 0$ for $j > i$ (since $x_i$ depends on $z_i$ and on $x_{<i}$, which transitively depends only on $z_{<i}$), and $\partial x_i / \partial z_i = \exp(s_i(x_{<i}))$ on the diagonal. The entries strictly below the diagonal are nonzero in general but irrelevant to the determinant. By the same triangular-determinant argument as §4.3,
+
+$$
+\log\left\lvert \det \frac{\partial T}{\partial z} \right\rvert = \sum_{i=1}^d s_i(x_{<i}). \qquad\qquad (5.5)
+$$
+
+Identical in form to the coupling log-det (4.10), with $B$ now being "all dimensions" and the conditioning being "everything before me" rather than "everything in the pass-through partition."
+
+### MAF: parallel density evaluation, sequential sampling
+
+Papamakarios, Pavlakou, and Murray (2017) introduced the **Masked Autoregressive Flow** (MAF) as the density-estimation specialization of (5.4). The defining equation is (5.4) verbatim: the scale and shift networks $s_i, t_i$ are conditioned on the *data-side* prefix $x_{<i}$ (rather than the latent-side prefix $z_{<i}$). This choice governs the computational asymmetry.
+
+**Density evaluation (parallel).** Given $x$, the entire prefix $x_{<i}$ is observed for every $i$ — it's just sliced from the input. All scale and shift outputs $\{s_i(x_{<i}), t_i(x_{<i})\}_{i=1}^d$ can be computed in a single forward pass through a **masked autoencoder** (MADE; Germain, Gregor, Murray, and Larochelle 2015), and the latents
+
+$$
+z_i = \bigl(x_i - t_i(x_{<i})\bigr) \cdot \exp\bigl(-s_i(x_{<i})\bigr) \qquad\qquad (5.6)
+$$
+
+are computed in parallel across $i$. Log-density is then $\log p_X(x) = \log p_Z(z) - \sum_i s_i(x_{<i})$. Total cost: **one** MADE forward pass.
+
+**Sampling (sequential).** Given $z$, we want to compute $x = T(z)$ by (5.4). But $x_i$ depends on $x_{<i}$, which we don't yet have — we have $z$, not $x$. So we must compute $x_1$ first (using only $s_1, t_1$, which have empty conditioning), then $x_2$ (using $x_1$), then $x_3$ (using $x_{1:2}$), and so on. Total cost: **$d$** MADE forward passes, each conditioned on the cumulative output from the previous ones. The cost scales linearly in the data dimension, which becomes prohibitive at image scale ($d \sim 10^5$).
+
+MAF is therefore the right choice when density evaluation is in the hot loop and sampling is rare — the canonical case being **density estimation by maximum likelihood** (§7), where every training step evaluates the log-likelihood on a batch and sampling is needed only at evaluation time.
+
+<Figure
+  src="/images/topics/normalizing-flows/05_maf_pushforward.png"
+  alt="Two-panel scatter showing base Gaussian z ~ N(0, I_2) on the left and the MAF-transformed x = T_MAF(z) on the right; x_1 is conditioned on x_0."
+  caption="A single MAF layer on d=2 (§5.2) — the output's second coordinate is conditioned on its first via the autoregressive parameterization."
+/>
+
+### IAF: parallel sampling, sequential density evaluation
+
+Kingma, Salimans, Jozefowicz, Chen, Sutskever, and Welling (2016) introduced the **Inverse Autoregressive Flow** (IAF) by swapping the conditioning: condition $s_i, t_i$ on the *latent-side* prefix $z_{<i}$ rather than the data-side prefix $x_{<i}$. The forward map becomes
+
+$$
+x_i = z_i \cdot \exp\bigl(s_i(z_{<i})\bigr) + t_i(z_{<i}). \qquad\qquad (5.7)
+$$
+
+This is the *inverse* of MAF in a precise sense: if we relabel the variables ($z \leftrightarrow x$, $s \mapsto -s$), equation (5.7) is exactly equation (5.6) with sign-flipped scale. IAF is MAF run backward and renamed.
+
+The computational asymmetry flips. **Sampling (parallel):** given $z$, the entire prefix $z_{<i}$ is observed for every $i$, all $s_i(z_{<i}), t_i(z_{<i})$ compute in one MADE forward pass, and all $x_i$ are produced in parallel. Cost: one MADE forward pass. **Density evaluation (sequential):** given $x$, the prefix $z_{<i}$ depends on $x_{\leq i-1}$ transitively, so we must invert dimension by dimension — $d$ sequential MADE passes.
+
+IAF is the right choice when sampling is in the hot loop and the only density evaluation needed is on the model's *own* samples — where $z$ is in hand alongside $x$, so all the $s_i, t_i$ values are already computed during sampling and the sequential-density cost vanishes. This is the exact use case in variational inference, where the variational distribution $q_\phi(z \mid x)$ is parameterized as an IAF: ELBO gradients require cheap sampling from $q_\phi$ and cheap log-density evaluation of those samples, both of which IAF delivers. §9 returns to this in detail.
+
+<AutoregressiveFlowExplorer client:visible />
+
+### The MAF↔IAF duality and when to reach for each
+
+The trade-off table that summarizes the three flow families so far:
+
+| Family | Sampling cost | Density-evaluation cost | Best for |
+|---|---|---|---|
+| Coupling (§4) | 1 forward pass        | 1 inverse pass            | Both directions cheap — default |
+| MAF           | $d$ sequential passes | 1 forward pass            | Density estimation / MLE |
+| IAF           | 1 forward pass        | $d$ sequential passes     | Variational inference / sampling |
+
+The duality is exact: the same MADE parameters trained as MAF can be evaluated as an IAF (and vice versa) by swapping the roles of input and output. In practice, IAF is *trained* via VI (where the model's own samples are the only density queries it needs) and MAF is *trained* via MLE (where data-density queries dominate). The implementation choice is dictated by which side of the duality matches the training objective.
+
+Stacking autoregressive flows uses the same alternation idea as coupling: after each layer, reverse the dimension ordering so that the "first" dim of the new layer is the "last" of the previous one. After $K$ layers with alternating orderings, every dim has been transformed conditioned on every other.
+
+Coupling flows are the right starting point for most density-estimation problems because they're cheap in both directions; autoregressive flows shine when one direction's asymmetry matches the application's access pattern. Glow (§6) elaborates the coupling design for images. Spline flows (Durkan, Bekasov, Murray, and Papamakarios 2019; §6.4 forward pointer) generalize the affine update inside a coupling or autoregressive layer to a piecewise rational-quadratic map, dramatically increasing per-layer expressivity without sacrificing tractability.
+
+<MAFvsCouplingTriangularJacobian client:visible />
+
+## Multi-scale and image-domain architectures
+
+The §4 and §5 architectures handle vector data with no spatial structure cleanly, but the original motivating use case for flows — image generation — needs more. An RGB image at $256 \times 256$ resolution has $d \approx 2 \times 10^5$ dimensions; a single coupling layer on that would have an $s/t$ MLP with hundreds of millions of parameters and no inductive bias for the spatial locality of natural images. Glow (Kingma and Dhariwal 2018) introduced a small set of architectural primitives that make flows tractable at image scale by leveraging the same convolutional inductive biases as VAEs and GANs: **squeeze** for routing dimensions across spatial scales, **1×1 invertible convolutions** for cheap channel mixing, and **ActNorm** for the invertible analog of batch normalization. None of these change the underlying flow math from §4 and §5 — they're new building blocks that compose with coupling layers under the same change-of-variables formula.
+
+### The squeeze operation and dimension routing across scales
+
+The natural way to scale a coupling flow on images is to operate at multiple spatial resolutions: the first few layers handle fine-grained pixel details, and later layers handle coarser-scale structure. This requires a way to *route* spatial dimensions into the channel axis without losing bijectivity.
+
+The **squeeze** operation reshapes a $C \times H \times W$ tensor into a $4C \times (H/2) \times (W/2)$ tensor by stacking $2 \times 2$ spatial blocks along the channel axis. Concretely: every $2 \times 2$ block of pixels in the input becomes a single column of $4C$ channel values in the output. Each output channel $c'$ at spatial position $(i', j')$ corresponds to a triple $(c, \alpha, \beta)$ with $\alpha, \beta \in \{0, 1\}$ via $c' = 4c + 2\alpha + \beta$, and the new value is $y_{c', i', j'} = x_{c,\, 2i' + \alpha,\, 2j' + \beta}$.
+
+Squeeze is a permutation of the input dimensions. Its Jacobian is a permutation matrix — exactly one $1$ per row and column, zeros elsewhere. So $|\det \partial y/\partial x| = 1$ and $\log|\det| = 0$. Squeeze costs nothing in the change-of-variables accounting.
+
+After a squeeze, a channel-wise mask (half the channels pass through, half get transformed) acts at the coarser spatial scale. Glow alternates squeeze with coupling-block sequences across $L$ scale levels: at each level the spatial resolution halves and the channel count quadruples, doubling the model's "effective coverage area" per coupling layer. After the final scale level, the tensor is flattened and a small set of vector-valued coupling layers handles the remaining global structure.
+
+Glow also uses a **split** operation between scale levels, where half the channels at each scale are *peeled off* and sent directly to the output ("factored out" in Glow's terminology). This reduces the per-layer parameter count at deeper scales without sacrificing capacity — the factored-out dimensions get a Gaussian prior, and the remaining ones continue through the next scale's coupling stack. Split is a partition, also a permutation under the change-of-variables — no log-det cost.
+
+<SqueezeAnimator client:visible />
+
+### 1×1 invertible convolutions — channel-mixing with closed-form log-det
+
+Between coupling layers, we need to *mix* the channels so that subsequent couplings don't act on the same fixed partition repeatedly. NICE and RealNVP used fixed channel permutations (alternate which channels are pass-through). Glow generalizes the fixed permutation to a **1×1 invertible convolution** — a learnable $C \times C$ matrix $W$ applied independently at every spatial position.
+
+Forward: $y_{c, i, j} = \sum_{c'=1}^C W_{c, c'}\, x_{c', i, j}$ for every $(i, j)$. The operation is identical to a fully connected layer applied at each pixel.
+
+For the operation to be invertible, $W$ must be invertible (nonzero determinant). The Jacobian of the full operation on the flattened input is block-diagonal with $H \cdot W$ copies of $W$ on the diagonal — one per spatial position. So
+
+$$
+\det \frac{\partial y}{\partial x} = (\det W)^{H \cdot W}, \qquad \log\left\lvert \det \frac{\partial y}{\partial x} \right\rvert = H \cdot W \cdot \log\lvert\det W\rvert. \qquad\qquad (6.1)
+$$
+
+The challenge: computing $\log|\det W|$ for a generic dense $C \times C$ matrix is $O(C^3)$ via LU decomposition. For $C \in \{64, 128, 256\}$ this is acceptable per call but adds up across many layers and many training steps.
+
+Glow's solution is the **LU parameterization**:
+
+$$
+W = P\, L\, (U + \operatorname{diag}(s)), \qquad\qquad (6.2)
+$$
+
+where $P$ is a fixed permutation matrix (initialized once, frozen), $L$ is lower triangular with $1$'s on the diagonal (learnable, $\binom{C}{2}$ free parameters), $U$ is strictly upper triangular (learnable, $\binom{C}{2}$ free parameters), and $s \in \mathbb{R}^C$ is a vector of scale parameters (learnable, $C$ free parameters). The total parameter count is $C^2$, matching dense $W$.
+
+By the block-triangular determinant lemma (§4.1) and $\det P = \pm 1$:
+
+$$
+\det W = \det P \cdot \det L \cdot \det(U + \operatorname{diag}(s)) = (\pm 1) \cdot 1 \cdot \prod_{i=1}^C s_i, \qquad\qquad (6.3)
+$$
+
+so
+
+$$
+\log\lvert\det W\rvert = \sum_{i=1}^C \log\lvert s_i\rvert. \qquad\qquad (6.4)
+$$
+
+The log-det is a sum of $C$ scalar logs — $O(C)$ rather than $O(C^3)$. Glow's contribution is not the LU decomposition itself (which is textbook) but the *parameterization*: making $L$, $U$, $s$ the free parameters means gradient descent never has to compute the LU factorization, just track the factor matrices directly.
+
+In practice $s$ is constrained positive by reparameterizing $s = \exp(\tilde s)$ with $\tilde s \in \mathbb{R}^C$ the actual learnable parameter; then $\log|\det W| = \sum_i \tilde s_i$ trivially. Glow itself uses a sign-and-magnitude parameterization that allows negative $s$, but the magnitude-only variant is what most reimplementations adopt — simpler, and the freedom to flip channel signs is already provided by $P$ and the off-diagonal $L, U$ parameters.
+
+For sampling, the inverse $W^{-1}$ can be computed once and cached — it's a per-layer $C \times C$ matrix that doesn't change between batches. The cost is amortized across all sample-generation calls.
+
+<Conv1x1Demo client:visible />
+
+### ActNorm — invertible normalization
+
+Training deep flows benefits from normalization, but **batch normalization** is not invertible per-sample — its mean and variance depend on the current batch, so the function $\mathrm{BN}(x_i)$ for a single sample depends on the other samples in the batch. The change-of-variables formula needs a deterministic per-sample transformation, so BN is structurally incompatible with flows.
+
+Glow's **ActNorm** is the invertible substitute:
+
+$$
+y_{c, i, j} = \frac{x_{c, i, j} - \mu_c}{\sigma_c}, \qquad\qquad (6.5)
+$$
+
+where $\mu_c, \sigma_c \in \mathbb{R}^C$ are learnable per-channel parameters (no batch dependence at inference time). Initialization is *data-dependent*: on the first batch seen during training, $\mu_c$ and $\sigma_c$ are set to the per-channel mean and standard deviation so that the post-ActNorm activations are unit-Gaussian. After initialization, they're updated by gradient descent like any other parameter.
+
+The Jacobian of ActNorm is diagonal with entries $1/\sigma_c$ (repeated across all spatial positions for each channel), so
+
+$$
+\log\left\lvert \det \frac{\partial y}{\partial x} \right\rvert = -H \cdot W \cdot \sum_{c=1}^C \log \sigma_c. \qquad\qquad (6.6)
+$$
+
+$O(C)$ to compute, like the LU-parameterized 1×1 convolution. The empirical benefit is the same as for BN — stabilized activations across depth — without the batch-dependence problem.
+
+### Forward pointer — spline flows (Durkan et al. 2019)
+
+The affine update inside a coupling or autoregressive layer ($x_i = z_i \exp(s_i) + t_i$) has only two free parameters per dim: the scale $s_i$ and the shift $t_i$. **Spline flows** (Durkan, Bekasov, Murray, and Papamakarios 2019) replace the affine update with a **piecewise rational-quadratic monotone interpolant**: the real line is partitioned into $K$ bins (typically $K = 8$), and the per-bin parameters specify a monotone $C^1$ map between bin endpoints. The result is dramatically more expressive — $\sim 3K$ free parameters per dim instead of $2$ — while remaining invertible, having a tractable closed-form log-det (the Jacobian is still element-wise on the transformed block), and maintaining both forward and inverse cost the same as affine coupling.
+
+Spline coupling flows achieve density-estimation results competitive with autoregressive flows at coupling's parallel-in-both-directions speed. They are currently the practical sweet spot for density estimation; the only reason this topic doesn't derive them is that the rational-quadratic interpolation machinery is a substantial detour from the change-of-variables core. The same architectural primitives (coupling partition, log-det sum, alternating masks) apply unchanged; only the scalar update rule changes.
+
+Other architectural variants worth knowing about but beyond this topic's scope:
+
+- **Continuous-time flows** (Chen, Rubanova, Bettencourt, and Duvenaud 2018; Grathwohl, Chen, Bettencourt, Sutskever, and Duvenaud 2019, FFJORD): replace the discrete stack of layers with a Neural ODE and use Hutchinson's stochastic trace estimator for the log-det. §8.4 returns to these.
+- **Residual flows** (Behrmann, Grathwohl, Chen, Duvenaud, and Jacobsen 2019): use Lipschitz-constrained residual blocks $x = z + f(z)$ where $\|f\|_L < 1$ guarantees invertibility; log-det is estimated via a power series.
+
+For the worked example in §11 and the training story in §7, we'll stick to RealNVP affine coupling — it's the cleanest pedagogical baseline, and the spline / continuous extensions are easier to motivate once the affine case is fully internalized.
+
+<MultiscaleSchematic client:visible />
+
+## Maximum-likelihood training
+
+Training a flow is straightforward: we have $\log p_\phi(x)$ in closed form via change-of-variables (2.3), so we just minimize the empirical negative log-likelihood on training data. No ELBO. No adversarial discriminator. No auxiliary KL term. The §4 code already produces all the right log-dets; this section ties everything together and runs the first end-to-end training experiment.
+
+### The exact log-likelihood objective and why no ELBO is needed
+
+Suppose we have a parametric flow $T_\phi: \mathbb{R}^d \to \mathbb{R}^d$ with base distribution $p_Z = \mathcal{N}(0, I_d)$, and want to fit its pushforward $p_\phi$ to data $\{x_1, \ldots, x_n\}$ drawn from an unknown distribution $p_{\text{data}}$. Maximum likelihood estimation (MLE) chooses $\phi$ to maximize the empirical log-likelihood
+
+$$
+\mathcal{L}(\phi) = \frac{1}{n} \sum_{i=1}^n \log p_\phi(x_i). \qquad\qquad (7.1)
+$$
+
+For a flow, the change-of-variables formula (2.9) gives the exact log-density:
+
+$$
+\log p_\phi(x) = \log p_Z\bigl(T_\phi^{-1}(x)\bigr) - \log\left\lvert \det \frac{\partial T_\phi}{\partial z}\bigl(T_\phi^{-1}(x)\bigr) \right\rvert. \qquad\qquad (7.2)
+$$
+
+Substituting $p_Z = \mathcal{N}(0, I_d)$ with $\log p_Z(z) = -\frac{d}{2}\log(2\pi) - \frac{1}{2}\|z\|^2$ and dropping the $\phi$-independent constant, the empirical negative log-likelihood (NLL — the loss we'll minimize) is
+
+$$
+-\mathcal{L}(\phi) = \frac{1}{n}\sum_{i=1}^n \left[ \frac{1}{2}\|z_i\|^2 + \log\left\lvert \det \frac{\partial T_\phi}{\partial z}(z_i) \right\rvert \right] + \text{const}, \qquad\qquad (7.3)
+$$
+
+where $z_i = T_\phi^{-1}(x_i)$ is the latent representation of the $i$-th data point.
+
+Two terms drive the gradient:
+
+- **Latent norm penalty** $\frac{1}{2}\|z_i\|^2$ — pulls $z_i$ toward the origin. Geometrically, it asks the flow's inverse to *normalize* the data to standard-Gaussian-distributed latents.
+- **Log-det term** $\log|\det \partial T/\partial z|_{z_i}$ — pulls the local volume-distortion factor *down* (preferring contractive maps in the data's neighborhoods).
+
+These are in tension. Contracting $T$ at the data points expands $T^{-1}$ there, which pushes $z_i$ outward, increasing $\|z_i\|^2$. Equilibrium is exactly where $T^{-1}$ has transported $p_{\text{data}}$ to $\mathcal{N}(0, I_d)$ — the "normalizing" picture from §3.4 in algebraic form.
+
+**KL minimization view.** As $n \to \infty$, the empirical MLE objective converges to $\mathbb{E}_{x \sim p_{\text{data}}}[\log p_\phi(x)]$. Maximizing this is equivalent to minimizing the **forward** KL divergence
+
+$$
+\operatorname{KL}(p_{\text{data}} \,\|\, p_\phi) = \mathbb{E}_{p_{\text{data}}}\bigl[\log p_{\text{data}}(x) - \log p_\phi(x)\bigr] \qquad\qquad (7.4)
+$$
+
+(the $\log p_{\text{data}}$ term doesn't depend on $\phi$, so it drops from the gradient). Forward KL pins the model where the data has mass: $p_\phi$ must cover every region $p_{\text{data}}$ covers, else the integrand $-\log p_\phi$ blows up at those points and the KL is infinite. This is the **mode-covering** property of MLE — flows trained by MLE rarely miss a mode of the data, though they can over-smooth across narrow features.
+
+Applying change-of-variables once more inside the expectation gives the dual:
+
+$$
+\operatorname{KL}(p_{\text{data}} \,\|\, p_\phi) = \operatorname{KL}\bigl(T_\phi^{-1}{}_{\#}\, p_{\text{data}} \,\|\, \mathcal{N}(0, I_d)\bigr). \qquad\qquad (7.5)
+$$
+
+The pushforward of $p_{\text{data}}$ under $T_\phi^{-1}$ has to be close to standard Gaussian. "Normalizing flow" verbed: at convergence, $T_\phi^{-1}$ normalizes the data.
+
+**Why no ELBO?** Because (7.2) is *exact*. VAEs need an ELBO because marginalizing the latent variable is intractable — $\log p_\theta(x) = \log \int p_\theta(x|z)p(z)\,dz$ has no closed form for nontrivial decoders. Flows have no latent to marginalize: every $x$ has a unique pre-image $z = T_\phi^{-1}(x)$, computable in closed form. The change-of-variables formula turns "intractable marginalization" into "tractable inverse + log-det" in one architectural step. That's the whole architectural contract.
+
+### The training loop in PyTorch
+
+The recipe is short enough to fit on a postcard:
+
+```python
+optimizer = torch.optim.Adam(flow.parameters(), lr=1e-3)
+for step in range(n_steps):
+    x_batch = sample_data(batch_size)
+    z, log_det_inv = flow.inverse(x_batch)
+    log_p = base_dist.log_prob(z) + log_det_inv
+    nll = -log_p.mean()
+    optimizer.zero_grad()
+    nll.backward()
+    torch.nn.utils.clip_grad_norm_(flow.parameters(), max_norm=5.0)
+    optimizer.step()
+```
+
+That's all. No ELBO, no adversarial discriminator, no separate KL term — just empirical NLL, gradient descent, and the closed-form log-det that came for free in the §4 architecture.
+
+The notebook trains a 4-layer affine-coupling RealNVP (`CouplingFlow(d=2, n_layers=4, hidden=32)`) on a 2-D bimodal target — two Gaussian blobs at $(\pm 2, 0)$ with $\sigma = 0.5$ — for 2000 Adam steps at learning rate $10^{-3}$, batch size 256. Total runtime: roughly 4 seconds on a 2020-era CPU. The training NLL drops monotonically from initialization to within $\sim 0.05$ nats of the target's negative differential entropy $-H[p_{\text{data}}]$ — the information-theoretic lower bound for any model.
+
+<Figure
+  src="/images/topics/normalizing-flows/07_training_curve.png"
+  alt="Training-curve plot: NLL vs Adam step, dropping from ~3.5 nats at initialization to ~1.93 nats at convergence (2000 steps), with the information-theoretic floor -H[p_data] ≈ 1.88 marked."
+  caption="2-D bimodal MLE training (§7.2). The flow converges to within ~0.05 nats of the information-theoretic floor in 2000 Adam steps (~4 s CPU)."
+/>
+
+<Figure
+  src="/images/topics/normalizing-flows/07_fitted_density.png"
+  alt="Two-panel heatmap comparing the true bimodal density (left) against the trained flow's fitted density (right)."
+  caption="Fitted density of the 4-layer RealNVP on the §7.2 bimodal target."
+/>
+
+### Numerical stability tricks
+
+Standard practical tricks that show up across flow implementations:
+
+**Scale clamping.** Without bounding the scale output, $\exp(s_i)$ in the affine-coupling update (4.7) can explode when $s_i \sim \pm 5$ on bad initial inputs. The `AffineCoupling` class in §4 uses `s = torch.tanh(s_raw)` to keep $s_i \in [-1, 1]$, bounding $\exp(s_i) \in [e^{-1}, e]$. Empirically, this single line drops the training-instability rate by an order of magnitude.
+
+**Gradient clipping.** Per-batch gradient-norm clipping (`torch.nn.utils.clip_grad_norm_(flow.parameters(), max_norm=5.0)`) prevents individual outlier samples from destabilizing training when their gradient norms spike. The default `max_norm=5.0` is robust across most flow training setups; tighter clips help with very deep flows (depth > 30).
+
+**Base distribution choice.** Standard Gaussian $\mathcal{N}(0, I_d)$ is the default and works for almost all data. Some applications use a uniform base on $[0, 1]^d$ (for grid-discretized image data) or a learned mixture of Gaussians (for conditional generation), but those are application-specific tweaks, not general improvements.
+
+**Weight decay.** Most flow implementations use no weight decay or very small ($10^{-5}$ to $10^{-4}$) decay only on the $s/t$ MLP weights, never on the per-layer learned biases. Heavy weight decay cripples expressivity — the $s$ network needs to range freely to fit varying local volume distortions.
+
+**Numerical precision.** Float32 suffices for production-scale training. The §4–§6 Jacobian-validation experiments used Float64 to distinguish closed-form log-dets from autograd log-dets at FP precision; this section's training run stays at Float64 for consistency, but Float32 is the production choice.
+
+### Diagnostics: training curves, sample sanity, latent Gaussianity
+
+Three things to check during and after training:
+
+**Training curve.** The NLL should decrease monotonically (with some minibatch-sampling noise) and plateau. A flat-from-the-start curve indicates the model isn't learning — usually an architectural bug (mask wrong, log-det not summed correctly) rather than a hyperparameter issue. A sudden NLL jump after apparent convergence is the gradient-explosion signature; the gradient clip should prevent it, but if it shows up, decrease the clip threshold.
+
+**Sample sanity.** Draw $z \sim \mathcal{N}(0, I_d)$, push through $T_\phi$, scatter-plot against the training data. The samples should be visually close to the data distribution. A flow that fits log-likelihood well but produces visibly degenerate samples is the signature of MLE's mode-covering bias — the model is "spending capacity" on hitting every data point and over-smoothing in the gaps between.
+
+**Latent Gaussianity.** Compute $z_i = T_\phi^{-1}(x_i)$ for a held-out batch and check that the latents look like draws from $\mathcal{N}(0, I_d)$. Two specific diagnostics:
+
+- **Latent scatter.** $z_i$ should look isotropically Gaussian — no obvious clusters, no anisotropy, no banana shapes. Visible structure means the flow hasn't fully normalized the data.
+- **Squared-norm QQ plot.** Under perfect fit, $\|z_i\|^2$ follows $\chi^2_d$ (the sum of $d$ squared independent standard normals). Plotting empirical quantiles of $\|z_i\|^2$ against $\chi^2_d$ quantiles should fall on the diagonal. Deviations in the upper tail are common (outlier data points produce latents farther from the origin); deviations across the entire range indicate structural mis-fit.
+
+<Figure
+  src="/images/topics/normalizing-flows/07_latent_gaussianity.png"
+  alt="Three-panel latent-Gaussianity diagnostic: latent scatter with 1σ/2σ rings, squared-norm QQ plot against χ²_d, and a fit-quality readout panel."
+  caption="Latent-Gaussianity diagnostic for the trained 2-D bimodal flow (§7.4). The latents form an isotropic-Gaussian-looking cloud and the squared-norm QQ plot follows the χ²_2 reference."
+/>
+
+## Expressivity and universality
+
+The training experiments in §7 fit a 4-layer RealNVP to a bimodal target without much effort, and the natural follow-up is: how far does this extend? Can a flow approximate *any* density on $\mathbb{R}^d$? If so, how much depth and width do we need? And are there *structural* limits — densities that no finite affine-coupling flow can match? This section answers each question in turn.
+
+### What "universal" means for flows
+
+The universality question for flows is: given a target density $p_{\text{data}}$ on $\mathbb{R}^d$, does there exist a diffeomorphism $T: \mathbb{R}^d \to \mathbb{R}^d$ such that $T_\# \mathcal{N}(0, I_d) = p_{\text{data}}$? If yes, can it be approximated by the function class we've been studying — finite compositions of coupling layers with neural-net $s$ and $t$?
+
+Two complementary results from measure-transport theory answer yes:
+
+**Existence (Bogachev, Sudakov).** For any two atomless probability measures $\mu, \nu$ on $\mathbb{R}^d$, there exists a measurable map $T: \mathbb{R}^d \to \mathbb{R}^d$ with $T_\# \mu = \nu$. If both measures are absolutely continuous with everywhere-positive densities, $T$ can be taken to be a diffeomorphism. So *some* diffeomorphism exists transporting $\mathcal{N}(0, I_d)$ to any reasonable target — the remaining question is whether our parameterized family approximates it.
+
+**Constructive (Knothe–Rosenblatt rearrangement).** For any two distributions $p, q$ with everywhere-positive densities, there is a unique **triangular** transport $T$ sending $p$ to $q$. It's built dimension by dimension via conditional inverse CDFs:
+
+$$
+T_1(z_1) = F_{X_1}^{-1}\bigl(F_{Z_1}(z_1)\bigr), \qquad T_i(z_{1:i}) = F_{X_i \mid x_{<i} = T_{<i}(z_{<i})}^{-1}\bigl(F_{Z_i}(z_i)\bigr). \qquad\qquad (8.1)
+$$
+
+This is *literally* the autoregressive flow architecture from §5, with the optimal conditioning. So MAF and IAF, in the limit of infinite-width MLPs in each conditional, can exactly represent the Knothe–Rosenblatt map and hence approximate any target density.
+
+Coupling flows are a slight restriction (they alternate which dims are "earlier" via masks, rather than fixing a single ordering), but **Teshima et al. (2020)** prove that affine-coupling flows with sufficient depth are also dense in the space of $C^2$ diffeomorphisms on any compact subset of $\mathbb{R}^d$, under mild regularity conditions. The proof constructs a finite stack of coupling layers that approximates a given target diffeomorphism uniformly on a compact set.
+
+What "universal" doesn't mean: it doesn't mean *any finite flow* fits *any* density. There's always an approximation error that depends on depth, width, and how well the $s, t$ MLPs can approximate the local affine coefficients of the Knothe–Rosenblatt map. The universality theorems guarantee the error goes to zero in the limit; they don't tell us how fast.
+
+### Depth vs width and the empirical sweet spot
+
+For practical flow training, the question becomes: how many coupling layers $K$ and how wide an $s/t$ MLP do we actually need? Theory gives bounds but not tight constants; the empirical answer comes from sweeping.
+
+The notebook trains flows of depth $K \in \{2, 4, 6, 8, 12\}$ on the §7 bimodal target — same training schedule, same data sampler, same architecture except for depth — and plots the final test NLL against depth. The standard pattern emerges: NLL drops sharply from $K = 2$ to $K = 4$, then continues decreasing with diminishing returns. By $K = 6$ the gap from the information-theoretic floor is under $0.05$ nats; by $K = 12$ it's under $0.03$. The marginal benefit per extra layer flatlines.
+
+This pattern generalizes. For 2-D toys, $K = 4$–$8$ is the practical sweet spot. For 10–50-dim density estimation (UCI tabular benchmarks; Papamakarios, Pavlakou, and Murray 2017), $K = 10$–$20$. For image data at $32 \times 32$, $K = 32$ across multiple scales (Glow's published configuration). The depth scaling is roughly logarithmic in data complexity: doubling the per-dim conditional flexibility you can approximate requires roughly doubling the depth.
+
+Width — the hidden dim of the $s/t$ MLP — has its own diminishing-returns curve. The §7 experiment used $h = 32$; widths $h \in \{16, 32, 64, 128\}$ produce final NLLs within $\pm 0.02$ on the bimodal target. Width matters more when the conditioning network has to express complicated functions of $z_A$ (the conditional CDF of a multimodal target conditional on one of its modes, for instance) and matters less for smooth unimodal targets.
+
+The rough heuristic: pick depth based on data dimensionality, width based on conditional complexity, and verify empirically on a small training run before scaling up. The hyperparameter space is forgiving — coupling flows aren't fragile to depth or width in the way that some VAE / GAN architectures are.
+
+<Figure
+  src="/images/topics/normalizing-flows/08_depth_sweep.png"
+  alt="Plot of final test NLL vs flow depth K for K ∈ {2, 4, 6, 8, 12}, showing the monotone decrease and diminishing-returns plateau."
+  caption="Depth-vs-NLL sweep on the §7 bimodal target (§8.2). The flow's bias-from-capacity decreases with depth and plateaus around K=6."
+/>
+
+### Coupling-layer geometry: the topological barrier between disconnected modes
+
+There's a structural limit that universality theorems don't address: **diffeomorphisms preserve topology**. The pushforward of a connected support under a diffeomorphism is connected; the pushforward of a simply-connected support is simply connected; and so on. The base distribution $\mathcal{N}(0, I_d)$ has all of $\mathbb{R}^d$ as its support — fully connected and simply connected — so any diffeomorphism's pushforward inherits both properties.
+
+For practical mixtures with $\sigma > 0$ (Gaussian blobs that are formally connected — every point has positive density), this isn't a hard barrier: the density between modes is *low* but not zero. However, the diffeomorphism nature of the flow forces the pushforward density to vary *smoothly* in space. A coupling-flow $T_\phi$ cannot make the bridge between modes arbitrarily low: it has to spend representational capacity on the corridor between blobs.
+
+The empirical signature is a **bridge** of moderate density along the line connecting two modes in the fitted-density heatmap. The notebook re-trains a 6-layer RealNVP on a $\sigma = 0.3$ target (sharper modes than §7's $\sigma = 0.5$), and the fitted heatmap shows a faint corridor between the two centers that the true density doesn't have. This isn't a training failure — it's the topological constraint manifesting.
+
+How modern variants partially address it:
+
+- **Spline flows** (Durkan et al. 2019). The piecewise rational-quadratic monotone update inside each coupling layer can have very sharp gradients between bin endpoints, effectively concentrating the bridge into a thinner region. Still a diffeomorphism, but the *effective* topological barrier is much smaller.
+- **Continuous-time flows** (FFJORD; §8.4). At any finite integration time the map is a diffeomorphism, so the barrier formally holds. But the ODE solver can integrate to very long times, producing maps with very steep gradients — the same "effective sharpness" benefit as spline flows.
+- **Hybrid models.** Some practical implementations combine a flow with a discrete latent (a learned mixture-of-Gaussians base distribution, or a categorical latent that selects between component flows). The discrete latent contributes the disconnected-support structure; the flows contribute the smooth deformation within each component.
+
+Affine-coupling flows can't break the topological barrier alone, and that's a meaningful structural limit. For unimodal or weakly-multimodal targets, it's invisible. For data with genuinely discrete structure (categorical mixtures, isolated submanifolds), it's a problem.
+
+<Figure
+  src="/images/topics/normalizing-flows/08_topological_barrier.png"
+  alt="Heatmap of a fitted density on a sharp-modes (σ = 0.3) bimodal target showing a faint bridge between the two centers that the true density doesn't have."
+  caption="Topological barrier in action (§8.3). A 6-layer RealNVP on a σ = 0.3 target shows a faint corridor between the two modes — the diffeomorphism nature of the flow cannot make the bridge arbitrarily low."
+/>
+
+### Forward pointer: continuous-time flows and FFJORD
+
+The architectural successor to discrete-layer flows is the **continuous-time** family. Chen, Rubanova, Bettencourt, and Duvenaud (2018) — *Neural Ordinary Differential Equations* — replaced the discrete stack $h_k = T_k(h_{k-1})$ with a continuous ODE:
+
+$$
+\frac{dh(t)}{dt} = f_\phi(h(t),\, t), \qquad h(0) = z, \qquad x = h(1). \qquad\qquad (8.2)
+$$
+
+The log-det generalizes from the discrete sum (3.4) to an integral via the **instantaneous change-of-variables** formula (Chen et al. 2018, Theorem 1):
+
+$$
+\log\left\lvert \det \frac{\partial x}{\partial z} \right\rvert = \int_0^1 \operatorname{tr}\!\left( \frac{\partial f_\phi}{\partial h}(h(t),\, t) \right) dt. \qquad\qquad (8.3)
+$$
+
+The trace of the Jacobian is an order cheaper than the determinant — $O(d^2)$ to compute exactly, vs $O(d^3)$ for the determinant. **FFJORD** (Grathwohl, Chen, Bettencourt, Sutskever, and Duvenaud 2019) brought it to $O(d)$ stochastically via **Hutchinson's trace trick**:
+
+$$
+\operatorname{tr}\!\left( \frac{\partial f_\phi}{\partial h} \right) = \mathbb{E}_{\epsilon \sim \mathcal{N}(0, I_d)}\!\left[\, \epsilon^\top \frac{\partial f_\phi}{\partial h} \epsilon \,\right], \qquad\qquad (8.4)
+$$
+
+an unbiased estimator requiring only a single vector-Jacobian product per sample.
+
+Continuous flows trade architectural simplicity for compute cost: each forward pass requires adaptive ODE integration (typically 10–50 RK4 steps per training example), which is 10–50× slower than a discrete flow with comparable expressivity. The trade-off pays off for high-dimensional density estimation, where FFJORD's per-layer flexibility allows comparable quality with much shallower stacks; for low-dimensional toys like the §7 bimodal target, discrete coupling flows are strictly faster and equally good.
+
+Continuous flows is its own follow-up topic — the Neural ODE machinery, adjoint-method backpropagation, and Hutchinson trace estimation each have enough depth to warrant a dedicated treatment. This topic forward-points to them as the natural next step for readers who hit the expressivity wall of discrete coupling flows.
+
+## Flows for variational inference
+
+Normalizing flows were *introduced* to deep learning as variational distributions — Rezende and Mohamed's 2015 paper that coined the name "normalizing flow" is a VI paper, not a density-estimation paper. The use case is straightforward: VI needs flexible variational families that can sample cheaply and evaluate their own density on their samples cheaply, and flows deliver both. The math is the same change-of-variables formula we've used since §2, applied with a slightly different sign convention — and that sign convention is the section's main payoff.
+
+This section is a bridge, not a full VI derivation. We assume the reader has seen the ELBO before ([Variational Inference](/topics/variational-inference) on this site; or, from the statistics side, formalStatistics's Bayesian-computation chain) and focus on what's specifically flows-y. The complete derivation of the ELBO, the reparameterization trick, and the standard choice of Gaussian variational families lives upstream.
+
+### Recap: the ELBO with a flexible $q_\phi(z \mid x)$
+
+For a probabilistic model $p(x, z) = p(x \mid z)\, p(z)$ with intractable posterior $p(z \mid x) \propto p(x \mid z)\, p(z)$, variational inference posits a tractable family $q_\phi(z \mid x)$ and chooses $\phi$ to make $q_\phi$ close to $p(\cdot \mid x)$. The **evidence lower bound** (ELBO) is
+
+$$
+\mathcal{L}(\phi; x) = \mathbb{E}_{q_\phi(z \mid x)}\bigl[\log p(x, z)\bigr] - \mathbb{E}_{q_\phi(z \mid x)}\bigl[\log q_\phi(z \mid x)\bigr], \qquad\qquad (9.1)
+$$
+
+a lower bound on $\log p(x)$ with equality iff $q_\phi(z \mid x) = p(z \mid x)$. Maximizing the ELBO over $\phi$ both tightens the bound and minimizes the reverse KL divergence $\operatorname{KL}(q_\phi \,\|\, p(\cdot \mid x))$.
+
+The expressive power of $q_\phi$ matters. **Mean-field** $q_\phi(z \mid x) = \prod_i q_{\phi_i}(z_i \mid x)$ assumes posterior independence across components — usually wrong, often badly. **Gaussian** $q_\phi(z \mid x) = \mathcal{N}(z;\, \mu_\phi(x),\, \Sigma_\phi(x))$ assumes posterior Gaussianity — also usually wrong but harder to detect. Both miss curved posterior structure: banana-shaped, multimodal, or heavy-tailed posteriors all break the Gaussian assumption.
+
+Flows offer a flexible alternative.
+
+### Flow-augmented variational posteriors (Rezende & Mohamed 2015)
+
+Parameterize the variational distribution as a flow:
+
+$$
+\epsilon \sim p_\epsilon = \mathcal{N}(0, I_d), \qquad z = T_\phi(\epsilon;\, x), \qquad\qquad (9.2)
+$$
+
+where $T_\phi(\cdot; x)$ is an invertible flow whose architectural details may depend on the data point $x$ (the *amortized* setting; §9.4) or may be unconditional (when we're approximating a single fixed target; the §9 code experiment). The variational distribution $q_\phi(z \mid x)$ is then the pushforward of $\mathcal{N}(0, I_d)$ under $T_\phi(\cdot; x)$:
+
+$$
+\log q_\phi(z \mid x) = \log p_\epsilon\bigl(T_\phi^{-1}(z; x)\bigr) + \log\left\lvert \det \frac{\partial T_\phi^{-1}}{\partial z}(z) \right\rvert, \qquad\qquad (9.3)
+$$
+
+or equivalently, substituting $\epsilon = T_\phi^{-1}(z)$ and using (2.7):
+
+$$
+\log q_\phi\bigl(T_\phi(\epsilon) \mid x\bigr) = \log p_\epsilon(\epsilon) - \log\left\lvert \det \frac{\partial T_\phi}{\partial \epsilon}(\epsilon;\, x) \right\rvert. \qquad\qquad (9.4)
+$$
+
+Equation (9.4) is the §2 change-of-variables formula, applied to a variational distribution instead of a generative model. The same architectural primitives — coupling layers, autoregressive flows, multi-scale convolutions — work unchanged.
+
+Why use a flow as $q$ instead of for the model $p$? Two reasons. First, flexibility: a curved, multimodal, or heavy-tailed posterior is exactly the kind of thing a flow can match and a Gaussian cannot. Second, density-evaluation efficiency: VI training requires evaluating $\log q_\phi(z)$ on samples *drawn from $q_\phi$ itself*, which means $\epsilon$ is in hand alongside $z = T_\phi(\epsilon)$. So (9.4) is essentially free: we already computed $\epsilon$ when sampling, and we already computed $\log|\det \partial T_\phi/\partial \epsilon|$ as part of the forward pass. This is the IAF use case (§5.3): cheap sampling and cheap density evaluation on the model's own samples — exactly what VI wants.
+
+### The sign flip — entropy via change of variables
+
+Here's the part that's productively confusing the first time through. The ELBO contains the entropy term $-\mathbb{E}_{q}[\log q]$, and the log-det shows up there with the *opposite* sign from §7's density-evaluation case. Working it out carefully:
+
+The entropy of $q_\phi$ is
+
+$$
+H[q_\phi] = -\mathbb{E}_{q_\phi(z)}[\log q_\phi(z)]. \qquad\qquad (9.5)
+$$
+
+Using the change of variables $z = T_\phi(\epsilon)$ to push the expectation back to $\epsilon$-space:
+
+$$
+H[q_\phi] = -\mathbb{E}_{p_\epsilon(\epsilon)}\bigl[\log q_\phi(T_\phi(\epsilon))\bigr]. \qquad\qquad (9.6)
+$$
+
+Substituting (9.4):
+
+$$
+H[q_\phi] = -\mathbb{E}_{p_\epsilon}\!\left[ \log p_\epsilon(\epsilon) - \log\left\lvert \det \frac{\partial T_\phi}{\partial \epsilon}(\epsilon) \right\rvert \right] = H[p_\epsilon] + \mathbb{E}_{p_\epsilon}\!\left[ \log\left\lvert \det \frac{\partial T_\phi}{\partial \epsilon} \right\rvert \right]. \qquad\qquad (9.7)
+$$
+
+**The entropy of the flow's distribution equals the entropy of the base distribution PLUS the expected log-det of the forward Jacobian.** Compare with §7's density evaluation (7.2):
+
+$$
+\log p_\phi(x) = \log p_Z\bigl(T_\phi^{-1}(x)\bigr) - \log\left\lvert \det \frac{\partial T_\phi}{\partial z} \right\rvert. \qquad\qquad \text{(7.2)}
+$$
+
+The log-det appears with a *minus* sign in the density formula and a *plus* sign in the entropy formula. Same term, same point, opposite signs. **This is the sign flip.**
+
+The reason is bookkeeping, not magic: density is $\log p$, entropy is $-\log p$, and the minus in the entropy definition flips the minus in front of the log-det. Geometrically the two readings are consistent:
+
+- A flow that **stretches volume** locally (large $|\det \partial T/\partial \epsilon|$) **reduces density** at the pushed-forward point (the same mass spread over a larger region).
+- The **same flow** **increases entropy** of the resulting distribution (more spread = more uncertainty = higher entropy).
+
+The arithmetic agrees with the intuition. Once you see the sign flip once, you can read every flow-VI paper without flipping signs in your head.
+
+<SignFlipExplainer client:visible />
+
+**The flow-VI ELBO.** For an unobserved-data setting where we fit a flow to a fixed target $p(z) \propto \exp(-U(z))$:
+
+$$
+\begin{aligned}
+\mathcal{L}(\phi) &= \mathbb{E}_{q_\phi(z)}[\log p(z)] + H[q_\phi] \\
+&= \mathbb{E}_{p_\epsilon(\epsilon)}\bigl[ -U(T_\phi(\epsilon)) \bigr] + H[p_\epsilon] + \mathbb{E}_{p_\epsilon}\!\left[ \log\left\lvert \det \frac{\partial T_\phi}{\partial \epsilon} \right\rvert \right] + \text{const}.
+\end{aligned} \qquad\qquad (9.8)
+$$
+
+Dropping the $\phi$-independent constants ($H[p_\epsilon]$ and the unknown $\log Z$), maximizing the ELBO is equivalent to *minimizing*
+
+$$
+-\mathcal{L}(\phi) = \mathbb{E}_{p_\epsilon}\!\left[ U(T_\phi(\epsilon)) - \log\left\lvert \det \frac{\partial T_\phi}{\partial \epsilon} \right\rvert \right] + \text{const}. \qquad\qquad (9.9)
+$$
+
+Two terms drive the gradient:
+
+- $U(T_\phi(\epsilon))$ — push the flow's samples toward high-density regions of $p$ (low-potential regions).
+- $-\log|\det \partial T_\phi/\partial \epsilon|$ — penalize *contracting* maps; equivalently, reward *spreading* the distribution (entropy regularization).
+
+These are in tension: the first pulls samples to the mode, the second prevents collapse. Equilibrium is the variational approximation. And **we never need to know $Z$**, the unknown normalizing constant of the target — a key advantage of VI over methods like rejection sampling that need normalized targets.
+
+<Figure
+  src="/images/topics/normalizing-flows/09_vi_comparison.png"
+  alt="Three-panel comparison of mean-field Gaussian, full Gaussian, and 4-layer affine-coupling flow fits to a banana-shaped target, overlaid on the target contours."
+  caption="Flow-VI on a banana target (§9.3). The flow wraps around the curve while Gaussian VI cannot — the ELBO improvement is the structural payoff of flexible variational families."
+/>
+
+### Amortized inference: encoder + flow as a practical pattern
+
+In a standard VAE, the encoder produces $(\mu_\phi(x), \log \sigma^2_\phi(x))$ for a Gaussian $q_\phi(z \mid x)$. To use a flow as $q_\phi$, the encoder produces a **context vector** $c_\phi(x) \in \mathbb{R}^c$ that conditions the flow's $s/t$ networks:
+
+$$
+s_i\bigl(z_A,\, c_\phi(x)\bigr), \quad t_i\bigl(z_A,\, c_\phi(x)\bigr) \quad\text{for each coupling layer.} \qquad\qquad (9.10)
+$$
+
+The flow's behavior — which regions it stretches, which it compresses — changes per data point through $c_\phi(x)$, and the joint $\{$encoder, flow$\}$ parameters are trained by maximizing the ELBO across the training set. This is the **amortized inference** pattern.
+
+Two production examples worth naming:
+
+- **IAF-VAE** (Kingma, Salimans, Jozefowicz, Chen, Sutskever, and Welling 2016). The variational posterior is an IAF whose autoregressive networks condition on the encoder output. IAF was designed for this use case: cheap sampling from $q_\phi$ for the ELBO's MC gradient, cheap density evaluation on those samples for the entropy term, and the data conditioning lives in the encoder rather than in the flow's architecture.
+
+- **Sylvester flows** (van den Berg, Hasenclever, Tomczak, and Welling 2018). Use a sequence of rank-$k$ flow updates ($x = z + V\, h(Q^\top z + b)$ with $V, Q \in \mathbb{R}^{d \times k}$), achieving a richer variational family than IAF at comparable compute cost. Less popular than IAF in practice but a useful comparison point.
+
+The §9 code experiment uses the **unconditional** case (no encoder, no data-dependent conditioning) — fit a flow to a single fixed banana-shaped target $p(z) \propto \exp(-U(z))$. This isolates the flow-VI mechanics without the encoder-architecture complications. The amortized version is structurally identical: add a context vector to each $s/t$ MLP's input, train end-to-end, repeat.
+
+## Flows for density estimation
+
+This section is positional. §7 covered *how* to train a flow by maximum likelihood; this section covers *where flows sit* in the broader density-estimation landscape — what's gained and what's lost relative to the classical nonparametric and parametric alternatives, and what bridges this work to the wider neural function-approximation toolkit.
+
+### Neural-parametric density estimation and what it inherits from MLE
+
+Density estimation — recovering $p_{\text{data}}$ from a sample $\{x_1, \ldots, x_n\}$ — has two classical regimes. **Parametric** methods assume the target lies in a finite-dimensional family $\{p_\phi : \phi \in \Phi\}$ and estimate $\phi$ at the standard $O(n^{-1/2})$ rate. **Nonparametric** methods make weaker smoothness assumptions and trade slower convergence for the absence of model misspecification. Flows are a third option that combines the parametric machinery (gradient-based fitting, $O(n^{-1/2})$ rate within the representable family) with the flexibility of a high-dimensional, learned parameterization — **neural-parametric** density estimation.
+
+The §7 MLE recipe is the inheritance from classical parametric statistics. Under regularity conditions — the true density is in the flow's representable family, or is approximated arbitrarily well by it — the empirical MLE estimator $\hat\phi_n$ is consistent ($\hat\phi_n \to \phi^*$ as $n \to \infty$) and asymptotically efficient (the variance reaches the Cramér–Rao bound). The flow's *expressive capacity* — depth $K$, width $h$, layer type — controls the bias of the procedure: more capacity, less bias, but more variance for fixed $n$.
+
+The bias-variance trade-off has a familiar shape. Tiny flows ($K = 2$) systematically underfit complex targets; huge flows ($K = 100$) overfit small samples. The sweet spot is empirically the depth where validation loss stops decreasing — the usual hyperparameter-selection picture, but it pays off with the parametric convergence rate.
+
+### Contrast with KDE: bandwidth selection, rate of convergence, finite-sample regime
+
+<ExternalLink href="https://formalstatistics.com/topics/kernel-density-estimation" site="formalstatistics" topic="Kernel Density Estimation" /> takes a fundamentally different approach. Rather than fitting a parametric family, KDE places one kernel function per training point:
+
+$$
+\hat p_h(x) = \frac{1}{n\, h^d} \sum_{i=1}^n K\!\left(\frac{x - x_i}{h}\right), \qquad\qquad (10.1)
+$$
+
+where $K$ is a kernel (often $\mathcal{N}(0, I)$) and $h$ is a bandwidth selected by cross-validation or Silverman's rule. The estimator interpolates the empirical distribution, smoothing it by $h$.
+
+KDE's convergence properties are nonparametric. For a $\beta$-Hölder smooth target ($\beta = 2$ for $C^2$ targets — the standard assumption), the minimax rate in $L^2$ is
+
+$$
+\|\hat p_h - p\|_{L^2} = O_p\!\left(n^{-2\beta / (2\beta + d)}\right). \qquad\qquad (10.2)
+$$
+
+For $\beta = 2$:
+
+- $d = 1$: $O(n^{-4/5}) \approx n^{-0.80}$
+- $d = 2$: $O(n^{-4/6}) \approx n^{-0.67}$
+- $d = 10$: $O(n^{-4/14}) \approx n^{-0.29}$
+- $d = 50$: $O(n^{-4/54}) \approx n^{-0.074}$ — barely any improvement with more data
+
+This is the **curse of dimensionality** for nonparametric density estimation: the rate degrades polynomially in $d$. To halve the error in $d = 10$ requires $\sim 2^{14/4} \approx 11\times$ more data; in $d = 50$, $\sim 2^{54/4} \approx 10^4\times$ more.
+
+Flows trade this for a *parametric* rate. Within the representable family, $\|\hat p_\phi - p\|_{TV} = O_p(n^{-1/2})$, independent of $d$. The catch: the approximation error of a fixed-architecture flow is a bias that doesn't shrink with $n$ — only with more flow capacity.
+
+In practice:
+
+- For low $d$ ($d \leq 5$) and modest $n$, KDE is often competitive or better — no model-misspecification bias, and the curse is mild.
+- For high $d$ ($d \geq 20$) or large $n$, flows dominate — the curse hits KDE hard, and the flow's approximation bias becomes a smaller fraction of the total error.
+- The crossover depends on the data's smoothness, the flow's capacity, and the sample size.
+
+The notebook compares flow MLE against KDE on the §7 bimodal target ($d = 2$, $n \in \{100, 500, 2000, 5000\}$). The empirical pattern: KDE leads at $n = 100$ (the flow doesn't have enough data to estimate its $\sim 4500$ parameters), they cross around $n = 500$, and the flow approaches the information-theoretic floor faster than KDE for $n \geq 2000$.
+
+<Figure
+  src="/images/topics/normalizing-flows/10_kde_vs_flow.png"
+  alt="KDE-vs-flow test-NLL curves on the §7 bimodal target, with sample size n on the x-axis and test NLL on the y-axis; the flow curve crosses below the KDE curve around n=500."
+  caption="KDE vs flow MLE on a 2-D target (§10.2). KDE leads at small n; the flow takes over once n exceeds the flow's parameter count."
+/>
+
+### Contrast with mixture models: flexibility, identifiability, mode merging
+
+Gaussian mixture models (GMMs) are a finite-mixture parametric family:
+
+$$
+p(x) = \sum_{k=1}^K \pi_k\, \mathcal{N}(x;\, \mu_k, \Sigma_k), \qquad \sum_k \pi_k = 1, \qquad \pi_k \geq 0. \qquad\qquad (10.3)
+$$
+
+GMMs are trained by expectation–maximization (EM): alternating between responsibilities (E-step) and component-parameter updates (M-step). Standard, cheap, and well-understood for $K$ up to a few hundred.
+
+But GMMs come with three known pathologies:
+
+- **Model selection on $K$.** $K$ is a hyperparameter that must be set. Too few → underfit; too many → some components collapse (zero-variance singularity at a data point) or merge with others. Approaches like BIC and AIC trade off fit against complexity but don't fully resolve the problem.
+- **Discontinuous gradients at the mode-merging boundary.** When $K$ is held fixed but one component's weight $\pi_k$ approaches $0$, the effective model lies at the boundary of the lower-$K$ family. Standard gradient descent on this objective fails because the gradient with respect to that component's parameters becomes ill-defined; EM handles it gracefully (responsibilities go to zero) but gradient-descent training does not.
+- **Local optima.** The EM objective has many local optima for $K > 2$. Initialization matters, and standard random init often fails.
+
+Flows avoid these. Their architecture has a fixed depth $K$, but unlike GMM's $K$, depth is a *continuous capacity dial* — adding a coupling layer smoothly enriches the representable family without discontinuities. The MLE objective is smooth in $\phi$. Local optima exist but are typically less problematic than for EM on GMMs (over-parameterization helps).
+
+What flows lose: GMMs are *interpretable*. Each component has a mean and covariance you can read off, point to as a "cluster," correspond to known data subpopulations. Flows are opaque — the learned $s/t$ networks don't admit easy semantic interpretation. For data where the latent structure is genuinely a small number of Gaussian clusters, GMMs are arguably the right tool; flows are the right tool when the data's structure is smooth, continuous, and not naturally decomposed into discrete components.
+
+What flows can represent that GMMs cannot:
+
+- **Smooth manifold structure** — the parabolic ridge of §9's banana is a 1-D structure in 2-D space, not a small number of components. A GMM approximating it needs many narrow components along the ridge; a flow follows the ridge with a smooth diffeomorphism.
+- **Heavy tails without artifacts** — a GMM approximating a Student-$t$ needs many components in the tails to track the slow polynomial decay; a flow on top of a Student-$t$ base captures it exactly with one layer.
+- **Correlation structure that doesn't decompose** — non-elliptical, non-mixture covariance patterns (think: the conformations of a folded protein, or the joint distribution of pixel intensities in natural images) where there's no natural cluster boundary to define a mixture component over.
+
+### Bridge to density-ratio estimation
+
+A common ML task is estimating the **ratio** $r(x) = p(x)/q(x)$ rather than the density itself. Use cases include:
+
+- **Classifier two-sample testing**: determining whether two empirical samples are from the same underlying distribution.
+- **Importance sampling**: weighting samples from $q$ to estimate expectations under $p$ when sampling from $p$ is expensive.
+- **GAN discriminator**: the Bayes-optimal discriminator estimates $\log(p/q)$, and the GAN training objective is a moment-matching variant.
+- **Energy-based models**: trained by contrasting positive samples (from $p$) against negative samples (from a noise distribution $q$).
+
+The naive approach is to fit two flows separately and take the ratio $\hat p_\phi(x) / \hat q_\psi(x)$. Two problems: each flow has its own approximation bias and variance (the ratio compounds both), and small errors in $q$ at low-density points produce huge errors in the ratio (division by a near-zero estimate).
+
+The better approach is **direct density-ratio estimation**: train a single neural function $r_\phi(x)$ that estimates $\log(p/q)$ without going through the densities individually. Two main families: (a) probabilistic classifier-based DRE, where a classifier distinguishing $p$ from $q$ samples gives log-odds that estimate $\log(p/q)$; (b) density-ratio matching via Bregman divergence between true and estimated ratios.
+
+Both approaches inherit the parametric machinery from neural-network training and avoid the curse of dimensionality. They're the subject of the T3 topic **Density Ratio Estimation** *(coming soon)* — the natural follow-up to flows for density estimation. The shared methodology (neural function approximation, MC training, similar diagnostics) makes the two topics natural companions, and both occupy the seven-topic PyTorch/JAX exception list for the same reason: neural-network parameterization with custom losses requires modern autodiff.
+
+## Worked example: 2-moons end-to-end
+
+This is the synthesis section. Everything we've built up — the change-of-variables formula, the coupling-layer architecture, the MLE training recipe, the diagnostic suite — comes together to fit a 6-layer affine-coupling RealNVP to the canonical 2-moons dataset. No new math, no new architecture. Just the load-bearing machinery from §4 and §7 applied to a target that's structurally harder than the §7 bimodal toy.
+
+### Dataset and base distribution
+
+The 2-moons dataset (`sklearn.datasets.make_moons`) is the canonical 2-D toy for nonlinear separability — two interlocking crescent shapes that no axis-aligned linear classifier can separate. For density estimation we treat it as unsupervised: the binary class label is discarded, and the flow has to fit the joint distribution of $(x_1, x_2)$ over the union of both crescents.
+
+We use $n = 2000$ samples with Gaussian noise of $\sigma = 0.05$ added to each point. The resulting cloud occupies roughly $x_1 \in [-1.5, 2.5]$ and $x_2 \in [-1, 1.5]$, with the two crescents centered near $(0, 0)$ and $(1, 0.5)$.
+
+**Why 2-moons is harder than the §7 bimodal target.** The §7 target was two well-separated Gaussian blobs sharing the same $x_2 \approx 0$ axis — a single coupling layer with mask $[1, 0]$ ("pass $x_1$ through, transform $x_2$ conditioned on $x_1$") could split the blobs into the two halves and adjust $x_2$ independently for each. The 2-moons crescents *intertwine*: at any vertical slice $x_1 = c$ with $c \in [0, 1]$, both crescents have points at different $x_2$ values, and a single dimension partition cannot isolate one crescent from the other. The flow has to *bend smoothly* to wrap each crescent — exactly the kind of architectural test the §4 alternating-mask coupling stack is designed for.
+
+The base distribution stays $\mathcal{N}(0, I_2)$. The flow's job is to find a diffeomorphism $T_\phi: \mathbb{R}^2 \to \mathbb{R}^2$ that pushes this isotropic Gaussian into the 2-moons-shaped target.
+
+### Six-layer RealNVP architecture and training
+
+The architecture is `CouplingFlow(d=2, n_layers=6, hidden=64)` — six affine-coupling layers with alternating masks $\{[1, 0], [0, 1]\}$ and a 64-unit $s/t$ trunk per layer. Compared to §7's 4-layer hidden=32 flow we add two more layers and double the hidden width, reflecting the harder target.
+
+Training: Adam at learning rate $10^{-3}$, batch size 256, 3000 steps. Total runtime: roughly 25 seconds on a 2020-era CPU. The training NLL drops substantially over the first $\sim 1000$ steps and continues to refine for the remaining 2000. Unlike §7's bimodal target, 2-moons has no closed-form entropy, so the optimal NLL is unknown a priori; the converged value is the empirical achievable bound for this architecture.
+
+<Figure
+  src="/images/topics/normalizing-flows/11_training_curve.png"
+  alt="Training curve for the 6-layer RealNVP on 2-moons: NLL vs Adam step, dropping from ~3 nats at initialization to ~0.43 nats at convergence."
+  caption="Training curve for the §11 worked example. Final NLL ≈ 0.43 after 3000 Adam steps on n = 2000 2-moons samples."
+/>
+
+### Learned density heatmap and sample scatter
+
+Three-panel comparison: the training data, the fitted-density heatmap, and a fresh batch of samples drawn from the trained flow.
+
+The fitted density should match the training data's spatial extent — high density on the two crescents, low density in the gap between them. The flow's samples should look visually indistinguishable from the training data: same crescent shapes, same approximate density across the support, same noise level.
+
+A few diagnostic things to look for in the fitted-density heatmap:
+
+- The density should be **highest along the crescent centers**, falling off smoothly toward the edges.
+- The **gap between crescents** should be visible but not perfectly empty — recall §8.3's topological barrier — the flow has to assign some low but nonzero density to the bridge between modes because diffeomorphisms cannot make the support disconnected.
+- The density should **not extend far outside the training-data envelope** — no "phantom" high-density regions away from the data. A flow that over-extrapolates is the signature of either insufficient training (loss hasn't converged) or insufficient depth.
+
+<Figure
+  src="/images/topics/normalizing-flows/11_density_and_samples.png"
+  alt="Three-panel 2-moons fit: training data scatter on the left, fitted log-density heatmap in the middle, and fresh samples from the trained flow on the right."
+  caption="2-moons fit (§11.3) — training data, learned density, and fresh model samples. The flow captures the crescent shapes and the gap between them; a faint bridge between modes is the topological barrier of §8.3 manifesting."
+/>
+
+### Forward and inverse maps visualized
+
+The most informative single visualization of a trained flow is the forward-map deformation of a regular grid: take a uniform grid of horizontal and vertical lines in $z$-space and push it through $T_\phi$. The grid lines come out bent and curved, wrapping around the 2-moons shape — a visual record of how the flow stretches and compresses the latent space to fit the data.
+
+Symmetrically, the inverse map shows the flow's "normalizing" action: take the training data, pull each point back through $T_\phi^{-1}$, and plot the resulting latents in $z$-space. They should form an isotropic Gaussian-looking cloud, with 1-$\sigma$ and 2-$\sigma$ reference rings showing the expected density envelope. The §7 latent-Gaussianity diagnostic applied to the 2-moons-trained flow gives a tighter QQ-fit than the bimodal case — the more capacity helps.
+
+Together, the two panels are the geometric content of the flow: the forward map curves the simple base distribution into the complex target; the inverse map flattens the complex target into the simple base. The two are exact inverses of each other up to floating-point precision (the §4 round-trip assertions verified this), and the visualization shows both directions simultaneously.
+
+<Figure
+  src="/images/topics/normalizing-flows/11_forward_inverse_maps.png"
+  alt="Two-panel visualization of the trained 2-moons flow: forward map of a regular grid pushed through T (left) showing the grid lines bent around the crescent shapes, and the inverse map of training data pulled back through T^-1 (right) showing an isotropic Gaussian-looking cloud."
+  caption="Geometric content of the trained 2-moons flow (§11.4). Left: a regular z-space grid pushed forward through T deforms into a wrap around the crescents. Right: the training data pulled back through T^-1 forms a near-isotropic Gaussian — visible Gaussianization."
+/>
+
+## Connections, applications, and limits
+
+This is the closing section. No new math, no new code — just the broader context. Where flows are used, what they cost, how they compare to other generative models, what they can't do, and how they relate to sister-site topics on formalCalculus and formalStatistics.
+
+### Applications
+
+Six application areas where flows do real work:
+
+**Image generation (Glow).** Kingma and Dhariwal (2018) demonstrated that flows can scale to high-resolution image data with their multi-scale Glow architecture (§6). Glow trained on CelebA at 256 × 256 produces recognizable face images with smooth latent interpolations between samples. Subsequent work (RealNVP-FlowGAN hybrids, normalizing-flow-based super-resolution) has pushed image-domain flows further, though GANs and diffusion models still lead on raw sample quality (§12.4).
+
+**Molecular generation and Boltzmann sampling (equivariant flows).** Köhler, Klein, and Noé (2020) and subsequent work introduced flows that respect 3-D rotational and translational equivariance, allowing them to sample molecular conformations from the Boltzmann distribution $p(x) \propto e^{-U(x)/kT}$ where $U$ is the potential energy. The equivariance constraint reduces the effective data dimensionality and makes the flow generalize across symmetric configurations without seeing them all during training. Application areas include drug-likeness scoring, free-energy estimation, and conformation sampling for molecular dynamics.
+
+**Reinforcement learning policy parameterization.** Continuous-action RL (Mujoco environments, robotic control, motor-skill learning) typically parameterizes the policy $\pi(a \mid s)$ as a Gaussian or mixture of Gaussians. Replacing this with an IAF gives much more flexible action distributions — capable of capturing multimodal optimal-action patterns that a Gaussian can't. The use case is perfect for IAF (§5.3): sampling is cheap (we draw many actions per state during environment rollouts), and density evaluation on the model's own samples is cheap (needed for the policy gradient and entropy-regularization terms). Mazoure, Doan, Durand, Pineau, and Hjelm (2020) is a representative entry point.
+
+**Simulation-based inference.** For problems where the likelihood $p(x \mid \theta)$ is intractable but we have a simulator producing $x$ given $\theta$, flows amortize Bayesian inference by training on simulated $(\theta, x)$ pairs to learn the posterior $p(\theta \mid x)$ directly. Methods like Sequential Neural Posterior Estimation (SNPE; Greenberg, Nonnenmacher, and Macke 2019) use flows as the conditional density estimator. Application areas: epidemiology (parameter estimation in compartment models), neuroscience (neural circuit models), cosmology (cosmological parameter inference). Cranmer, Brehmer, and Louppe (2020) survey the field.
+
+**Lossless compression.** A trained flow gives exact $\log p_\phi(x)$, which via the Shannon–Fano–Elias scheme translates into a lossless compression rate of approximately $-\log_2 p_\phi(x)$ bits per data point. Bits-Back coding (Ho, Lohn, Sutskever, and Abbeel 2019) achieves near-optimal rates on standard benchmarks. The catch: encoding and decoding must traverse the flow forward and backward respectively, which is much slower than fixed-codebook compressors.
+
+**Density-based out-of-distribution detection.** A trained flow can in principle flag OOD samples by their low log-likelihood under $p_\phi$. In practice this is more nuanced than it sounds: Nalisnick, Matsukawa, Teh, Görür, and Lakshminarayanan (2019) showed that flows trained on CIFAR-10 assign *higher* likelihood to SVHN images than to held-out CIFAR-10 images — a striking counterexample to the naive intuition that "OOD = low likelihood." The community has converged on more sophisticated OOD scores (typicality tests, density ratios, likelihood-ratio statistics) rather than raw $\log p_\phi$. This is an active research area.
+
+### Computational and memory profile
+
+A flow's cost has three regimes worth distinguishing.
+
+**Training step.** A coupling-flow training step at depth $K$, batch size $B$, data dimension $d$, hidden width $h$ costs roughly $2 K B \cdot O(dh + h^2)$ FLOPs for the forward pass (forward + inverse + log-det), plus a similar amount for the backward pass. For Glow-scale models at $d \sim 10^5$, $K = 32$, $h = 256$, $B = 32$: about $5 \times 10^{10}$ FLOPs per training step, or roughly 1 second on a 2020-era GPU. Comparable to a VAE of similar capacity.
+
+**Memory.** For exact gradient computation, the backward pass needs the forward activations of every coupling layer. At Glow scale, that's roughly 12 MB per data point — manageable for batch size 32, but it grows linearly with batch size. **Reversible-flow architectures** (which coupling layers automatically are) admit a memory-saving trick: during the backward pass, recompute activations from later layers using invertibility rather than storing them. This trades compute for memory — useful for very deep stacks or large batches.
+
+**Sampling and density evaluation.** Per data point: $K$ forward passes for sampling, $K$ inverse passes for density evaluation, both at the same cost as the training forward pass. For coupling flows, both directions cost the same; for autoregressive flows (§5), one direction is parallel ($O(1)$ MADE passes) and the other is sequential ($O(d)$ MADE passes). Glow-scale image generation at 256 × 256 takes roughly 100 ms per sample on a GPU — slow for real-time generation but fine for batch processing.
+
+The asymptotic story: flows have *constant* per-data-point cost in both directions — no Markov chain sampling, no iterative inference. This is the source of flows' practical sampling-speed advantage over diffusion models.
+
+### Flows vs VAEs vs GANs vs diffusion — trade-off table
+
+A summary of the four major continuous-density generative-modeling families. The table reads as a *capability* matrix; the choice between them depends on which capabilities your application needs.
+
+|                           | **Flow**                    | **VAE**                  | **GAN**                            | **Diffusion**                    |
+|---------------------------|-----------------------------|--------------------------|------------------------------------|----------------------------------|
+| Training objective        | Exact MLE                   | ELBO (lower bound)       | Adversarial (min-max)              | Score-matching / DDPM ELBO       |
+| Sampling cost             | 1 forward pass ($K$ layers) | 1 decoder pass           | 1 generator pass                   | $T \sim 100\text{–}1000$ steps   |
+| Density evaluation        | **Exact**                   | Lower bound (ELBO)       | Unavailable                        | Lower bound or score estimate    |
+| Sample quality (images)   | Moderate                    | Moderate (often blurry)  | **Excellent**                      | **Excellent**                    |
+| Mode coverage             | **Strong** (mode-covering)  | Strong (mode-covering)   | Weak (mode collapse)               | **Strong**                       |
+| Latent-dim flexibility    | Fixed = data dim            | Free (bottleneck)        | Free                               | Fixed = data dim                 |
+| Implementation complexity | Moderate (arch constraints) | Low                      | High (adversarial, mode collapse)  | Moderate (DDPM scheduling)       |
+| Invertibility             | **Yes (by design)**         | No                       | No                                 | No                               |
+| Likelihood ratios         | Direct                      | Bounded                  | Discriminator estimate             | Score difference                 |
+
+A few patterns worth noticing:
+
+- **For exact density evaluation** (likelihood-ratio tests, Bayesian model comparison, lossless compression, OOD detection), flows are the only family that gives an unbiased answer. VAE ELBOs are bounded, GAN densities are unavailable, diffusion ELBOs are bounded.
+- **For sample-quality-focused applications** (image generation, audio synthesis), diffusion and GANs lead. Flows are typically a step behind on FID and Inception scores.
+- **For applications that need both directions cheaply** (VI, RL policies, simulation-based inference), flows (specifically IAF and coupling) are the natural choice.
+- **For embedding into a probabilistic graphical model** where the variational distribution needs to plug into an ELBO with exact entropy, flows are again the obvious choice (§9).
+
+<FlowVsGenerativeModelsMatrix client:visible />
+
+### Honest limits
+
+What flows can't do well, or can only do at high cost:
+
+**High-dimensional expressivity bottleneck.** Despite universality theorems (§8.1), flows in practice lag GANs and diffusion on high-resolution image quality. Glow-256 produces recognizable but artifact-laden samples; SOTA GANs (StyleGAN3) and diffusion models (Imagen, Stable Diffusion) produce photorealistic output. The structural reason is plausibly the **effective receptive field**: an affine-coupling layer can only directly correlate dimensions in the same mask partition, and alternating masks propagate correlations across depth in $O(\log K)$ steps. For high-resolution images, $K = 32$ layers don't propagate enough cross-pixel correlation.
+
+**Training instability at very deep stacks.** Very deep flow stacks ($K > 64$) can be hard to train stably even with all the §7.3 stability tricks. Spline flows (§6.4) help by being more expressive per layer; continuous flows (§8.4) help by being effectively continuous-depth.
+
+**Sample-quality lag.** Flows trained for density estimation often produce blurrier samples than GANs and diffusion. The mode-covering MLE objective (§7.1) prefers smooth interpolation between training points — it covers every region of the data but smooths across narrow features. For applications where sharp samples matter more than density correctness (game-engine asset generation, photoreal portraits), GANs and diffusion are the right tools.
+
+**Dimension-preservation cost.** A flow on a $d = 65{,}536$-dim image has $d$-dim latents — no bottleneck. A VAE on the same data uses $d_z = 100$ or so. The flow uses way more parameters per data point (the $s/t$ networks model interactions across all $d$ dims) and may overfit small datasets accordingly. For tasks where the underlying data lies on a much lower-dimensional manifold, VAEs' explicit bottleneck is a feature, not a bug.
+
+**OOD detection failure modes.** The naive use of $\log p_\phi$ as an OOD score fails reliably enough to be a research embarrassment (Nalisnick et al. 2019; §12.1). The community has converged on more nuanced scores; flows remain useful for OOD detection, but not via the route the original Glow paper suggested.
+
+**Topological barrier (already §8.3).** Diffeomorphisms preserve topology; flows can't model genuinely discontinuous-support distributions cleanly. For data with discrete component structure (categorical mixtures, isolated submanifolds), other architectures (mixture models, hybrid VAEs with categorical latents) are structurally better.
+
+**Computational cost relative to diffusion.** While flows are faster than diffusion at *sampling time* (1 forward pass vs 100–1000 denoising steps), they're slower at *training time* for equivalent sample quality on high-resolution data. Diffusion's denoising-network parameterization is highly parameter-efficient relative to a coupling stack, so a diffusion model with the same training budget reaches better sample quality. The trade-off: pay at training time (diffusion) or at sampling time (flow).
+
+### Cross-site topology
+
+The relationships to sister-site topics, summarized:
+
+**formalCalculus prereqs.** Two load-bearing topics: <ExternalLink href="https://formalcalculus.com/topics/change-of-variables" site="formalcalculus" topic="Change of Variables" /> (the substitution rule for densities — the entire framework is downstream of it; derived in §2.2) and <ExternalLink href="https://formalcalculus.com/topics/jacobian" site="formalcalculus" topic="Jacobian" /> (the determinant of the Jacobian as a volume-distortion factor — the architectural design pressure for triangular Jacobians, §4). For readers who need to refresh either, the formalCalculus topics are the recommended starting points.
+
+**formalStatistics prereqs.** Three connections worth naming:
+
+- <ExternalLink href="https://formalstatistics.com/topics/kernel-density-estimation" site="formalstatistics" topic="Kernel Density Estimation" /> — the nonparametric predecessor that flows generalize to a neural-parametric form. §10.2 details the contrast: KDE wins at low $d$ and small $n$, flows win at high $d$ and large $n$. The two are complementary tools, not competitors.
+- <ExternalLink href="https://formalstatistics.com/topics/maximum-likelihood" site="formalstatistics" topic="Maximum Likelihood" /> — the training objective in §7 is plain MLE applied to a flow's parametric family. The consistency, asymptotic efficiency, and bias-variance trade-off all inherit from classical MLE theory.
+- <ExternalLink href="https://formalstatistics.com/topics/multivariate-distributions" site="formalstatistics" topic="Multivariate Distributions" /> — the standard multivariate Gaussian as the base, the multivariate change-of-variables for the pushforward, and the joint–marginal–conditional decomposition for the autoregressive form (§5).
+
+**formalML connections.** Two:
+
+- [Variational Inference](/topics/variational-inference) — §9 is the bridge. Flows are flexible variational families that strictly improve over Gaussian mean-field VI when the posterior is non-Gaussian. The flow-VI ELBO derivation and the sign-flip arithmetic live in §9.3.
+- **Density Ratio Estimation** *(coming soon)* — for problems where $p/q$ is needed rather than $p$. §10.4 forward-points; the shared neural-parametric methodology makes the two topics natural companions.
+
+**The diffusion successor.** Score-based generative models and denoising diffusion (Sohl-Dickstein, Weiss, Maheswaranathan, and Ganguli 2015; Ho, Jain, and Abbeel 2020; Song and Ermon 2019) are the architectural successor to flows for sample-quality-focused applications. They sacrifice the exact density (replaced by a score-matching or DDPM-ELBO objective) for dramatically better sample quality at high resolution. Diffusion is its own topic; this topic forward-points but doesn't derive. Readers who hit the expressivity wall of discrete coupling flows for image-domain applications should look there next.
+
+This concludes the topic. The §11 worked example is the canonical artifact; the §4 and §5 architectures are the load-bearing implementations; the §7 training recipe is the engineering workflow. The rest is context.

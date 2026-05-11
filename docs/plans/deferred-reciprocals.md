@@ -660,26 +660,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Bernoulli Naive Bayes models binary feature vectors as independent Bernoulli random variables given the class label._
 
-## When `formalml/normalizing-flows` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/continuous-distributions** declares `formalmlConnections` → `normalizing-flows` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The standard Normal N(0,I) is the base distribution. The change-of-variables formula transforms it through invertible mappings to model complex densities._
-- **formalStatistics/kernel-density-estimation** declares `formalmlConnections` → `normalizing-flows` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Rezende–Mohamed 2015 normalizing flows replace the kernel-average-of-bumps with a learned invertible transformation of a simple base density. §30.10 Rem 20 pointer; orthogonal to classical AMISE th…_
-- **formalStatistics/multivariate-distributions** declares `formalmlConnections` → `normalizing-flows` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Normalizing flows learn an invertible transform g from N(0,I) to a complex target. The change of variables formula f_Y(y) = f_Z(g^{-1}(y)) |det J| from §8 is the core mathematical tool._
-- **formalStatistics/random-variables** declares `formalmlConnections` → `normalizing-flows` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Normalizing flows learn invertible transformations of simple distributions. The change of variables formula f_Y(y) = f_X(g⁻¹(y)) · |det J_{g⁻¹}(y)| is the mathematical backbone — each flow layer ap…_
-- **formalCalculus/sigma-algebras** declares `formalmlConnections` → `normalizing-flows` (connections)
-  - Reciprocal field on the new topic: `formalcalculusPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Normalizing flows are pushforward measures: T*μ_X = μ_Y. The change-of-variables formula for densities is a Radon-Nikodym derivative of the pushforward._
-
 ## When `formalml/online-fdr` ships
 
 Add the reciprocal pointer back to:
