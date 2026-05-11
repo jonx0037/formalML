@@ -38,7 +38,7 @@ export default function InvertibilityConstraintExplorer() {
   const W = Math.max(380, Math.min(cw || 720, 800));
   const H = 380;
 
-  const { zPts, tVals, primeMin, density } = useMemo(() => {
+  const { zPts, tVals, primeMin, primeMinSigned, density } = useMemo(() => {
     const zPts: number[] = [];
     const tVals: number[] = [];
     const primeVals: number[] = [];
@@ -48,7 +48,12 @@ export default function InvertibilityConstraintExplorer() {
       tVals.push(Talpha(z, alpha));
       primeVals.push(TalphaPrime(z, alpha));
     }
-    const primeMin = Math.min(...primeVals);
+    // The fold-pathology bifurcation is "T'(z) crosses zero somewhere," not
+    // "T'(z) becomes negative." Track both the signed minimum (for the readout
+    // that distinguishes injective from folded) and the absolute minimum
+    // (for the `min |T'|` label).
+    const primeMinSigned = Math.min(...primeVals);
+    const primeMin = Math.min(...primeVals.map(Math.abs));
 
     // Compute density along T(z) values via change of variables, accumulating
     // mass when multiple z's map to the same x bin.
@@ -66,7 +71,7 @@ export default function InvertibilityConstraintExplorer() {
       if (tp > 1e-6) density[bin] += (pBase / tp) * binW * ((Z_MAX - Z_MIN) / (N_GRID - 1)) / binW;
       else density[bin] += 100; // visualize blowup
     }
-    return { zPts, tVals, primeMin, density };
+    return { zPts, tVals, primeMin, primeMinSigned, density };
   }, [alpha]);
 
   const PAD_LEFT = 50;
@@ -96,7 +101,10 @@ export default function InvertibilityConstraintExplorer() {
     return `${b === 0 ? 'M' : 'L'} ${scaleX(x)} ${scaleD(density[b])}`;
   }).join(' ');
 
-  const folded = primeMin < 0;
+  // The bifurcation happens at T'(z*) = 0 — so we treat the boundary case as
+  // "folded" too (a small epsilon absorbs floating-point round-off in the
+  // grid evaluation).
+  const folded = primeMinSigned <= 1e-9;
 
   return (
     <div ref={containerRef} className="my-8 not-prose" style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 20 }}>

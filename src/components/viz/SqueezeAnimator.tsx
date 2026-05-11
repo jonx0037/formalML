@@ -37,8 +37,6 @@ interface CellMeta {
   channel: number; // 0..C-1
   i: number;
   j: number;
-  inputX: number;
-  inputY: number;
   outputChannel: number; // 0..4C-1
   outputI: number;
   outputJ: number;
@@ -58,8 +56,6 @@ function buildLayout(): CellMeta[] {
           channel: c,
           i,
           j,
-          inputX: c * 130 + j * 28,
-          inputY: i * 28,
           outputChannel: outC,
           outputI: outI,
           outputJ: outJ,

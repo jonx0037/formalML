@@ -653,8 +653,9 @@ export function gramSchmidtRows(M: Float64Array[]): Float64Array[] {
 /**
  * log|det M| via LU decomposition with partial pivoting.
  *
- * Returns a finite number. For nearly-singular matrices may return -Infinity
- * or NaN; the caller is responsible for handling those.
+ * Returns log|det M|. For singular matrices returns -Infinity; for
+ * ill-conditioned matrices may produce NaN. The caller is responsible
+ * for handling those edge cases.
  */
 export function slogdetAbs(M: Float64Array[]): number {
   const n = M.length;
@@ -704,16 +705,24 @@ export function finiteDifferenceJacobian(
   const inDim = x.length;
   const J: Float64Array[] = [];
   for (let i = 0; i < outDim; i++) J.push(new Float64Array(inDim));
+  // Hoist the perturbation buffers and the constant 1/(2 eps) out of the loop
+  // (Gemini PR #82 review): saves O(d) Float64Array allocations and avoids the
+  // hot-path division. Each iteration restores xPlus[j] / xMinus[j] before
+  // moving on so the buffer is reused without aliasing across columns.
+  const xPlus = x.slice();
+  const xMinus = x.slice();
+  const invTwoEps = 1 / (2 * eps);
   for (let j = 0; j < inDim; j++) {
-    const xPlus = x.slice();
-    const xMinus = x.slice();
-    xPlus[j] += eps;
-    xMinus[j] -= eps;
+    const orig = x[j];
+    xPlus[j] = orig + eps;
+    xMinus[j] = orig - eps;
     const fPlus = fn(xPlus);
     const fMinus = fn(xMinus);
     for (let i = 0; i < outDim; i++) {
-      J[i][j] = (fPlus[i] - fMinus[i]) / (2 * eps);
+      J[i][j] = (fPlus[i] - fMinus[i]) * invTwoEps;
     }
+    xPlus[j] = orig;
+    xMinus[j] = orig;
   }
   return J;
 }

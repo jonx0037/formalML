@@ -114,7 +114,9 @@ export default function Conv1x1Demo() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* Heatmap of W */}
         <div style={{ padding: 12, border: '1px solid var(--color-border)', borderRadius: 6 }}>
-          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 8 }}>W ∈ R^{C}×{C}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+            W ∈ ℝ<sup>{C}×{C}</sup>
+          </div>
           <div style={{ display: 'inline-grid', gridTemplateColumns: `repeat(${C}, ${cellSize}px)`, gap: 2 }}>
             {W.map((row, i) =>
               Array.from(row).map((v, j) => {

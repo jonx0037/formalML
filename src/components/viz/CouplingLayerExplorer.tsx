@@ -23,8 +23,9 @@ export default function CouplingLayerExplorer() {
   const mask = useMemo(() => (maskIdx === 0 ? new Float64Array([1, 0]) : new Float64Array([0, 1])), [maskIdx]);
 
   const { x, jacobian, logDet, s, t } = useMemo(() => {
-    // For "additive" we set scaleAmp = 0 so exp(s) = 1, i.e., x_B = z_B + t.
-    const scaleAmp = coupType === 'additive' ? 0.0001 : 1.0;
+    // For "additive" (NICE) we set scaleAmp = 0 so tanh(·) · 0 = 0 → exp(s) = 1,
+    // making the layer exactly volume-preserving with log|det| = 0.
+    const scaleAmp = coupType === 'additive' ? 0 : 1.0;
     const layer = new AffineCoupling({ d: 2, mask, seed: 314 + maskIdx * 13, scaleAmp, paramScale: 0.9 });
     const zVec = new Float64Array([z0, z1]);
     const fwd = layer.forward(zVec);

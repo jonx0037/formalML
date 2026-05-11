@@ -24,7 +24,10 @@ export default function MaskAlternationDemo() {
 
   const intermediates = useMemo(() => {
     const z = sampleStandardNormalBatch(N_POINTS, D, 11);
-    const scaleAmp = coupType === 'additive' ? 0.0001 : 1.2;
+    // scaleAmp = 0 makes each AffineCoupling layer exactly volume-preserving
+    // (log|det| = 0), so additive matches NICE's exact identity rather than an
+    // ε-approximation. Affine uses the regular tanh-clamped scale.
+    const scaleAmp = coupType === 'additive' ? 0 : 1.2;
     const flow = new CouplingFlow({ d: D, nLayers: K, seed: 4242, scaleAmp, paramScale: 1.0 });
     const states: number[][][] = [];
     states.push(z.map((r) => Array.from(r)));

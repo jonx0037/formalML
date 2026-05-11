@@ -28,9 +28,13 @@ export default function FlowComposition() {
   const { intermediates, logDets, totalLogDet } = useMemo(() => {
     const z = sampleStandardNormalBatch(N_POINTS, D, 7);
     const flow = new CouplingFlow({ d: D, nLayers: K, seed: 2025, scaleAmp: 1.2, paramScale: 0.85 });
-    // Apply layer by layer to get intermediate states and per-layer log-det at z=0.
+    // Apply layer by layer to get intermediate states and the per-layer
+    // *batch-mean* log-det E_z[log|det dT_k/dh_{k-1}|]. We report the mean
+    // rather than a single-z evaluation so the readout matches the typical
+    // density-estimation training objective (which integrates against the
+    // empirical distribution).
     const states: number[][][] = [];
-    const layerLogDets: number[] = [];
+    const layerMeanLogDets: number[] = [];
     let current = z.map((row) => Array.from(row));
     states.push(current.map((r) => [...r]));
     for (let k = 0; k < K; k++) {
@@ -41,12 +45,12 @@ export default function FlowComposition() {
         nextState.push(Array.from(r.x));
         cumLogDet += r.logDet;
       }
-      layerLogDets.push(cumLogDet / current.length);
+      layerMeanLogDets.push(cumLogDet / current.length);
       current = nextState;
       states.push(current.map((r) => [...r]));
     }
-    const totalLogDet = layerLogDets.reduce((a, b) => a + b, 0);
-    return { intermediates: states, logDets: layerLogDets, totalLogDet };
+    const totalLogDet = layerMeanLogDets.reduce((a, b) => a + b, 0);
+    return { intermediates: states, logDets: layerMeanLogDets, totalLogDet };
   }, [K]);
 
   const numPanels = K + 1;

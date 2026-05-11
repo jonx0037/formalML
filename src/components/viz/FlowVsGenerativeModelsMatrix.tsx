@@ -1,10 +1,10 @@
 // =============================================================================
 // FlowVsGenerativeModelsMatrix.tsx
 //
-// §12.3 — Interactive version of the trade-off table. Cells are clickable;
-// clicking a cell highlights it and shows a one-paragraph elaboration with a
-// representative use case. A "switch view" toggle reveals an application-vs-
-// recommended-family matrix.
+// §12.3 — Interactive version of the trade-off table. Each capability-by-family
+// cell is keyboard-focusable; activating it (click, Enter, or Space) highlights
+// the cell and surfaces a one-paragraph elaboration with the relevant pattern
+// or use case in the panel below the table.
 //
 // Pure React UI, no D3.
 // =============================================================================
@@ -66,7 +66,7 @@ const ROWS: Row[] = [
     capability: 'Latent-dim flexibility',
     values: { Flow: 'Fixed = data dim', VAE: 'Free (bottleneck)', GAN: 'Free', Diffusion: 'Fixed = data dim' },
     detail:
-      'Flows preserve dimension by architectural constraint. VAEs and GANs can use much lower-dim latents — useful when the data lies on a low-dim manifold, but losses the bijection guarantee.',
+      'Flows preserve dimension by architectural constraint. VAEs and GANs can use much lower-dim latents — useful when the data lies on a low-dim manifold, but loses the bijection guarantee.',
   },
   {
     capability: 'Invertibility',
@@ -80,7 +80,11 @@ export default function FlowVsGenerativeModelsMatrix() {
   const [activeCell, setActiveCell] = useState<{ row: number; family: Family } | null>(null);
 
   const activeDetail =
-    activeCell !== null ? ROWS[activeCell.row].detail : 'Click any cell to see a one-paragraph elaboration.';
+    activeCell !== null
+      ? ROWS[activeCell.row].detail
+      : 'Click or focus any cell (Enter/Space) to see a one-paragraph elaboration.';
+
+  const activate = (row: number, family: Family) => setActiveCell({ row, family });
 
   return (
     <div className="my-8 not-prose" style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 20 }}>
@@ -109,16 +113,40 @@ export default function FlowVsGenerativeModelsMatrix() {
                   return (
                     <td
                       key={f}
-                      onClick={() => setActiveCell({ row: i, family: f })}
                       style={{
-                        padding: '8px 6px',
+                        padding: 0,
                         borderBottom: '1px solid var(--color-border)',
-                        cursor: 'pointer',
-                        background: active ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'transparent',
-                        color: 'var(--color-text)',
                       }}
                     >
-                      {row.values[f]}
+                      <button
+                        type="button"
+                        onClick={() => activate(i, f)}
+                        aria-pressed={active}
+                        aria-label={`${ROWS[i].capability} for ${f}: ${row.values[f]}. Activate for explanation.`}
+                        style={{
+                          appearance: 'none',
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '8px 6px',
+                          background: active
+                            ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)'
+                            : 'transparent',
+                          color: 'var(--color-text)',
+                          font: 'inherit',
+                          border: '2px solid transparent',
+                          cursor: 'pointer',
+                          outlineOffset: -2,
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.outline = '2px solid var(--color-accent)';
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.outline = 'none';
+                        }}
+                      >
+                        {row.values[f]}
+                      </button>
                     </td>
                   );
                 })}
