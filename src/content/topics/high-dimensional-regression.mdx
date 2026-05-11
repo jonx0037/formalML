@@ -371,6 +371,7 @@ import Figure from '../../components/ui/Figure.astro';
 import ExternalLink from '../../components/ui/ExternalLink.astro';
 import OlsOverfitsAtHighDim from '../../components/viz/OlsOverfitsAtHighDim.tsx';
 import RidgeVsLassoCoefBars from '../../components/viz/RidgeVsLassoCoefBars.tsx';
+import L1VsL2BallExplorer from '../../components/viz/L1VsL2BallExplorer.tsx';
 
 ## §1. From OLS to penalized regression
 
@@ -485,13 +486,129 @@ The rest of the topic answers four questions about the lasso. **What does the es
 
 The lasso is convex L1-penalized least squares — a well-defined, well-studied estimator with a clean geometric story and a precise first-order characterization. This section establishes the formal definition (in both penalized and constrained forms), develops the geometric intuition for why L1 penalization produces sparse solutions (corners on the L1 ball, smooth curvature on the L2 ball), addresses existence and uniqueness (Tibshirani 2013), and works out the KKT subgradient conditions that characterize every lasso solution. The KKT conditions are the load-bearing technical machinery for the rest of the topic — the soft-thresholding closed form in §3.1, the basic inequality in the oracle inequality proof of §5.2, and the debiased-lasso construction of §10.2 all derive from them.
 
-*Section content in development. Includes Definition 2.1 (lasso estimator), the L1-vs-L2-ball geometric picture, Tibshirani (2013) uniqueness, KKT subgradient conditions (active vs equicorrelation set), and the dual-certificate construction used in §6.*
+### §2.1 The L1-penalized least-squares definition
+
+The lasso estimator is the minimizer of an L1-penalized squared loss:
+
+<TheoremBlock type="definition" number={1} title="Lasso estimator">
+For a design matrix $\mathbf{X} \in \mathbb{R}^{n \times p}$, response $\mathbf{y} \in \mathbb{R}^n$, and tuning parameter $\lambda \ge 0$, the **lasso estimator** is
+
+$$
+\hat{\boldsymbol\beta}^{\text{lasso}}(\lambda) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \left\{ \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \lambda \|\boldsymbol\beta\|_1 \right\},
+$$
+
+where $\|\boldsymbol\beta\|_1 = \sum_{j=1}^p |\beta_j|$ is the L1 norm.
+</TheoremBlock>
+
+Three things to note about the definition.
+
+**The $1 / (2n)$ scaling.** The factor of $1/2$ in front of the squared loss is a convention that makes the gradient equal $-\mathbf{X}^\top (\mathbf{y} - \mathbf{X} \boldsymbol\beta) / n$ (no leading 2), and the $1/n$ normalization makes the objective an empirical average. With this scaling, $\lambda$ has units of "covariate-response correlation" — comparable across sample sizes — and the optimal $\lambda$ scales as $\sigma \sqrt{\log(p) / n}$ (we'll see this in §5). The scikit-learn convention (and the one we'll use throughout the notebook) matches: `Lasso(alpha=λ)` minimizes $\frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \alpha \|\boldsymbol\beta\|_1$, with the same $1/2n$ out front.
+
+**Convexity.** The squared loss is strongly convex in $\mathbf{X} \boldsymbol\beta$ but only weakly convex in $\boldsymbol\beta$ when $\mathbf{X}$ has rank $< p$. The L1 norm is convex (every norm is), so the sum is convex. There are no local minima that aren't global minima; the solution set is always a convex set in $\mathbb{R}^p$.
+
+**The L1 norm is not differentiable at zero.** $|\beta_j|$ is differentiable everywhere except $\beta_j = 0$, where the subgradient is the closed interval $[-1, 1]$. This non-smoothness is exactly what produces sparsity — and is also why the lasso has no closed-form solution in general (subgradients require a discrete case analysis at each coordinate).
+
+**Constrained-form duality.** The penalized lasso is equivalent to the constrained-form lasso
+
+$$
+\hat{\boldsymbol\beta}^{\text{lasso}}(t) = \arg\min_{\|\boldsymbol\beta\|_1 \le t} \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2,
+$$
+
+via Lagrangian duality. For each $\lambda \ge 0$ there's a corresponding budget $t(\lambda) = \|\hat{\boldsymbol\beta}^{\text{lasso}}(\lambda)\|_1$, and conversely each $t \in [0, \|\hat{\boldsymbol\beta}^{\text{OLS}}\|_1]$ corresponds to a unique $\lambda(t) \ge 0$. The mapping $t \leftrightarrow \lambda$ is monotone but not generally available in closed form. Both forms appear in the literature; the penalized form is more convenient for proofs (one term in the gradient, no constraint qualification needed), and the constrained form is more convenient for the geometric pictures we'll draw next.
+
+### §2.2 Geometric picture: $L^1$ corners produce sparsity
+
+Why does L1 penalization produce solutions with exact zeros? The cleanest answer is geometric: the L1 ball has corners on the coordinate axes, and the loss contour generically touches the ball at one of those corners.
+
+Consider the constrained lasso in 2D with a fixed budget $t$. The feasible region $\{\boldsymbol\beta : \|\boldsymbol\beta\|_1 \le t\}$ is a diamond — a square rotated 45 degrees — with vertices at $(\pm t, 0)$ and $(0, \pm t)$. The objective contours $\{\boldsymbol\beta : \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 = c\}$ are concentric ellipses centered at $\hat{\boldsymbol\beta}^{\text{OLS}}$ with axes determined by the eigenvectors of $\mathbf{X}^\top \mathbf{X}$. The constrained solution is the point where the smallest ellipse just touches the diamond.
+
+If $\hat{\boldsymbol\beta}^{\text{OLS}}$ lies outside the diamond — which is the interesting case; otherwise the constraint is inactive — the contact point is on the diamond's boundary. The boundary consists of four edges and four vertices. **Generically, for almost every $\mathbf{X}^\top \mathbf{X}$ and $\hat{\boldsymbol\beta}^{\text{OLS}}$, the contact is at a vertex, not a smooth point on an edge.** At a vertex, one coordinate is exactly zero. Sparsity.
+
+The L2 ball is the disk $\{\boldsymbol\beta : \|\boldsymbol\beta\|_2 \le t\}$ — smooth, no corners. The contact point with an ellipse is generically a smooth point on the disk's boundary, with both coordinates nonzero. Density.
+
+This picture extends to $\mathbb{R}^p$ with $p > 2$. The L1 ball has $2p$ vertices (one per coordinate-axis intersection), $p(p-1)$ edges, and a hierarchy of lower-dimensional faces; contact at a $k$-dimensional face means the solution has exactly $p - k$ nonzero coordinates. The L2 ball has no faces of any positive codimension; contact is always smooth, the solution is always dense.
+
+<L1VsL2BallExplorer client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_02_01_l1_vs_l2_geometry.png"
   alt="2D pedagogical picture of the L1 diamond and L2 disk with elliptical loss contours, illustrating sparse vs dense solutions."
-  caption="2D pedagogical picture: β̂_OLS = (0.4, 1.6), Hessian H = XᵀX/n with off-diagonal 0.4. At budget t = 1: the L1 contact lands at the vertex (0, 1) (sparse, one coordinate exactly zero); the L2 contact lands at approximately (0.39, 0.92) (dense, both coordinates nonzero). The L1 ball's corners are the geometric source of sparsity."
+  caption="2D pedagogical picture: β̂_OLS = (0.4, 1.6), Hessian H = XᵀX/n with off-diagonal 0.4. At budget t = 1: the L1 contact lands at the vertex (0, 1) (sparse, one coordinate exactly zero); the L2 contact lands at approximately (0.39, 0.92) (dense, both coordinates nonzero). The L1 ball's corners are the geometric source of sparsity. (Static fallback figure; the interactive viz above lets the reader vary t.)"
 />
+
+The figure is the geometric content of the lasso. Everything else — the soft-thresholding closed form (§3.1), the lasso path (§4.4), the active-set / equicorrelation-set characterization (§2.4 below) — is algebraic machinery that operationalizes it.
+
+### §2.3 Existence and uniqueness
+
+**Existence.** The lasso objective is convex, continuous, and **coercive** — as $\|\boldsymbol\beta\| \to \infty$, the squared loss is bounded below by zero and the L1 penalty grows linearly, so the objective grows without bound. Convex-and-coercive implies attainment of the minimum, so the solution set $\hat{B}(\lambda) = \arg\min_{\boldsymbol\beta} \{(1/2n) \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \lambda \|\boldsymbol\beta\|_1\}$ is non-empty for every $\lambda \ge 0$. The solution set is also convex (intersection of all minima of a convex function) and closed (by continuity).
+
+**Uniqueness.** When does $\hat{B}(\lambda)$ contain a single point? Two sufficient conditions:
+
+1. **$p \le n$ and $\mathbf{X}$ has full column rank.** Then $\mathbf{X}^\top \mathbf{X}$ is positive definite, the squared loss is strictly convex in $\boldsymbol\beta$, the lasso objective is strictly convex, and the minimum is unique.
+2. **$\mathbf{X}$ has columns in "general position".** Tibshirani (2013) showed that this condition — no $k+1$ columns of $\pm \mathbf{X}$ lie in an affine subspace of dimension $k - 1$ — is sufficient for lasso uniqueness regardless of whether $p \le n$ or $p > n$. With probability one over any continuous random design (Gaussian, bounded continuous, etc.), the columns are in general position. So **for every continuous random $\mathbf{X}$, the lasso solution is unique with probability one**, even at $p \gg n$.
+
+The conditions can fail with discrete or rank-deficient designs. Two pathologies:
+
+- **Duplicate columns.** If $\mathbf{X}_j = \mathbf{X}_k$ for some $j \neq k$, then $\hat\beta_j$ and $\hat\beta_k$ can be redistributed freely subject to $\hat\beta_j + \hat\beta_k$ being constant. The solution set is a 1-parameter family.
+- **One-hot encodings of categorical features.** If $\mathbf{X}_j + \mathbf{X}_k + \cdots = \mathbf{1}$ for some subset of columns, the same pathology arises after centering.
+
+But — and this is what saves the lasso in practice — **the fitted values $\mathbf{X} \hat{\boldsymbol\beta}$ are always unique**, even when $\hat{\boldsymbol\beta}$ is not. The squared loss is strictly convex in $\mathbf{X} \boldsymbol\beta$, so any two solutions $\hat{\boldsymbol\beta}^{(1)}, \hat{\boldsymbol\beta}^{(2)} \in \hat{B}(\lambda)$ satisfy $\mathbf{X} \hat{\boldsymbol\beta}^{(1)} = \mathbf{X} \hat{\boldsymbol\beta}^{(2)}$. The prediction is uniquely determined; only the coefficient decomposition can be ambiguous.
+
+For DGP-1 the design is continuous Gaussian, so the lasso solution is unique with probability one. We'll assume uniqueness throughout the rest of the topic.
+
+### §2.4 KKT subgradient conditions
+
+The lasso objective is convex but non-differentiable. The first-order optimality condition uses the **subgradient** of the L1 norm in place of the gradient. Recall: for a convex function $f : \mathbb{R}^p \to \mathbb{R}$, the subdifferential at $\boldsymbol\beta$ is the set
+
+$$
+\partial f(\boldsymbol\beta) = \{\mathbf{g} \in \mathbb{R}^p : f(\boldsymbol\beta') \ge f(\boldsymbol\beta) + \mathbf{g}^\top (\boldsymbol\beta' - \boldsymbol\beta) \;\; \forall \boldsymbol\beta'\}.
+$$
+
+For differentiable $f$, $\partial f(\boldsymbol\beta) = \{\nabla f(\boldsymbol\beta)\}$ — a singleton. For non-differentiable points, it's a non-trivial set. The subdifferential of the absolute value $|x|$ is
+
+$$
+\partial |x| = \begin{cases} \{\mathrm{sign}(x)\} & x \neq 0, \\ [-1, 1] & x = 0. \end{cases}
+$$
+
+The L1 norm $\|\boldsymbol\beta\|_1 = \sum_j |\beta_j|$ has subdifferential $\partial \|\boldsymbol\beta\|_1 = \{\mathbf{g} : g_j \in \partial |\beta_j| \text{ for all } j\}$.
+
+The first-order optimality condition for the lasso — $\boldsymbol{0}$ is in the subdifferential of the objective at $\hat{\boldsymbol\beta}$ — gives the **KKT subgradient conditions**:
+
+<TheoremBlock type="proposition" number={1} title="Lasso KKT conditions">
+$\hat{\boldsymbol\beta}$ is a lasso solution at $\lambda > 0$ if and only if there exists $\hat{\mathbf{g}} \in \partial \|\hat{\boldsymbol\beta}\|_1$ such that
+
+$$
+\frac{1}{n} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}) = \lambda \hat{\mathbf{g}}.
+$$
+</TheoremBlock>
+
+Coordinate-by-coordinate, this splits into two cases:
+
+- **Active coordinates ($\hat\beta_j \neq 0$):** $\hat g_j = \mathrm{sign}(\hat\beta_j)$, so
+
+$$
+\frac{1}{n} \mathbf{X}_j^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}) = \lambda \, \mathrm{sign}(\hat\beta_j).
+$$
+
+The residual correlation with each active feature is exactly $\pm \lambda$ — the active features all sit on the boundary of the same "correlation level set."
+
+- **Inactive coordinates ($\hat\beta_j = 0$):** $\hat g_j \in [-1, 1]$, so
+
+$$
+\left| \frac{1}{n} \mathbf{X}_j^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}) \right| \le \lambda.
+$$
+
+The residual correlation with each inactive feature is bounded by $\lambda$ — strictly less, generically.
+
+We'll use the names $\mathbf{X}_j$ for the $j$-th column of $\mathbf{X}$, $\hat{\mathbf{r}} = \mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}$ for the residual vector, and $\hat{c}_j = (1/n) \mathbf{X}_j^\top \hat{\mathbf{r}}$ for the residual-feature correlation at coordinate $j$. In this notation, KKT says: $|\hat c_j| = \lambda$ for active $j$, $|\hat c_j| \le \lambda$ for inactive $j$.
+
+**Active set, equicorrelation set.** Define the **active set** as $\hat A_\lambda = \{j : \hat\beta_j \neq 0\}$ and the **equicorrelation set** as $\hat E_\lambda = \{j : |\hat c_j| = \lambda\}$. The KKT conditions imply $\hat A_\lambda \subseteq \hat E_\lambda$ — every active coordinate is at the equicorrelation boundary. Generically, $\hat A_\lambda = \hat E_\lambda$ (every coordinate at the boundary is also active). When $\hat A_\lambda \subsetneq \hat E_\lambda$ — i.e., when an inactive coordinate happens to sit exactly at $|\hat c_j| = \lambda$ — the solution is non-unique on the equicorrelation set.
+
+**Two corollaries we'll use later.** First, the active set has size at most $\min(n, p)$: if $|\hat A_\lambda| > n$, the system $\frac{1}{n} \mathbf{X}_{\hat A}^\top (\mathbf{y} - \mathbf{X}_{\hat A} \hat{\boldsymbol\beta}_{\hat A}) = \lambda \, \mathrm{sign}(\hat{\boldsymbol\beta}_{\hat A})$ has no full-rank solution unless the columns of $\mathbf{X}_{\hat A}$ are linearly dependent. So the lasso never selects more than $n$ features, regardless of $p$. (This is one of the lasso's most useful structural properties: it returns a model of size at most $n$, which is interpretable.)
+
+Second, the KKT conditions give the **dual certificate** for sparsity recovery (used in §6 for variable-selection consistency): if there exists a vector $\hat{\mathbf{g}}$ supported on $S$ with $\|\hat{\mathbf{g}}_{S^c}\|_\infty < 1$ that satisfies KKT, then the lasso correctly identifies $S$ as the active set. The construction of this dual certificate, and the conditions on $\mathbf{X}$ that make it possible, are the irrepresentable condition (§6.2).
+
+We verify the KKT conditions numerically on the §1 lasso fit at $\lambda_{\text{CV}}$: residual correlations at active coordinates equal $\pm \lambda$ to within $10^{-3}$; residual correlations at inactive coordinates are strictly bounded by $\lambda$, with the bulk well inside the dead zone.
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_02_02_kkt_verification.png"
