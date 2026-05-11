@@ -1693,9 +1693,180 @@ This is the inferential payoff section. Up to this point, the lasso has been a *
 
 This naive approach **fails dramatically**. The lasso's bias (§4.1) shifts $\hat\beta_j$ away from $\beta^*_j$ by $-\lambda \, \mathrm{sign}(\beta^*_j)$; the naive standard error doesn't account for the selection step that determined which features are in the model; and the resulting CIs undercover by 20–50 percentage points at typical signal levels. Empirical coverage of nominally 95% naive lasso CIs lands at 50–70%.
 
-The fix is the **debiased lasso** (Zhang-Zhang 2014; Javanmard-Montanari 2014; van de Geer-Bühlmann-Ritov-Dezeure 2014, three nearly-simultaneous papers): a one-step Newton correction $\hat{\boldsymbol\beta}^{\text{db}} = \hat{\boldsymbol\beta} + (1/n) \hat{\mathbf{M}} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta})$ that explicitly removes the lasso's bias and produces $\sqrt n$-consistent normal estimates of individual coefficients.
+The fix is the **debiased lasso** (Zhang-Zhang 2014; Javanmard-Montanari 2014; van de Geer-Bühlmann-Ritov-Dezeure 2014, three nearly-simultaneous papers): a one-step Newton correction $\hat{\boldsymbol\beta}^{\text{db}} = \hat{\boldsymbol\beta} + (1/n) \hat{\mathbf{M}} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta})$ that explicitly removes the lasso's bias and produces $\sqrt n$-consistent normal estimates of individual coefficients. The construction works in the $p \gg n$ regime where standard OLS doesn't exist; in the $p < n$ regime it reduces to OLS asymptotically. The resulting confidence intervals achieve the nominal coverage.
 
-*Section content in development. Includes the PoSI framing (Berk et al. 2013) and three sources of failure for naive post-selection CIs (§10.1), Definition 10.1 (debiased lasso; Zhang-Zhang 2014) and the bias-variance decomposition into normal-asymptotic + remainder terms (§10.2), the nodewise-lasso construction for $\hat{\mathbf{M}}$ at $p > n$ (van de Geer et al. 2014; §10.3), Theorem 10.1 (asymptotic normality at $\sqrt n$ rate under $n \gg s_M (\log p)^2$; §10.4), and the coverage demonstration on DGP-1-style data at $(n, p, s) = (200, 100, 5)$ (§10.5).*
+### §10.1 Why naive post-selection CIs undercover: PoSI (Berk et al. 2013)
+
+The standard OLS confidence interval for a regression coefficient assumes the model — which features are in, which are out — is **specified before the data are seen**. The CI's coverage guarantee is conditional on the model, and the CI's standard error formula doesn't account for any model-selection step.
+
+The lasso violates this assumption in the most fundamental way: the model (the active set $\hat A_\lambda$) is *selected from the data*. Treating the post-lasso refit as if the model had been pre-specified **double-counts the data** — once for selection, once for inference — and the resulting CIs are too narrow.
+
+**Berk-Brown-Buja-Zhang-Zhao (2013) — "Valid Post-Selection Inference"** formalized this problem and proposed a (very conservative) solution. Their **PoSI** confidence intervals provide *simultaneous* coverage guarantees over all submodels the procedure could have selected: $\mathrm{P}(\beta^*_j \in \mathrm{CI}_j(M) \text{ for all } j \in M, \text{ for all submodels } M) \ge 1 - \alpha$. The PoSI intervals use a multiplier $K_{\mathrm{PoSI}}$ much larger than the standard normal quantile $z_{0.025} = 1.96$ — typically $K_{\mathrm{PoSI}} \in [3, 5]$ at $p = 100$, growing roughly as $\sqrt{2 \log p}$.
+
+PoSI intervals are valid but extremely wide. They achieve coverage by being so conservative that they're rarely actionable. The debiased lasso takes a fundamentally different approach: rather than widening the CI to absorb selection uncertainty, it constructs an estimator whose distribution is *not selection-dependent* in the first place.
+
+**Three sources of failure for the naive CI.** Concretely, consider the standard "post-selection" pipeline: fit lasso, identify $\hat A_\lambda$, refit OLS on $\mathbf{X}_{\hat A}$, form the CI for $\beta^*_j$ ($j \in \hat A$) using the refit OLS coefficient and standard error. Three things go wrong:
+
+1. **Selection bias on the refit estimator.** OLS on a selected support is biased because the support was chosen to make the regression "look good." On expectation, $\hat\beta_j^{\text{refit}}$ is shifted away from $\beta^*_j$.
+2. **Underestimated standard error.** The OLS variance formula $\sigma^2 (\mathbf{X}_{\hat A}^\top \mathbf{X}_{\hat A})^{-1}_{jj}$ doesn't account for the variability in $\hat A$. The true variance is larger.
+3. **Coverage degenerates for noise coords.** For $j \notin \hat A$, the refit doesn't include $\beta_j$ — the implicit estimate is 0 with no CI. Coverage of $\beta^*_j$ for noise coordinates becomes vacuous (always covers 0 trivially) or undefined.
+
+The empirical effect: at standard signal-to-noise ratios, naive 95% CIs cover at 50–70% of replications. The §10.5 numerical experiment quantifies this on DGP-1.
+
+### §10.2 The one-step debiased correction (Zhang-Zhang 2014)
+
+The debiased lasso starts from a different question: rather than asking how to make a CI from $\hat{\boldsymbol\beta}^{\text{lasso}}$ that accounts for selection, it asks for a *new estimator* whose asymptotic distribution doesn't depend on selection.
+
+Recall the lasso KKT condition (§2.4): at the optimum, $\frac{1}{n} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}) = \lambda \hat{\mathbf{g}}$ where $\hat{\mathbf{g}} \in \partial \|\hat{\boldsymbol\beta}\|_1$ is a subgradient. Let $\hat{\boldsymbol\Sigma} := \mathbf{X}^\top \mathbf{X} / n$ (the empirical Gram matrix). Then
+
+$$
+\hat{\boldsymbol\Sigma} \hat{\boldsymbol\beta} = \frac{1}{n} \mathbf{X}^\top \mathbf{y} - \lambda \hat{\mathbf{g}}.
+$$
+
+If $\hat{\boldsymbol\Sigma}$ were invertible, multiplying by $\hat{\boldsymbol\Sigma}^{-1}$ would give $\hat{\boldsymbol\beta} = \hat{\boldsymbol\Sigma}^{-1} (\frac{1}{n} \mathbf{X}^\top \mathbf{y}) - \lambda \hat{\boldsymbol\Sigma}^{-1} \hat{\mathbf{g}}$. The first term is OLS; the second is the lasso's bias (the $\lambda \hat{\boldsymbol\Sigma}^{-1} \mathrm{sign}$ correction from §4.1). To remove the bias, *add it back*:
+
+$$
+\hat{\boldsymbol\beta} + \lambda \hat{\boldsymbol\Sigma}^{-1} \hat{\mathbf{g}} = \hat{\boldsymbol\Sigma}^{-1} \cdot \frac{1}{n} \mathbf{X}^\top \mathbf{y}.
+$$
+
+Substituting the KKT condition $\lambda \hat{\mathbf{g}} = \frac{1}{n} \mathbf{X}^\top (\mathbf{y} - \mathbf{X}\hat{\boldsymbol\beta})$:
+
+$$
+\hat{\boldsymbol\beta} + \hat{\boldsymbol\Sigma}^{-1} \cdot \frac{1}{n} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}) = \hat{\boldsymbol\Sigma}^{-1} \cdot \frac{1}{n} \mathbf{X}^\top \mathbf{y}.
+$$
+
+This is the **one-step Newton correction**: starting from the lasso initial $\hat{\boldsymbol\beta}$, take one step in the direction of the gradient of the OLS loss, scaled by the OLS Hessian inverse $\hat{\boldsymbol\Sigma}^{-1}$. The result is exactly OLS — when $\hat{\boldsymbol\Sigma}^{-1}$ exists (i.e., $p < n$).
+
+<TheoremBlock type="definition" number={1} title="Debiased lasso (Zhang-Zhang 2014)">
+Given the lasso initial $\hat{\boldsymbol\beta}$ and a matrix $\hat{\mathbf{M}} \in \mathbb{R}^{p \times p}$ approximating $\hat{\boldsymbol\Sigma}^{-1}$, the **debiased lasso** is
+
+$$
+\hat{\boldsymbol\beta}^{\text{db}} := \hat{\boldsymbol\beta} + \frac{1}{n} \hat{\mathbf{M}} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}).
+$$
+</TheoremBlock>
+
+Three observations:
+
+1. **At $p < n$ with $\hat{\mathbf{M}} = \hat{\boldsymbol\Sigma}^{-1}$**: $\hat{\boldsymbol\beta}^{\text{db}} = \hat{\boldsymbol\Sigma}^{-1} \cdot \frac{1}{n} \mathbf{X}^\top \mathbf{y} = \hat{\boldsymbol\beta}^{\text{OLS}}$. The debiased lasso is exactly OLS.
+2. **At $p > n$**: $\hat{\boldsymbol\Sigma}$ is singular and $\hat{\boldsymbol\Sigma}^{-1}$ doesn't exist. We need to construct $\hat{\mathbf{M}}$ that approximates the *population* $\boldsymbol\Sigma^{-1}$ (or some "approximate inverse" of $\hat{\boldsymbol\Sigma}$). §10.3 covers the nodewise-lasso construction.
+3. **The bias-variance decomposition.** Substituting $\mathbf{y} = \mathbf{X} \boldsymbol\beta^* + \boldsymbol\varepsilon$:
+
+$$
+\hat{\boldsymbol\beta}^{\text{db}} - \boldsymbol\beta^* = \underbrace{\frac{1}{n} \hat{\mathbf{M}} \mathbf{X}^\top \boldsymbol\varepsilon}_{\text{normal-asymptotic term}} + \underbrace{(\hat{\mathbf{M}} \hat{\boldsymbol\Sigma} - \mathbf{I})(\hat{\boldsymbol\beta} - \boldsymbol\beta^*)}_{\text{remainder}}.
+$$
+
+The first term is a linear functional of the noise, asymptotically normal by CLT. The remainder term is small ($o_p(1/\sqrt n)$) when $\hat{\mathbf{M}} \hat{\boldsymbol\Sigma} \approx \mathbf{I}$ and $\|\hat{\boldsymbol\beta} - \boldsymbol\beta^*\|_1 \lesssim s \sqrt{\log(p)/n}$ (the L1 estimation rate from §5.5). Under suitable conditions, the remainder is $o_p(1/\sqrt n)$, and the asymptotic distribution is governed by the linear functional alone.
+
+This is the **one-step Newton** (or "one-step correction" in semiparametric statistics) construction: take a biased initial estimator and a single Newton step toward the unbiased solution. The general theory is due to Le Cam (1956) and Bickel (1982); the lasso application is Zhang-Zhang's contribution.
+
+### §10.3 The nodewise lasso for $\hat{\mathbf{M}}$ (van de Geer et al. 2014)
+
+In the $p > n$ regime, $\hat{\boldsymbol\Sigma}$ is singular and we need a different construction for $\hat{\mathbf{M}}$. The target is a matrix such that $\hat{\mathbf{M}} \hat{\boldsymbol\Sigma} \approx \mathbf{I}$ in some appropriate sense — specifically, with row $j$ of $\hat{\mathbf{M}}$ chosen to make $\hat{\mathbf{M}}_{j, \cdot} \hat{\boldsymbol\Sigma} \approx \mathbf{e}_j$ (the $j$-th standard basis vector).
+
+**Nodewise lasso (van de Geer et al. 2014, Algorithm 1).** For each $j = 1, \dots, p$:
+
+1. **Regress feature $j$ on the others.** Fit the lasso with response $\mathbf{X}_j$ and features $\mathbf{X}_{-j}$ (all columns except $j$):
+
+$$
+\hat{\boldsymbol\gamma}_j := \arg\min_{\boldsymbol\gamma \in \mathbb{R}^{p-1}} \frac{1}{2n} \|\mathbf{X}_j - \mathbf{X}_{-j} \boldsymbol\gamma\|_2^2 + \lambda_j \|\boldsymbol\gamma\|_1.
+$$
+
+2. **Compute the residual variance:**
+
+$$
+\hat{\tau}_j^2 := \frac{1}{n} \|\mathbf{X}_j - \mathbf{X}_{-j} \hat{\boldsymbol\gamma}_j\|_2^2 + \lambda_j \|\hat{\boldsymbol\gamma}_j\|_1.
+$$
+
+3. **Form the $j$-th row of $\hat{\mathbf{M}}$:** insert $1$ in column $j$ and $-\hat\gamma_{j, k}$ in column $k$ for $k \neq j$, then divide by $\hat\tau_j^2$:
+
+$$
+\hat{\mathbf{M}}_{j, k} = \begin{cases} 1 / \hat\tau_j^2 & k = j, \\ -\hat\gamma_{j, k} / \hat\tau_j^2 & k \neq j. \end{cases}
+$$
+
+The construction is motivated by the **partition formula** for the inverse covariance: under a population $\boldsymbol\Sigma$, the $j$-th row of $\boldsymbol\Sigma^{-1}$ is $(1, -\boldsymbol\gamma_j^*) / \tau_j^{*2}$ where $\boldsymbol\gamma_j^* = \boldsymbol\Sigma_{-j, -j}^{-1} \boldsymbol\Sigma_{-j, j}$ is the population regression of $X_j$ on $X_{-j}$ and $\tau_j^{*2}$ is the population residual variance. The nodewise lasso estimates $(\boldsymbol\gamma_j^*, \tau_j^{*2})$ in the high-dim regime by lasso regression rather than OLS.
+
+**Computational cost.** $p$ lasso fits, each on a problem of size $(n, p-1)$, with $\lambda_j$ tuned via CV. At $p = 500, n = 200$ with cv=10 lasso fits: about 30 s per nodewise-lasso construction. Caching $\hat{\mathbf{M}}$ across uses on the same $\mathbf{X}$ amortizes this — the cost is paid once per dataset, not once per coefficient inference.
+
+**Sparsity assumption.** The nodewise lasso works because the rows of $\boldsymbol\Sigma^{-1}$ are assumed sparse — i.e., each feature is well-predicted by a small subset of the other features. This is a real assumption with a real cost when violated; if $\boldsymbol\Sigma^{-1}$ is dense (every feature depends on many others), the nodewise lasso is misspecified and the resulting $\hat{\mathbf{M}}$ doesn't satisfy $\hat{\mathbf{M}} \hat{\boldsymbol\Sigma} \approx \mathbf{I}$ closely enough for the one-step correction to work.
+
+**Alternative constructions.** Javanmard-Montanari (2014) propose a different $\hat{\mathbf{M}}$ constructed by solving an optimization problem directly (rather than nodewise lasso), with similar asymptotic guarantees. Belloni-Chernozhukov-Wang (2014) use ridge regression with shrinkage tuned to achieve a particular bias-variance trade-off. The three constructions are asymptotically equivalent at first order; in finite samples they can differ by 10–20% in CI length.
+
+### §10.4 The $\sqrt n$ normal asymptotics
+
+The debiased lasso's central asymptotic property — the foundation of all CI and hypothesis-testing applications — is:
+
+<TheoremBlock type="theorem" number={1} title="Asymptotic normality of debiased lasso (van de Geer-Bühlmann-Ritov-Dezeure 2014, Theorem 2.2; Javanmard-Montanari 2014, Theorem 2.1)">
+Assume:
+
+(i) The design $\mathbf{X}$ has iid sub-Gaussian rows with population covariance $\boldsymbol\Sigma$.
+
+(ii) The population precision matrix $\boldsymbol\Sigma^{-1}$ has rows of bounded sparsity: $\max_j \|\boldsymbol\Sigma^{-1}_{j, \cdot}\|_0 \le s_M$.
+
+(iii) The noise $\boldsymbol\varepsilon$ is iid sub-Gaussian with variance $\sigma^2$.
+
+(iv) $\boldsymbol\beta^*$ is $s$-sparse.
+
+(v) Sample-size scaling: $n \gg \max(s, s_M) \cdot (\log p)^2$.
+
+(vi) Lasso initial $\hat{\boldsymbol\beta}$ satisfies the §5.5 oracle inequality bound.
+
+(vii) Nodewise-lasso $\hat{\mathbf{M}}$ satisfies an analogous oracle bound.
+
+Then for each $j \in \{1, \dots, p\}$,
+
+$$
+\sqrt n \big(\hat\beta_j^{\text{db}} - \beta^*_j\big) \overset{d}{\to} \mathcal{N}\big(0, \, \sigma^2 \hat{\mathbf{M}}_{j, j} \big).
+$$
+</TheoremBlock>
+
+Equivalently, $\sqrt n (\hat\beta_j^{\text{db}} - \beta^*_j) / \hat\sigma_{db, j} \overset{d}{\to} \mathcal{N}(0, 1)$, where the asymptotic standard error simplifies under the nodewise construction to $\hat\sigma_{db, j}^2 = \sigma^2 \hat{\mathbf{M}}_{j, j} / n$.
+
+**Proof sketch.** Use the bias-variance decomposition from §10.2:
+
+$$
+\sqrt n (\hat{\boldsymbol\beta}^{\text{db}} - \boldsymbol\beta^*) = \frac{1}{\sqrt n} \hat{\mathbf{M}} \mathbf{X}^\top \boldsymbol\varepsilon + \sqrt n (\hat{\mathbf{M}} \hat{\boldsymbol\Sigma} - \mathbf{I})(\hat{\boldsymbol\beta} - \boldsymbol\beta^*).
+$$
+
+For the **normal-asymptotic term**: $\frac{1}{\sqrt n} \hat{\mathbf{M}} \mathbf{X}^\top \boldsymbol\varepsilon$ is a linear combination of iid sub-Gaussian noise entries with deterministic (conditional on $\mathbf{X}$) coefficients. By the multivariate CLT applied coordinate-by-coordinate, the $j$-th entry $\overset{d}{\to} \mathcal{N}(0, \sigma^2 \hat{\mathbf{M}}_{j, j})$ in the limit.
+
+For the **remainder term**: bound $\|(\hat{\mathbf{M}} \hat{\boldsymbol\Sigma} - \mathbf{I})_{j, \cdot}\|_\infty \le \lambda_j$ from the nodewise-lasso KKT conditions. Then the remainder is $O_p(\lambda_j \cdot s \sqrt{\log(p)/n}) = O_p(s \log(p) / n)$ with $\lambda_j \asymp \sqrt{\log(p)/n}$, which is $o_p(1/\sqrt n)$ provided $s \log(p) / \sqrt n \to 0$ — equivalent to $n \gg s^2 (\log p)^2$. The slightly weaker $n \gg s_M (\log p)^2$ requirement in the theorem comes from a tighter analysis (Javanmard-Montanari 2014). $\blacksquare$
+
+The **$(\log p)^2$ scaling** is striking: the debiased lasso requires substantially more samples than the lasso's prediction-risk bound, which only needed $n \gg s \log p$ (one $\log p$ factor). The extra $\log p$ comes from the nodewise-lasso $\hat{\mathbf{M}}$ requiring its own oracle-inequality bound. In practice the debiased lasso works at smaller $n$ than the theory requires; the conditions are sufficient but not always necessary.
+
+**Confidence interval.** Theorem 1 immediately gives an asymptotically valid $(1 - \alpha)$ CI for $\beta^*_j$:
+
+$$
+\mathrm{CI}_{db, j}^{1 - \alpha} = \left[ \hat\beta_j^{\text{db}} - z_{\alpha/2} \hat\sigma \sqrt{\hat{\mathbf{M}}_{j, j} / n}, \; \hat\beta_j^{\text{db}} + z_{\alpha/2} \hat\sigma \sqrt{\hat{\mathbf{M}}_{j, j} / n} \right],
+$$
+
+where $z_{\alpha/2}$ is the standard normal quantile and $\hat\sigma^2$ is an estimate of the noise variance (the standard estimate from Reid-Tibshirani-Friedman 2016: $\hat\sigma^2 = \|\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}\|^2 / (n - \|\hat{\boldsymbol\beta}\|_0)$).
+
+**Hypothesis test.** For $H_0: \beta^*_j = 0$, reject at level $\alpha$ if $|\hat\beta_j^{\text{db}}| > z_{\alpha/2} \hat\sigma \sqrt{\hat{\mathbf{M}}_{j, j}/n}$. This test has correct asymptotic level under the conditions of Theorem 1, regardless of whether the lasso selected coordinate $j$.
+
+### §10.5 Empirical coverage demonstration
+
+We compare three confidence-interval procedures on DGP-1-style data at $(n, p, s) = (200, 100, 5)$ — the user-specified setting where OLS is feasible as a baseline:
+
+1. **OLS CI** (gold standard): standard normal-theory CI from OLS coefficients and OLS standard errors.
+2. **Naive post-selection CI**: refit OLS on the lasso-selected support, use the refit standard error to form the CI.
+3. **Debiased lasso CI**: Zhang-Zhang one-step correction with $\hat{\mathbf{M}} = \hat{\boldsymbol\Sigma}^{-1}$ (the OLS Hessian inverse, available since $p < n$).
+
+For each method and each coordinate $j$, we form a nominally 95% CI and check whether it covers the true $\beta^*_j$ across $B = 200$ Monte Carlo replicates. Coverage is reported separately for **signal coords** ($j \in S = \{0, \dots, 4\}$, $\beta^*_j = 1$) and **noise coords** ($j \in \{50, 51, \dots, 99\}$, $\beta^*_j = 0$).
+
+The expected pattern (Figure 10.1):
+
+- **OLS CI** covers near 95% at both signal and noise coords — the gold standard, valid because the model is pre-specified.
+- **Naive post-selection CI** undercovers at signal coords (~50–70%) due to selection-induced bias and underestimated standard errors. At noise coords the metric is degenerate (the lasso usually doesn't select them, so the CI is implicitly $\{0\}$ which trivially covers $\beta^*_j = 0$).
+- **Debiased lasso CI** covers near 95% at both signal and noise coords — reduces to OLS at $p < n$ with the OLS-Hessian $\hat{\mathbf{M}}$, recovers the gold-standard coverage despite starting from the biased lasso initial.
+
+The headline takeaway: **the debiased lasso recovers OLS-quality inference from a biased lasso initial**. At $p > n$ where OLS is unavailable, the debiased lasso (with nodewise $\hat{\mathbf{M}}$) is the only valid CI procedure of the three.
+
+**Caveats on the demo.** Two simplifications relative to the general debiased-lasso theory:
+
+1. **$\hat{\mathbf{M}} = \hat{\boldsymbol\Sigma}^{-1}$ at $p < n$.** This makes the debiased lasso reduce to OLS exactly, by the §10.2 calculation. The demo is honest in that all three procedures target the same $\beta^*_j$, but it doesn't exercise the nodewise-lasso construction (§10.3) that's needed at $p > n$. The §10.3 algorithm has been demonstrated separately in the notebook on a single sample, showing that nodewise $\hat{\mathbf{M}}$ also satisfies $\hat{\mathbf{M}} \hat{\boldsymbol\Sigma} \approx \mathbf{I}$.
+2. **Single $\lambda$ choice.** We use the theory-guided $\lambda = 2\sigma\sqrt{2\log(p)/n}$ rather than CV-tuned. CV-tuned would give qualitatively similar coverage with marginally better point estimates.
+
+The core lesson — that naive post-selection inference fails and the one-step correction fixes it — is robust to both simplifications. In production code, the `hdi` R package (Dezeure-Bühlmann-Meier-Meinshausen 2015) and `desparsified-lasso` Python package implement the full nodewise-lasso pipeline.
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_10_01_debiased_coverage.png"
