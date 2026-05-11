@@ -1437,11 +1437,123 @@ The §10 debiased lasso uses `LassoCV` $\lambda_{\min}$ as its initial estimator
 
 ## §8. Ridge, elastic net, and adaptive lasso
 
-The lasso has three practical limitations: it can be unstable when features are highly correlated (the §6.1 collinearity counterexample); it biases active coefficients toward zero by a constant $\lambda$ (the §4.1 shrinkage bias); and it requires the irrepresentable condition for support recovery (the §6.2 IC, often violated in real data). Each of these motivates a variant.
+The lasso has three practical limitations: it can be unstable when features are highly correlated (the §6.1 collinearity counterexample — flipping between equivalent supports); it biases active coefficients toward zero by a constant $\lambda$ (the §4.1 shrinkage bias); and it requires the irrepresentable condition for support recovery (the §6.2 IC, often violated in real data). Each of these motivates a variant.
 
-**Ridge** (introduced in §1.3) keeps the L2 penalty, gives a unique dense solution under any design, and is robust to correlated features — but doesn't select. **Elastic net** (Zou-Hastie 2005) combines L1 + L2 penalties, getting the lasso's sparsity with ridge's stability under correlated features. **Adaptive lasso** (Zou 2006) uses data-driven feature-specific weights to remove the constant shrinkage bias and achieve the oracle property under weaker conditions than IC.
+**Ridge** (already introduced in §1.3) keeps the L2 penalty, gives a unique dense solution under any design, and is robust to correlated features — but doesn't select. **Elastic net** (Zou-Hastie 2005) combines L1 + L2 penalties, getting the lasso's sparsity with ridge's stability under correlated features. **Adaptive lasso** (Zou 2006) uses data-driven feature-specific weights to remove the constant shrinkage bias and achieve the oracle property under weaker conditions than IC.
 
-*Section content in development. Includes ridge's continuous-shrinkage / dense-solution properties (§8.1), elastic net's grouping inequality and the design-augmentation reduction-to-lasso trick (§8.2), Theorem 8.1 (oracle property of adaptive lasso; Zou 2006), and the side-by-side path comparison on DGP-1 (§8.4). The decision tree: dense truth → ridge; sparse with separated features → lasso; sparse with correlated groups → elastic net; sparse and unbiased → adaptive lasso.*
+This section explains when each variant wins on the side. The decision tree:
+
+- *Truth is dense (all coefficients moderate, no sparsity):* ridge.
+- *Truth is sparse, features are well-separated:* lasso.
+- *Truth is sparse but features come in correlated groups:* elastic net.
+- *Truth is sparse, you want unbiased active coefficients and support consistency:* adaptive lasso.
+
+### §8.1 Ridge: continuous shrinkage, no selection
+
+Recall the ridge objective from §1.3:
+
+$$
+\hat{\boldsymbol\beta}^{\text{ridge}}(\lambda) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \frac{\lambda}{2} \|\boldsymbol\beta\|_2^2,
+$$
+
+with closed form $\hat{\boldsymbol\beta}^{\text{ridge}} = (\mathbf{X}^\top \mathbf{X} + n\lambda \mathbf{I})^{-1} \mathbf{X}^\top \mathbf{y}$. Three relevant properties at $p \gg n$:
+
+**Always defined and unique.** The matrix $\mathbf{X}^\top \mathbf{X} + n\lambda \mathbf{I}$ is positive definite for any $\lambda > 0$ regardless of $p$ vs $n$. Ridge has no failure mode the way OLS does.
+
+**Continuous shrinkage, dense solutions.** In the SVD basis $\mathbf{X} = \mathbf{U} \mathbf{D} \mathbf{V}^\top$, ridge shrinks each coefficient by a factor $d_j^2 / (d_j^2 + n\lambda)$ where $d_j$ is the $j$-th singular value. Small singular values (the noisy directions) get heavy shrinkage; large singular values (the signal directions) get light shrinkage. But no coefficient is zeroed out — the solution is generically dense.
+
+**Bayesian interpretation.** Ridge is the posterior mean of $\boldsymbol\beta$ under a Gaussian prior $\boldsymbol\beta \sim \mathcal{N}(\mathbf{0}, \lambda^{-1} \mathbf{I})$ and Gaussian likelihood $\mathbf{y} | \mathbf{X}, \boldsymbol\beta \sim \mathcal{N}(\mathbf{X} \boldsymbol\beta, \sigma^2 \mathbf{I})$. The penalty strength $\lambda$ is inversely related to the prior variance.
+
+**When ridge wins.** Two scenarios:
+
+1. **Truly dense $\boldsymbol\beta^*$.** When every feature carries some signal — no underlying sparsity — the lasso's sparsity assumption is wrong, and the lasso under-fits (zeros out features that should be active). Ridge has no such bias.
+2. **Heavy multicollinearity with no sparsity prior.** When features are nearly linearly dependent and there's no reason to prefer one over another, ridge distributes the signal smoothly across them. Lasso would arbitrarily select one and zero the others — a worse use of information.
+
+**When ridge loses.** When $\boldsymbol\beta^*$ is genuinely sparse, ridge's refusal to zero out inactive coordinates leaves residual noise in the fitted values. Each inactive coordinate contributes $\sigma^2 d_j^2 / (d_j^2 + n\lambda)^2$ to the prediction variance — small but non-zero. Lasso eliminates this contribution by zeroing the inactive coordinates entirely. On DGP-1 ($s = 10$, $p = 500$, so 490 inactive coordinates), the cumulative variance contribution is substantial, and lasso prediction MSE is typically 2–5× better than ridge.
+
+For most high-dimensional ML problems the truth is more sparse than dense, so the lasso wins more often than ridge. The standard practice is to compare both on cross-validated test MSE and pick the winner.
+
+### §8.2 The elastic net for groups of correlated features
+
+The elastic net (Zou-Hastie 2005) combines L1 and L2 penalties:
+
+$$
+\hat{\boldsymbol\beta}^{\text{EN}}(\lambda, \alpha) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \lambda \left[ \alpha \|\boldsymbol\beta\|_1 + \frac{1 - \alpha}{2} \|\boldsymbol\beta\|_2^2 \right],
+$$
+
+with **mixing parameter** $\alpha \in [0, 1]$ controlling the L1/L2 balance. $\alpha = 1$ recovers pure lasso, $\alpha = 0$ recovers pure ridge (up to scaling). Standard practice: $\alpha = 0.5$ or tuned via cross-validation.
+
+**Two structural advantages over pure lasso:**
+
+1. **Strict convexity for $\alpha < 1$.** The L2 term makes the objective strictly convex in $\boldsymbol\beta$, so the solution is unique even with duplicate or perfectly collinear columns. The §6.1 collinear-features pathology disappears.
+2. **The grouping effect.** For two highly correlated features $\mathbf{X}_j$ and $\mathbf{X}_k$ (correlation $\rho_{jk}$ close to 1), the elastic-net coefficient difference is bounded:
+
+<TheoremBlock type="proposition" number={1} title="Grouping inequality (Zou-Hastie 2005, Theorem 1)">
+For any two features $j, k \in \{1, \dots, p\}$ with empirical correlation $\rho_{jk}$,
+
+$$
+\big| \hat\beta_j^{\text{EN}} - \hat\beta_k^{\text{EN}} \big| \le \frac{\|\mathbf{y}\|_2}{n\lambda(1 - \alpha)} \sqrt{2(1 - \rho_{jk})}.
+$$
+</TheoremBlock>
+
+As $\rho_{jk} \to 1$, the RHS $\to 0$ — perfectly correlated features get equal coefficients. The lasso has no such property; it would pick one feature and zero the other. So in applications where the truth has correlated *groups* of active features (gene-expression clusters, related text features), elastic net selects all members of the group; lasso picks one member.
+
+**Reduction to a standard lasso.** Zou-Hastie showed that the elastic net can be solved by augmenting the design matrix and running a standard lasso solver. Define
+
+$$
+\tilde{\mathbf{X}} = \begin{pmatrix} \mathbf{X} \\ \sqrt{n \lambda (1 - \alpha)} \cdot \mathbf{I}_p \end{pmatrix} \in \mathbb{R}^{(n+p) \times p}, \quad \tilde{\mathbf{y}} = \begin{pmatrix} \mathbf{y} \\ \mathbf{0}_p \end{pmatrix} \in \mathbb{R}^{n+p}.
+$$
+
+Then $\hat{\boldsymbol\beta}^{\text{EN}}(\lambda, \alpha)$ is the lasso solution on $(\tilde{\mathbf{X}}, \tilde{\mathbf{y}})$ at penalty $\lambda \alpha$. So all the lasso algorithms (coordinate descent, FISTA) work for the elastic net by augmentation. scikit-learn's `ElasticNet` and `ElasticNetCV` use a direct coordinate-descent implementation that exploits the structure without explicit augmentation, but the principle is the same.
+
+**When elastic net wins.** Highly correlated features, especially correlated *groups* of features that should be selected together. Genomics is the canonical application: SNPs in linkage disequilibrium come in correlated blocks, and a gene-level signal manifests as coordinated effects across an entire block. Lasso would arbitrarily pick one SNP from each block; elastic net selects all the SNPs from active blocks.
+
+**When elastic net loses.** When features are well-separated (low correlation), elastic net offers no advantage over lasso. The L2 term adds a small bias relative to lasso without reducing variance much. On the DGP-1 setting (AR(1) Toeplitz $\rho = 0.5$, moderate correlation), elastic net and lasso typically perform similarly; on a stronger-correlation DGP ($\rho = 0.9$), elastic net wins clearly.
+
+### §8.3 The adaptive lasso and the oracle property
+
+The lasso biases every active coefficient by $-\lambda \, \mathrm{sign}(\beta^*_j)$ (§4.1). This constant shrinkage is independent of $|\beta^*_j|$, so even strong-signal coordinates get shrunk by a fixed amount — a real problem for parameter recovery and inference.
+
+The **adaptive lasso** (Zou 2006) replaces the uniform L1 penalty with **feature-specific weights**:
+
+$$
+\hat{\boldsymbol\beta}^{\text{aLasso}}(\lambda) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \lambda \sum_{j=1}^p w_j |\beta_j|,
+$$
+
+with weights $w_j = 1 / |\hat\beta_j^{\text{init}}|^\gamma$ for some initial estimator $\hat{\boldsymbol\beta}^{\text{init}}$ and a tuning parameter $\gamma > 0$ (typically $\gamma = 1$). Coordinates with large initial estimates get small weights (light shrinkage); coordinates with small or zero initial estimates get large weights (heavy shrinkage, effectively forced to zero).
+
+**Reduction to standard lasso.** Rescale the features: $\tilde{\mathbf{X}}_j = \mathbf{X}_j / w_j$ and $\tilde\beta_j = w_j \beta_j$. Then $\|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|^2 = \|\mathbf{y} - \tilde{\mathbf{X}} \tilde{\boldsymbol\beta}\|^2$ and $\sum_j w_j |\beta_j| = \sum_j |\tilde\beta_j|$, so the weighted lasso reduces to a standard lasso on rescaled features. Solve with any lasso solver, then unscale: $\hat\beta_j = \hat{\tilde\beta_j} / w_j$.
+
+**Choice of $\hat{\boldsymbol\beta}^{\text{init}}$.** Two standard choices:
+
+- **OLS** (when $n > p$): $\hat{\boldsymbol\beta}^{\text{init}} = (\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{y}$.
+- **Ridge or LassoCV** (when $p \ge n$): OLS isn't defined, so use a regularized initial. LassoCV is the standard high-dimensional choice (cf. Bühlmann-van de Geer 2011, §2.8).
+
+<TheoremBlock type="theorem" number={1} title="Oracle property of the adaptive lasso (Zou 2006)">
+Assume the initial estimator $\hat{\boldsymbol\beta}^{\text{init}}$ is $\sqrt{n}$-consistent for $\boldsymbol\beta^*$, the minimum signal $\beta^*_{\min}$ is bounded below by an appropriate constant, the noise is sub-Gaussian, and $\lambda_n$ satisfies $\sqrt{n} \lambda_n \to 0$ and $\sqrt{n} (n \lambda_n)^{\gamma/2 - 1} \to \infty$. Then the adaptive lasso satisfies the **oracle property**:
+
+(i) **Selection consistency:** $\mathbb{P}(\hat A_{\lambda_n}^{\text{aLasso}} = S) \to 1$.
+
+(ii) **Asymptotic normality:** $\sqrt{n} (\hat{\boldsymbol\beta}_S^{\text{aLasso}} - \boldsymbol\beta^*_S) \overset{d}{\to} \mathcal{N}\big(\mathbf{0}, \sigma^2 (\boldsymbol\Sigma_{S, S})^{-1}\big)$, the same asymptotic distribution as the oracle OLS estimator restricted to $S$.
+</TheoremBlock>
+
+The oracle property is stronger than sign-consistency: in addition to recovering the support, the adaptive-lasso estimates on $S$ have the *correct* asymptotic standard errors — same as if you had known $S$ in advance and run OLS on it. The constant shrinkage bias disappears asymptotically because the weights $w_j = 1/|\hat\beta_j^{\text{init}}|$ are bounded for active coordinates (where the initial estimator is near $|\beta^*_j|$) but diverge for inactive coordinates.
+
+**The conditions are weaker than IC.** The adaptive lasso achieves selection consistency under any design that has a $\sqrt{n}$-consistent initial estimator — much weaker than the strong irrepresentable condition required by the lasso. In particular, designs that fail IC (correlated active and inactive features) can still admit adaptive-lasso selection consistency.
+
+**Trade-off.** The adaptive lasso requires a good initial estimator. In the high-dimensional regime where LassoCV is the standard initial, the adaptive lasso's behavior depends on the quality of the lasso's variable selection — a circular dependence that limits the asymptotic argument's practical reach. Empirically, adaptive lasso usually beats vanilla lasso on support recovery and produces less-biased active coefficients, but the improvement isn't dramatic on well-behaved problems.
+
+### §8.4 Side-by-side comparison on the §1 DGP
+
+The four methods — ridge, lasso, elastic net, adaptive lasso — applied to DGP-1 at CV-selected penalties (Figure 8.1). The key visual contrasts:
+
+- **Ridge's path is dense everywhere.** Every coefficient is non-zero at every $\lambda > 0$, shrinking smoothly. The 10 true active coordinates emerge as the largest-magnitude coefficients, but distinguishing them from the 490 inactive coordinates requires a thresholding step.
+- **Lasso's path is sparse.** Most coefficients are exactly zero at moderate $\lambda$. The true active coordinates appear as the first to leave zero as $\lambda$ decreases. Active coefficients are visibly shrunk relative to the truth ($\beta^* = 1$ on $S$).
+- **Elastic net's path looks like the lasso with smoother corners.** Sparsity is preserved (most coefficients are zero at moderate $\lambda$), but the active coefficients are slightly less shrunk than the lasso's at the same effective regularization. The grouping effect would be more visible on a strongly-correlated DGP.
+
+Figure 8.2 shows the adaptive lasso vs vanilla lasso on the active-coordinate estimates: the vanilla lasso underestimates $|\beta^*_j|$ by approximately $\lambda$ (the constant shrinkage bias from §4.1); the adaptive lasso gets much closer to the true value $\beta^*_j = 1$ for active $j$.
+
+**Recommendation.** Default to LassoCV. If features come in correlated groups, try ElasticNetCV. If you need unbiased coefficient estimates or weaker selection conditions, run the adaptive lasso as a post-processing step on top of LassoCV. The §10 debiased lasso provides a different fix for the bias problem — it doesn't reduce the lasso's bias but corrects for it explicitly when forming CIs.
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_08_01_ridge_lasso_enet_paths.png"
