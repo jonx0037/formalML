@@ -47,21 +47,9 @@ interface ICPoint {
 }
 
 // -----------------------------------------------------------------------------
-// AR(1) Toeplitz population covariance: Σ_jk = ρ^|j-k|.
-// -----------------------------------------------------------------------------
-
-function ar1Sigma(p: number, rho: number): number[][] {
-  const Sigma: number[][] = [];
-  for (let i = 0; i < p; i++) {
-    const row = new Array<number>(p).fill(0);
-    for (let j = 0; j < p; j++) row[j] = Math.pow(rho, Math.abs(i - j));
-    Sigma.push(row);
-  }
-  return Sigma;
-}
-
-// -----------------------------------------------------------------------------
-// Compute IC quantity for given p, s, ρ.
+// Compute IC quantity for given p, s, ρ on the AR(1) Toeplitz population
+// covariance Σ_jk = ρ^|j-k|. The full p×p Σ is never materialized — Σ_{S,S}
+// is built inline below and Σ_{j,S}·v is evaluated on the fly per j ∈ Sᶜ.
 // -----------------------------------------------------------------------------
 
 function computeIC(p: number, s: number, rho: number): number {

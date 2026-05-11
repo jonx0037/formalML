@@ -2,7 +2,13 @@ import { useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
-import { softThreshold } from './shared/proximalUtils';
+import {
+  generateDgp1,
+  operatorNorm,
+  xMul,
+  xtMul,
+  lassoIsta,
+} from './shared/high-dim-regression';
 import {
   choleskyFactor,
   solveLowerTriangular,
@@ -44,7 +50,6 @@ const RHO = 0.5;
 const S = 10;
 const SEED = 42;
 const ISTA_ITERS = 200;
-const POWER_ITERS = 30;
 // Thresholds for "nonzero" count display. Ridge always has all p coefficients
 // mathematically nonzero (closed-form (XᵀX + nαI)⁻¹ Xᵀy hits zero only on a
 // measure-zero set), so we count anything above 1e-12 (numerical-zero only).
@@ -64,157 +69,40 @@ const SLATE_BAR = '#9CA3AF';
 const ACTIVE_BAR = '#1A1A1A';
 
 // -----------------------------------------------------------------------------
-// Deterministic RNG: mulberry32 + Box-Muller (same generator as
-// OlsOverfitsAtHighDim).
+// XᵀX (lower triangle only, then mirrored). Shared across the 3 ridge fits so
+// the O(np²) Gram construction is paid once instead of 3×.
 // -----------------------------------------------------------------------------
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function gaussianRng(rng: () => number): () => number {
-  let spare: number | null = null;
-  return () => {
-    if (spare !== null) {
-      const v = spare;
-      spare = null;
-      return v;
-    }
-    let u = 0;
-    let v = 0;
-    while (u === 0) u = rng();
-    while (v === 0) v = rng();
-    const mag = Math.sqrt(-2 * Math.log(u));
-    spare = mag * Math.sin(2 * Math.PI * v);
-    return mag * Math.cos(2 * Math.PI * v);
-  };
-}
-
-function generateData(): { X: Float64Array[]; y: Float64Array; XtX_diag: Float64Array } {
-  const rng = mulberry32(SEED);
-  const gauss = gaussianRng(rng);
-  const X: Float64Array[] = [];
-  const y = new Float64Array(N);
-  const sqrt1mr2 = Math.sqrt(1 - RHO * RHO);
-  // AR(1) row sampler.
-  for (let i = 0; i < N; i++) {
-    const row = new Float64Array(P);
-    row[0] = gauss();
-    for (let j = 1; j < P; j++) row[j] = RHO * row[j - 1] + sqrt1mr2 * gauss();
-    X.push(row);
-    let signal = 0;
-    for (let j = 0; j < S; j++) signal += row[j];
-    y[i] = signal + SIGMA * gauss();
-  }
-  // Pre-compute column norms / n for ridge + power iteration.
-  const XtX_diag = new Float64Array(P);
-  for (let j = 0; j < P; j++) {
-    let s2 = 0;
-    for (let i = 0; i < N; i++) s2 += X[i][j] * X[i][j];
-    XtX_diag[j] = s2 / N;
-  }
-  return { X, y, XtX_diag };
-}
-
-// X^T r → length-p vector. r is length n.
-function xtMul(X: Float64Array[], r: Float64Array): Float64Array {
-  const out = new Float64Array(P);
-  for (let i = 0; i < N; i++) {
-    const ri = r[i];
-    const row = X[i];
-    for (let j = 0; j < P; j++) out[j] += row[j] * ri;
-  }
-  return out;
-}
-
-// X v → length-n vector. v is length p.
-function xMul(X: Float64Array[], v: Float64Array): Float64Array {
-  const out = new Float64Array(N);
-  for (let i = 0; i < N; i++) {
-    let s = 0;
-    const row = X[i];
-    for (let j = 0; j < P; j++) s += row[j] * v[j];
-    out[i] = s;
-  }
-  return out;
-}
-
-// Power iteration on (XᵀX/n) to estimate the operator norm.
-// Returns L such that L is an upper bound on the largest eigenvalue.
-function operatorNorm(X: Float64Array[]): number {
-  let v = new Float64Array(P);
-  const rng = mulberry32(7);
-  for (let j = 0; j < P; j++) v[j] = rng() - 0.5;
-  let norm = 0;
-  for (let j = 0; j < P; j++) norm += v[j] * v[j];
-  norm = Math.sqrt(norm);
-  for (let j = 0; j < P; j++) v[j] /= norm;
-  let lambda = 0;
-  for (let it = 0; it < POWER_ITERS; it++) {
-    const Xv = xMul(X, v);
-    const next = xtMul(X, Xv);
-    let nNext = 0;
-    for (let j = 0; j < P; j++) {
-      next[j] /= N;
-      nNext += next[j] * next[j];
-    }
-    nNext = Math.sqrt(nNext);
-    lambda = nNext;
-    for (let j = 0; j < P; j++) next[j] /= nNext;
-    v = next;
-  }
-  return lambda * 1.05; // 5% safety margin so η = 1/L is a valid step
-}
-
-// Ridge: (XᵀX + n α I) β = Xᵀy via Cholesky on XᵀX itself (p × p, expensive
-// at p = 500 — about 500³/3 ≈ 4×10⁷ ops × 3 alphas ≈ 1.3×10⁸. ~700 ms in JS;
-// acceptable for a one-time precompute.)
-function ridgeFit(X: Float64Array[], y: Float64Array, alpha: number): Float64Array {
-  const Xty = xtMul(X, y);
+function buildXtX(X: Float64Array[]): number[][] {
   const A: number[][] = [];
   for (let j = 0; j < P; j++) A.push(new Array<number>(P).fill(0));
-  // Build XᵀX (lower triangle then symmetrize).
   for (let j = 0; j < P; j++) {
     for (let k = 0; k <= j; k++) {
       let s = 0;
       for (let i = 0; i < N; i++) s += X[i][j] * X[i][k];
       A[j][k] = s;
+      A[k][j] = s;
     }
   }
-  for (let j = 0; j < P; j++) {
-    for (let k = 0; k < j; k++) A[k][j] = A[j][k];
-    A[j][j] += N * alpha;
-  }
+  return A;
+}
+
+// -----------------------------------------------------------------------------
+// Ridge with precomputed XᵀX: for each α, clone A, shift diagonal by +n·α,
+// Cholesky-solve. Cholesky is the dominant cost per call (~p³/6); reusing XtX
+// saves the O(np²) Gram rebuild that previously fired once per α.
+// -----------------------------------------------------------------------------
+function ridgeFitFromGram(
+  XtX: number[][],
+  Xty: Float64Array,
+  alpha: number,
+): Float64Array {
+  const A: number[][] = XtX.map((row) => row.slice());
+  for (let j = 0; j < P; j++) A[j][j] += N * alpha;
   const L = choleskyFactor(A);
-  const xtyArr = Array.from(Xty);
-  const yt = solveLowerTriangular(L, xtyArr);
+  const yt = solveLowerTriangular(L, Array.from(Xty));
   const betaArr = solveUpperTriangularT(L, yt);
   const beta = new Float64Array(P);
   for (let j = 0; j < P; j++) beta[j] = betaArr[j];
-  return beta;
-}
-
-// ISTA for the lasso: β ← S(β + (η/n) Xᵀ(y - Xβ), η λ).
-function lassoFit(X: Float64Array[], y: Float64Array, lambda: number, L: number): Float64Array {
-  const eta = 1 / L;
-  let beta = new Float64Array(P);
-  for (let it = 0; it < ISTA_ITERS; it++) {
-    const Xb = xMul(X, beta);
-    const r = new Float64Array(N);
-    for (let i = 0; i < N; i++) r[i] = y[i] - Xb[i];
-    const grad = xtMul(X, r);
-    const z = new Array<number>(P);
-    for (let j = 0; j < P; j++) z[j] = beta[j] + (eta / N) * grad[j];
-    const stepped = softThreshold(z, eta * lambda);
-    beta = new Float64Array(stepped);
-  }
   return beta;
 }
 
@@ -235,16 +123,20 @@ export default function RidgeVsLassoCoefBars() {
   const isMobile = w < SM_BREAKPOINT;
 
   const panels = useMemo<PanelData[]>(() => {
-    const { X, y } = generateData();
+    const { X, y } = generateDgp1({ n: N, p: P, s: S, sigma: SIGMA, rho: RHO, seed: SEED });
     const L = operatorNorm(X);
+    // Pre-compute XᵀX + Xᵀy once; ridge fits at different α only need a
+    // diagonal shift on a clone of the Gram matrix.
+    const XtX = buildXtX(X);
+    const Xty = xtMul(X, y);
     const ridgePanels: PanelData[] = RIDGE_ALPHAS.map((alpha) => {
-      const beta = ridgeFit(X, y, alpha);
+      const beta = ridgeFitFromGram(XtX, Xty, alpha);
       let nonzero = 0;
       for (let j = 0; j < P; j++) if (Math.abs(beta[j]) > RIDGE_NONZERO_THRESH) nonzero++;
       return { title: `Ridge (α = ${alpha})`, beta, nonzeroCount: nonzero, family: 'ridge' };
     });
     const lassoPanels: PanelData[] = LASSO_LAMBDAS.map((lambda, i) => {
-      const beta = lassoFit(X, y, lambda, L);
+      const beta = lassoIsta(X, y, lambda, L, ISTA_ITERS);
       let nonzero = 0;
       for (let j = 0; j < P; j++) if (Math.abs(beta[j]) > LASSO_NONZERO_THRESH) nonzero++;
       return { title: `Lasso (${LASSO_LABELS[i]})`, beta, nonzeroCount: nonzero, family: 'lasso' };
@@ -297,11 +189,6 @@ export default function RidgeVsLassoCoefBars() {
 
         // Bars: 500 thin vertical lines (faster than 500 <rect> elements).
         // Active coordinates (j < S) drawn LAST so they sit on top.
-        const inactiveLine = d3
-          .line<number>()
-          .x((j) => xScale(j))
-          .y((j) => yScale(panel.beta[j]));
-        // Use individual short lines per coordinate for proper bar look.
         const barW = Math.max(0.6, innerW / P);
         // Only draw bars above a small visual threshold so 500 ridge bars don't
         // smear into solid color. Ridge: 0.005 (just above visual noise floor).
@@ -386,7 +273,7 @@ export default function RidgeVsLassoCoefBars() {
           marginTop: '8px',
         }}
       >
-        Ridge (top row, three α levels) vs lasso (bottom row, three λ levels) on DGP-1 (n = {N}, p = {P}, s = {S}, σ = {SIGMA}). True active coordinates (j &lt; {S}) in black; 490 inactive coordinates in gray. Ridge is dense at every α; lasso at the CV-selected λ ≈ 0.056 produces a sparse fit concentrated at the true active set. Computed live in-browser via Cholesky-based ridge ({POWER_ITERS}-iter power method for the Lipschitz constant) and {ISTA_ITERS}-iteration ISTA for lasso. Compute ~1 second; viz is hidden until scrolled into view.
+        Ridge (top row, three α levels) vs lasso (bottom row, three λ levels) on DGP-1 (n = {N}, p = {P}, s = {S}, σ = {SIGMA}). True active coordinates (j &lt; {S}) in black; 490 inactive coordinates in gray. Ridge is dense at every α; lasso at the CV-selected λ ≈ 0.056 produces a sparse fit concentrated at the true active set. Computed live in-browser via Cholesky-based ridge with pre-computed XᵀX (shared across α levels) and {ISTA_ITERS}-iteration ISTA for lasso. Compute ~1 second; viz is hidden until scrolled into view.
       </p>
     </div>
   );
