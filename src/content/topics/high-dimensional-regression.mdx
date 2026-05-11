@@ -374,6 +374,7 @@ import RidgeVsLassoCoefBars from '../../components/viz/RidgeVsLassoCoefBars.tsx'
 import L1VsL2BallExplorer from '../../components/viz/L1VsL2BallExplorer.tsx';
 import LassoUCurve from '../../components/viz/LassoUCurve.tsx';
 import LassoSolutionPath from '../../components/viz/LassoSolutionPath.tsx';
+import OracleInequalityRiskBound from '../../components/viz/OracleInequalityRiskBound.tsx';
 
 ## §1. From OLS to penalized regression
 
@@ -949,12 +950,240 @@ This is the topic's headline theoretical result: under a restricted-eigenvalue c
 
 The proof has four steps and follows Bickel-Ritov-Tsybakov (2009) closely. **Step 1 (the basic inequality)** uses the lasso's defining optimality to bound the prediction error in terms of the L1 estimation error and a noise term. **Step 2 (the cone condition)** shows that the error vector $\hat{\boldsymbol\beta} - \boldsymbol\beta^*$ has most of its L1 mass concentrated on the true support $S$. **Step 3 (the restricted-eigenvalue condition)** lets us convert L1 estimation error on $S$ into a lower bound on the prediction error. **Step 4 (the deviation step)** controls the noise term using a maximal sub-Gaussian inequality. Combining gives the rate.
 
-*Section content in development. Includes the basic inequality $(\star)$ from lasso optimality, the cone condition $\|\boldsymbol\delta_{S^c}\|_1 \le 3\|\boldsymbol\delta_S\|_1$, Definition 5.1 (RE condition; Bickel-Ritov-Tsybakov 2009), the sub-Gaussian maximal inequality (Lemma 5.1), and Theorem 5.1 (lasso oracle inequality; full BRT 2009 proof) at the $72 \sigma^2 s \log(2p/\delta)/(n\kappa^2)$ rate. The L1 estimation rate $\|\hat{\boldsymbol\beta} - \boldsymbol\beta^*\|_1 = O(s \sqrt{\log(p)/n})$ is a corollary used in §10.4.*
+The proof's main work is in steps 1 and 2 — the basic inequality and the cone condition derive directly from the KKT conditions of §2.4 with no further ingredients. Step 3 is the geometric assumption on the design that we're imposing; step 4 is the standard probabilistic deviation inequality. The whole argument is technical but elementary — no measure theory beyond the sub-Gaussian moment bound.
+
+### §5.1 Setup: prediction risk in the high-dim regime
+
+We work in the standard high-dimensional linear regression model:
+
+$$
+\mathbf{y} = \mathbf{X} \boldsymbol\beta^* + \boldsymbol\varepsilon, \quad \mathbf{X} \in \mathbb{R}^{n \times p}, \quad \boldsymbol\beta^* \in \mathbb{R}^p, \quad \boldsymbol\varepsilon \in \mathbb{R}^n.
+$$
+
+We assume:
+
+- **Sparsity.** $\boldsymbol\beta^*$ has support $S = \{j : \beta^*_j \neq 0\}$ with $|S| = s$, $s \ll p$.
+- **Sub-Gaussian noise.** $\boldsymbol\varepsilon = (\varepsilon_1, \dots, \varepsilon_n)$ has independent entries with $\mathbb{E}[\varepsilon_i] = 0$ and sub-Gaussian parameter $\sigma$: $\mathbb{E}[\exp(t \varepsilon_i)] \le \exp(t^2 \sigma^2 / 2)$ for all $t \in \mathbb{R}$. Gaussian noise with variance $\sigma^2$ is the canonical case; bounded $\boldsymbol\varepsilon \in [-\sigma, \sigma]$ also qualifies.
+- **Column-normalized design.** Each column $\mathbf{X}_j$ satisfies $\|\mathbf{X}_j\|_2^2 \le n$ — a normalization convention that makes the bound clean. Equivalently, the empirical second moment $(1/n) \|\mathbf{X}_j\|_2^2 \le 1$. For DGP-1 the columns satisfy this in expectation; in practice rescaling the columns to exactly $\|\mathbf{X}_j\|_2^2 = n$ is standard before fitting.
+
+The **prediction risk** at the lasso estimator is
+
+$$
+\mathrm{PE}(\hat{\boldsymbol\beta}^{\text{lasso}}) := \frac{1}{n} \|\mathbf{X} (\hat{\boldsymbol\beta}^{\text{lasso}} - \boldsymbol\beta^*)\|_2^2 = \frac{1}{n} \sum_{i=1}^n (\mathbf{x}_i^\top \hat{\boldsymbol\beta}^{\text{lasso}} - \mathbf{x}_i^\top \boldsymbol\beta^*)^2,
+$$
+
+the average squared in-sample prediction error against the true regression function. (This is the "fixed-design prediction error." It differs from the integrated $\mathbb{E}_{\mathbf{x}^*}[\cdot]$ test-set error of §4.3 — they coincide when the test design has the same row distribution as the training design and $n$ is large.)
+
+The benchmark is the **oracle estimator** that knew $S$ in advance:
+
+$$
+\hat{\boldsymbol\beta}^{\text{oracle}}_S = (\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \mathbf{X}_S^\top \mathbf{y}, \qquad \hat{\boldsymbol\beta}^{\text{oracle}}_{S^c} = \mathbf{0}.
+$$
+
+The oracle is OLS restricted to $S$. Its prediction risk is $\mathrm{PE}(\hat{\boldsymbol\beta}^{\text{oracle}}) = \sigma^2 s / n$ in expectation (standard OLS variance with $s$ degrees of freedom). The oracle inequality says the lasso achieves the same rate up to a $\log(p)$ factor, **without knowing $S$**.
+
+### §5.2 The basic inequality
+
+The starting point is the lasso's defining optimality: $\hat{\boldsymbol\beta}^{\text{lasso}}$ achieves the minimum of the lasso objective, so in particular it does no worse than $\boldsymbol\beta^*$:
+
+$$
+\frac{1}{2n} \|\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}\|_2^2 + \lambda \|\hat{\boldsymbol\beta}\|_1 \le \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta^*\|_2^2 + \lambda \|\boldsymbol\beta^*\|_1.
+$$
+
+(We drop the "lasso" superscript for brevity; $\hat{\boldsymbol\beta}$ is always the lasso solution in this section.)
+
+Substitute $\mathbf{y} = \mathbf{X} \boldsymbol\beta^* + \boldsymbol\varepsilon$ and let $\boldsymbol\delta = \hat{\boldsymbol\beta} - \boldsymbol\beta^*$:
+
+$$
+\frac{1}{2n} \|\mathbf{X} \boldsymbol\beta^* + \boldsymbol\varepsilon - \mathbf{X} \hat{\boldsymbol\beta}\|_2^2 = \frac{1}{2n} \|\boldsymbol\varepsilon - \mathbf{X} \boldsymbol\delta\|_2^2 = \frac{1}{2n} \|\boldsymbol\varepsilon\|_2^2 - \frac{1}{n} \boldsymbol\varepsilon^\top \mathbf{X} \boldsymbol\delta + \frac{1}{2n} \|\mathbf{X} \boldsymbol\delta\|_2^2,
+$$
+
+and $\frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta^*\|_2^2 = \frac{1}{2n} \|\boldsymbol\varepsilon\|_2^2$. The $\frac{1}{2n}\|\boldsymbol\varepsilon\|_2^2$ terms cancel, giving
+
+$$
+\frac{1}{2n} \|\mathbf{X} \boldsymbol\delta\|_2^2 - \frac{1}{n} \boldsymbol\varepsilon^\top \mathbf{X} \boldsymbol\delta + \lambda \|\hat{\boldsymbol\beta}\|_1 \le \lambda \|\boldsymbol\beta^*\|_1.
+$$
+
+Rearrange and double both sides:
+
+$$
+\frac{1}{n} \|\mathbf{X} \boldsymbol\delta\|_2^2 \le \frac{2}{n} \boldsymbol\varepsilon^\top \mathbf{X} \boldsymbol\delta + 2\lambda \big( \|\boldsymbol\beta^*\|_1 - \|\hat{\boldsymbol\beta}\|_1 \big). \quad\quad (\star)
+$$
+
+This is the **basic inequality**. Two things to control: the noise inner product $\boldsymbol\varepsilon^\top \mathbf{X} \boldsymbol\delta / n$, and the L1-norm difference $\|\boldsymbol\beta^*\|_1 - \|\hat{\boldsymbol\beta}\|_1$.
+
+**The noise term, via Hölder's inequality.**
+
+$$
+\frac{2}{n} |\boldsymbol\varepsilon^\top \mathbf{X} \boldsymbol\delta| = 2 \left| \frac{\boldsymbol\varepsilon^\top \mathbf{X}}{n} \boldsymbol\delta \right| \le 2 \left\| \frac{\mathbf{X}^\top \boldsymbol\varepsilon}{n} \right\|_\infty \cdot \|\boldsymbol\delta\|_1.
+$$
+
+Define the **noise event**
+
+$$
+\mathcal{E} := \left\{ \left\| \frac{\mathbf{X}^\top \boldsymbol\varepsilon}{n} \right\|_\infty \le \frac{\lambda}{2} \right\}.
+$$
+
+On $\mathcal{E}$, $(2/n) \boldsymbol\varepsilon^\top \mathbf{X} \boldsymbol\delta \le \lambda \|\boldsymbol\delta\|_1$. Step 4 below shows that with $\lambda$ chosen as $\lambda = 2\sigma \sqrt{2 \log(2p/\delta) / n}$, the event $\mathcal{E}$ holds with probability at least $1 - \delta$. For now assume we're on $\mathcal{E}$.
+
+**The L1-norm difference, via the support split.** Decompose $\hat{\boldsymbol\beta} = \hat{\boldsymbol\beta}_S + \hat{\boldsymbol\beta}_{S^c}$ where the subscripts indicate the indices restricted to $S$ and $S^c$ respectively. Since $\boldsymbol\beta^*_{S^c} = \mathbf{0}$:
+
+$$
+\|\boldsymbol\beta^*\|_1 = \|\boldsymbol\beta^*_S\|_1, \qquad \|\hat{\boldsymbol\beta}\|_1 = \|\hat{\boldsymbol\beta}_S\|_1 + \|\hat{\boldsymbol\beta}_{S^c}\|_1, \qquad \|\boldsymbol\delta\|_1 = \|\hat{\boldsymbol\beta}_S - \boldsymbol\beta^*_S\|_1 + \|\hat{\boldsymbol\beta}_{S^c}\|_1.
+$$
+
+Apply the reverse triangle inequality $\|\hat{\boldsymbol\beta}_S\|_1 \ge \|\boldsymbol\beta^*_S\|_1 - \|\hat{\boldsymbol\beta}_S - \boldsymbol\beta^*_S\|_1$:
+
+$$
+\|\boldsymbol\beta^*\|_1 - \|\hat{\boldsymbol\beta}\|_1 = \|\boldsymbol\beta^*_S\|_1 - \|\hat{\boldsymbol\beta}_S\|_1 - \|\hat{\boldsymbol\beta}_{S^c}\|_1 \le \|\hat{\boldsymbol\beta}_S - \boldsymbol\beta^*_S\|_1 - \|\hat{\boldsymbol\beta}_{S^c}\|_1 = \|\boldsymbol\delta_S\|_1 - \|\boldsymbol\delta_{S^c}\|_1.
+$$
+
+Substitute into $(\star)$ on the event $\mathcal{E}$:
+
+$$
+\frac{1}{n} \|\mathbf{X} \boldsymbol\delta\|_2^2 \le \lambda \|\boldsymbol\delta\|_1 + 2\lambda (\|\boldsymbol\delta_S\|_1 - \|\boldsymbol\delta_{S^c}\|_1) = 3\lambda \|\boldsymbol\delta_S\|_1 - \lambda \|\boldsymbol\delta_{S^c}\|_1.
+$$
+
+Combining the $\boldsymbol\delta_S$ and $\boldsymbol\delta_{S^c}$ terms:
+
+$$
+\boxed{\; \frac{1}{n} \|\mathbf{X} \boldsymbol\delta\|_2^2 + \lambda \|\boldsymbol\delta_{S^c}\|_1 \le 3\lambda \|\boldsymbol\delta_S\|_1 \;} \quad \text{on } \mathcal{E}. \quad\quad (\star\star)
+$$
+
+This is the **basic inequality in its useful form**. The L1 mass of $\boldsymbol\delta$ outside the true support, plus the prediction error, is controlled by the L1 mass on the true support.
+
+### §5.3 The cone condition
+
+The basic inequality $(\star\star)$ has an immediate geometric consequence. The prediction-error term $\frac{1}{n}\|\mathbf{X}\boldsymbol\delta\|_2^2$ on the LHS is non-negative, so we can drop it:
+
+$$
+\lambda \|\boldsymbol\delta_{S^c}\|_1 \le 3\lambda \|\boldsymbol\delta_S\|_1 \quad \Rightarrow \quad \boxed{\;\|\boldsymbol\delta_{S^c}\|_1 \le 3 \|\boldsymbol\delta_S\|_1.\;}
+$$
+
+This is the **cone condition**. The error vector $\boldsymbol\delta = \hat{\boldsymbol\beta} - \boldsymbol\beta^*$ lies in the convex cone
+
+$$
+\mathcal{C}(S, 3) := \{ \boldsymbol\delta \in \mathbb{R}^p : \|\boldsymbol\delta_{S^c}\|_1 \le 3 \|\boldsymbol\delta_S\|_1 \}.
+$$
+
+**Interpretation.** Most of the error vector's L1 mass is on the true support $S$. The factor of 3 is conventional; it depends on the constant 2 in the basic inequality, which in turn comes from doubling both sides of the lasso optimality. Different works in the literature use $\mathcal{C}(S, c_0)$ for various $c_0 \ge 1$; the bound just needs the cone constant to be finite.
+
+The cone condition is the **structural** content of the basic inequality. Without any further assumption on $\mathbf{X}$ or $\boldsymbol\varepsilon$, we know the lasso error is concentrated on $S$ — but we don't yet have a rate bound on the prediction error. The next step requires an additional assumption on the design.
+
+### §5.4 The restricted-eigenvalue condition
+
+The pure basic inequality $(\star\star)$ gives $\frac{1}{n}\|\mathbf{X}\boldsymbol\delta\|_2^2 \le 3\lambda \|\boldsymbol\delta_S\|_1$. The RHS bounds the prediction error in terms of the L1 norm of the active part of $\boldsymbol\delta$, which has only $s$ entries — so by Cauchy-Schwarz, $\|\boldsymbol\delta_S\|_1 \le \sqrt{s} \|\boldsymbol\delta_S\|_2$. We get
+
+$$
+\frac{1}{n} \|\mathbf{X} \boldsymbol\delta\|_2^2 \le 3\lambda \sqrt{s} \|\boldsymbol\delta_S\|_2.
+$$
+
+To convert this into a rate bound, we need to bound $\|\boldsymbol\delta_S\|_2$ from above by something involving $\frac{1}{n}\|\mathbf{X}\boldsymbol\delta\|_2^2$ — i.e., a *lower bound* on $\frac{1}{n}\|\mathbf{X}\boldsymbol\delta\|_2^2$ in terms of $\|\boldsymbol\delta_S\|_2^2$. That's exactly the **restricted-eigenvalue condition**.
+
+<TheoremBlock type="definition" number={1} title="Restricted-eigenvalue condition (Bickel-Ritov-Tsybakov 2009)">
+The design $\mathbf{X}$ satisfies the **restricted-eigenvalue condition** $\mathrm{RE}(s, c_0)$ with constant $\kappa > 0$ if for every $\boldsymbol\delta \in \mathcal{C}(S, c_0)$ with $|S| \le s$,
+
+$$
+\frac{1}{n} \|\mathbf{X} \boldsymbol\delta\|_2^2 \ge \kappa^2 \|\boldsymbol\delta_S\|_2^2.
+$$
+</TheoremBlock>
+
+In words: on the cone $\mathcal{C}(S, c_0)$, the empirical Gram matrix $\mathbf{X}^\top \mathbf{X} / n$ acts like a positive-definite matrix on the active block — its smallest "eigenvalue" restricted to $\mathcal{C}(S, c_0)$ is at least $\kappa^2$. On the full space $\mathbb{R}^p$ this would be the smallest eigenvalue of $\mathbf{X}^\top \mathbf{X}/n$, which is zero whenever $p > n$. The restriction to the cone $\mathcal{C}(S, c_0)$ is what makes the condition feasible in the high-dim regime.
+
+**When does RE hold?** A few sufficient conditions:
+
+- **Random Gaussian designs.** If $\mathbf{X}$ has iid $\mathcal{N}(\mathbf{0}, \boldsymbol\Sigma)$ rows with $\lambda_{\min}(\boldsymbol\Sigma) \ge \kappa_0^2 > 0$, then RE holds with high probability with $\kappa^2 \asymp \kappa_0^2$ provided $n \gtrsim s \log(p)$ (Raskutti-Wainwright-Yu 2010, Theorem 1).
+- **Sub-Gaussian designs.** Same conclusion under sub-Gaussian rows (Rudelson-Zhou 2013).
+- **Restricted isometry property (RIP).** RIP $\Rightarrow$ RE (Candès-Tao 2005; we cover this in §9).
+
+The condition is essentially the weakest design assumption under which the lasso works — it's equivalent to "$\mathbf{X}^\top \mathbf{X}/n$ acts well on sparse vectors and small perturbations of them." For DGP-1 with AR(1) Toeplitz $\boldsymbol\Sigma$, $\lambda_{\min}(\boldsymbol\Sigma) = (1 - \rho)/(1 + \rho) = 1/3$ in the limit $p \to \infty$ for $\rho = 0.5$, so RE holds with $\kappa^2 \approx 1/3$.
+
+### §5.5 The deviation step and the $O(\sigma^2 s \log p / n)$ rate
+
+We now combine the three ingredients — basic inequality, cone condition, RE — and add the probabilistic step that controls $\mathcal{E}$.
+
+**Combining basic inequality and RE.** Start from $(\star\star)$:
+
+$$
+\frac{1}{n} \|\mathbf{X} \boldsymbol\delta\|_2^2 \le 3\lambda \|\boldsymbol\delta_S\|_1 \le 3\lambda \sqrt{s} \|\boldsymbol\delta_S\|_2 \le 3\lambda \sqrt{s} \cdot \frac{1}{\kappa} \sqrt{\frac{1}{n} \|\mathbf{X} \boldsymbol\delta\|_2^2},
+$$
+
+where the second inequality is Cauchy-Schwarz on $\boldsymbol\delta_S \in \mathbb{R}^s$ and the third is RE. Let $u = \sqrt{\frac{1}{n}\|\mathbf{X}\boldsymbol\delta\|_2^2}$. Then $u^2 \le 3\lambda \sqrt{s} u / \kappa$, so $u \le 3\lambda \sqrt{s}/\kappa$, and squaring:
+
+$$
+\frac{1}{n} \|\mathbf{X} (\hat{\boldsymbol\beta} - \boldsymbol\beta^*)\|_2^2 \le \frac{9 \lambda^2 s}{\kappa^2} \quad \text{on } \mathcal{E} \cap \{\mathrm{RE}(s, 3)\}. \quad\quad (\star\!\star\!\star)
+$$
+
+**The deviation step.** It remains to choose $\lambda$ so that $\mathcal{E}$ holds with high probability.
+
+<TheoremBlock type="lemma" number={1} title="Sub-Gaussian maximal inequality">
+Let $\boldsymbol\varepsilon$ have independent entries, sub-Gaussian with parameter $\sigma$, and $\mathbf{X}$ have columns with $\|\mathbf{X}_j\|_2^2 \le n$. For any $\delta \in (0, 1)$,
+
+$$
+\mathbb{P}\!\left( \left\| \frac{\mathbf{X}^\top \boldsymbol\varepsilon}{n} \right\|_\infty > \sigma \sqrt{\frac{2 \log(2p/\delta)}{n}} \right) \le \delta.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+For a single coordinate $j$, the inner product $(\mathbf{X}_j^\top \boldsymbol\varepsilon) / n = \sum_i (X_{ij}/n) \varepsilon_i$ is a linear combination of independent sub-Gaussian random variables, hence itself sub-Gaussian with parameter
+
+$$
+\sigma_j^2 := \sigma^2 \sum_{i=1}^n (X_{ij}/n)^2 = \frac{\sigma^2 \|\mathbf{X}_j\|_2^2}{n^2} \le \frac{\sigma^2}{n}.
+$$
+
+By the standard sub-Gaussian tail bound, $\mathbb{P}((\mathbf{X}_j^\top \boldsymbol\varepsilon)/n > t) \le \exp(-t^2 / (2 \sigma_j^2)) \le \exp(-n t^2 / (2 \sigma^2))$, and the same bound for the negative tail. Union bound over the $p$ coordinates and the two tails:
+
+$$
+\mathbb{P}\!\left( \left\| \frac{\mathbf{X}^\top \boldsymbol\varepsilon}{n} \right\|_\infty > t \right) \le 2p \exp\!\left( -\frac{n t^2}{2 \sigma^2} \right).
+$$
+
+Set the RHS equal to $\delta$ and solve for $t$: $t = \sigma \sqrt{2 \log(2p/\delta) / n}$.
+</TheoremBlock>
+
+**Choose $\lambda$.** Set $\lambda = 2 \sigma \sqrt{2 \log(2p/\delta) / n}$ — twice the deviation threshold from Lemma 1. Then $\lambda/2 \ge \|\mathbf{X}^\top \boldsymbol\varepsilon / n\|_\infty$ on the event $\mathcal{E}$, which holds with probability at least $1 - \delta$. Substituting into $(\star\!\star\!\star)$:
+
+$$
+\frac{1}{n} \|\mathbf{X} (\hat{\boldsymbol\beta} - \boldsymbol\beta^*)\|_2^2 \le \frac{9 \cdot 4 \sigma^2 \cdot 2 \log(2p/\delta) \cdot s}{n \cdot \kappa^2} = \frac{72 \sigma^2 s \log(2p/\delta)}{n \kappa^2}.
+$$
+
+Cleaning up the constants:
+
+<TheoremBlock type="theorem" number={1} title="Lasso oracle inequality (Bickel-Ritov-Tsybakov 2009)">
+Assume $\boldsymbol\beta^*$ is $s$-sparse, the noise $\boldsymbol\varepsilon$ has independent sub-Gaussian entries with parameter $\sigma$, the columns of $\mathbf{X}$ satisfy $\|\mathbf{X}_j\|_2^2 \le n$, and the design satisfies $\mathrm{RE}(s, 3)$ with constant $\kappa > 0$. Choose $\lambda = 2\sigma\sqrt{2\log(2p/\delta) / n}$ for some $\delta \in (0, 1)$. Then with probability at least $1 - \delta$,
+
+$$
+\frac{1}{n} \|\mathbf{X} (\hat{\boldsymbol\beta}^{\text{lasso}} - \boldsymbol\beta^*)\|_2^2 \le \frac{72 \sigma^2 s \log(2p/\delta)}{n \kappa^2}.
+$$
+</TheoremBlock>
+
+**The order of magnitude.** Setting $\delta = 1/p$ (high-confidence statement, $1 - 1/p$ probability), $\log(2p/\delta) = \log(2p^2) \le 2 \log(2p)$, so the bound is
+
+$$
+\frac{1}{n} \|\mathbf{X} (\hat{\boldsymbol\beta}^{\text{lasso}} - \boldsymbol\beta^*)\|_2^2 \lesssim \frac{\sigma^2 s \log(p)}{n \kappa^2}.
+$$
+
+This is the **fundamental rate** for sparse high-dimensional regression. Three things to note:
+
+1. **The $\log(p)$ factor is the price of not knowing $S$.** The oracle estimator $\hat{\boldsymbol\beta}^{\text{oracle}}$ — OLS restricted to $S$ — achieves $\sigma^2 s / n$ in expectation. The lasso achieves $\sigma^2 s \log(p) / n$ — the same rate up to a logarithmic factor. The $\log(p)$ is the price of doing model selection from $p$ candidates without prior knowledge.
+2. **The rate is minimax-optimal.** Donoho-Johnstone (1994) and Raskutti-Wainwright-Yu (2011) showed that no estimator can beat $\sigma^2 s \log(p/s) / n$ in the worst case over the class of $s$-sparse signals. So the lasso achieves the optimal rate up to a $\log(s) \cdot 1/\kappa^2$ constant — the lasso pays for not knowing $S$, but it doesn't pay extra for being computationally tractable.
+3. **The $\kappa^{-2}$ dependence is real.** When the design is poorly conditioned (highly correlated features), $\kappa^{-2}$ blows up and the bound degrades. This is the formal counterpart of the practical observation that the lasso works less well with strongly collinear features — §8 covers the elastic net as the standard remedy.
+
+**Corollary: L1 estimation rate.** A similar argument starting from $(\star\star)$ and using RE gives
+
+$$
+\|\hat{\boldsymbol\beta}^{\text{lasso}} - \boldsymbol\beta^*\|_1 \le \frac{12 \lambda s}{\kappa^2} \asymp \frac{\sigma s \sqrt{\log(p)/n}}{\kappa^2}.
+$$
+
+Sketch: from $(\star\star)$ + Cauchy-Schwarz + RE, $\|\boldsymbol\delta_S\|_1 \le 3 \lambda s / \kappa^2$, then $\|\boldsymbol\delta\|_1 = \|\boldsymbol\delta_S\|_1 + \|\boldsymbol\delta_{S^c}\|_1 \le 4 \|\boldsymbol\delta_S\|_1$ from the cone condition. This $L^1$ estimation rate appears as a lemma in the §10.4 debiased-lasso asymptotic-normality argument.
+
+The viz below shows the empirical prediction risk on a held-out test set vs sample size $n$ on DGP-1, alongside the theoretical BRT bound (constant 72) and a calibrated bound (constant fit empirically). The empirical curve sits one to two orders of magnitude below the BRT bound — the constant 72 is mathematically clean (each proof step contributes a factor of 2 or 3) but practically loose. The slope match on log-log axes (both lines parallel) is the substantive confirmation of the oracle-inequality rate.
+
+<OracleInequalityRiskBound client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_05_01_oracle_inequality_rate.png"
   alt="Empirical prediction risk versus theoretical bound on log-log axes, illustrating the lasso oracle inequality rate on DGP-1."
-  caption="Empirical lasso prediction risk ‖X_test (β̂_lasso − β*)‖² / n_test vs sample size n on DGP-1 (p = 500, s = 10, σ = 0.5 fixed; n from 50 to 800), at the theory-guided λ = 2σ√(2 log(p)/n). Both empirical risk and the theoretical BRT bound (constant 72) plus a calibrated bound (constant fit empirically) on log-log axes. The empirical curve sits one to two orders of magnitude below the BRT bound (the constant 72 is mathematically clean but practically loose); the slope match — both lines parallel on log-log — is the substantive confirmation of the oracle-inequality rate."
+  caption="Empirical lasso prediction risk ‖X_test (β̂_lasso − β*)‖² / n_test vs sample size n on DGP-1 (p = 500, s = 10, σ = 0.5 fixed; n from 50 to 800), at the theory-guided λ = 2σ√(2 log(p)/n). Both empirical risk and the theoretical BRT bound (constant 72) plus a calibrated bound (constant fit empirically) on log-log axes. The empirical curve sits one to two orders of magnitude below the BRT bound (the constant 72 is mathematically clean but practically loose); the slope match — both lines parallel on log-log — is the substantive confirmation of the oracle-inequality rate. (Static fallback at p = 500; the interactive viz above runs at p = 200.)"
 />
 
 ## §6. Variable-selection consistency
