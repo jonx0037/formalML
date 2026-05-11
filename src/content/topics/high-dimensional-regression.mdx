@@ -618,11 +618,217 @@ We verify the KKT conditions numerically on the §1 lasso fit at $\lambda_{\text
 
 ## §3. Solving the lasso
 
-The lasso has no closed-form solution for general $\mathbf{X}$, so we need iterative algorithms. This section develops the four solvers that matter in practice, in increasing order of sophistication: the **soft-thresholding closed form** for orthogonal designs (§3.1, conceptually load-bearing because every general-purpose solver reduces to it inside the inner loop); **coordinate descent** (§3.2, the `glmnet` workhorse and the default in scikit-learn); **ISTA**, the proximal-gradient method (§3.3, simple and slow at $O(1/k)$); and **FISTA** with Nesterov momentum (§3.4, the same proximal-gradient framework with a momentum trick that improves the rate to $O(1/k^2)$, with full convergence proof). §3.5 gives practical solver-choice notes.
+The lasso has no closed-form solution for general $\mathbf{X}$, so we need iterative algorithms. This section develops the four solvers that matter in practice, in increasing order of sophistication: the **soft-thresholding closed form** for orthogonal designs (§3.1, the only case that admits a closed form, but conceptually load-bearing because every general-purpose solver reduces to it inside the inner loop); **coordinate descent** (§3.2, the `glmnet` workhorse, fastest in practice for moderate-sized problems and the default in scikit-learn); **ISTA**, the proximal-gradient method (§3.3, simple and slow, $O(1/k)$ convergence rate, the natural first step toward FISTA); and **FISTA** with Nesterov momentum (§3.4, the same proximal-gradient framework with a momentum trick that improves the rate to $O(1/k^2)$, with full convergence proof). §3.5 gives practical solver-choice notes.
 
-A common thread: every solver in this section is some application of the **soft-thresholding operator** $S(z, \lambda) = \mathrm{sign}(z) \cdot \max(|z| - \lambda, 0)$, the proximal operator of the L1 norm. ISTA / FISTA / coordinate descent differ only in *what* they soft-threshold and *how often*.
+A common thread: every solver in this section is some application of the **soft-thresholding operator** $S(z, \lambda) = \mathrm{sign}(z) \cdot \max(|z| - \lambda, 0)$, the proximal operator of the L1 norm. ISTA / FISTA / coordinate descent differ only in *what* they soft-threshold and *how often*. So §3.1's three-line derivation is the algorithmic kernel of everything that follows.
 
-*Section content in development. Includes Theorem 3.1 (soft-thresholding closed form, full proof), Theorem 3.2 (ISTA $O(1/k)$ rate via descent lemma + telescoping), Theorem 3.3 (FISTA $O(1/k^2)$ rate via Lyapunov-function argument with the $t_{k+1}^2 - t_{k+1} = t_k^2$ recursion), and the practical solver-choice field guide.*
+### §3.1 Soft-thresholding closed form for orthogonal designs
+
+When $\mathbf{X}^\top \mathbf{X} = n \mathbf{I}$ — an **orthogonal design**, achievable in practice via QR decomposition of any full-rank $\mathbf{X}$ — the lasso decouples across coordinates and admits a closed-form solution.
+
+Substitute $\mathbf{X}^\top \mathbf{X} = n \mathbf{I}$ into the lasso objective:
+
+$$
+F(\boldsymbol\beta) = \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \lambda \|\boldsymbol\beta\|_1 = \frac{1}{2n} \|\mathbf{y}\|_2^2 - \frac{1}{n} \mathbf{y}^\top \mathbf{X} \boldsymbol\beta + \frac{1}{2} \|\boldsymbol\beta\|_2^2 + \lambda \|\boldsymbol\beta\|_1.
+$$
+
+Drop the constant $\frac{1}{2n} \|\mathbf{y}\|_2^2$ and let $\mathbf{z} = \mathbf{X}^\top \mathbf{y} / n$. The objective separates by coordinate:
+
+$$
+F(\boldsymbol\beta) = \mathrm{const} + \sum_{j=1}^p \left[ \frac{1}{2} (\beta_j - z_j)^2 + \lambda |\beta_j| \right] - \frac{1}{2} \|\mathbf{z}\|_2^2.
+$$
+
+So the lasso reduces to $p$ independent univariate problems: minimize $\frac{1}{2}(\beta - z)^2 + \lambda |\beta|$ over $\beta \in \mathbb{R}$, one for each coordinate.
+
+<TheoremBlock type="theorem" number={1} title="Soft-thresholding closed form">
+For $z \in \mathbb{R}$ and $\lambda \ge 0$, the unique minimizer of $\frac{1}{2}(\beta - z)^2 + \lambda |\beta|$ is
+
+$$
+S(z, \lambda) := \mathrm{sign}(z) \cdot \max(|z| - \lambda, 0) = \begin{cases} z - \lambda & z > \lambda, \\ 0 & |z| \le \lambda, \\ z + \lambda & z < -\lambda. \end{cases}
+$$
+
+Equivalently, the lasso solution on an orthogonal design is $\hat\beta_j = S(z_j, \lambda)$ with $z_j = (\mathbf{X}^\top \mathbf{y} / n)_j$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The objective $f(\beta) = \frac{1}{2}(\beta - z)^2 + \lambda |\beta|$ is convex (sum of convex), continuous, and coercive, so a minimum exists and is unique (the quadratic part is strictly convex). The KKT condition: $0 \in \partial f(\hat\beta) = \hat\beta - z + \lambda \, \partial |\hat\beta|$, equivalently $z - \hat\beta \in \lambda \, \partial |\hat\beta|$.
+
+*Case 1: $\hat\beta > 0$.* Then $\partial |\hat\beta| = \{1\}$, so $z - \hat\beta = \lambda$, giving $\hat\beta = z - \lambda$. This is consistent with $\hat\beta > 0$ if and only if $z > \lambda$.
+
+*Case 2: $\hat\beta < 0$.* Then $\partial |\hat\beta| = \{-1\}$, so $z - \hat\beta = -\lambda$, giving $\hat\beta = z + \lambda$. Consistent with $\hat\beta < 0$ if and only if $z < -\lambda$.
+
+*Case 3: $\hat\beta = 0$.* Then $\partial |\hat\beta| = [-1, 1]$, so we need $z \in \lambda \cdot [-1, 1] = [-\lambda, \lambda]$, i.e., $|z| \le \lambda$.
+
+The three cases partition $\mathbb{R}$ and give a unique $\hat\beta$ for each $z$. Combining: $\hat\beta = S(z, \lambda)$.
+</TheoremBlock>
+
+The geometric content: for each coordinate, if the (rescaled) least-squares estimate $z_j$ is small in magnitude — bounded by $\lambda$ — the lasso sets $\hat\beta_j$ to exactly zero. Otherwise, the lasso shrinks $z_j$ toward zero by exactly $\lambda$ in absolute value. The "dead zone" $|z_j| \le \lambda$ is the source of sparsity; the constant shrinkage $|\hat\beta_j| = |z_j| - \lambda$ outside the dead zone is what biases active coefficients toward zero (the bias problem the debiased lasso fixes in §10).
+
+For non-orthogonal designs (the generic case), no closed form exists. But $S(z, \lambda)$ remains the algorithmic atom: it's the **proximal operator** of the L1 norm,
+
+$$
+\mathrm{prox}_{\eta \lambda \|\cdot\|_1}(\mathbf{z}) = \arg\min_{\boldsymbol\beta} \left\{ \frac{1}{2 \eta} \|\boldsymbol\beta - \mathbf{z}\|_2^2 + \lambda \|\boldsymbol\beta\|_1 \right\} = S(\mathbf{z}, \eta \lambda),
+$$
+
+applied componentwise. Coordinate descent (§3.2) and proximal gradient methods (§§3.3–3.4) repeatedly apply $S(\cdot, \cdot)$ inside their iterations.
+
+### §3.2 Coordinate descent
+
+Coordinate descent solves the lasso by cycling through coordinates and minimizing the objective over one coordinate at a time, keeping the others fixed. Each subproblem is univariate and admits a closed form via soft-thresholding.
+
+**Derivation.** Fix all coordinates except $\beta_j$. The lasso objective restricted to $\beta_j$ is
+
+$$
+F_j(\beta_j) = \frac{1}{2n} \|\mathbf{r}_{-j} - \mathbf{X}_j \beta_j\|_2^2 + \lambda |\beta_j| + (\text{terms not depending on } \beta_j),
+$$
+
+where $\mathbf{r}_{-j} = \mathbf{y} - \sum_{k \neq j} \mathbf{X}_k \beta_k$ is the **partial residual** with the $j$-th feature's contribution removed. Expand the squared loss:
+
+$$
+F_j(\beta_j) = \frac{c_j}{2} \beta_j^2 - z_j \beta_j + \lambda |\beta_j| + \mathrm{const}, \quad c_j := \|\mathbf{X}_j\|_2^2 / n, \quad z_j := \mathbf{X}_j^\top \mathbf{r}_{-j} / n.
+$$
+
+This is $\frac{c_j}{2}(\beta_j - z_j / c_j)^2 + \lambda |\beta_j| + \mathrm{const}'$ — the same univariate problem from §3.1 up to a rescaling. The KKT condition gives
+
+$$
+\hat\beta_j^{\text{new}} = \frac{S(z_j, \lambda)}{c_j} = \frac{1}{c_j} \cdot \mathrm{sign}(z_j) \cdot \max(|z_j| - \lambda, 0).
+$$
+
+**Coordinate descent algorithm.**
+1. Initialize $\boldsymbol\beta = \mathbf{0}$, $\mathbf{r} = \mathbf{y}$.
+2. For each $j = 1, 2, \dots, p$ (cyclically):
+   - Form the partial residual: $\tilde{\mathbf{r}} = \mathbf{r} + \mathbf{X}_j \beta_j$.
+   - Compute $z_j = \mathbf{X}_j^\top \tilde{\mathbf{r}} / n$ and $c_j = \|\mathbf{X}_j\|_2^2 / n$.
+   - Update $\beta_j^{\text{new}} = S(z_j, \lambda) / c_j$.
+   - Update the residual: $\mathbf{r} \leftarrow \mathbf{r} - \mathbf{X}_j (\beta_j^{\text{new}} - \beta_j)$, then $\beta_j \leftarrow \beta_j^{\text{new}}$.
+3. Repeat step 2 until $\|\boldsymbol\beta^{\text{old}} - \boldsymbol\beta^{\text{new}}\|$ falls below tolerance.
+
+**Why the residual update.** Storing $\mathbf{r}$ and updating it incrementally avoids re-computing $\mathbf{X} \boldsymbol\beta$ from scratch at each coordinate update. Each update costs $O(n)$ instead of $O(np)$, so a full cycle costs $O(np)$ — the same as one ISTA / FISTA iteration.
+
+**Convergence.** The lasso objective is the sum of a smooth strictly-convex (in $\mathbf{X} \boldsymbol\beta$) quadratic and a separable convex term $\lambda \sum_j |\beta_j|$. Tseng (2001) showed that block coordinate descent converges to a global minimum for any objective of this form (smooth + separable convex), with no rate guarantee in general but linear convergence under additional assumptions. In practice on lasso problems with continuous designs, coordinate descent is one of the fastest methods — Friedman, Hastie & Tibshirani (2010) report 10–100× speedups over LARS and proximal-gradient methods at typical $(n, p)$ scales. The `glmnet` package and scikit-learn's `Lasso` both use it as the default.
+
+**Warm starts along a $\lambda$ path.** Practical solvers compute the lasso path $\hat{\boldsymbol\beta}(\lambda)$ for a decreasing grid of $\lambda$ values, using the previous solution as a warm start at the next $\lambda$. The path is piecewise linear in $\lambda$ (Efron-Hastie-Johnstone-Tibshirani 2004), so a small step in $\lambda$ requires few coordinate-descent passes to converge — typically 5–20.
+
+### §3.3 ISTA: the proximal gradient method
+
+Coordinate descent works for the lasso because the L1 penalty is separable. For more general non-smooth penalties (group lasso, fused lasso, nuclear norm), we need a different framework. **Proximal gradient methods** generalize gradient descent to objectives of the form $F(\boldsymbol\beta) = f(\boldsymbol\beta) + g(\boldsymbol\beta)$, where $f$ is smooth and $g$ is non-smooth but admits a tractable proximal operator. For the lasso, $f(\boldsymbol\beta) = (1/2n) \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2$ and $g(\boldsymbol\beta) = \lambda \|\boldsymbol\beta\|_1$, with $\mathrm{prox}_{\eta g}(\mathbf{z}) = S(\mathbf{z}, \eta \lambda)$.
+
+The **iterative soft-thresholding algorithm (ISTA)** is the proximal-gradient iteration:
+
+$$
+\boldsymbol\beta^{k+1} = \mathrm{prox}_{\eta g}(\boldsymbol\beta^k - \eta \nabla f(\boldsymbol\beta^k)) = S\!\left( \boldsymbol\beta^k - \frac{\eta}{n} \mathbf{X}^\top (\mathbf{X} \boldsymbol\beta^k - \mathbf{y}), \; \eta \lambda \right),
+$$
+
+with a step size $\eta = 1/L$ where $L = \|\mathbf{X}\|_2^2 / n$ is the Lipschitz constant of $\nabla f$ (largest eigenvalue of $\mathbf{X}^\top \mathbf{X} / n$). Each iteration costs one matrix-vector multiply $\mathbf{X} \boldsymbol\beta^k$ and one $\mathbf{X}^\top \mathbf{r}$ — the same $O(np)$ as a coordinate-descent cycle.
+
+<TheoremBlock type="theorem" number={2} title="ISTA convergence rate">
+Let $L$ be the Lipschitz constant of $\nabla f$ and let $\boldsymbol\beta^*$ be a minimizer of $F = f + g$. The ISTA iterates $\{\boldsymbol\beta^k\}$ with step size $\eta = 1/L$ satisfy
+
+$$
+F(\boldsymbol\beta^k) - F(\boldsymbol\beta^*) \le \frac{L}{2k} \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|_2^2 \quad \text{for all } k \ge 1.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof has two ingredients: a per-step descent lemma and a telescoping argument.
+
+*Descent lemma (Beck-Teboulle 2009, Lemma 2.3).* For any $\boldsymbol\beta, \mathbf{y} \in \mathbb{R}^p$, the proximal-gradient step $T(\boldsymbol\beta) = \mathrm{prox}_{(1/L) g}(\boldsymbol\beta - (1/L) \nabla f(\boldsymbol\beta))$ satisfies
+
+$$
+F(T(\boldsymbol\beta)) - F(\mathbf{y}) \le \frac{L}{2} \|\boldsymbol\beta - \mathbf{y}\|_2^2 - \frac{L}{2} \|T(\boldsymbol\beta) - \mathbf{y}\|_2^2.
+$$
+
+The proof uses $L$-smoothness of $f$ ($f(T(\boldsymbol\beta)) \le f(\boldsymbol\beta) + \nabla f(\boldsymbol\beta)^\top (T(\boldsymbol\beta) - \boldsymbol\beta) + (L/2) \|T(\boldsymbol\beta) - \boldsymbol\beta\|^2$, the standard descent lemma) plus the variational characterization of the prox.
+
+*Telescope.* Apply the descent lemma at iterate $k$ with $\mathbf{y} = \boldsymbol\beta^*$:
+
+$$
+F(\boldsymbol\beta^{k+1}) - F^* \le \frac{L}{2} \|\boldsymbol\beta^k - \boldsymbol\beta^*\|_2^2 - \frac{L}{2} \|\boldsymbol\beta^{k+1} - \boldsymbol\beta^*\|_2^2.
+$$
+
+Sum from $k = 0$ to $K - 1$. The right side telescopes to $(L/2) \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|_2^2 - (L/2) \|\boldsymbol\beta^K - \boldsymbol\beta^*\|_2^2 \le (L/2) \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|_2^2$. The left side, using monotonicity of $F(\boldsymbol\beta^k)$ along the iteration (also from the descent lemma applied with $\mathbf{y} = \boldsymbol\beta^k$), is bounded below by $K \cdot (F(\boldsymbol\beta^K) - F^*)$. Dividing by $K$ gives the rate.
+</TheoremBlock>
+
+The $O(1/k)$ rate is "sublinear" — to halve the suboptimality $F(\boldsymbol\beta^k) - F^*$ requires doubling $k$. ISTA is simple and stable but slow.
+
+### §3.4 FISTA: Nesterov momentum and the $O(1/k^2)$ rate
+
+Beck-Teboulle (2009) showed that adding **Nesterov momentum** to ISTA accelerates the convergence rate from $O(1/k)$ to $O(1/k^2)$ — a quadratic improvement in iteration count for the same accuracy. The algorithm:
+
+> **FISTA.** Set $\boldsymbol\beta^0 = \boldsymbol\beta^{-1} = \mathbf{0}$, $t_1 = 1$. For $k = 1, 2, \dots$:
+> 1. $\mathbf{z}^k = \boldsymbol\beta^k + \frac{t_k - 1}{t_{k+1}} (\boldsymbol\beta^k - \boldsymbol\beta^{k-1})$ — momentum extrapolation.
+> 2. $\boldsymbol\beta^{k+1} = S\!\left( \mathbf{z}^k - \frac{1}{nL} \mathbf{X}^\top (\mathbf{X} \mathbf{z}^k - \mathbf{y}), \; \lambda / L \right)$ — proximal gradient step from $\mathbf{z}^k$, not $\boldsymbol\beta^k$.
+> 3. $t_{k+1} = (1 + \sqrt{1 + 4 t_k^2}) / 2$.
+
+The momentum coefficient $(t_k - 1)/t_{k+1}$ approaches $1$ as $k$ grows, giving the iteration a "running start" along the previous direction of motion.
+
+<TheoremBlock type="theorem" number={3} title="FISTA convergence rate (Beck-Teboulle 2009, Theorem 4.4)">
+With step size $1/L$, the FISTA iterates satisfy
+
+$$
+F(\boldsymbol\beta^k) - F(\boldsymbol\beta^*) \le \frac{2 L \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|_2^2}{(k+1)^2} \quad \text{for all } k \ge 1.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Define $\mathbf{u}^k = t_k \boldsymbol\beta^k - (t_k - 1) \boldsymbol\beta^{k-1}$ and the **Lyapunov function**
+
+$$
+v_k = \frac{2}{L} t_k^2 \big( F(\boldsymbol\beta^k) - F^* \big) + \|\mathbf{u}^k - \boldsymbol\beta^*\|_2^2.
+$$
+
+The proof has three steps.
+
+*Step 1 (Lyapunov lemma).* We show $v_{k+1} \le v_k$ for all $k \ge 1$, i.e., the Lyapunov function is non-increasing along FISTA iterations. Apply the proximal-gradient inequality (Beck-Teboulle Lemma 2.3, the same lemma used for ISTA but evaluated at the momentum point $\mathbf{z}^k$) at $\mathbf{z}^k$ with two choices of $\mathbf{y}$:
+
+$$
+\frac{2}{L} (F(\boldsymbol\beta^{k+1}) - F^*) \le \|\mathbf{z}^k - \boldsymbol\beta^*\|^2 - \|\boldsymbol\beta^{k+1} - \boldsymbol\beta^*\|^2 \quad (\text{with } \mathbf{y} = \boldsymbol\beta^*),
+$$
+
+$$
+\frac{2}{L} (F(\boldsymbol\beta^{k+1}) - F(\boldsymbol\beta^k)) \le \|\mathbf{z}^k - \boldsymbol\beta^k\|^2 - \|\boldsymbol\beta^{k+1} - \boldsymbol\beta^k\|^2 \quad (\text{with } \mathbf{y} = \boldsymbol\beta^k).
+$$
+
+Multiply the first inequality by $t_{k+1}$ and the second by $(t_{k+1} - 1)$ — using the FISTA recursion $t_{k+1}^2 - t_{k+1} = t_k^2$ — and add. After algebraic manipulation that uses the definition of $\mathbf{z}^k$ in terms of $\boldsymbol\beta^k$ and $\boldsymbol\beta^{k-1}$, the right side telescopes into $\|\mathbf{u}^k - \boldsymbol\beta^*\|^2 - \|\mathbf{u}^{k+1} - \boldsymbol\beta^*\|^2$, and the left side is $(2/L)[t_{k+1}^2 (F(\boldsymbol\beta^{k+1}) - F^*) - t_k^2 (F(\boldsymbol\beta^k) - F^*)]$. Rearranging gives $v_{k+1} \le v_k$.
+
+*Step 2 ($t_k$ lower bound).* By induction, $t_k \ge (k+1)/2$ for all $k \ge 1$. Base case $t_1 = 1 \ge 1$. Inductive step: $t_{k+1} = (1 + \sqrt{1 + 4 t_k^2})/2 \ge (1 + 2 t_k)/2 \ge (1 + (k+1))/2 = (k+2)/2$.
+
+*Step 3 (conclude).* Iterating Step 1 from $k = 1$ gives $v_k \le v_1$. Since $\boldsymbol\beta^0 = \boldsymbol\beta^{-1} = \mathbf{0}$ implies $\mathbf{u}^1 = t_1 \boldsymbol\beta^1 = \boldsymbol\beta^1$, and $\boldsymbol\beta^1$ is one ISTA step from $\boldsymbol\beta^0$, the bound $v_1 \le \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|^2$ follows from one application of the descent lemma (the same as in the ISTA proof). So $v_k \le \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|^2$ for all $k \ge 1$. Drop the non-negative $\|\mathbf{u}^k - \boldsymbol\beta^*\|^2$ term:
+
+$$
+\frac{2}{L} t_k^2 (F(\boldsymbol\beta^k) - F^*) \le v_k \le \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|^2.
+$$
+
+Combine with $t_k \ge (k+1)/2$ from Step 2:
+
+$$
+F(\boldsymbol\beta^k) - F^* \le \frac{L \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|^2}{2 t_k^2} \le \frac{2 L \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|^2}{(k+1)^2}.
+$$
+</TheoremBlock>
+
+A factor-of-$k$ improvement over ISTA: to reduce $F(\boldsymbol\beta^k) - F^*$ by a factor of 100, ISTA needs 100× more iterations while FISTA needs only 10×. The constant $2L \|\boldsymbol\beta^0 - \boldsymbol\beta^*\|^2$ is the same as the ISTA bound (modulo the factor of 4), so the asymptotic rate is the only source of difference — but it's a substantial one.
+
+**FISTA is not a descent method.** Unlike ISTA, $F(\boldsymbol\beta^k)$ is not monotonic along FISTA iterations — small "ripples" in $F(\boldsymbol\beta^k)$ are normal. A monotone variant (M-FISTA, Beck-Teboulle 2009 §5) accepts $\boldsymbol\beta^{k+1}$ only if $F(\boldsymbol\beta^{k+1}) \le F(\boldsymbol\beta^k)$, otherwise reuses $\boldsymbol\beta^k$. This trade-off — slightly worse worst-case constant for monotonicity — is rarely worth it in practice.
+
+<Figure
+  src="/images/topics/high-dimensional-regression/fig_03_01_solver_convergence.png"
+  alt="Log-log convergence trace: ISTA at slope -1, FISTA at slope -2, coordinate descent asymptotically linear after active-set stabilization."
+  caption="ISTA, FISTA, and coordinate descent on the §1 DGP at λ = λ_CV, 300 iterations each, with a high-precision FISTA reference (10000 iterations) for F*. Log-log axes: ISTA slope ≈ −1 (matching the O(1/k) rate from Theorem 3.2); FISTA slope ≈ −2 (O(1/k²) from Theorem 3.3); coordinate descent converges faster than either after the active set stabilizes — the lasso restricted to a fixed active set is a smooth strictly-convex quadratic, and CD converges linearly on those."
+/>
+
+### §3.5 Practical solver-choice notes
+
+When does each solver win? A field guide.
+
+**Coordinate descent (`sklearn.linear_model.Lasso`, `glmnet`).** Default for everything in the lasso family (lasso, elastic net, group lasso). Fastest in practice for $n, p \le 10^5$ at moderate sparsity. Warm starts along a $\lambda$ path are nearly free, which is why `LassoCV` is fast even with 100-fold path × 10-fold CV.
+
+**FISTA.** The right default for lasso variants where the L1 prox is easy but coordinate-by-coordinate updates are not — group lasso with overlapping groups, fused lasso, generalized-lasso-with-non-axis-aligned penalty, total-variation penalties. Also the right default when the design matrix is structured (e.g., a fast Fourier or wavelet transform) and matrix-vector products $\mathbf{X} \mathbf{v}$ can be computed in $O(n \log n)$ rather than $O(np)$ — coordinate descent breaks the structured-multiplication advantage by accessing one column at a time.
+
+**ISTA.** Pedagogically valuable, rarely the right algorithmic choice — FISTA dominates it at no extra implementation cost. Use ISTA only when the proof of correctness or the descent property is needed (some monotonicity-sensitive applications, e.g., in statistical guarantees that rely on objective decrease).
+
+**Specialized solvers we don't cover.** ADMM (Boyd et al. 2011) is the right tool for lasso variants with linear-equality-coupled penalties (e.g., the Dantzig selector). LARS (Efron-Hastie-Johnstone-Tibshirani 2004) computes the entire lasso path exactly in $O(np \min(n, p))$, which can beat coordinate descent at very small $p$ but loses badly at the high-dimensional scales we care about. Interior-point methods (CVXPY, `cvxopt`) work but are typically 100×+ slower than coordinate descent on lasso problems of any meaningful size.
+
+For everything in the rest of this topic — the §1 lasso fits, the LassoCV in §7, the elastic-net comparison in §8, the debiased-lasso pipeline in §10 — we use scikit-learn's coordinate descent. We hand-rolled FISTA above to demonstrate the $O(1/k^2)$ rate and to keep the algorithmic content visible.
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_03_01_solver_convergence.png"
