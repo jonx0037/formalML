@@ -372,6 +372,8 @@ import ExternalLink from '../../components/ui/ExternalLink.astro';
 import OlsOverfitsAtHighDim from '../../components/viz/OlsOverfitsAtHighDim.tsx';
 import RidgeVsLassoCoefBars from '../../components/viz/RidgeVsLassoCoefBars.tsx';
 import L1VsL2BallExplorer from '../../components/viz/L1VsL2BallExplorer.tsx';
+import LassoUCurve from '../../components/viz/LassoUCurve.tsx';
+import LassoSolutionPath from '../../components/viz/LassoSolutionPath.tsx';
 
 ## §1. From OLS to penalized regression
 
@@ -842,18 +844,103 @@ The lasso's central trade-off is between **bias** (from L1 shrinkage of active c
 
 The U-curve is the practical bridge between §3 (we can compute the lasso) and §5 (the oracle inequality bounds the bottom of the U). The solution path is what `LassoCV` (§7) and `LassoLarsIC` (§7) operate on when they pick a $\lambda$.
 
-*Section content in development. Includes the bias contribution from constant L1 shrinkage (the active-coefficient pathology), the variance reduction from sparsity adaptation (degrees-of-freedom $= |\hat A_\lambda|$ per Zou-Hastie-Tibshirani 2007), the U-curve numerical demonstration, $\lambda_{\max} = \|\mathbf{X}^\top \mathbf{y}/n\|_\infty$ in closed form, and Theorem 4.1 (piecewise linearity of the lasso path; Efron-Hastie-Johnstone-Tibshirani 2004).*
+### §4.1 The bias contribution from L1 shrinkage
+
+The lasso's shrinkage isn't soft and asymptotically vanishing the way a Bayesian Gaussian-prior posterior is — it's a **constant absolute shrinkage** that biases every active coefficient toward zero by approximately $\lambda$.
+
+**The orthogonal case makes this explicit.** From §3.1, with $\mathbf{X}^\top \mathbf{X} = n \mathbf{I}$ and $z_j = (\mathbf{X}^\top \mathbf{y} / n)_j$, the lasso solution is $\hat\beta_j = S(z_j, \lambda)$. Under the model $z_j \sim \mathcal{N}(\beta^*_j, \sigma^2 / n)$:
+
+- For "large signal" coordinates with $|\beta^*_j| \gg \lambda + \sigma/\sqrt{n}$: with high probability $|z_j| > \lambda$ and $\mathrm{sign}(z_j) = \mathrm{sign}(\beta^*_j)$, so $\hat\beta_j \approx z_j - \lambda \, \mathrm{sign}(\beta^*_j)$ and $\mathbb{E}[\hat\beta_j] \approx \beta^*_j - \lambda \, \mathrm{sign}(\beta^*_j)$. The bias is $-\lambda \, \mathrm{sign}(\beta^*_j)$ — constant magnitude, opposite sign to the true value, **independent of how large $\beta^*_j$ is**.
+- For "noise" coordinates with $\beta^*_j = 0$: by the symmetry $z_j \sim \mathcal{N}(0, \sigma^2/n)$, $\mathbb{E}[S(z_j, \lambda)] = 0$. No bias, but a small variance contribution from the false positives where $|z_j| > \lambda$ by chance.
+
+For general (non-orthogonal) designs, the calculation is more involved but the qualitative picture survives. Conditioning on the lasso correctly identifying the active set $S$, the active coefficients satisfy
+
+$$
+\hat{\boldsymbol\beta}_S = \hat{\boldsymbol\beta}_S^{\text{OLS-on-}S} - \lambda \big(\mathbf{X}_S^\top \mathbf{X}_S / n\big)^{-1} \mathrm{sign}(\hat{\boldsymbol\beta}_S),
+$$
+
+where $\hat{\boldsymbol\beta}_S^{\text{OLS-on-}S} = (\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \mathbf{X}_S^\top \mathbf{y}$ is the OLS estimator restricted to $S$. The shrinkage correction $-\lambda (\mathbf{X}_S^\top \mathbf{X}_S / n)^{-1} \mathrm{sign}(\cdot)$ scales linearly in $\lambda$; its magnitude depends on the conditioning of $\mathbf{X}_S^\top \mathbf{X}_S / n$ but is generally of order $\lambda$.
+
+**This bias is the price of sparsity.** Two later sections fix it for different reasons:
+
+- **The adaptive lasso (Zou 2006, §8.3)** replaces the constant shrinkage $\lambda$ with feature-specific weights $\lambda \cdot w_j$ where $w_j = 1 / |\hat\beta_j^{\text{init}}|$ for some initial estimator. Coordinates with large $|\hat\beta_j^{\text{init}}|$ get small $w_j$ and small shrinkage, so the active-coefficient bias decays to zero asymptotically.
+- **The debiased lasso (§10.2)** explicitly subtracts off the shrinkage bias via a one-step Newton correction $\hat{\boldsymbol\beta}^{\text{db}} = \hat{\boldsymbol\beta} + (1/n) \hat{\mathbf{M}} \mathbf{X}^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta})$, producing $\sqrt{n}$-consistent normal estimates of individual coefficients suitable for hypothesis testing and confidence intervals.
+
+For *prediction* the bias isn't catastrophic — the U-curve in §4.3 shows that the bias-variance trade-off is favorable at well-chosen $\lambda$. For *inference* it's the central problem of the topic, and §10 is where it gets resolved.
+
+### §4.2 Variance from sparsity adaptation
+
+In contrast to the bias, the lasso's **variance** is small — much smaller than the variance of OLS would be at the same $p$, when OLS is even defined.
+
+The cleanest way to see this: OLS variance scales with the number of features, $\mathbb{V}\mathrm{ar}(\hat{\boldsymbol\beta}^{\text{OLS}}) = \sigma^2 (\mathbf{X}^\top \mathbf{X})^{-1}$ has trace $\sigma^2 \, \mathrm{tr}((\mathbf{X}^\top \mathbf{X})^{-1})$, which scales as $\sigma^2 p / n$ for a well-conditioned design. As $p \to n$ from below, the variance blows up; at $p > n$, OLS is undefined and the min-norm interpolant has its own pathologies.
+
+The lasso, by zeroing out coordinates with small $|z_j|$, effectively reduces the model dimension from $p$ to the active-set size $|\hat A_\lambda|$. Heuristically — and this is made precise by the **degrees of freedom of the lasso** result (Zou-Hastie-Tibshirani 2007): $\mathrm{df}(\hat{\boldsymbol\beta}^{\text{lasso}}(\lambda)) = \mathbb{E}[|\hat A_\lambda|]$, the expected size of the active set. So the lasso's prediction variance scales as $\sigma^2 \, \mathbb{E}[|\hat A_\lambda|] / n$, which for a well-chosen $\lambda$ is on the order of $\sigma^2 s / n$ — proportional to the **true** sparsity, not to $p$.
+
+This is the **sparsity-adaptation property**: the lasso pays a variance cost proportional to the model size it actually uses, regardless of how many candidate features were available to start with. It's the central reason the lasso works in the $p \gg n$ regime where OLS doesn't.
+
+For DGP-1 with $s = 10$, $\sigma = 0.5$, $n = 200$: the lasso variance is roughly $\sigma^2 s / n = 0.0125$, while OLS at $p = 199$ has variance roughly $\sigma^2 \cdot 199 / 200 \approx 0.249$ — a 20× advantage, before counting the bias.
+
+### §4.3 The U-curve as $\lambda$ varies
+
+The bias-variance pieces combine into the canonical U-shaped prediction-risk curve as a function of $\lambda$. Define the **prediction risk** at test point $\mathbf{x}^*$:
+
+$$
+R(\lambda; \mathbf{x}^*) := \mathbb{E}\big[ (\mathbf{x}^{*\top} \hat{\boldsymbol\beta}(\lambda) - \mathbf{x}^{*\top} \boldsymbol\beta^*)^2 \big]
+= \underbrace{\big(\mathbb{E}[\mathbf{x}^{*\top} \hat{\boldsymbol\beta}(\lambda)] - \mathbf{x}^{*\top} \boldsymbol\beta^*\big)^2}_{\text{bias}^2(\mathbf{x}^*; \lambda)} + \underbrace{\mathbb{V}\mathrm{ar}(\mathbf{x}^{*\top} \hat{\boldsymbol\beta}(\lambda))}_{\text{variance}(\mathbf{x}^*; \lambda)},
+$$
+
+with the expectation over training-set draws (test point $\mathbf{x}^*$ fixed). Average over $\mathbf{x}^*$ in a test set to get the **integrated prediction risk** $\mathrm{IPE}(\lambda) = \mathbb{E}_{\mathbf{x}^*}[R(\lambda; \mathbf{x}^*)]$.
+
+The U-curve has two boundaries:
+
+- **At $\lambda = 0$** (OLS / min-norm OLS at $p > n$): bias is zero (or near-zero for min-norm) but variance dominates and is large or undefined.
+- **At $\lambda = \lambda_{\max}$** (defined below): variance is zero — $\hat{\boldsymbol\beta}(\lambda) = \mathbf{0}$ deterministically — but bias equals the full prediction signal $\mathbf{x}^{*\top} \boldsymbol\beta^*$, so bias² is large.
+
+Between these endpoints the curve is U-shaped, with an optimal $\lambda^*$ that minimizes IPE. The §5 oracle inequality bounds the value of IPE at this optimum from above by $C \sigma^2 s \log(p) / n$.
+
+**$\lambda_{\max}$ in closed form.** From the KKT conditions of §2.4: $\hat{\boldsymbol\beta} = \mathbf{0}$ is a lasso solution if and only if $|(\mathbf{X}^\top \mathbf{y} / n)_j| \le \lambda$ for all $j$ — i.e., the inactive condition holds at every coordinate. So
+
+$$
+\lambda_{\max} = \left\| \frac{\mathbf{X}^\top \mathbf{y}}{n} \right\|_\infty = \max_j \left| \frac{\mathbf{X}_j^\top \mathbf{y}}{n} \right|.
+$$
+
+For $\lambda \ge \lambda_{\max}$, the lasso solution is identically zero. For $\lambda$ just below $\lambda_{\max}$, exactly one coordinate becomes active (the one achieving the maximum) — this is the start of the lasso path described next. On DGP-1 with seed 42, $\lambda_{\max} \approx 1.04$, and $\lambda_{\text{CV}} \approx 0.06$ sits two orders of magnitude smaller — well into the path's interesting region.
+
+The interactive viz below shows empirical bias², variance, and total MSE on a held-out test set as a function of $\lambda$, computed by Monte Carlo over $B$ replicate draws of DGP-1. Bias² grows monotonically with $\lambda$ (constant shrinkage hurts more when applied harder); variance decays monotonically with $\lambda$ (heavier penalization shrinks the active set); their sum traces a U-curve with minimum near $\lambda_{\text{CV}}$. The minimum of the empirical U-curve coincides — within MC noise — with the value of $\lambda$ that `LassoCV` selects automatically (§7).
+
+<LassoUCurve client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_04_01_u_curve.png"
   alt="Empirical bias-squared, variance, and total MSE on a held-out test set as a function of lambda on DGP-1, traced over 50 Monte Carlo replicates."
-  caption="Empirical bias², variance, and total test-set MSE as a function of λ on DGP-1, computed by Monte Carlo over B = 50 replicate draws. Bias² grows monotonically with λ (constant shrinkage hurts more when applied harder); variance decays monotonically with λ (heavier penalization shrinks the active set); their sum traces the canonical U-curve. The minimum of the empirical U-curve coincides — within MC noise — with the value of λ that LassoCV selects automatically (§7)."
+  caption="Empirical bias², variance, and total test-set MSE as a function of λ on DGP-1, computed by Monte Carlo over B = 50 replicate draws. Bias² grows monotonically with λ (constant shrinkage hurts more when applied harder); variance decays monotonically with λ (heavier penalization shrinks the active set); their sum traces the canonical U-curve. The minimum of the empirical U-curve coincides — within MC noise — with the value of λ that LassoCV selects automatically (§7). (Static fallback at p = 500; the interactive viz above runs at p = 200 for in-browser tractability.)"
 />
+
+### §4.4 The lasso solution path is piecewise linear
+
+Define the **lasso solution path** as the function $\lambda \mapsto \hat{\boldsymbol\beta}(\lambda)$ for $\lambda \in [0, \lambda_{\max}]$. The path has two structural properties that make it both computationally tractable and visually informative.
+
+<TheoremBlock type="theorem" number={1} title="Piecewise linearity of the lasso path (Efron-Hastie-Johnstone-Tibshirani 2004)">
+The lasso solution path $\hat{\boldsymbol\beta}(\lambda)$ is a continuous piecewise-linear function of $\lambda$. There is a finite sequence of **knots** $\lambda_{\max} = \lambda_{(0)} > \lambda_{(1)} > \cdots > \lambda_{(K)} = 0$ such that on each interval $[\lambda_{(k+1)}, \lambda_{(k)}]$, the active set $\hat A_\lambda$ is constant and $\hat{\boldsymbol\beta}(\lambda)$ is linear in $\lambda$. The knots are exactly the values of $\lambda$ at which the active set changes — a coordinate enters or leaves $\hat A$.
+</TheoremBlock>
+
+The proof is a direct calculation from the KKT conditions: between knots, the active set is fixed, the active KKT condition $\frac{1}{n} \mathbf{X}_j^\top (\mathbf{y} - \mathbf{X} \hat{\boldsymbol\beta}) = \lambda \, \mathrm{sign}(\hat\beta_j)$ for $j \in \hat A$ is a linear system in $\hat{\boldsymbol\beta}_{\hat A}$ with $\lambda$ on the right-hand side, so the solution is linear in $\lambda$. The LARS algorithm (Efron et al. 2004) traces this piecewise-linear path knot-by-knot in $O(np \min(n, p))$ total time — though for moderate-to-large $p$, coordinate descent on a $\lambda$-grid (§3.2) is faster in practice.
+
+**Reading the path.** Plotting $\hat\beta_j(\lambda)$ vs $\log \lambda$ for all $j$ shows which features the lasso selects in what order and at what penalty level. As $\lambda$ decreases from $\lambda_{\max}$:
+
+- The first coordinate to enter is $\arg\max_j |(\mathbf{X}^\top \mathbf{y} / n)_j|$ — the feature most correlated with the response.
+- Subsequent coordinates enter at successively smaller $\lambda$ values, in roughly the order of their importance.
+- At $\lambda = 0$ the path reaches OLS (in the $p \le n$ case) or the min-norm OLS interpolant (in $p > n$).
+- A coordinate can also **leave** the active set as $\lambda$ decreases (coefficient passes through zero) — uncommon in continuous designs but possible.
+
+The viz below shows the lasso solution path on DGP-1: $\hat\beta_j(\lambda)$ vs $\log \lambda$ for all 500 coordinates, with the 10 true active coordinates plotted in black and the 490 inactive coordinates in light gray. The vertical line at $\lambda_{\text{CV}}$ marks the cross-validation-selected operating point. The reader sees that the true active features are consistently the first to enter the path as $\lambda$ decreases, and that at $\lambda_{\text{CV}}$ the active set is a tight superset of the true $S$ — most of the gray noise coefficients are still at zero.
+
+<LassoSolutionPath client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_04_02_solution_path.png"
   alt="Lasso solution path on DGP-1: coefficient paths beta_j(lambda) versus log lambda, with active and inactive coordinates color-coded."
-  caption="The lasso solution path on DGP-1: β̂ⱼ(λ) vs log λ for all 500 coordinates. The 10 true active coordinates are plotted in black; the 490 inactive coordinates in light gray. Vertical line marks λ_CV. The true active features are consistently the first to enter the path as λ decreases; at λ_CV the active set is a tight superset of the true S."
+  caption="The lasso solution path on DGP-1: β̂ⱼ(λ) vs log λ for all 500 coordinates. The 10 true active coordinates are plotted in black; the 490 inactive coordinates in light gray. Vertical line marks λ_CV. The true active features are consistently the first to enter the path as λ decreases; at λ_CV the active set is a tight superset of the true S. (Static fallback at p = 500; the interactive viz above runs at p = 200 for in-browser tractability.)"
 />
 
 ## §5. The lasso oracle inequality

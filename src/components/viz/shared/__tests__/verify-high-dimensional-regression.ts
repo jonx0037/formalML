@@ -20,6 +20,13 @@
 // =============================================================================
 
 import { softThreshold, softThresholdScalar } from '../proximalUtils';
+import {
+  generateDgp1,
+  lambdaMax,
+  lassoIsta,
+  operatorNorm,
+  predictMse,
+} from '../high-dim-regression';
 
 // -----------------------------------------------------------------------------
 // Test plumbing (mirrors verify-local-regression.ts conventions)
@@ -107,7 +114,95 @@ console.log('\n[2] softThresholdScalar — componentwise agreement with softThre
 }
 
 // -----------------------------------------------------------------------------
-// [3-15] Placeholder slots — populated as viz components ship.
+// Test 3: DGP-1 generator produces deterministic output for a fixed seed.
+// -----------------------------------------------------------------------------
+
+console.log('\n[3] generateDgp1 — deterministic + correct shape');
+
+{
+  const opts = { n: 50, p: 30, s: 5, sigma: 0.5, rho: 0.5, seed: 42 };
+  const a = generateDgp1(opts);
+  const b = generateDgp1(opts);
+  // Determinism.
+  let maxGap = 0;
+  for (let i = 0; i < opts.n; i++) {
+    maxGap = Math.max(maxGap, Math.abs(a.y[i] - b.y[i]));
+    for (let j = 0; j < opts.p; j++) maxGap = Math.max(maxGap, Math.abs(a.X[i][j] - b.X[i][j]));
+  }
+  ok('generateDgp1 deterministic', maxGap < 1e-12, `max gap = ${maxGap.toExponential(3)}`);
+  // Shape.
+  ok('generateDgp1 X shape', a.X.length === opts.n && a.X[0].length === opts.p, `n × p = ${a.X.length} × ${a.X[0].length}`);
+  ok('generateDgp1 y length', a.y.length === opts.n, `length = ${a.y.length}`);
+  // Sparsity of betaStar.
+  let nzBeta = 0;
+  for (let j = 0; j < opts.p; j++) if (a.betaStar[j] !== 0) nzBeta++;
+  ok('generateDgp1 betaStar sparsity', nzBeta === opts.s, `${nzBeta} nonzero (expected ${opts.s})`);
+}
+
+// -----------------------------------------------------------------------------
+// Test 4: lambdaMax = ‖Xᵀy/n‖_∞ closed form, verified by direct check that the
+// all-zero β̂ satisfies KKT at λ = lambdaMax (i.e., max(|grad|) ≤ λ).
+// -----------------------------------------------------------------------------
+
+console.log('\n[4] lambdaMax — KKT all-zero validity');
+
+{
+  const opts = { n: 100, p: 50, s: 5, sigma: 0.5, rho: 0.5, seed: 7 };
+  const sample = generateDgp1(opts);
+  const lMax = lambdaMax(sample.X, sample.y);
+  // |Xᵀy/n|_max = lMax exactly.
+  let observedMax = 0;
+  for (let j = 0; j < opts.p; j++) {
+    let xtyj = 0;
+    for (let i = 0; i < opts.n; i++) xtyj += sample.X[i][j] * sample.y[i];
+    observedMax = Math.max(observedMax, Math.abs(xtyj / opts.n));
+  }
+  approxEq('lambdaMax matches ‖Xᵀy/n‖_∞', lMax, observedMax, 1e-12, 'closed form');
+  ok('lambdaMax positive', lMax > 0, `lMax = ${lMax.toFixed(4)}`);
+}
+
+// -----------------------------------------------------------------------------
+// Test 5: lassoIsta at λ = lambdaMax produces β̂ = 0 (within ISTA convergence
+// tolerance — the all-zero vector is the unique minimizer at λ = lambdaMax).
+// -----------------------------------------------------------------------------
+
+console.log('\n[5] lassoIsta at λ_max — all-zero solution');
+
+{
+  const opts = { n: 100, p: 50, s: 5, sigma: 0.5, rho: 0.5, seed: 7 };
+  const sample = generateDgp1(opts);
+  const lMax = lambdaMax(sample.X, sample.y);
+  const L = operatorNorm(sample.X);
+  // ISTA at exactly λ_max: should produce essentially zero (KKT inactive
+  // condition is met everywhere with equality at one coord, which gives β̂ = 0).
+  const beta = lassoIsta(sample.X, sample.y, lMax, L, 200);
+  let maxAbs = 0;
+  for (let j = 0; j < opts.p; j++) maxAbs = Math.max(maxAbs, Math.abs(beta[j]));
+  ok('lassoIsta(λ_max) ≈ 0', maxAbs < 0.05, `max |β̂_j| = ${maxAbs.toFixed(4)} (loose tol; ISTA convergence)`);
+}
+
+// -----------------------------------------------------------------------------
+// Test 6: lassoIsta sparsity at moderate λ — at λ between 0.5·λ_max and 0.7·λ_max
+// the active-set size should be ≤ s + a few false-positives. This is the
+// substantive sparsity check that drives every viz in the topic.
+// -----------------------------------------------------------------------------
+
+console.log('\n[6] lassoIsta — sparsity at moderate λ');
+
+{
+  const opts = { n: 100, p: 50, s: 5, sigma: 0.5, rho: 0.5, seed: 7 };
+  const sample = generateDgp1(opts);
+  const lMax = lambdaMax(sample.X, sample.y);
+  const L = operatorNorm(sample.X);
+  const lambda = 0.6 * lMax;
+  const beta = lassoIsta(sample.X, sample.y, lambda, L, 200);
+  let nz = 0;
+  for (let j = 0; j < opts.p; j++) if (Math.abs(beta[j]) > 0.01) nz++;
+  ok('lassoIsta(0.6·λ_max) sparsity bound', nz <= opts.s + 3, `${nz} nonzero coords (expected ≤ ${opts.s + 3} = s + 3 false positives)`);
+}
+
+// -----------------------------------------------------------------------------
+// [7-15] Placeholder slots — populated as viz components ship.
 // Each new viz adds 1-3 numerical-anchor rows verified against the notebook
 // printed cell outputs. Anchor list from the plan's Step 1 table:
 //   3.  LassoCV-selected λ on §1 toy ≈ 0.06 (±0.005)        — RidgeVsLassoCoefBars
