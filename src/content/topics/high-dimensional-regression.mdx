@@ -1573,7 +1573,119 @@ Figure 8.2 shows the adaptive lasso vs vanilla lasso on the active-coordinate es
 
 The section is text-heavy and relatively short — there are no new theorems beyond §§5–6, just structural unpacking. The payoff is a cleaner picture of what makes a "good" design for the lasso and what doesn't, useful for diagnosing real-data failures.
 
-*Section content in development. Includes Definition 9.1 (RIP; Candès-Tao 2005), Proposition 9.1 (RIP $\Rightarrow$ RE), Lemma 9.1 (sub-Gaussian design concentration; Vershynin 2018), Theorem 9.1 (RE for sub-Gaussian designs; Raskutti-Wainwright-Yu 2010), and the diagnostic toolkit (§9.4) for spotting design pathologies in practice. No interactive viz — the geometry deepens earlier conceptual material rather than introducing new content.*
+### §9.1 The restricted isometry property (RIP)
+
+The **restricted isometry property** was introduced by Candès-Tao (2005) in the compressed-sensing literature, predating Bickel-Ritov-Tsybakov's RE by a few years. It's a *uniform* version of RE: instead of asking that the design preserve geometry on a particular cone $\mathcal{C}(S, c_0)$, it asks that the design act approximately like an isometry on *all* $s$-sparse vectors.
+
+<TheoremBlock type="definition" number={1} title="Restricted isometry property (Candès-Tao 2005)">
+The matrix $\mathbf{X}$ satisfies the **restricted isometry property of order $s$** with constant $\delta_s \in (0, 1)$ if for every vector $\mathbf{v} \in \mathbb{R}^p$ with $\|\mathbf{v}\|_0 \le s$,
+
+$$
+(1 - \delta_s) \|\mathbf{v}\|_2^2 \le \frac{1}{n} \|\mathbf{X} \mathbf{v}\|_2^2 \le (1 + \delta_s) \|\mathbf{v}\|_2^2.
+$$
+
+The smallest such $\delta_s$ is the **restricted isometry constant**.
+</TheoremBlock>
+
+In words: $\mathbf{X}$ (with the $1/\sqrt n$ scaling) acts almost like an isometry on $s$-sparse vectors — the squared norm $\|\mathbf{X}\mathbf{v}\|^2 / n$ approximates the squared norm $\|\mathbf{v}\|^2$ to within a multiplicative factor of $1 \pm \delta_s$.
+
+**Why uniform sparsity matters.** The RE condition (§5.4) is keyed to a specific support $S$ and sign pattern $\mathbf{s}^*_S$ — it gives a lower bound on $\|\mathbf{X} \boldsymbol\delta\|^2 / n$ for $\boldsymbol\delta$ in the cone $\mathcal{C}(S, c_0)$. Different $S$ give different cones. RIP, by contrast, is a *single* condition that holds simultaneously for every choice of $S$ with $|S| \le s$ — uniformly across the combinatorial $\binom{p}{s}$ possibilities. This makes RIP much stronger than RE for any single $S$, but also much harder to verify.
+
+**Compressed-sensing origin.** The compressed-sensing problem asks: given a known measurement matrix $\mathbf{X} \in \mathbb{R}^{n \times p}$ (with $n \ll p$) and observed measurements $\mathbf{y} = \mathbf{X} \boldsymbol\beta^*$ of an *unknown* sparse signal $\boldsymbol\beta^*$, recover $\boldsymbol\beta^*$ exactly. The solution is L1 minimization:
+
+$$
+\hat{\boldsymbol\beta} = \arg\min_{\boldsymbol\beta} \|\boldsymbol\beta\|_1 \quad \text{subject to } \mathbf{X} \boldsymbol\beta = \mathbf{y}.
+$$
+
+This is the lasso in the limit $\lambda \to 0$ with the constraint replaced by exact equality. Candès-Tao (2005) showed that if $\delta_{2s} < \sqrt{2} - 1 \approx 0.414$, the L1 minimizer recovers $\boldsymbol\beta^*$ exactly. The lasso's noisy-version recovery results (§§5–6) inherit the geometric content of RIP, weakened to the more flexible RE.
+
+**When does RIP hold?** For random Gaussian designs with iid $\mathcal{N}(0, 1/n)$ entries (so $\mathbb{E}[\|\mathbf{X}_j\|^2] = 1$): RIP of order $s$ with constant $\delta$ holds with high probability provided
+
+$$
+n \gtrsim \frac{s \log(p/s)}{\delta^2}.
+$$
+
+Same scaling for sub-Gaussian random designs (Baraniuk-Davenport-DeVore-Wakin 2008). For *deterministic* designs, RIP is generally hard to verify — checking $\delta_s < c$ requires examining all $\binom{p}{s}$ sparse subsets, which is computationally intractable.
+
+### §9.2 RIP $\Rightarrow$ RE: the implication chain
+
+If a design satisfies RIP with a small constant, it automatically satisfies RE. The implication is straightforward but worth tracing.
+
+<TheoremBlock type="proposition" number={1} title="RIP implies RE">
+If $\mathbf{X}$ satisfies RIP of order $2s$ with constant $\delta_{2s} < 1/(1 + 2c_0)$, then $\mathrm{RE}(s, c_0)$ holds with constant $\kappa^2 \ge 1 - \delta_{2s}(1 + 2c_0)$.
+</TheoremBlock>
+
+**Proof sketch.** Pick any $\boldsymbol\delta \in \mathcal{C}(S, c_0)$ with $|S| = s$. We need $\|\mathbf{X}\boldsymbol\delta\|^2 / n \ge \kappa^2 \|\boldsymbol\delta_S\|^2$.
+
+Decompose $\boldsymbol\delta_{S^c}$ by sorting its entries by magnitude into blocks of size $s$: let $T_1$ be the top-$s$ coordinates of $\boldsymbol\delta_{S^c}$ in absolute value, $T_2$ the next $s$, and so on. Let $T_0 = S$. Then $\boldsymbol\delta = \sum_k \boldsymbol\delta_{T_k}$ with $|T_k| \le s$ for $k \ge 0$, so each $\boldsymbol\delta_{T_k}$ is $s$-sparse and we can apply RIP to it.
+
+The cone condition $\|\boldsymbol\delta_{S^c}\|_1 \le c_0 \|\boldsymbol\delta_S\|_1$ controls the L1-mass of $\boldsymbol\delta$ outside $S$, which (by sorting and the standard "top-$s$ approximation" argument) controls the L2-mass of the tail blocks $\sum_{k \ge 2} \|\boldsymbol\delta_{T_k}\|_2 \le c_0 \|\boldsymbol\delta_S\|_2$.
+
+Then by the triangle inequality applied to $\mathbf{X}\boldsymbol\delta = \mathbf{X}\boldsymbol\delta_{T_0} + \mathbf{X}\boldsymbol\delta_{T_1} + \sum_{k \ge 2} \mathbf{X}\boldsymbol\delta_{T_k}$, and using RIP on each $\boldsymbol\delta_{T_k}$,
+
+$$
+\frac{\|\mathbf{X}\boldsymbol\delta\|}{\sqrt{n}} \ge \frac{\|\mathbf{X}(\boldsymbol\delta_{T_0} + \boldsymbol\delta_{T_1})\|}{\sqrt n} - \sum_{k \ge 2} \frac{\|\mathbf{X}\boldsymbol\delta_{T_k}\|}{\sqrt n} \ge \sqrt{1 - \delta_{2s}} \|\boldsymbol\delta_{T_0 \cup T_1}\| - \sqrt{1 + \delta_s} \cdot c_0 \|\boldsymbol\delta_S\|.
+$$
+
+Squaring and simplifying gives RE with $\kappa^2 = 1 - \delta_{2s}(1 + 2c_0)$. The full proof has more careful constants; van de Geer-Bühlmann (2009) and Wainwright (2019, §11.2) give the polished version. $\blacksquare$
+
+**The reverse implication does not hold.** RE is strictly weaker than RIP. Many designs satisfy RE without satisfying RIP — most importantly, random Gaussian designs with non-identity covariance, where the columns are correlated and the uniform isometry property fails. RE for these designs comes from Raskutti-Wainwright-Yu (2010), who avoid going through RIP entirely.
+
+So in practice: if your design is "compressed-sensing-style" (random Gaussian with iid entries, designed for sparse recovery), RIP is the right framework. If your design is "statistics-style" (random with population covariance, real-world features), RE is the right framework. The lasso oracle inequality holds under either, but the proofs and constants differ.
+
+### §9.3 Sub-Gaussian designs and concentration
+
+The §5.5 deviation step controlled $\|\mathbf{X}^\top \boldsymbol\varepsilon / n\|_\infty$ via sub-Gaussian concentration on the *noise* $\boldsymbol\varepsilon$. For random *designs* — when $\mathbf{X}$ itself has random entries — a parallel concentration result controls how the empirical Gram matrix $\mathbf{X}^\top \mathbf{X} / n$ approximates the population covariance $\boldsymbol\Sigma$.
+
+<TheoremBlock type="lemma" number={1} title="Sub-Gaussian design concentration (Vershynin 2018, Theorem 4.6.1)">
+Let $\mathbf{X}$ have iid sub-Gaussian rows with mean zero and population covariance $\boldsymbol\Sigma$. With probability at least $1 - 2 \exp(-c n)$,
+
+$$
+\left\| \frac{\mathbf{X}^\top \mathbf{X}}{n} - \boldsymbol\Sigma \right\|_{\text{op}} \le C \left( \sqrt{\frac{p}{n}} + \frac{p}{n} \right) \cdot \|\boldsymbol\Sigma\|_{\text{op}},
+$$
+
+where the constants depend on the sub-Gaussian parameter.
+</TheoremBlock>
+
+**Implications.** For $n \gg p$, the empirical Gram matrix concentrates tightly around $\boldsymbol\Sigma$, and any spectral property of $\boldsymbol\Sigma$ (eigenvalues, condition number, RE constant) transfers to $\mathbf{X}^\top \mathbf{X}/n$ with high probability. For $n \asymp p$, the concentration is loose ($\sqrt{p/n} = O(1)$), and individual eigenvalues of $\mathbf{X}^\top \mathbf{X}/n$ can drift substantially from those of $\boldsymbol\Sigma$ — the empirical Gram is rank-deficient when $n < p$, so the smallest eigenvalue is exactly zero regardless of $\boldsymbol\Sigma$.
+
+For the lasso, the relevant concentration is the **restricted** version: rather than controlling the full operator norm, we need $\inf_{\boldsymbol\delta \in \mathcal{C}(S, c_0)} \|\mathbf{X}\boldsymbol\delta\|^2 / (n \|\boldsymbol\delta_S\|^2) \ge \kappa^2$ to inherit from $\inf_{\boldsymbol\delta \in \mathcal{C}(S, c_0)} \boldsymbol\delta^\top \boldsymbol\Sigma \boldsymbol\delta / \|\boldsymbol\delta_S\|^2 \ge \kappa_0^2$.
+
+<TheoremBlock type="theorem" number={1} title="RE for sub-Gaussian designs (Raskutti-Wainwright-Yu 2010, simplified)">
+Let $\mathbf{X}$ have iid sub-Gaussian rows with population covariance $\boldsymbol\Sigma$ satisfying $\lambda_{\min}(\boldsymbol\Sigma) \ge \kappa_0^2 > 0$. If $n \ge C s \log(p)$ for a sufficiently large constant $C$ depending on $\kappa_0$ and the sub-Gaussian parameter, then with probability $\ge 1 - c_1 \exp(-c_2 n)$, the design satisfies $\mathrm{RE}(s, 3)$ with constant $\kappa^2 \ge \kappa_0^2 / 8$.
+</TheoremBlock>
+
+So the population condition $\lambda_{\min}(\boldsymbol\Sigma) > 0$ — the population covariance is positive definite — combined with the sample-size scaling $n \ge C s \log(p)$ gives the sample-level RE condition the lasso needs. This is the standard "high-dimensional probability" path from a population-level assumption to a sample-level condition. The proof uses a covering argument on the cone $\mathcal{C}(S, c_0)$, plus a uniform deviation bound on $\boldsymbol\delta^\top \mathbf{X}^\top \mathbf{X} \boldsymbol\delta / n$ for $\boldsymbol\delta$ in the cone.
+
+For DGP-1 with $\boldsymbol\Sigma_{jk} = 0.5^{|j - k|}$, $\lambda_{\min}(\boldsymbol\Sigma) \to (1 - 0.5)/(1 + 0.5) = 1/3$ as $p \to \infty$, so RE holds with $\kappa^2 \approx 1/3 / 8 \approx 0.04$ (the constant is loose; the empirical RE is much better). The sample-size requirement $n \ge C s \log(p) = C \cdot 10 \cdot \log(500) \approx 60 C$ is satisfied at $n = 200$ for any reasonable $C$.
+
+### §9.4 When the conditions fail in practice
+
+The lasso's theoretical guarantees require RE (for prediction) or IC (for support recovery). When these fail, the lasso behaves badly in predictable ways. Three common failure modes:
+
+**Highly correlated features.** When two features are nearly identical (correlation $\rho \to 1$), the irrepresentable condition fails first (the IC quantity grows linearly in $\rho/(1-\rho)$ for AR(1) Toeplitz; see §6.2). RE degrades more slowly but eventually fails too. The lasso's behavior under high correlation:
+
+- *Support recovery:* lasso may flip arbitrarily between which correlated feature it selects across resamples. This is the §6.1 stability issue.
+- *Prediction:* surprisingly robust — the lasso's prediction at $\mathbf{x}^*$ is approximately the same whether it selected feature $j$ or feature $k$ (the two are correlated, so $\mathbf{x}^*_j \approx \mathbf{x}^*_k$). The §5 oracle inequality's prediction-risk bound holds as long as RE holds, even when IC fails.
+
+The remedies: elastic net (§8.2) for coordinated selection of correlated groups; adaptive lasso (§8.3) for sign-consistency under weaker conditions; or post-selection refit (OLS on the lasso-selected support) for unbiased coefficient estimates.
+
+**Deterministic / structured designs.** Designs with deterministic structure — Vandermonde matrices for polynomial features, Fourier bases, wavelet dictionaries — typically satisfy RE only under specific column-sampling protocols. RIP is even harder to verify deterministically; the gap between provably RIP-bounded designs (a small set of explicit constructions) and the much larger set of designs that work empirically is one of the open problems in compressed sensing.
+
+For practical applications, the lasso is usually applied to designs that are "random-Gaussian-like" enough that RE holds with high probability, even if a formal proof is unavailable. Empirical diagnostics (cross-validated stability of the active set; condition number of $\mathbf{X}_S^\top \mathbf{X}_S$ on the lasso-selected support) substitute for rigorous condition checking.
+
+**Adversarial or pathological designs.** Constructions exist where the lasso provably fails: for example, designs where some inactive feature is exactly representable as a sign-coherent combination of active features (IC = 1 exactly), or where two columns are exactly equal. These don't appear in random data but can arise from data preprocessing — e.g., one-hot encoding of a categorical variable produces columns summing to a constant, which violates the lasso's general-position uniqueness assumption (§2.3).
+
+The standard preprocessing recipes — drop one level from each one-hot encoding to avoid the dummy-variable trap; check for and remove duplicate columns before fitting — handle these cases. Beyond preprocessing, the practical heuristic is: if two ostensibly different features have correlation $> 0.95$, suspect a data-pipeline issue and investigate before fitting.
+
+**Diagnostic toolkit.** When the lasso behaves unexpectedly (large stability across resamples, support that doesn't include obvious signal features, prediction MSE much worse than ridge), check the following:
+
+1. **Maximum pairwise feature correlation:** if $> 0.9$, consider elastic net.
+2. **Condition number of the selected $\mathbf{X}_{\hat A}^\top \mathbf{X}_{\hat A}$:** if $> 100$, the active-set Gram is ill-conditioned and the IC is likely violated; consider adaptive lasso or stability selection.
+3. **Cross-validated stability of $\hat A_\lambda$ across resamples:** if the active set varies substantially, IC is likely violated; report stability selection probabilities (Meinshausen-Bühlmann 2010) instead of a single point estimate.
+4. **Population vs empirical Gram drift:** if $\|\mathbf{X}^\top \mathbf{X} / n - \hat{\boldsymbol\Sigma}\|_{\text{op}}$ is large (where $\hat{\boldsymbol\Sigma}$ is computed on a held-out fold), the sample size may be insufficient for stable RE.
+
+These checks — none of them theoretically rigorous, all of them practically useful — are the day-to-day handle on whether the lasso's theoretical guarantees apply to your problem.
 
 ## §10. Post-selection inference and the debiased lasso
 
