@@ -1878,16 +1878,179 @@ The core lesson — that naive post-selection inference fails and the one-step c
 
 Everything in §§1–10 was developed for the **Gaussian linear model**: $\mathbf{y} = \mathbf{X} \boldsymbol\beta^* + \boldsymbol\varepsilon$ with $\boldsymbol\varepsilon$ iid $\mathcal{N}(\mathbf{0}, \sigma^2 \mathbf{I})$, squared-error loss, soft-thresholding KKT solution. The lasso framework extends naturally to **generalized linear models** (GLMs) — replacing the squared-error loss with the negative log-likelihood of any GLM family — and most of the topic's results carry over. This section covers two specific extensions (logistic, Poisson), the general IRLS-with-soft-thresholding solver, and the GLM-debiased-lasso construction for inference.
 
-The math is mostly mechanical: substitute the GLM log-likelihood for the Gaussian one, re-derive the KKT conditions with the new gradient/Hessian, run a similar oracle-inequality argument with sub-Gaussian-replaced-by-sub-exponential noise tail bounds. The conclusions are qualitatively the same — sparsity-adaptive prediction risk under RE, sign-consistency under IC, debiased-lasso CIs at the same $\sqrt n$ rate.
+The math is mostly mechanical: substitute the GLM log-likelihood for the Gaussian one, re-derive the KKT conditions with the new gradient/Hessian, run a similar oracle-inequality argument with sub-Gaussian-replaced-by-sub-exponential noise tail bounds. The conclusions are qualitatively the same — sparsity-adaptive prediction risk under RE, sign-consistency under IC, debiased-lasso CIs at the same $\sqrt n$ rate. We sketch the changes without re-deriving the proofs.
 
-*Section content in development. Includes the logistic lasso (`LogisticRegression(penalty='l1')`; van de Geer 2008 oracle inequality), the Poisson lasso for count data, the IRLS-with-coordinate-descent solver for general GLM-lasso (Friedman-Hastie-Tibshirani 2010, the `glmnet` reference), and the GLM-debiased lasso (van de Geer et al. 2014 Theorem 3.1) with weighted nodewise lasso for the GLM-Hessian-inverse $\hat{\mathbf{M}}$. No interactive viz — the section is mostly methodological extension.*
+The implementation story is similarly straightforward: scikit-learn's `LogisticRegression(penalty='l1')` for binary responses, `PoissonRegressor` (in `sklearn.linear_model`) and `glmnet` for count responses; the underlying solvers are coordinate-descent-with-IRLS or proximal-gradient variants of the Gaussian solvers from §3.
+
+### §11.1 Logistic lasso for binary classification
+
+For binary response $y_i \in \{0, 1\}$ with $\mathbb{P}(y_i = 1 \mid \mathbf{x}_i) = \sigma(\mathbf{x}_i^\top \boldsymbol\beta)$ where $\sigma(z) = 1/(1 + e^{-z})$ is the logistic function, the negative log-likelihood per observation is
+
+$$
+\ell(y_i, \mathbf{x}_i^\top \boldsymbol\beta) = -y_i \, \mathbf{x}_i^\top \boldsymbol\beta + \log(1 + \exp(\mathbf{x}_i^\top \boldsymbol\beta)).
+$$
+
+The **logistic lasso** is the L1-penalized negative log-likelihood:
+
+$$
+\hat{\boldsymbol\beta}^{\text{logistic-lasso}}(\lambda) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{n} \sum_{i=1}^n \ell(y_i, \mathbf{x}_i^\top \boldsymbol\beta) + \lambda \|\boldsymbol\beta\|_1.
+$$
+
+The objective is convex (the negative log-likelihood is convex; sum of convex; L1 is convex). Two structural differences from the Gaussian case:
+
+**No closed-form even on orthogonal designs.** The logistic loss is non-quadratic, so the orthogonal-design trick from §3.1 — which reduced the Gaussian lasso to $p$ univariate problems with closed-form solutions — fails. Each coordinate update involves a non-trivial root-finding problem.
+
+**The Hessian is data-dependent.** For the Gaussian case, $\nabla^2 \ell = \mathbf{X}^\top \mathbf{X} / n$ — independent of $\boldsymbol\beta$ and of $\mathbf{y}$. For logistic, $\nabla^2 \ell = \mathbf{X}^\top \mathbf{W}(\boldsymbol\beta) \mathbf{X} / n$ where $\mathbf{W}(\boldsymbol\beta) = \text{diag}(\sigma(\mathbf{x}_i^\top \boldsymbol\beta)(1 - \sigma(\mathbf{x}_i^\top \boldsymbol\beta)))$ — a $\boldsymbol\beta$-dependent diagonal weighting. This makes the conditioning of the Hessian state-dependent: when many predicted probabilities are near 0 or 1 (extreme classes), $\mathbf{W}$ has small entries and the Hessian is poorly conditioned.
+
+**Solver: cyclic coordinate descent with IRLS quadratic approximations.** At each outer iteration, form a quadratic approximation of the logistic loss around the current $\boldsymbol\beta^{(t)}$:
+
+$$
+\ell(\mathbf{y}, \mathbf{X} \boldsymbol\beta) \approx \ell(\mathbf{y}, \mathbf{X} \boldsymbol\beta^{(t)}) + \nabla \ell^\top (\boldsymbol\beta - \boldsymbol\beta^{(t)}) + \frac{1}{2} (\boldsymbol\beta - \boldsymbol\beta^{(t)})^\top \nabla^2 \ell \, (\boldsymbol\beta - \boldsymbol\beta^{(t)}),
+$$
+
+which is a *weighted Gaussian lasso* in $\boldsymbol\beta$. Apply Gaussian-lasso coordinate descent (§3.2) to this subproblem; the solution becomes $\boldsymbol\beta^{(t+1)}$. Iterate until convergence. This is the **iteratively reweighted least squares** (IRLS) framework, the same iteration used for unpenalized GLM fitting (cf. McCullagh-Nelder 1989) with a soft-thresholding modification at each coordinate update.
+
+scikit-learn's `LogisticRegression(penalty='l1', solver='saga')` uses a stochastic-average-gradient variant of this scheme; `solver='liblinear'` uses the dual coordinate descent of Yuan-Ho-Lin (2012), faster on small problems. `glmnet`'s logistic variant uses outer-IRLS-plus-inner-Gaussian-coordinate-descent and is the practical reference implementation.
+
+**Theory carries over.** The §5 oracle inequality has a logistic analog: under restricted-eigenvalue (with the design matrix replaced by $\mathbf{W}^{1/2}(\boldsymbol\beta) \mathbf{X}$ to account for the GLM weighting) and the lasso initial $\hat{\boldsymbol\beta}^{\text{logistic-lasso}}$, the prediction risk in deviance terms is bounded by $C \sigma^2 s \log(p) / n$ for an appropriately defined $\sigma$ that depends on the GLM family (van de Geer 2008, Bühlmann-van de Geer 2011 §6). The constants are messier than the Gaussian case but the rate is identical.
+
+### §11.2 Poisson lasso for count data
+
+For count response $y_i \in \{0, 1, 2, \dots\}$ with $y_i \mid \mathbf{x}_i \sim \mathrm{Poisson}(\exp(\mathbf{x}_i^\top \boldsymbol\beta))$, the negative log-likelihood is
+
+$$
+\ell(y_i, \mathbf{x}_i^\top \boldsymbol\beta) = -y_i \, \mathbf{x}_i^\top \boldsymbol\beta + \exp(\mathbf{x}_i^\top \boldsymbol\beta) + \log(y_i!),
+$$
+
+with the constant $\log(y_i!)$ irrelevant for optimization. The **Poisson lasso** has the same form as the logistic case:
+
+$$
+\hat{\boldsymbol\beta}^{\text{Poisson-lasso}}(\lambda) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{n} \sum_{i=1}^n \ell(y_i, \mathbf{x}_i^\top \boldsymbol\beta) + \lambda \|\boldsymbol\beta\|_1.
+$$
+
+Convex objective, same IRLS-with-coordinate-descent solver pattern, no closed form. The Hessian weighting is $\mathbf{W}(\boldsymbol\beta) = \text{diag}(\exp(\mathbf{x}_i^\top \boldsymbol\beta))$ — the predicted Poisson means.
+
+**Useful applications.** Genome-wide association studies with rare-variant counts, web traffic prediction, text n-gram occurrence counts, insurance claim counts. The Poisson lasso is the natural sparse-regression tool for any rate-modeling problem.
+
+**Caveat: overdispersion.** Real count data often has variance exceeding the Poisson assumption ($\mathbb{V}\mathrm{ar}(y_i) > \mathbb{E}[y_i]$). The negative-binomial lasso handles this by adding an overdispersion parameter; `statsmodels.NegativeBinomial(penalty='elastic_net')` is the standard implementation.
+
+scikit-learn provides `PoissonRegressor` for unpenalized Poisson regression; for the penalized version, `glmnet` (via `glmnetpy` Python bindings) is the reference. A pure-NumPy implementation is straightforward via the IRLS framework but rarely needed in practice.
+
+### §11.3 Inference extensions for GLMs
+
+The §10 debiased-lasso construction generalizes from squared-error loss to any GLM negative log-likelihood. The key change: the matrix $\hat{\mathbf{M}}$ now approximates the inverse of the **GLM Hessian** $\nabla^2 \ell(\hat{\boldsymbol\beta}) = \mathbf{X}^\top \mathbf{W}(\hat{\boldsymbol\beta}) \mathbf{X} / n$, not the unweighted Gram $\mathbf{X}^\top \mathbf{X} / n$.
+
+**The GLM-debiased lasso.** Given a lasso initial $\hat{\boldsymbol\beta}^{\text{GLM-lasso}}$ and a matrix $\hat{\mathbf{M}}$ approximating the inverse GLM Hessian:
+
+$$
+\hat{\boldsymbol\beta}^{\text{GLM-db}} := \hat{\boldsymbol\beta}^{\text{GLM-lasso}} + \frac{1}{n} \hat{\mathbf{M}} \mathbf{X}^\top \big(\mathbf{y} - g^{-1}(\mathbf{X} \hat{\boldsymbol\beta}^{\text{GLM-lasso}})\big),
+$$
+
+where $g^{-1}$ is the GLM inverse-link function ($\sigma$ for logistic, $\exp$ for Poisson). The construction has the same one-step Newton interpretation as the Gaussian case: starting from the biased lasso, take one Newton step toward the unbiased solution.
+
+**Nodewise lasso for $\hat{\mathbf{M}}$ in GLMs.** The GLM-Hessian-inverse $\hat{\mathbf{M}}$ is constructed by a *weighted* nodewise lasso: regress each feature $\mathbf{X}_j$ on $\mathbf{X}_{-j}$ with sample weights $w_i = (\mathbf{W}(\hat{\boldsymbol\beta}))_{ii}$ — the same weights that appear in the GLM Hessian. The resulting $\hat{\mathbf{M}}$ approximates $(\mathbf{X}^\top \mathbf{W}(\hat{\boldsymbol\beta}) \mathbf{X} / n)^{-1}$ in the same row-by-row sense as in §10.3.
+
+**Asymptotic normality (van de Geer-Bühlmann-Ritov-Dezeure 2014, Theorem 3.1).** Under analogous conditions to Theorem 1 of §10.4 — sub-Gaussian design, sparse population GLM-Hessian inverse, $s$-sparse $\boldsymbol\beta^*$, sample-size scaling $n \gg \max(s, s_M) (\log p)^2$ — the GLM-debiased lasso satisfies
+
+$$
+\sqrt n (\hat\beta_j^{\text{GLM-db}} - \beta^*_j) \overset{d}{\to} \mathcal{N}\big(0, \, \mathrm{var}_j\big),
+$$
+
+with $\mathrm{var}_j$ given explicitly in terms of the GLM Hessian and the noise structure. Confidence intervals and hypothesis tests follow the same recipe as §10.4.
+
+**Practical note.** The GLM-debiased lasso is implemented in the `hdi` R package (Dezeure-Bühlmann-Meier-Meinshausen 2015) for logistic and Poisson families. Python implementations are less mature; `desparsified-lasso` covers the Gaussian case but not the GLM extension as of this writing. For applications, fitting the GLM lasso via `LogisticRegression(penalty='l1')` and computing CIs via R's `hdi` package is the standard pipeline.
+
+**The bigger picture: lasso as a unified penalized-likelihood framework.** The lasso's L1 penalty is a regularizer, not a likelihood-specific construction. It composes with any convex log-likelihood — Gaussian (squared error), Bernoulli (logistic), Poisson (count), Cox (survival), multinomial (multiclass) — to give a family of sparse penalized estimators. Each instance has the same structural flavor (sparsity, bias, IC for selection, RE for prediction, debiased inference) with family-specific computational and statistical details. Friedman-Hastie-Tibshirani (2010, "Regularization Paths for Generalized Linear Models via Coordinate Descent") is the canonical computational reference; Bühlmann-van de Geer (2011, *Statistics for High-Dimensional Data*) is the canonical statistical reference covering all families uniformly.
+
+The forward pointer from §11 to the rest of formalML: the GLM-lasso framework is the foundation for `causal-inference-methods` (T6, planned) — propensity-score and outcome-regression nuisance models with binary or count outcomes use the logistic and Poisson lassos as the natural sparse estimators. The §10 debiased-lasso machinery extends to those nuisance models, giving valid CIs for treatment effects under the double/debiased ML framework (Chernozhukov et al. 2018, covered in §12.1 below).
 
 ## §12. Connections, applications, and limits
 
-The lasso is one of the most widely-used algorithms in modern statistics — a standalone estimator, a nuisance estimator inside larger inferential pipelines, and the conceptual ancestor of an entire family of penalized methods. The §§5–10 results we've developed for the standard L1-penalized lasso transfer with appropriate modifications to most descendants.
+This is the closing section. The lasso is one of the most widely-used algorithms in modern statistics — it shows up as a standalone estimator, as a nuisance estimator inside larger inferential pipelines, and as the conceptual ancestor of an entire family of penalized methods (group lasso, fused lasso, generalized lasso, structured-sparsity penalties). The §§5–10 results we've developed for the standard L1-penalized lasso transfer with appropriate modifications to most of these descendants.
 
-This section traces five sets of connections. **§12.1** covers the lasso's role inside double/debiased ML (Chernozhukov et al. 2018) — the dominant modern framework for inference on causal and structural parameters with high-dim nuisance. **§12.2** zooms in on causal inference with high-dim confounders, the most consequential DML application. **§12.3** points at the [Sparse Bayesian Priors](/topics/sparse-bayesian-priors) topic for the Bayesian counterpart, where horseshoe and spike-and-slab priors achieve approximate sparsity through a different mechanism. **§12.4** catalogs where the lasso breaks down in practice. **§12.5** lists the forward pointers in formalML — the planned topics that build on this one.
+This section traces five sets of connections. **§12.1** covers the lasso's role inside double/debiased ML — the dominant modern framework for inference on causal and structural parameters with high-dim nuisance. **§12.2** zooms in on causal inference with high-dim confounders, the most consequential application of DML in practice. **§12.3** points at the Bayesian counterpart, where horseshoe and spike-and-slab priors achieve approximate sparsity through a different mechanism. **§12.4** catalogs where the lasso breaks down in practice — the regimes where the §5–10 theory either fails or requires substantial adaptation. **§12.5** lists the forward pointers in formalML — the topics that build on this one.
 
-*Section content in development. Includes DML setup with Neyman-orthogonal scores and cross-fitting (§12.1), the AIPW representation for ATE estimation under unconfoundedness (§12.2), the Laplace-prior-MAP interpretation of the lasso and its contrast with horseshoe / spike-and-slab continuous-shrinkage priors (§12.3), the §12.4 catalog of failure modes (highly correlated features, ultra-high-dimensional regimes, heavy-tailed noise, dependent observations, causal-interpretation pitfalls), and the §12.5 forward-pointer list (T6 `semiparametric-inference`, T6 `causal-inference-methods`, T6 `pac-bayes-bounds`, T5 `bayesian-neural-networks`, T5 `density-ratio-estimation`).*
+### §12.1 Double / debiased ML (Chernozhukov et al. 2018)
 
-The closing thesis: the lasso occupies a sweet spot in the bias-variance-computability triangle. Sparsity bias is small under reasonable conditions; sparsity-adapted variance is the lowest of any L1-style estimator; the convex-optimization formulation makes computation tractable at scales where every pre-2000 alternative was infeasible. The §5 oracle inequality and the §10 debiased-lasso construction together make the lasso the standard tool for both *prediction* and *inference* in the sparse high-dim regime, with adaptations (elastic net, adaptive lasso, GLM-lasso, DML-lasso) covering the cases where the basic version doesn't fit.
+The §10 debiased lasso targets inference on individual coefficients of a high-dim linear regression. **Double / debiased machine learning** (DML; Chernozhukov-Chetverikov-Demirer-Duflo-Hansen-Newey-Robins 2018) generalizes this to inference on a low-dim *target parameter* $\theta$ in a model where the nuisance is high-dimensional and estimable by any sufficiently regular ML method — the lasso, random forests, neural networks, gradient boosting. The framework is the modern foundation for treatment-effect inference in observational studies, instrumental-variable regression with many instruments, structural-econometrics estimation, and any other setting where a target parameter is identified by a moment condition involving a high-dim nuisance.
+
+**The setup.** Suppose the target $\theta_0 \in \mathbb{R}$ is identified by a moment condition
+
+$$
+\mathbb{E}[\psi(W; \theta_0, \eta_0)] = 0,
+$$
+
+where $W$ is the observed data, $\psi$ is a known score function, and $\eta_0$ is a high-dimensional nuisance function. The naive plug-in estimator $\hat\theta$ solves $\frac{1}{n} \sum_i \psi(W_i; \hat\theta, \hat\eta) = 0$ where $\hat\eta$ is some ML estimate of $\eta_0$. This is *biased*: the regularization in $\hat\eta$ propagates into $\hat\theta$, and the resulting estimate has bias of order $1/n^a$ for some $a < 1/2$ — slower than $\sqrt n$ — so confidence intervals based on the naive plug-in undercover.
+
+**The two ingredients.** DML fixes the naive plug-in via two ingredients used together:
+
+1. **Neyman orthogonality.** The score $\psi$ must satisfy $\partial_\eta \mathbb{E}[\psi(W; \theta_0, \eta_0)] = 0$ at the true $(\theta_0, \eta_0)$ — the moment condition is **insensitive to first-order errors in the nuisance**. Constructing such an orthogonal score from an arbitrary moment condition is a calculation: typically subtract off the projection onto the nuisance-tangent space (the influence-function correction).
+
+2. **Cross-fitting.** Split the data into $K$ folds. For each $i$ in fold $k$, use a nuisance estimate $\hat\eta^{(-k)}$ trained on the data *minus* fold $k$. This decouples $\hat\eta$ from the residual structure used in the moment condition, eliminating an $O(\sqrt n)$ overfitting bias that the naive in-sample plug-in would have. Cross-fitting is essentially K-fold CV applied to estimation rather than to model selection.
+
+<TheoremBlock type="theorem" number={1} title="DML asymptotic normality (Chernozhukov et al. 2018, simplified)">
+Under Neyman orthogonality, cross-fitting, and standard regularity conditions on $\hat\eta$ (specifically $\|\hat\eta^{(-k)} - \eta_0\|_{L^2} = o_p(n^{-1/4})$), the DML estimator $\hat\theta^{\mathrm{DML}}$ satisfies $\sqrt n (\hat\theta^{\mathrm{DML}} - \theta_0) \overset{d}{\to} \mathcal{N}(0, \mathrm{var})$, with $\mathrm{var}$ given by the influence function and consistently estimable.
+</TheoremBlock>
+
+**The lasso's role.** The DML framework is silent on which ML method estimates $\hat\eta$ — any method achieving the $o_p(n^{-1/4})$ rate works. The lasso is the standard choice when $\eta_0$ is a sparse high-dim regression, both because it has the right rate (the §5 oracle inequality gives $\|\hat{\boldsymbol\beta}^{\text{lasso}} - \boldsymbol\beta^*\|_2 = O_p(\sqrt{s\log(p)/n})$, beating $n^{-1/4}$ when $s \log p / n \to 0$) and because it's computationally cheap. Random forests, boosting, and neural networks are alternatives at different parts of the bias-variance spectrum.
+
+**Connection to debiased lasso (§10).** The §10 debiased lasso is, in a sense, "DML for the special case of inference on an individual regression coefficient." The one-step Newton correction can be re-derived as the application of the DML influence-function machinery to the moment condition $\mathbb{E}[X_j(Y - X^\top \beta_0)] = 0$. Both rely on Neyman-orthogonal scores; both achieve $\sqrt n$ asymptotic normality despite a regularized nuisance estimator.
+
+### §12.2 High-dim confounder adjustment in causal inference
+
+The most consequential DML application is **causal inference with many confounders**. Setup: observational data $\{(D_i, X_i, Y_i)\}_{i=1}^n$ where $D_i \in \{0, 1\}$ is a binary treatment, $X_i \in \mathbb{R}^p$ is a vector of confounders, and $Y_i \in \mathbb{R}$ is the outcome. Goal: estimate the **average treatment effect** $\tau = \mathbb{E}[Y_i(1) - Y_i(0)]$, where $Y_i(d)$ is the potential outcome under treatment $d$ (unobserved counterfactual under the unrealized treatment).
+
+Identification under standard assumptions (unconfoundedness $Y(d) \perp D \mid X$, overlap $0 < \mathbb{P}(D = 1 \mid X) < 1$) gives
+
+$$
+\tau = \mathbb{E}\left[\mu(X, 1) - \mu(X, 0) + \frac{D - \pi(X)}{\pi(X)(1 - \pi(X))} (Y - \mu(X, D))\right],
+$$
+
+the **augmented inverse-propensity-weighting** (AIPW) representation, where $\pi(x) := \mathbb{P}(D = 1 \mid X = x)$ is the propensity score and $\mu(x, d) := \mathbb{E}[Y \mid X = x, D = d]$ is the outcome regression. Both nuisance functions are high-dim regression problems; both can be estimated by lasso (logistic for $\pi$, Gaussian for $\mu$).
+
+The AIPW representation is **doubly robust** (Robins-Rotnitzky-Zhao 1994): the moment condition is satisfied if either $\hat\pi$ or $\hat\mu$ is consistent (not necessarily both). DML strengthens this: under $o_p(n^{-1/4})$ rates for both $\hat\pi$ and $\hat\mu$ (achievable by lasso under sparsity), the cross-fit DML estimator $\hat\tau^{\mathrm{DML}}$ is $\sqrt n$-consistent and asymptotically normal with the semiparametrically efficient variance, regardless of how slow the nuisance rates are.
+
+**The practical pipeline.** (i) Fit $\hat\pi$ via `LogisticRegression(penalty='l1')` in cross-fitted form. (ii) Fit $\hat\mu(\cdot, 0)$ and $\hat\mu(\cdot, 1)$ via `Lasso` in cross-fitted form (separate models for treated and control). (iii) Plug into the AIPW formula. (iv) Compute the standard error from the empirical influence function. (v) Form CI / hypothesis test.
+
+This pipeline is implemented in Python in `econml` (Microsoft Research) and `doubleml` (Bach et al.), and in R in the `DoubleML` package. It's the standard observational-causal-inference workflow for moderate-to-high-dim confounder vectors. Forward pointer: T6 `causal-inference-methods` *(coming soon)* will cover this in detail, including extensions to dynamic treatments, instrumental variables, and partial identification.
+
+### §12.3 Sparse-Bayesian alternatives
+
+The lasso's L1 penalty has a **Bayesian interpretation**: it's the negative log-prior of an iid Laplace prior $\beta_j \sim \mathrm{Laplace}(0, 1/\lambda)$, so the lasso estimator is the *posterior mode* (MAP) under that prior. The posterior *mean* under the same prior is dense — Bayesian inference based on the Laplace prior doesn't produce sparse point estimates, only sparse modes.
+
+**The Bayesian counterpart of the lasso** is a class of priors that produce **approximate sparsity** in the posterior — most posterior mass concentrated near zero, with heavy tails for the active coefficients. Two main families, both detailed in [Sparse Bayesian Priors](/topics/sparse-bayesian-priors):
+
+- **Horseshoe** (Carvalho-Polson-Scott 2010). $\beta_j \sim \mathcal{N}(0, \lambda_j^2 \tau^2)$ with $\lambda_j \sim C^+(0, 1)$ (half-Cauchy local scales) and $\tau \sim C^+(0, 1)$ (global scale). The half-Cauchy local scales have a pole at zero (heavy shrinkage of small signals) and polynomial tails (vanishing shrinkage of large signals) — qualitatively the inverse of the lasso's constant-shrinkage behavior, so the active-coefficient bias from §4.1 is avoided.
+- **Spike-and-slab** (Mitchell-Beauchamp 1988; George-McCulloch 1993). $\beta_j \sim (1 - w) \cdot \delta_0 + w \cdot \mathcal{N}(0, \sigma^2)$ — a discrete mixture of a point mass at zero (spike) and a wide Gaussian (slab). Posterior puts probability $\hat w_j$ on $\beta_j \neq 0$, giving a natural variable-selection probability.
+
+**Trade-offs.** Bayesian methods give native uncertainty quantification — credible intervals come for free from the posterior, no debiased-lasso construction needed. The cost: posterior sampling (HMC, NUTS) is computationally expensive at scale, typically 100×–1000× slower than the lasso for the same problem. The lasso wins on speed and the Bayesian methods win on inferential clarity; the practical choice depends on whether $n, p$ scales make MCMC tractable. Forward pointer: [Sparse Bayesian Priors](/topics/sparse-bayesian-priors) covers the full Bayesian sparsity framework — horseshoe, spike-and-slab, R2-D2, regularized horseshoe, and their computational implementations in PyMC and NumPyro.
+
+### §12.4 Where the lasso breaks down
+
+The lasso has known failure modes beyond the §6.2 / §9.4 IC and RE failures. Five worth flagging:
+
+**Highly correlated features.** Already covered (§6.1, §9.4). Recap: lasso flips arbitrarily between correlated features in the active set; elastic net is the standard remedy.
+
+**Ultra-high-dimensional regimes ($p > 10^6$).** Coordinate descent's per-iteration cost is $O(np)$ — proportional to the data size. At $p > 10^6$ with $n$ in the thousands, even one coordinate-descent pass takes seconds; full convergence with CV-tuned $\lambda$ becomes computationally prohibitive. **Sure independence screening** (Fan-Lv 2008): a preprocessing step that filters $p$ down to $O(n)$ candidates by ranking $|\mathbf{X}_j^\top \mathbf{y}|$, then runs the lasso on the reduced feature set. Loses some precision but keeps the workflow tractable. For genuine $p \gg n^{10}$ regimes (some genomics applications), the screening-then-lasso pipeline is standard.
+
+**Heavy-tailed (non-sub-Gaussian) noise.** The §5.5 deviation step required $\boldsymbol\varepsilon$ to be sub-Gaussian. With heavier tails (say, $\boldsymbol\varepsilon$ Cauchy or Student-$t$ with low degrees of freedom), the maximal inequality $\|\mathbf{X}^\top \boldsymbol\varepsilon / n\|_\infty \le \lambda/2$ fails to hold with the lasso's standard $\lambda \asymp \sigma\sqrt{\log p / n}$ — the noise has too-large rare excursions. **Quantile / median regression lasso** (Belloni-Chernozhukov 2011): replace the squared-error loss with the check function $\rho_\tau(u) = u(\tau - \mathbb{1}\{u < 0\})$, giving an L1-penalized quantile regression. Robust to heavy tails because the check loss penalizes residuals linearly, not quadratically. The estimator achieves the same $\sqrt{s \log p / n}$ rate under weaker noise assumptions but requires a different solver (linear programming or smoothed coordinate descent).
+
+**Time-series and spatially correlated observations.** The lasso assumes iid observations. With correlated observations (autoregressive errors in time series, spatial random fields), the standard $\lambda$-tuning criteria (CV, BIC) become biased — they underestimate the prediction error because nearby training and test points share information. Block-CV (block-wise leave-one-out where each block is a contiguous time window or spatial region) is the standard remedy. Theoretical guarantees under dependence are looser; the most general result is Wong-Li-Tewari (2020) for stationary time series.
+
+**Causal lasso interpretation pitfalls.** A frequent misuse: interpreting the lasso's selected coefficients as "causal effects." The lasso minimizes prediction error on the observed data; the resulting coefficients are **predictively useful** but not necessarily **causally interpretable** unless the design satisfies specific structural assumptions (e.g., randomized treatment, valid instruments). The §12.1–§12.2 DML / AIPW pipeline is the right framework when causal interpretation is the goal — the lasso's role is as a *nuisance estimator*, not as the producer of causal coefficients.
+
+### §12.5 Forward pointers in formalML
+
+The lasso machinery from this topic feeds into several planned formalML topics:
+
+- **Semiparametric Inference** *(coming soon)*. The DML framework introduced in §12.1 generalizes substantially: any target parameter $\theta_0$ identified by a moment condition with high-dim nuisance can be estimated $\sqrt n$-consistently using cross-fitted ML estimates of the nuisance. The lasso is one of several admissible nuisance estimators (alongside random forests, gradient boosting, neural networks). The semiparametric-inference topic will treat the unified framework — Neyman orthogonal scores, the $o_p(n^{-1/4})$ nuisance rate condition, the practical pipeline — at the level needed for applied econometrics and causal inference.
+
+- **Causal Inference Methods** *(coming soon)*. Treatment-effect inference with high-dim confounders (§12.2) is the headline application of the DML framework. The causal-inference-methods topic will cover the full observational-causal-inference workflow: identification assumptions (unconfoundedness, overlap), the AIPW representation, double-robust efficient scores, the DML estimator and its CI / hypothesis tests, sensitivity analysis to unmeasured confounding, dynamic treatment regimes, and the connection to instrumental variables. Throughout, the lasso (logistic for propensity, Gaussian for outcome) is the default nuisance estimator.
+
+- **PAC-Bayes Bounds** *(coming soon)*. Catoni's (2007) PAC-Bayesian framework gives an alternative theoretical perspective on sparse regression: instead of the §5 oracle inequality (frequentist, RE-based), use a PAC-Bayes bound with a sparsity-favoring prior to derive a closely-related risk bound. The PAC-Bayes prior is structurally similar to the Bayesian sparsity priors of §12.3; the resulting estimator is closer to the posterior mean than to the lasso. The pac-bayes-bounds topic will treat this connection.
+
+- [Bayesian Neural Networks](/topics/bayesian-neural-networks). Sparse priors on neural network weights — particularly horseshoe priors on the input-layer weights — give automatic feature selection in deep models. The §12.3 Bayesian sparsity framework, scaled up to neural-net parameter counts, is the foundation for this. The bayesian-neural-networks topic covers practical implementations (HMC, variational inference) and the recovery guarantees.
+
+- **Density Ratio Estimation** *(coming soon)*. Estimating $r(x) = p_2(x) / p_1(x)$ from samples of $p_1$ and $p_2$ is a related problem to regression — KLIEP (Kullback-Leibler importance estimation procedure) and its sparse-regularized variants reduce to convex optimization problems that look very much like the lasso. The connection isn't immediate, but the algorithmic and theoretical machinery transfers.
+
+**The closing thesis.** The lasso is one of the most successful algorithms in modern statistics because it occupies a sweet spot in the bias-variance-computability triangle. Sparsity bias is small under reasonable conditions; sparsity-adapted variance is the lowest of any L1-style estimator; the convex-optimization formulation makes computation tractable at scales where every pre-2000 alternative was infeasible. The §5 oracle inequality and the §10 debiased-lasso construction together make the lasso the standard tool for both *prediction* and *inference* in the sparse high-dim regime, with adaptations (elastic net, adaptive lasso, GLM-lasso, DML-lasso) covering the cases where the basic version doesn't fit. We've worked through the full pipeline; the rest of the formalML topic graph picks up the threads from here.
