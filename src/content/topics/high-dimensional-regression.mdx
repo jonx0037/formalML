@@ -369,24 +369,117 @@ references:
 import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import Figure from '../../components/ui/Figure.astro';
 import ExternalLink from '../../components/ui/ExternalLink.astro';
+import OlsOverfitsAtHighDim from '../../components/viz/OlsOverfitsAtHighDim.tsx';
+import RidgeVsLassoCoefBars from '../../components/viz/RidgeVsLassoCoefBars.tsx';
 
 ## §1. From OLS to penalized regression
 
 When the predictor matrix has more columns than rows, ordinary least squares stops being a single estimator and becomes a degenerate family — infinitely many vectors fit the training data perfectly, none of them generalize. This section establishes the high-dimensional regime, shows OLS failing on the canonical sparse-Gaussian-design problem we'll reuse for the next eight sections, and introduces the two classical regularization remedies: ridge (L2-penalized) and lasso (L1-penalized). Ridge gives a unique solution and shrinks every coefficient smoothly toward zero; lasso gives a sparse solution and shrinks small coefficients all the way to zero. The geometric difference between those two penalties — corners on the L1 ball, smooth curvature on the L2 ball — is what makes the lasso the central object of this topic.
 
-*Section content in development. The full §1 prose ports from the [verified handoff brief](https://github.com/jonx0037/formalML/blob/main/docs/plans/formalml-high-dimensional-regression-handoff-brief.md). DGP-1 specification: $n = 200$, $p = 500$, $s = 10$, AR(1) Toeplitz $\boldsymbol\Sigma_{jk} = 0.5^{|j-k|}$, $\beta^*_j = 1$ for $j \in \{0, \ldots, 9\}$, noise $\sigma = 0.5$, seed `np.random.default_rng(42)`. Population $R^2 \approx 0.99$.*
+### §1.1 The high-dimensional regime $p \gtrsim n$ and where it appears
+
+Standard regression theory assumes more observations than features ($n > p$), often by orders of magnitude. The high-dimensional regime flips that: $p$ is comparable to or much larger than $n$. Three places it shows up routinely:
+
+- **Genome-wide association studies (GWAS).** Regress a phenotype on hundreds of thousands to millions of single-nucleotide polymorphisms. Typical scale is $p \approx 10^6$ with $n \approx 10^4$ patients; the ratio $p / n \approx 100$ is normal, not extreme.
+- **Functional MRI.** A whole-brain scan resolves $\sim 10^5$ voxels per timepoint; predicting a behavioral or clinical outcome from voxel-level activations gives $p \approx 10^5$ with $n$ in the low hundreds.
+- **Text and high-cardinality categorical features.** A bag-of-words encoding of even a modest corpus pushes $p$ into the millions while $n$ stays in the thousands.
+
+These problems share more than $p \gg n$ — they also tend to be **sparse**: only a small subset of features carries the actual signal. A handful of SNPs drive most of the heritable variation in a quantitative trait; a focal brain region carries most of the predictive signal in an fMRI study; a few keywords carry most of the topic information in a document. The lasso's design exploits this sparsity directly.
+
+We'll formalize sparsity as $\|\boldsymbol\beta^*\|_0 = s$ where $s \ll p$ — the true coefficient vector $\boldsymbol\beta^* \in \mathbb{R}^p$ has only $s$ nonzero entries. The set $S = \{j : \beta^*_j \neq 0\}$ is the **support** of $\boldsymbol\beta^*$, and $|S| = s$ is the **sparsity level**. We don't know $S$ in advance; recovering it (or, more modestly, predicting well without recovering it) is the estimator's job.
+
+**The canonical sparse high-dimensional dataset (DGP-1).** We'll reuse the same data-generating process across §§2–9 to make the comparisons concrete. Fix:
+
+- $n = 200$, $p = 500$, $s = 10$.
+- Rows $\mathbf{x}_i \in \mathbb{R}^p$ iid $\mathcal{N}(\mathbf{0}, \boldsymbol\Sigma)$ with $\boldsymbol\Sigma_{jk} = 0.5^{|j-k|}$ (AR(1) Toeplitz, weakly decaying off-diagonal correlation).
+- $\beta^*_j = 1$ for $j \in S = \{0, 1, \dots, 9\}$ (contiguous active set), $\beta^*_j = 0$ otherwise.
+- Noise $\boldsymbol\varepsilon \sim \mathcal{N}(\mathbf{0}, \sigma^2 \mathbf{I})$ with $\sigma = 0.5$.
+- Population $R^2 \approx 0.99$ (computed: $\boldsymbol\beta^{*\top} \boldsymbol\Sigma \boldsymbol\beta^* \approx 26.0$ via the AR(1) sum over a 10×10 active block).
+- Seed: `np.random.default_rng(42)`.
+
+The §10 debiased-lasso coverage demonstration switches to $(n, p, s) = (200, 100, 5)$ to make OLS feasible as a baseline. All other sections reuse DGP-1.
+
+### §1.2 Why OLS fails: the rank-deficient normal equations
+
+OLS minimizes the squared training loss:
+
+$$
+\hat{\boldsymbol\beta}^{\text{OLS}} = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2,
+$$
+
+with the closed-form solution $\hat{\boldsymbol\beta}^{\text{OLS}} = (\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{y}$ when $\mathbf{X}^\top \mathbf{X}$ is invertible. Invertibility requires $\text{rank}(\mathbf{X}) = p$, which in turn requires $n \ge p$.
+
+When $p > n$, the matrix $\mathbf{X}^\top \mathbf{X} \in \mathbb{R}^{p \times p}$ has rank at most $n < p$ and is singular. The normal equations $\mathbf{X}^\top \mathbf{X} \boldsymbol\beta = \mathbf{X}^\top \mathbf{y}$ have infinitely many solutions: for any vector $\mathbf{v}$ in the $(p - n)$-dimensional null space of $\mathbf{X}$, both $\hat{\boldsymbol\beta}$ and $\hat{\boldsymbol\beta} + \mathbf{v}$ achieve the same residual. The OLS objective has a flat plateau of global minima, all of them interpolating the training data exactly.
+
+The standard pseudoinverse fix picks the minimum-norm solution from that plateau:
+
+$$
+\hat{\boldsymbol\beta}^{\text{OLS, min-norm}} = \mathbf{X}^\top (\mathbf{X} \mathbf{X}^\top)^{-1} \mathbf{y},
+$$
+
+well-defined whenever $\mathbf{X}$ has full row rank. But "minimum-norm OLS" is still OLS — it interpolates the training data ($\mathbf{X} \hat{\boldsymbol\beta} = \mathbf{y}$), the training MSE is exactly zero, and the test MSE is unbounded. Even before $p$ reaches $n$, predictive performance degrades: as $p \to n$ from below, the smallest singular value of $\mathbf{X}$ approaches zero, $(\mathbf{X}^\top \mathbf{X})^{-1}$ blows up, and the OLS coefficient estimates inflate even though the in-sample fit looks great.
+
+Sweep the active feature count from $p_{\text{used}} = 10$ to $p_{\text{used}} = 199$ on a fresh DGP-1 sample, fit OLS to each subproblem (using only the first $p_{\text{used}}$ columns of $\mathbf{X}$), and plot train MSE and test MSE on log-y. Train MSE drops monotonically toward zero as $p_{\text{used}}$ approaches $n$. Test MSE bottoms out near $p_{\text{used}} \approx s = 10$ (the truth) and explodes by orders of magnitude as $p_{\text{used}} \to n$. The reader sees, in one picture, that OLS is incapable of using the sparsity structure — it doesn't know that only 10 features matter, so it overfits aggressively as soon as it has the degrees of freedom to do so.
+
+<OlsOverfitsAtHighDim client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_01_01_ols_overfit.png"
   alt="OLS train MSE drops to zero while test MSE explodes as the active feature count p_used approaches the sample size n on DGP-1."
-  caption="OLS on DGP-1 (n = 200, s = 10) as the active feature count p_used varies from 10 to 199. Train MSE drops monotonically toward zero as p_used → n; test MSE bottoms out near p_used ≈ s (the truth) and explodes by orders of magnitude as p_used → n. OLS cannot exploit the sparsity structure — given enough degrees of freedom it overfits aggressively."
+  caption="OLS on DGP-1 (n = 200, s = 10) as the active feature count p_used varies from 10 to 199. Train MSE drops monotonically toward zero as p_used → n; test MSE bottoms out near p_used ≈ s (the truth) and explodes by orders of magnitude as p_used → n. OLS cannot exploit the sparsity structure — given enough degrees of freedom it overfits aggressively. (Static fallback figure; the interactive viz above computes the same curve in-browser via Cholesky-based ridge OLS.)"
 />
+
+### §1.3 Ridge regression as the L2 fix
+
+Ridge regression resolves the rank-deficiency by adding a quadratic penalty:
+
+$$
+\hat{\boldsymbol\beta}^{\text{ridge}}(\lambda) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \frac{\lambda}{2} \|\boldsymbol\beta\|_2^2,
+$$
+
+where $\|\boldsymbol\beta\|_2^2 = \sum_{j=1}^p \beta_j^2$ is the squared L2 norm and $\lambda \ge 0$ is a tuning parameter ($\lambda = 0$ recovers OLS, $\lambda \to \infty$ shrinks every coefficient to zero). The closed form is:
+
+$$
+\hat{\boldsymbol\beta}^{\text{ridge}}(\lambda) = (\mathbf{X}^\top \mathbf{X} + n \lambda \mathbf{I})^{-1} \mathbf{X}^\top \mathbf{y}.
+$$
+
+The matrix $\mathbf{X}^\top \mathbf{X} + n\lambda \mathbf{I}$ is positive definite for any $\lambda > 0$ — its eigenvalues are bounded below by $n\lambda$ — so the inversion is well-defined regardless of whether $p \le n$ or $p > n$. Ridge restores uniqueness.
+
+Two structural properties matter for what follows:
+
+1. **Continuous shrinkage, dense solutions.** Each coefficient is shrunk toward zero by a factor that depends on the corresponding singular value of $\mathbf{X}$, but no coefficient is set to exactly zero (with probability one over a continuous design). On DGP-1, ridge produces 500 nonzero coefficients even though only 10 features matter.
+2. **Smoothness in $\lambda$.** $\hat{\boldsymbol\beta}^{\text{ridge}}(\lambda)$ is a continuous, differentiable function of $\lambda$ everywhere on $[0, \infty)$. There's no "selection event" — coefficients shrink, they don't snap.
+
+Ridge is the right tool when all features carry some signal and the goal is to stabilize coefficient estimates against multicollinearity. In the high-dimensional sparse regime where the truth has 10 active features out of 500, ridge's refusal to zero out the 490 inactive features is a liability — every irrelevant coefficient contributes variance to the prediction. The standard formalstatistics treatment of ridge covers the $n > p$ case and the Bayesian Gaussian-prior interpretation; we're using ridge here as the dense-shrinkage baseline that lasso will improve on.
+
+### §1.4 The lasso as the L1 alternative
+
+The lasso (Tibshirani 1996) replaces the squared L2 penalty with an L1 penalty:
+
+$$
+\hat{\boldsymbol\beta}^{\text{lasso}}(\lambda) = \arg\min_{\boldsymbol\beta \in \mathbb{R}^p} \frac{1}{2n} \|\mathbf{y} - \mathbf{X} \boldsymbol\beta\|_2^2 + \lambda \|\boldsymbol\beta\|_1,
+$$
+
+where $\|\boldsymbol\beta\|_1 = \sum_{j=1}^p |\beta_j|$ is the L1 norm. The objective is convex (squared loss is convex, L1 norm is convex, sum of convex is convex), so any local minimum is a global minimum. But the L1 norm is not differentiable at zero, and that non-smoothness has two consequences that turn out to be central:
+
+1. **Sparsity.** The optimal solution has many coefficients exactly equal to zero, and the number of nonzero coefficients is controlled by $\lambda$. Geometrically, the L1 ball $\{\boldsymbol\beta : \|\boldsymbol\beta\|_1 \le t\}$ has corners at the coordinate axes; the constrained-form lasso solution is the point where the squared-loss contour first touches the L1 ball as the ball expands, and that contact point is generically at a corner — i.e., on a coordinate hyperplane, with one or more coefficients zero. The smooth L2 ball has no corners, which is why ridge solutions are dense. We'll come back to this picture in §2.2 with an interactive viz.
+2. **No closed form in general.** Unlike ridge, the lasso has no general closed-form solution. There is one when the design is orthogonal ($\mathbf{X}^\top \mathbf{X} = n \mathbf{I}$, derived in §3.1 via the soft-thresholding operator), but for general $\mathbf{X}$ the solution requires an iterative solver. §3 covers coordinate descent, ISTA, and FISTA in detail.
+
+The L1 penalty is the smallest convex penalty that produces sparsity. The non-convex L0 penalty $\|\boldsymbol\beta\|_0 = |\{j : \beta_j \neq 0\}|$ would also produce sparse solutions — and is in some ways the "right" objective for variable selection — but the resulting optimization problem is best-subset selection, which is NP-hard. The L1 penalty is the convex relaxation of L0: among convex penalties that produce sparsity, it's the simplest to state, the easiest to optimize, and the one with the best-developed statistical theory.
+
+Side-by-side: ridge at three penalty levels ($\alpha \in \{0.01, 1, 100\}$) and lasso at three penalty levels ($\lambda \in \{0.001, \lambda_{\text{CV}} \approx 0.056, 1\}$), all on the same DGP-1 sample. Ridge produces 500 nonzero coefficients at every $\alpha$ — heavier penalization means smaller coefficients across the board, never exactly zero. The lasso at the CV-selected $\lambda$ has only ~12 nonzero coefficients, mostly concentrated at the true active coordinates $S = \{0, \dots, 9\}$. The contrast is the visual punchline of the section.
+
+<RidgeVsLassoCoefBars client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_01_02_03_ridge_vs_lasso_coefs.png"
   alt="Side-by-side coefficient bar charts of ridge (three penalty levels, all dense) versus lasso (three penalty levels, sparse) on DGP-1."
-  caption="Ridge (top row, three α levels) versus lasso (bottom row, three λ levels) coefficient estimates on DGP-1. The ten true active coordinates are highlighted in black. Ridge produces 500 nonzero coefficients at every α — continuous shrinkage but no selection. The lasso at CV-selected λ ≈ 0.05 produces ~12 nonzero coefficients, mostly concentrated at the true active coordinates S = {0, …, 9}. The contrast is the visual punchline: same data, two penalties, two completely different solution structures."
+  caption="Ridge (top row, three α levels) versus lasso (bottom row, three λ levels) coefficient estimates on DGP-1. The ten true active coordinates are highlighted in black. Ridge produces 500 nonzero coefficients at every α — continuous shrinkage but no selection. The lasso at CV-selected λ ≈ 0.05 produces ~12 nonzero coefficients, mostly concentrated at the true active coordinates S = {0, …, 9}. The contrast is the visual punchline: same data, two penalties, two completely different solution structures. (Static fallback figure; the interactive viz above computes the same six panels in-browser.)"
 />
+
+### §1.5 Roadmap
+
+The rest of the topic answers four questions about the lasso. **What does the estimator look like?** §2 fills in the geometric picture and basic structural results — existence, uniqueness, KKT subgradient conditions. **How do we compute it?** §3 derives the soft-thresholding closed form for orthogonal designs and develops the iterative solvers (coordinate descent, ISTA, FISTA) used in general. **Does it predict well, and does it recover the true support?** §§4–6 work out the bias-variance trade-off, prove the headline non-asymptotic prediction-risk bound (the lasso oracle inequality, $O(\sigma^2 s \log p / n)$ under the restricted-eigenvalue condition), and treat variable-selection consistency as a separate theorem with its own sufficient condition (irrepresentable). §7 covers practical $\lambda$ selection by cross-validation and information criteria. §8 covers the ridge / elastic-net / adaptive-lasso variants and when each wins. §9 deepens the geometry of the high-dimensional regime — RIP, sub-Gaussian designs, the implication chain between conditions. **Can we do inference with it?** §10 is the inferential payoff: naive lasso confidence intervals undercover (PoSI; Berk et al. 2013), and the debiased-lasso construction (Zhang-Zhang 2014; Javanmard-Montanari 2014; van de Geer et al. 2014) restores valid coverage. §11 extends the lasso to non-Gaussian responses (logistic, Poisson). §12 closes with connections to double/debiased ML, causal inference, and the Bayesian counterpart in [Sparse Bayesian Priors](/topics/sparse-bayesian-priors).
 
 ## §2. The lasso estimator
 
