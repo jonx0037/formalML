@@ -375,6 +375,7 @@ import L1VsL2BallExplorer from '../../components/viz/L1VsL2BallExplorer.tsx';
 import LassoUCurve from '../../components/viz/LassoUCurve.tsx';
 import LassoSolutionPath from '../../components/viz/LassoSolutionPath.tsx';
 import OracleInequalityRiskBound from '../../components/viz/OracleInequalityRiskBound.tsx';
+import IrrepresentableConditionViewer from '../../components/viz/IrrepresentableConditionViewer.tsx';
 
 ## §1. From OLS to penalized regression
 
@@ -1188,17 +1189,145 @@ The viz below shows the empirical prediction risk on a held-out test set vs samp
 
 ## §6. Variable-selection consistency
 
-The §5 oracle inequality bounds the lasso's **prediction risk** but does **not** say the lasso correctly recovers the support $S$ itself. These are different statements with different sufficient conditions, and confusing them is the most common conceptual error in lasso applications. Two highly correlated features can both be predictive of the response; the lasso might select either one, or alternate between them across resampled training sets, while keeping the prediction error small. The prediction-risk bound is robust to this kind of selection instability. The support-recovery question — does $\hat A_\lambda = S$? — is sensitive to it.
+The §5 oracle inequality bounds the lasso's **prediction risk**: $\frac{1}{n}\|\mathbf{X}(\hat{\boldsymbol\beta} - \boldsymbol\beta^*)\|_2^2 \lesssim \sigma^2 s \log(p) / n$. That bound says the lasso predicts well — comparable to the oracle that knew $S$ in advance. It does **not** say the lasso correctly recovers the support $S$ itself.
+
+These are different statements with different sufficient conditions, and confusing them is the most common conceptual error in lasso applications. Two highly correlated features can both be predictive of the response; the lasso might select either one, or alternate between them across resampled training sets, while keeping the prediction error small. The prediction-risk bound is robust to this kind of selection instability. The support-recovery question — does $\hat A_\lambda = S$? — is sensitive to it.
 
 This section formalizes **sign-consistency** (the strongest form of support recovery), introduces the **irrepresentable condition** (Zhao-Yu 2006) that's both sufficient and essentially necessary for it, states the sample-size scaling for support recovery, and contrasts the prediction-risk bound (RE-based) against the support-recovery bound (IC-based) so the difference is visible.
 
-*Section content in development. Includes the duplicate-features counterexample showing prediction consistency does not imply sign consistency, Definition 6.1 (irrepresentable condition; Zhao-Yu 2006 / Meinshausen-Bühlmann 2006), Theorem 6.1 (lasso sign-consistency under strong IC; Wainwright 2009 primal-dual witness construction), the necessity-of-IC converse (Wainwright 2009 Theorem 3), and the §6.4 prediction-vs-recovery contrast table.*
+### §6.1 Sign-consistency: what it means and why prediction consistency doesn't imply it
+
+For a vector $\boldsymbol\beta \in \mathbb{R}^p$, define $\mathrm{sign}(\boldsymbol\beta) \in \{-1, 0, 1\}^p$ entry-wise: $\mathrm{sign}(\beta_j) = 1$ if $\beta_j > 0$, $-1$ if $\beta_j < 0$, $0$ if $\beta_j = 0$. Three increasingly strong support-recovery notions:
+
+- **Support recovery** (set-equality): $\hat A_\lambda := \{j : \hat\beta_j \neq 0\} = S$.
+- **Sign consistency**: $\mathrm{sign}(\hat{\boldsymbol\beta}) = \mathrm{sign}(\boldsymbol\beta^*)$. This implies $\hat A_\lambda = S$ and additionally that the signs of the active coefficients are correct.
+- **Sign-consistent estimation**: $\mathbb{P}(\mathrm{sign}(\hat{\boldsymbol\beta}^{\text{lasso}}) = \mathrm{sign}(\boldsymbol\beta^*)) \to 1$ as $n \to \infty$.
+
+The standard target in the lasso literature is sign consistency — slightly stronger than support recovery, but only by the negligible probability that an active coordinate is estimated with the wrong sign (which has probability $\to 0$ rapidly under any reasonable signal-strength assumption).
+
+**Why prediction consistency doesn't imply sign consistency.** Consider the simplest counterexample. Take $p = 2$ with $\mathbf{X}_1$ and $\mathbf{X}_2$ identical: $\mathbf{X}_1 = \mathbf{X}_2$. The true coefficient is $\boldsymbol\beta^* = (1, 0)$ — the first feature is active, the second is not. The lasso objective is
+
+$$
+\frac{1}{2n} \|\mathbf{y} - \mathbf{X}_1 (\beta_1 + \beta_2)\|_2^2 + \lambda(|\beta_1| + |\beta_2|),
+$$
+
+which depends on $(\beta_1, \beta_2)$ only through their sum and through $|\beta_1| + |\beta_2|$. The minimizer is non-unique: any $(\beta_1, \beta_2)$ with $\beta_1 + \beta_2$ equal to the optimal sum and $|\beta_1| + |\beta_2|$ minimal — i.e., any $(\beta_1, \beta_2)$ with $\beta_1, \beta_2 \ge 0$ and the right sum — solves it. Among these, $(\hat\beta_1, \hat\beta_2) = (1, 0)$, $(0, 1)$, and $(0.5, 0.5)$ are all valid solutions. Prediction is identical across them; support is dramatically different.
+
+This is an extreme case (perfectly collinear features), but the same phenomenon shows up in milder form whenever two features are highly correlated and both predictive — the lasso has no preference between them, and may flip which one it selects under tiny perturbations of the data.
+
+### §6.2 The irrepresentable condition (Zhao-Yu 2006)
+
+The right structural condition for sign consistency is the **irrepresentable condition** (IC), introduced independently by Zhao-Yu (2006) and Meinshausen-Bühlmann (2006). Given the active set $S$ and the sign vector $\mathbf{s}^*_S := \mathrm{sign}(\boldsymbol\beta^*_S) \in \{-1, 1\}^s$:
+
+<TheoremBlock type="definition" number={1} title="Irrepresentable condition">
+The design $\mathbf{X}$ satisfies the **(weak) irrepresentable condition** for $(S, \mathbf{s}^*_S)$ if
+
+$$
+\big\| \mathbf{X}_{S^c}^\top \mathbf{X}_S \big(\mathbf{X}_S^\top \mathbf{X}_S\big)^{-1} \mathbf{s}^*_S \big\|_\infty \;\le\; 1.
+$$
+
+The **strong irrepresentable condition with parameter $\eta > 0$** strengthens this to $\le 1 - \eta$.
+</TheoremBlock>
+
+**Geometric interpretation.** The vector $(\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \mathbf{s}^*_S$ is the OLS coefficient vector that would arise from regressing $\mathbf{s}^*_S$ on $\mathbf{X}_S$ — call it the **dual representation of the sign pattern**. Multiplying by $\mathbf{X}_S$ gives the projection $\mathbf{X}_S (\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \mathbf{s}^*_S \in \mathbb{R}^n$. Then $\mathbf{X}_{S^c}^\top \mathbf{X}_S (\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \mathbf{s}^*_S \in \mathbb{R}^{p-s}$ is the inner product of each inactive feature $\mathbf{X}_j$ ($j \in S^c$) with that projection.
+
+The condition asks: how strongly is each inactive feature correlated, after accounting for the active features, with the sign pattern of the active coefficients? IC says the correlation is bounded by 1; **strong IC** says strictly less than 1. The intuition: if some inactive feature $\mathbf{X}_j$ ($j \in S^c$) can be "represented" by the active features — written as a linear combination $\mathbf{X}_S \mathbf{w}$ — with $|\mathbf{w}^\top \mathbf{s}^*_S| > 1$, the lasso will select $\mathbf{X}_j$ in preference to (or in addition to) the true active features. Strong IC rules this out.
+
+**An equivalent formulation in terms of regression coefficients.** Let $\mathbf{w}_j := (\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \mathbf{X}_S^\top \mathbf{X}_j$ be the OLS coefficient vector for regressing the inactive feature $\mathbf{X}_j$ ($j \in S^c$) on the active features $\mathbf{X}_S$. Then IC reads
+
+$$
+\max_{j \in S^c} |\mathbf{w}_j^\top \mathbf{s}^*_S| \le 1, \qquad \text{strong IC: } \le 1 - \eta.
+$$
+
+Each $\mathbf{w}_j$ describes how the inactive feature $j$ is predicted by the active features. The IC says the dot product of this prediction recipe with the sign pattern of active coefficients is bounded — i.e., no inactive feature is "too aligned" with the active features in a sign-coherent way.
+
+**Population versus empirical.** For a random design $\mathbf{X}$ with iid rows from $\mathcal{N}(\mathbf{0}, \boldsymbol\Sigma)$, the population IC is
+
+$$
+\| \boldsymbol\Sigma_{S^c, S} \boldsymbol\Sigma_{S, S}^{-1} \mathbf{s}^*_S \|_\infty \le 1,
+$$
+
+and the empirical IC concentrates around it as $n$ grows. The viz below plots the population IC as a function of correlation strength on DGP-1-style AR(1) Toeplitz designs.
+
+<IrrepresentableConditionViewer client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_06_01_irrepresentable_condition.png"
   alt="Population irrepresentable condition quantity versus correlation strength rho for AR(1) Toeplitz designs, with the IC = 1 threshold marked."
   caption="Population irrepresentable quantity (the ℓ_∞ norm of the off-support × on-support normal-equation coupling, ‖Σ_{Sᶜ S} Σ_{S S}⁻¹ sign(β*_S)‖_∞) for DGP-1-style designs (AR(1) Toeplitz Σⱼₖ = ρ^|j−k|, contiguous active set S = {0, …, 9}) as ρ varies from 0 to 0.95. Horizontal line at 1 is the IC threshold: below the line the lasso is sign-consistent; above the line it provably fails. At ρ = 0.5 (DGP-1 default) the IC quantity is comfortably below 1 and the lasso reliably recovers most of the support; at ρ > 0.7 the IC starts to bind and support recovery degrades dramatically."
 />
+
+### §6.3 The sample-size scaling for support recovery
+
+<TheoremBlock type="theorem" number={1} title="Lasso sign-consistency (Zhao-Yu 2006; Wainwright 2009)">
+Suppose:
+
+(i) The design $\mathbf{X}$ satisfies the strong irrepresentable condition with parameter $\eta > 0$.
+
+(ii) The active-set Gram matrix is well-conditioned: $\lambda_{\min}(\mathbf{X}_S^\top \mathbf{X}_S / n) \ge C_{\min} > 0$.
+
+(iii) The columns are normalized: $\|\mathbf{X}_j\|_2^2 \le n$.
+
+(iv) The minimum signal is large enough: $\min_{j \in S} |\beta^*_j| \ge c_0 \lambda \cdot \| (\mathbf{X}_S^\top \mathbf{X}_S / n)^{-1}\|_\infty$ for some constant $c_0$.
+
+(v) The noise is sub-Gaussian with parameter $\sigma$.
+
+Choose $\lambda \ge \frac{2 \sigma}{\eta} \sqrt{\frac{2 \log p}{n}}$. Then with probability at least $1 - 4 \exp(-c \cdot n \lambda^2 / \sigma^2)$,
+
+$$
+\mathrm{sign}(\hat{\boldsymbol\beta}^{\text{lasso}}) = \mathrm{sign}(\boldsymbol\beta^*).
+$$
+
+In particular, taking $\lambda = c_1 \sigma \sqrt{\log(p)/n}$ for some constant $c_1$, the conclusion holds with probability $\to 1$ as long as $n \gtrsim (s/C_{\min}) \log(p)$.
+</TheoremBlock>
+
+**Proof sketch (primal-dual witness).** Wainwright's (2009) proof uses a five-step **primal-dual witness construction**:
+
+1. **Restricted lasso.** Solve the lasso *only* on the active features: $\tilde{\boldsymbol\beta}_S = \arg\min_{\boldsymbol\beta_S} \frac{1}{2n}\|\mathbf{y} - \mathbf{X}_S \boldsymbol\beta_S\|^2 + \lambda \|\boldsymbol\beta_S\|_1$. Set $\tilde{\boldsymbol\beta}_{S^c} = \mathbf{0}$ and define $\tilde{\boldsymbol\beta} = (\tilde{\boldsymbol\beta}_S, \mathbf{0})$.
+
+2. **Sign verification.** Verify that $\mathrm{sign}(\tilde{\boldsymbol\beta}_S) = \mathrm{sign}(\boldsymbol\beta^*_S)$ — this is where the minimum-signal condition (iv) is used. With high probability, the restricted lasso has the right signs because the noise is small compared to $\beta^*_{\min}$.
+
+3. **Construct the dual.** Set $\tilde{\mathbf{g}}_S = \mathrm{sign}(\tilde{\boldsymbol\beta}_S)$. The active KKT condition then determines what $\tilde{\mathbf{g}}_{S^c}$ would have to be for $\tilde{\boldsymbol\beta}$ to be the full lasso solution:
+
+$$
+\tilde{\mathbf{g}}_{S^c} = \mathbf{X}_{S^c}^\top \mathbf{X}_S (\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \tilde{\mathbf{g}}_S + (\text{noise term}).
+$$
+
+4. **Verify the inactive KKT condition.** For $\tilde{\boldsymbol\beta}$ to be the actual lasso solution, we need $\|\tilde{\mathbf{g}}_{S^c}\|_\infty < 1$ (strict). The leading term is exactly the irrepresentable quantity from Definition 1; strong IC bounds it by $1 - \eta$. The noise term is $O(\sigma \sqrt{\log(p)/n})$ via sub-Gaussian deviation, which is $\ll \eta$ for large enough $n$. So with high probability, $\|\tilde{\mathbf{g}}_{S^c}\|_\infty < 1 - \eta/2 < 1$.
+
+5. **Conclude by KKT uniqueness.** Steps 1–4 produce a $(\tilde{\boldsymbol\beta}, \tilde{\mathbf{g}})$ pair satisfying the lasso KKT conditions with strictly bounded $\tilde{\mathbf{g}}_{S^c}$. Under the design assumptions, the lasso solution is unique (recall §2.3), so $\tilde{\boldsymbol\beta} = \hat{\boldsymbol\beta}^{\text{lasso}}$. Since $\tilde{\boldsymbol\beta}_{S^c} = \mathbf{0}$ and $\mathrm{sign}(\tilde{\boldsymbol\beta}_S) = \mathrm{sign}(\boldsymbol\beta^*_S)$, sign consistency holds. $\blacksquare$
+
+The full proof with explicit constants is in Wainwright (2009, §III). The key probabilistic ingredient is the same sub-Gaussian deviation we used in §5.5 — extended to control the noise term in step 4.
+
+**Necessity of IC.** Wainwright (2009, Theorem 3) also proved the converse: if the irrepresentable condition fails (say $\| \mathbf{X}_{S^c}^\top \mathbf{X}_S (\mathbf{X}_S^\top \mathbf{X}_S)^{-1} \mathbf{s}^*_S \|_\infty > 1 + \delta$ for some $\delta > 0$), then $\mathbb{P}(\mathrm{sign}(\hat{\boldsymbol\beta}^{\text{lasso}}) = \mathrm{sign}(\boldsymbol\beta^*)) \to 0$ as $n \to \infty$, regardless of how $\lambda$ is chosen. The lasso provably fails to recover the support when IC is violated. So IC isn't just a proof artifact — it's the *correct* characterization of when the lasso can do support recovery.
+
+### §6.4 Contrasting prediction-risk and support-recovery: same estimator, different theorems
+
+The two main theorems of §§5–6 differ on every axis. A comparison:
+
+| | Prediction-risk bound (§5) | Support-recovery bound (§6) |
+|---|---|---|
+| **What's bounded** | $\frac{1}{n}\|\mathbf{X}(\hat{\boldsymbol\beta} - \boldsymbol\beta^*)\|_2^2$ | $\mathbb{P}(\mathrm{sign}(\hat{\boldsymbol\beta}) = \mathrm{sign}(\boldsymbol\beta^*))$ |
+| **Sufficient condition on $\mathbf{X}$** | Restricted-eigenvalue (§5.4) | Irrepresentable (§6.2) |
+| **Necessary?** | RE essentially necessary for any sparse-regression estimator at the optimal rate | Strong IC necessary for *lasso* sign-consistency (Wainwright 2009) |
+| **Sample-size scaling** | $n \gtrsim s \log(p)$ | $n \gtrsim s \log(p)$ |
+| **Minimum-signal needed?** | No — works for any $\boldsymbol\beta^*$ with $\|\boldsymbol\beta^*\|_0 \le s$ | Yes — $\beta^*_{\min} \gtrsim \lambda$ required |
+| **What fixes failure** | Larger $n$ gives better RE | IC violated $\Rightarrow$ lasso fundamentally can't recover support; need adaptive lasso (§8.3) or post-selection refit |
+
+**The conditions are not nested.** RE doesn't imply IC, and IC doesn't imply RE. They measure different geometric properties of the design:
+
+- **RE** is a lower bound on $\mathbf{X}^\top \mathbf{X} / n$ restricted to a cone. It's about the design being "well-conditioned on sparse and near-sparse vectors" — a global property that doesn't depend on which $S$ is the active set.
+- **IC** is a constraint relating the inactive-to-active block of $\mathbf{X}^\top \mathbf{X} / n$ to the sign pattern $\mathbf{s}^*_S$. It depends on $S$ and $\mathbf{s}^*_S$ specifically.
+
+A design can satisfy RE but violate IC (random Gaussian designs with strong correlation between active and inactive features), in which case the lasso predicts well but selects the wrong support. The reverse can also happen, though it's less common in practice.
+
+**Practical implications.** The lasso is a much better prediction tool than a model-selection tool. Two rules of thumb:
+
+- **For prediction:** trust the lasso. CV-selected $\lambda$, refit at $\lambda_{\text{CV}}$ or $\lambda_{1\text{SE}}$, and use the lasso predictions. The §5 oracle inequality gives near-optimal prediction risk under mild conditions.
+
+- **For variable selection:** be skeptical of the lasso's chosen support. Two specific patterns to watch for: (i) two highly correlated features where only one shows up in the lasso fit (the lasso may have arbitrarily picked one), and (ii) the lasso fit changing dramatically across resampled training sets (instability $\Rightarrow$ IC likely violated). Use stability selection (Meinshausen-Bühlmann 2010) to assess; consider the **adaptive lasso** (§8.3) for a sign-consistent variant under weaker conditions.
+
+The deeper bridge to §§7–10: practical $\lambda$-selection (§7) trades off these two objectives differently — `LassoCV` optimizes prediction (smaller $\lambda$, more features); `LassoLarsIC` with BIC penalizes model size more heavily (larger $\lambda$, fewer features, closer to support recovery). The debiased lasso (§10) sidesteps the support-recovery question entirely by producing valid CIs for individual coefficients without requiring sign consistency.
 
 ## §7. Cross-validation for $\lambda$
 
