@@ -1,7 +1,7 @@
 ---
 title: "High-Dimensional Regression"
 subtitle: "The lasso at $p \\gg n$ — definition, geometry, and ISTA / FISTA / coordinate-descent solvers; the Bickel–Ritov–Tsybakov (2009) oracle inequality at the $\\sigma^2 s \\log(p)/n$ rate under the restricted-eigenvalue condition; the variable-selection story under the irrepresentable condition; ridge / elastic-net / adaptive-lasso variants; and the Zhang–Zhang / Javanmard–Montanari / van de Geer–Bühlmann–Ritov–Dezeure (2014) debiased lasso for valid $\\sqrt n$-confidence inference on individual coefficients."
-status: "draft"
+status: "published"
 difficulty: "advanced"
 prerequisites:
   - "kernel-regression"
@@ -372,11 +372,14 @@ import ExternalLink from '../../components/ui/ExternalLink.astro';
 import OlsOverfitsAtHighDim from '../../components/viz/OlsOverfitsAtHighDim.tsx';
 import RidgeVsLassoCoefBars from '../../components/viz/RidgeVsLassoCoefBars.tsx';
 import L1VsL2BallExplorer from '../../components/viz/L1VsL2BallExplorer.tsx';
+import FistaConvergenceTrace from '../../components/viz/FistaConvergenceTrace.tsx';
 import LassoUCurve from '../../components/viz/LassoUCurve.tsx';
 import LassoSolutionPath from '../../components/viz/LassoSolutionPath.tsx';
 import OracleInequalityRiskBound from '../../components/viz/OracleInequalityRiskBound.tsx';
 import IrrepresentableConditionViewer from '../../components/viz/IrrepresentableConditionViewer.tsx';
 import CvLambdaSelector from '../../components/viz/CvLambdaSelector.tsx';
+import RidgeLassoEnetPaths from '../../components/viz/RidgeLassoEnetPaths.tsx';
+import DebiasedLassoCoverage from '../../components/viz/DebiasedLassoCoverage.tsx';
 
 ## §1. From OLS to penalized regression
 
@@ -815,11 +818,7 @@ A factor-of-$k$ improvement over ISTA: to reduce $F(\boldsymbol\beta^k) - F^*$ b
 
 **FISTA is not a descent method.** Unlike ISTA, $F(\boldsymbol\beta^k)$ is not monotonic along FISTA iterations — small "ripples" in $F(\boldsymbol\beta^k)$ are normal. A monotone variant (M-FISTA, Beck-Teboulle 2009 §5) accepts $\boldsymbol\beta^{k+1}$ only if $F(\boldsymbol\beta^{k+1}) \le F(\boldsymbol\beta^k)$, otherwise reuses $\boldsymbol\beta^k$. This trade-off — slightly worse worst-case constant for monotonicity — is rarely worth it in practice.
 
-<Figure
-  src="/images/topics/high-dimensional-regression/fig_03_01_solver_convergence.png"
-  alt="Log-log convergence trace: ISTA at slope -1, FISTA at slope -2, coordinate descent asymptotically linear after active-set stabilization."
-  caption="ISTA, FISTA, and coordinate descent on the §1 DGP at λ = λ_CV, 300 iterations each, with a high-precision FISTA reference (10000 iterations) for F*. Log-log axes: ISTA slope ≈ −1 (matching the O(1/k) rate from Theorem 3.2); FISTA slope ≈ −2 (O(1/k²) from Theorem 3.3); coordinate descent converges faster than either after the active set stabilizes — the lasso restricted to a fixed active set is a smooth strictly-convex quadratic, and CD converges linearly on those."
-/>
+<FistaConvergenceTrace client:visible />
 
 ### §3.5 Practical solver-choice notes
 
@@ -834,12 +833,6 @@ When does each solver win? A field guide.
 **Specialized solvers we don't cover.** ADMM (Boyd et al. 2011) is the right tool for lasso variants with linear-equality-coupled penalties (e.g., the Dantzig selector). LARS (Efron-Hastie-Johnstone-Tibshirani 2004) computes the entire lasso path exactly in $O(np \min(n, p))$, which can beat coordinate descent at very small $p$ but loses badly at the high-dimensional scales we care about. Interior-point methods (CVXPY, `cvxopt`) work but are typically 100×+ slower than coordinate descent on lasso problems of any meaningful size.
 
 For everything in the rest of this topic — the §1 lasso fits, the LassoCV in §7, the elastic-net comparison in §8, the debiased-lasso pipeline in §10 — we use scikit-learn's coordinate descent. We hand-rolled FISTA above to demonstrate the $O(1/k^2)$ rate and to keep the algorithmic content visible.
-
-<Figure
-  src="/images/topics/high-dimensional-regression/fig_03_01_solver_convergence.png"
-  alt="Log-log convergence trace: ISTA at slope -1, FISTA at slope -2, coordinate descent asymptotically linear after active-set stabilization."
-  caption="ISTA, FISTA, and coordinate descent on the §1 DGP at λ = λ_CV, 300 iterations each, with a high-precision FISTA reference (10000 iterations) for F*. Log-log axes: ISTA slope ≈ −1 (matching the O(1/k) rate from Theorem 3.2); FISTA slope ≈ −2 (O(1/k²) from Theorem 3.3); coordinate descent converges faster than either after the active set stabilizes — the lasso restricted to a fixed active set is a smooth strictly-convex quadratic, and CD converges linearly on those."
-/>
 
 ## §4. Bias-variance for the lasso
 
@@ -1555,11 +1548,7 @@ Figure 8.2 shows the adaptive lasso vs vanilla lasso on the active-coordinate es
 
 **Recommendation.** Default to LassoCV. If features come in correlated groups, try ElasticNetCV. If you need unbiased coefficient estimates or weaker selection conditions, run the adaptive lasso as a post-processing step on top of LassoCV. The §10 debiased lasso provides a different fix for the bias problem — it doesn't reduce the lasso's bias but corrects for it explicitly when forming CIs.
 
-<Figure
-  src="/images/topics/high-dimensional-regression/fig_08_01_ridge_lasso_enet_paths.png"
-  alt="Three-panel solution-path comparison on DGP-1: ridge path (smooth dense), lasso path (piecewise linear sparse), elastic-net path (hybrid)."
-  caption="Solution paths on DGP-1: ridge (left, smooth and dense everywhere), lasso (middle, piecewise-linear and sparse at moderate λ), elastic net (right, sparse but with smoother corners than the lasso). The 10 true active coordinates are highlighted in black; 490 inactive in light gray. Ridge cannot distinguish active from inactive without a thresholding step; lasso and elastic net both select the active coordinates as the first to leave zero as λ decreases."
-/>
+<RidgeLassoEnetPaths client:visible />
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_08_02_adaptive_vs_vanilla.png"
@@ -1868,11 +1857,7 @@ The headline takeaway: **the debiased lasso recovers OLS-quality inference from 
 
 The core lesson — that naive post-selection inference fails and the one-step correction fixes it — is robust to both simplifications. In production code, the `hdi` R package (Dezeure-Bühlmann-Meier-Meinshausen 2015) and `desparsified-lasso` Python package implement the full nodewise-lasso pipeline.
 
-<Figure
-  src="/images/topics/high-dimensional-regression/fig_10_01_debiased_coverage.png"
-  alt="Empirical 95% CI coverage rates for OLS, naive post-selection, and debiased lasso, separated by signal versus noise coordinates."
-  caption="Empirical 95% CI coverage rates on DGP-1-style data at (n, p, s) = (200, 100, 5), B = 200 Monte Carlo replicates. OLS CI (gold standard) covers near 95% at both signal and noise coords. Naive post-selection CI undercovers signal coords at 50–70% (selection-induced bias); the noise-coord coverage is degenerate (lasso usually doesn't select them, so the implicit CI is {0} which trivially covers β*ⱼ = 0). Debiased lasso CI (with M̂ = Σ̂⁻¹, the OLS Hessian inverse available since p < n) covers near 95% at both signal and noise coords — recovers OLS-quality inference from a biased lasso initial."
-/>
+<DebiasedLassoCoverage client:visible />
 
 ## §11. Generalized lasso for non-Gaussian responses
 

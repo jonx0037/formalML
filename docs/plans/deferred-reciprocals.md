@@ -16,6 +16,9 @@ Add the reciprocal pointer back to:
 
 Add the reciprocal pointer back to:
 
+- **formalML/high-dimensional-regression** declares `formalcalculusPrereqs` → `convex-optimization` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _KKT subgradient calculus, soft-thresholding derivation from convex optimality conditions, Lagrangian duality between penalized and constrained forms, ISTA / FISTA convergence analysis via the desce…_
 - **formalStatistics/regularization-and-penalized-estimation** declares `formalcalculusPrereqs` → `convex-optimization` (prereqs)
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§23.3 Thm 2 (lasso KKT) and §23.4 Thm 6 (coord-descent convergence) both rely on subgradient calculus and the optimality conditions for convex non-smooth functions. The subgradient of $|\beta_j|$ —…_
@@ -544,23 +547,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/conditional-probability** declares `formalmlConnections` → `graphical-models` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Conditional independence is the structural assumption encoded in Bayesian networks. The factorization P(X₁,..., Xₙ) = ∏ P(Xᵢ | Parents(Xᵢ)) is the chain rule of probability combined with conditiona…_
-
-## When `formalml/high-dimensional-regression` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/generalized-linear-models** declares `formalmlConnections` → `high-dimensional-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _When $p \gg n$ the GLM design matrix is rank-deficient and ordinary IRLS fails. §22.10 Rem 28 forward-points to the high-dimensional treatment: penalized GLMs ([Topic 23](/topics/regularization-and…_
-- **formalStatistics/linear-regression** declares `formalmlConnections` → `high-dimensional-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _When $p > n$, $\mathbf{X}^\top \mathbf{X}$ is singular and OLS fails. [Topic 23](/topics/regularization-and-penalized-estimation) (ridge, lasso) is the Track-6 answer; the high-dimensional theory (…_
-- **formalStatistics/model-selection-and-information-criteria** declares `formalmlConnections` → `high-dimensional-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _When $p \gg n$, likelihood-based IC degenerates. Extended BIC (Chen–Chen 2008), stability selection (Meinshausen–Bühlmann 2010), and knockoffs (Barber–Candès 2015) extend the framework. §24.10 Rem 25._
-- **formalStatistics/regularization-and-penalized-estimation** declares `formalmlConnections` → `high-dimensional-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§23.10 Rem 29 forward-points to the asymptotic theory under $p \gg n$: oracle inequalities, restricted-eigenvalue conditions (Bickel–Ritov–Tsybakov 2009), the lasso $\ell_2$-consistency rate (Wainw…_
 
 ## When `formalml/high-dimensional-testing-knockoffs` ships
 
