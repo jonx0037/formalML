@@ -128,7 +128,10 @@ export function olsViaQR(V: Float64Array, Y: Float64Array, n: number, d: number)
   for (let j = 0; j < d; j++) {
     // Compute ||A[j:n, j]||
     let normSq = 0;
-    for (let i = j; i < n; i++) normSq += A[i * d + j] * A[i * d + j];
+    for (let i = j; i < n; i++) {
+      const val = A[i * d + j];
+      normSq += val * val;
+    }
     const norm = Math.sqrt(normSq);
     if (norm === 0) continue; // skip rank-deficient column (caller's responsibility)
     const sign = A[j * d + j] >= 0 ? 1 : -1;
@@ -287,7 +290,10 @@ export function gramMatrix(V: Float64Array, n: number, d: number): Float64Array 
   for (let i = 0; i < d; i++) {
     for (let j = i; j < d; j++) {
       let s = 0;
-      for (let k = 0; k < n; k++) s += V[k * d + i] * V[k * d + j];
+      // Hoist row-offset out of the inner loop — saves a multiply per iter.
+      for (let k = 0, offset = 0; k < n; k++, offset += d) {
+        s += V[offset + i] * V[offset + j];
+      }
       G[i * d + j] = s;
       G[j * d + i] = s;
     }
@@ -447,6 +453,7 @@ export function biasVarianceMC(
   rng: () => number,
   testGridSize: number = 200,
 ): BiasVarianceCurve {
+  const D = kMax + 1;
   const xTest = new Float64Array(testGridSize);
   const truth = new Float64Array(testGridSize);
   for (let g = 0; g < testGridSize; g++) {
@@ -454,17 +461,66 @@ export function biasVarianceMC(
     xTest[g] = x;
     truth[g] = targetSin(x);
   }
+  // Build the test-grid Vandermonde at full degree once for the whole MC; for
+  // each k we use only its leading (k+1) columns.
+  const V_test = polynomialVandermonde(xTest, D);
   // predSum[k*testGridSize+g] and predSqSum accumulate over replicates B.
-  const predSum = new Float64Array((kMax + 1) * testGridSize);
-  const predSqSum = new Float64Array((kMax + 1) * testGridSize);
+  const predSum = new Float64Array(D * testGridSize);
+  const predSqSum = new Float64Array(D * testGridSize);
+  // Scratch buffers reused across (b, k) iterations.
+  const VtY = new Float64Array(D);
+  const beta = new Float64Array(D);
+  const alpha = new Float64Array(D);
+  const rcondSq = Math.max(n, D) * 2.220446049250313e-16; // numpy lstsq default
   for (let b = 0; b < B; b++) {
     const { X, Y } = sampleSinTarget(n, sigma, rng);
+    // Build V_full (n × D) and G_full = V^T V (D × D) once per replicate; the
+    // OLS at each degree k reads the leading (k+1)×(k+1) submatrix of G_full.
+    const V_full = polynomialVandermonde(X, D);
+    const G_full = gramMatrix(V_full, n, D);
     for (let k = 0; k <= kMax; k++) {
-      const coefs = polyfitDegree(X, Y, k);
+      const d = k + 1;
+      // Extract leading d×d submatrix G[:d, :d] into a contiguous buffer.
+      const G_sub = new Float64Array(d * d);
+      for (let i = 0; i < d; i++) {
+        const rowSubOffset = i * d;
+        const rowFullOffset = i * D;
+        for (let j = 0; j < d; j++) G_sub[rowSubOffset + j] = G_full[rowFullOffset + j];
+      }
+      const { values: eigs, vectors: W } = symEigJacobi(G_sub, d);
+      // V^T Y on the d leading columns (zero scratch first).
+      for (let j = 0; j < d; j++) VtY[j] = 0;
+      for (let i = 0, rowOffset = 0; i < n; i++, rowOffset += D) {
+        const yi = Y[i];
+        for (let j = 0; j < d; j++) VtY[j] += V_full[rowOffset + j] * yi;
+      }
+      // β = W^T V^T Y
+      for (let j = 0; j < d; j++) {
+        let s = 0;
+        for (let i = 0; i < d; i++) s += W[i * d + j] * VtY[i];
+        beta[j] = s;
+      }
+      // rcond truncation on eigs (max-eigenvalue rule).
+      let maxEig = 0;
+      for (let j = 0; j < d; j++) if (eigs[j] > maxEig) maxEig = eigs[j];
+      const eigTol = rcondSq * rcondSq * maxEig;
+      // α = W (β / eigs) with truncated inverse.
+      for (let i = 0; i < d; i++) {
+        let s = 0;
+        for (let j = 0; j < d; j++) {
+          const ej = eigs[j];
+          if (ej > eigTol) s += W[i * d + j] * (beta[j] / ej);
+        }
+        alpha[i] = s;
+      }
+      // Predict on test grid via V_test (leading d columns) and accumulate.
+      const kBase = k * testGridSize;
       for (let g = 0; g < testGridSize; g++) {
-        const yhat = polyvalIncreasing(coefs, xTest[g]);
-        predSum[k * testGridSize + g] += yhat;
-        predSqSum[k * testGridSize + g] += yhat * yhat;
+        const rowOffset = g * D;
+        let yhat = 0;
+        for (let j = 0; j < d; j++) yhat += V_test[rowOffset + j] * alpha[j];
+        predSum[kBase + g] += yhat;
+        predSqSum[kBase + g] += yhat * yhat;
       }
     }
   }
@@ -578,17 +634,22 @@ export function polynomialUnitBallRademacher(
   const { values: eigs, vectors: W } = symEigJacobi(G, d);
   // Drop near-zero eigenvalues (rank-deficient direction): they correspond
   // to directions outside col(V) and don't contribute to the projection.
-  const tol = 1e-12 * (eigs[0] || 1);
+  // Use max(eigs) for the tolerance — Jacobi doesn't guarantee sorted order.
+  let maxEig = 0;
+  for (let j = 0; j < d; j++) if (eigs[j] > maxEig) maxEig = eigs[j];
+  const tol = 1e-12 * (maxEig || 1);
   let sumNorm = 0;
   let sumNormSq = 0;
+  // Hoist Vtsig allocation outside the MC loop — re-zero each draw.
+  const Vtsig = new Float64Array(d);
   for (let b = 0; b < B; b++) {
     // Draw σ ∈ {±1}^n
     // Then compute V^T σ (d-vector), expand in W basis, divide by sqrt(eigs[j]),
     // accumulate squared norm. ||P_V σ||² = Σ_j (W_j^T V^T σ)² / eigs[j].
-    const Vtsig = new Float64Array(d);
-    for (let i = 0; i < n; i++) {
+    Vtsig.fill(0);
+    for (let i = 0, offset = 0; i < n; i++, offset += d) {
       const sigma = rng() < 0.5 ? -1 : 1;
-      for (let j = 0; j < d; j++) Vtsig[j] += V[i * d + j] * sigma;
+      for (let j = 0; j < d; j++) Vtsig[j] += V[offset + j] * sigma;
     }
     let normSq = 0;
     for (let j = 0; j < d; j++) {

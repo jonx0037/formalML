@@ -15,7 +15,8 @@ import {
 // Rademacher complexity of the polynomial unit-ball class H_k° as a function
 // of k ∈ [1, 15] alongside the VC-implied upper bound √(2(k+1)log(en/(k+1))/n).
 // Optional toggle to overlay Vapnik penalty (Definition 3) for direct
-// comparison with §4's bound. Commit-on-release for B; n updates live.
+// comparison with §4's bound. Commit-on-release for both n and B — each MC
+// pass over k = 0..15 with B draws is too heavy to recompute on every drag.
 //
 // Static fallback: public/images/topics/structural-risk-minimization/05_rademacher_srm.png
 // =============================================================================

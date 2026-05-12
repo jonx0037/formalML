@@ -21,7 +21,8 @@ import {
 // Two sliders: n (25-500), σ (0.05-0.5). Computes training MSE and four
 // penalty curves (AIC, BIC, Vapnik C=1, Bartlett-Mendelson Rademacher) on the
 // §1 toy. Plots all four on a log y-scale (penalties span ~50×) and tabulates
-// picked $\hat k$ for each rule. Commit-on-release for n; σ updates live.
+// picked $\hat k$ for each rule. Commit-on-release for both n and σ — the
+// Rademacher path uses B = 150 MC draws per k and is too heavy for live drag.
 //
 // Static fallback: public/images/topics/structural-risk-minimization/08_info_criteria_comparison.png
 // =============================================================================

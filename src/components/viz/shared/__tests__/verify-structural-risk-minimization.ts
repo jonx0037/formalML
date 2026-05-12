@@ -200,7 +200,8 @@ header('Linear algebra primitives (closed-form identities)');
   // Use a non-diagonal A: A = [[2,1,0],[1,2,1],[0,1,2]] has eigenvalues 2-√2, 2, 2+√2.
   const A = new Float64Array([2, 1, 0, 1, 2, 1, 0, 1, 2]);
   const { values, vectors: W } = symEigJacobi(A, 3);
-  const sorted = Array.from(values).slice().sort((a, b) => a - b);
+  // TypedArray sort defaults to numeric — no comparator needed (per CLAUDE.md).
+  const sorted = values.slice().sort();
   approxEq('symEig λ_min', sorted[0], 2 - Math.sqrt(2), 1e-10, 'tridiag eigval');
   approxEq('symEig λ_mid', sorted[1], 2, 1e-10, 'tridiag eigval');
   approxEq('symEig λ_max', sorted[2], 2 + Math.sqrt(2), 1e-10, 'tridiag eigval');
