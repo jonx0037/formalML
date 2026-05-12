@@ -13,28 +13,32 @@ import { dkwEnvelope, ksDistance, mulberry32, gaussianFrom } from './shared/gene
 const HEIGHT = 340;
 type DistName = 'uniform' | 'normal' | 'cauchy';
 
+// Each entry's `makeSampler` is invoked ONCE per useMemo run; the returned
+// per-draw closure is then called n times.  For the normal case this lets
+// gaussianFrom retain its cached "spare" between draws (Box-Muller produces
+// two iid normals per pair of uniforms — the cache halves the cost).
 const dists: Record<DistName, {
   label: string;
   cdf: (t: number) => number;
-  sample: (rng: () => number) => number;
+  makeSampler: (rng: () => number) => () => number;
   domain: [number, number];
 }> = {
   uniform: {
     label: 'Uniform[0, 1]',
     cdf: (t) => Math.min(1, Math.max(0, t)),
-    sample: (rng) => rng(),
+    makeSampler: (rng) => rng,
     domain: [-0.1, 1.1],
   },
   normal: {
     label: 'Standard Normal',
     cdf: (t) => 0.5 * (1 + erf(t / Math.SQRT2)),
-    sample: (rng) => gaussianFrom(rng)(),
+    makeSampler: (rng) => gaussianFrom(rng),
     domain: [-4, 4],
   },
   cauchy: {
     label: 'Standard Cauchy',
     cdf: (t) => 0.5 + Math.atan(t) / Math.PI,
-    sample: (rng) => Math.tan(Math.PI * (rng() - 0.5)),
+    makeSampler: (rng) => () => Math.tan(Math.PI * (rng() - 0.5)),
     domain: [-8, 8],
   },
 };
@@ -61,8 +65,9 @@ export default function GlivenkoCantelliExplorer() {
   const data = useMemo(() => {
     const dist = dists[distName];
     const rng = mulberry32(seed);
+    const sample = dist.makeSampler(rng);
     const samples = new Float64Array(committedN);
-    for (let i = 0; i < committedN; i++) samples[i] = dist.sample(rng);
+    for (let i = 0; i < committedN; i++) samples[i] = sample();
     samples.sort();
     const ks = ksDistance(samples, dist.cdf);
     // Find the t* achieving the KS supremum (for the visual marker)

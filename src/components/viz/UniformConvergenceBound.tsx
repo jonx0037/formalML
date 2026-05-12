@@ -40,25 +40,43 @@ export default function UniformConvergenceBound() {
       const radEst = empiricalRademacherMC(H, n + 1, n, 200, rng);
       const bound = canonicalBound(radEst.mean, n, committedDelta);
 
-      // Empirical worst-case gap across the threshold class on a noisy sample.
+      // Empirical worst-case gap across the threshold class — O(B·n log n) via
+      // a single sort plus a left-to-right sweep over candidate thresholds
+      // (the naive double-loop is O(B·n²); at n=3000, B=60 that's ~5×10⁸
+      // iterations per useMemo, which freezes the UI on slider release).
+      //
+      // After sorting X, the candidate thresholds (one per gap between sorted
+      // points) split the sample into "predict 0" (indices < k) and "predict 1"
+      // (indices ≥ k).  As tau increases, exactly one point moves from the
+      // right partition to the left at each step, so empirical risk updates
+      // by ±1/n based on that point's true label.  True risk has a closed form
+      // we already use.
       const gapArr = new Float64Array(B_REPL);
       for (let b = 0; b < B_REPL; b++) {
         const { X, Y } = sampleThresholdProblem(n, committedEta, TAU_STAR, rng);
-        const sortedX = X.slice().sort();
-        // Threshold grid for evaluation
-        const grid = new Float64Array(n + 1);
-        grid[0] = 0;
-        for (let i = 0; i < n; i++) grid[i + 1] = sortedX[i];
-        let maxGap = 0;
-        for (let k = 0; k <= n; k++) {
-          const tau = grid[k];
-          let emp = 0;
-          for (let i = 0; i < n; i++) {
-            const pred = X[i] >= tau ? 1 : 0;
-            if (pred !== Y[i]) emp++;
-          }
-          const empR = emp / n;
-          const truR = trueRiskThreshold(tau, committedEta, TAU_STAR);
+        // Sort indices by X ascending; Ys[order[i]] is the label at the i-th sorted X.
+        const order = new Uint32Array(n);
+        for (let i = 0; i < n; i++) order[i] = i;
+        const sortedIdx = order.slice().sort((a, b_) => X[a] - X[b_]);
+        const sortedX = new Float64Array(n);
+        const sortedY = new Int8Array(n);
+        for (let i = 0; i < n; i++) {
+          sortedX[i] = X[sortedIdx[i]];
+          sortedY[i] = Y[sortedIdx[i]];
+        }
+        // Start with tau = 0: every point predicts 1.  Empirical errors = #{Y_i = 0}.
+        let totalOnes = 0;
+        for (let i = 0; i < n; i++) totalOnes += sortedY[i];
+        const totalZeros = n - totalOnes;
+        let errs = totalZeros;  // initial errors at tau = 0
+        let maxGap = Math.abs(trueRiskThreshold(0, committedEta, TAU_STAR) - errs / n);
+        // Walk tau through each sorted X: at step k, sortedX[k-1] flips from "right" to "left".
+        // If sortedY[k-1] == 1, this used to be correct (pred 1, label 1) and is now wrong (pred 0, label 1) → +1 error.
+        // If sortedY[k-1] == 0, this used to be wrong and is now correct → -1 error.
+        for (let k = 1; k <= n; k++) {
+          errs += sortedY[k - 1] === 1 ? 1 : -1;
+          const empR = errs / n;
+          const truR = trueRiskThreshold(sortedX[k - 1], committedEta, TAU_STAR);
           const g = Math.abs(truR - empR);
           if (g > maxGap) maxGap = g;
         }

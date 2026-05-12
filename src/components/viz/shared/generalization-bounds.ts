@@ -120,7 +120,7 @@ export function ermThreshold(X: Float64Array, Y: Int8Array): number {
   const n = X.length;
   const order = new Uint32Array(n);
   for (let i = 0; i < n; i++) order[i] = i;
-  const arr = Array.from(order).sort((a, b) => X[a] - X[b]);
+  const arr = order.slice().sort((a, b) => X[a] - X[b]);
   const Xs = new Float64Array(n);
   const Ys = new Int8Array(n);
   for (let i = 0; i < n; i++) {
@@ -178,7 +178,7 @@ export function thresholdClassMatrixMinimal(X: Float64Array): Int8Array {
   const n = X.length;
   const order = new Uint32Array(n);
   for (let i = 0; i < n; i++) order[i] = i;
-  const arr = Array.from(order).sort((a, b) => X[a] - X[b]);
+  const arr = order.slice().sort((a, b) => X[a] - X[b]);
   const H = new Int8Array((n + 1) * n);
   for (let k = 0; k <= n; k++) {
     const rowOffset = k * n;
@@ -203,20 +203,29 @@ export function empiricalRademacherMC(
   if (classMatrix.length !== numHypotheses * n) {
     throw new Error(`classMatrix length ${classMatrix.length} != ${numHypotheses}*${n}`);
   }
-  // Pre-convert {0,1} → {-1,+1} once.
-  const H = new Float64Array(numHypotheses * n);
-  for (let i = 0; i < classMatrix.length; i++) H[i] = 2 * classMatrix[i] - 1;
+  // classMatrix entries are in {0, 1}; the {-1, +1} version is h' = 2h − 1.
+  // The Rademacher inner product becomes Σ σ_i (2 h_i − 1) = 2 (Σ σ_i h_i) − Σ σ_i,
+  // where Σ σ_i is constant for all hypotheses in a replicate.  Computing the
+  // dot product directly against the {0, 1} matrix avoids allocating a parallel
+  // {-1, +1} Float64Array of size |H|·n — significant GC relief in MC loops.
   const sigma = new Int8Array(n);
   let sum = 0;
   let sumSq = 0;
   for (let b = 0; b < B; b++) {
-    for (let i = 0; i < n; i++) sigma[i] = rng() < 0.5 ? -1 : 1;
+    let sSigma = 0;
+    for (let i = 0; i < n; i++) {
+      const s = rng() < 0.5 ? -1 : 1;
+      sigma[i] = s;
+      sSigma += s;
+    }
     let supVal = -Infinity;
     for (let k = 0; k < numHypotheses; k++) {
       const rowOff = k * n;
-      let inner = 0;
-      for (let i = 0; i < n; i++) inner += sigma[i] * H[rowOff + i];
-      const v = inner / n;
+      let dot = 0;
+      for (let i = 0; i < n; i++) {
+        if (classMatrix[rowOff + i]) dot += sigma[i];
+      }
+      const v = (2 * dot - sSigma) / n;
       if (v > supVal) supVal = v;
     }
     sum += supVal;
@@ -378,14 +387,32 @@ export function localRademacherThresholdClass(
     if (cntDis / n <= r) eligible.push(k);
   }
   if (eligible.length === 0) return 0;
-  const eN = eligible.length;
-  const H = new Int8Array(eN * n);
-  for (let kIdx = 0; kIdx < eN; kIdx++) {
-    const tau = grid[eligible[kIdx]];
-    const rowOff = kIdx * n;
-    for (let i = 0; i < n; i++) H[rowOff + i] = X[i] >= tau ? 1 : 0;
+
+  // Inline the Rademacher MC: for each eligible tau, the indicator h_tau(X_i) is
+  // (X_i ≥ tau).  Use the 2·dot − sSigma identity to avoid allocating the
+  // |eligible| × n class matrix.  Saves O(eN·n) Int8Array allocation per call,
+  // which matters because localRademacherFixedPoint bisects 14× and the n
+  // threshold-grid times the eligibility-pass keeps eN close to n+1 in practice.
+  const sigma = new Int8Array(n);
+  let sum = 0;
+  for (let b = 0; b < B; b++) {
+    let sSigma = 0;
+    for (let i = 0; i < n; i++) {
+      const s = rng() < 0.5 ? -1 : 1;
+      sigma[i] = s;
+      sSigma += s;
+    }
+    let supVal = -Infinity;
+    for (let kIdx = 0; kIdx < eligible.length; kIdx++) {
+      const tau = grid[eligible[kIdx]];
+      let dot = 0;
+      for (let i = 0; i < n; i++) if (X[i] >= tau) dot += sigma[i];
+      const v = (2 * dot - sSigma) / n;
+      if (v > supVal) supVal = v;
+    }
+    sum += supVal;
   }
-  return empiricalRademacherMC(H, eN, n, B, rng).mean;
+  return sum / B;
 }
 
 /** Bisection on r = R̂_S(F_r) + log(1/δ)/n. Returns r*. */
@@ -422,11 +449,13 @@ export function ridgeSolve(
 ): Float64Array {
   const M = new Float64Array(d * d);
   const b = new Float64Array(d);
+  // X^T X is symmetric — compute the upper triangle (j <= i) and mirror.
   for (let i = 0; i < d; i++) {
-    for (let j = 0; j < d; j++) {
+    for (let j = 0; j <= i; j++) {
       let s = 0;
       for (let k = 0; k < n; k++) s += X[k * d + i] * X[k * d + j];
       M[i * d + j] = s;
+      M[j * d + i] = s;
     }
     M[i * d + i] += n * lambda;
     let yb = 0;
@@ -536,7 +565,7 @@ export function ridgeStabilityBeta(
 }
 
 /** Bousquet–Elisseeff deviation term: β + (2nβ + M) √(log(1/δ)/(2n)). */
-export function bousquetElisseefDeviation(beta: number, n: number, delta: number, M: number = 1): number {
+export function bousquetElisseeffDeviation(beta: number, n: number, delta: number, M: number = 1): number {
   return beta + (2 * n * beta + M) * Math.sqrt(Math.log(1 / delta) / (2 * n));
 }
 

@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  bousquetElisseefDeviation,
+  bousquetElisseeffDeviation,
   gaussianFrom,
   mulberry32,
   ridgeStabilityBeta,
@@ -21,7 +21,10 @@ import {
 
 const HEIGHT = 320;
 const SM_BREAKPOINT = 1000;
-const LAMBDA_GRID = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0];
+// 7 logarithmically-spaced λ values across 3.5 decades — enough to render the
+// β-vs-λ curve smoothly without paying the cost of the original 11-point grid.
+const LAMBDA_GRID = [0.005, 0.025, 0.1, 0.25, 1.0, 2.5, 10.0];
+const N_SWAPS = 4;  // per-lambda; the max-diff is dominated by a few large swaps anyway
 
 export default function RidgeStabilityExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -38,8 +41,8 @@ export default function RidgeStabilityExplorer() {
     return LAMBDA_GRID.map((lam) => {
       const unif = mulberry32(20260511);
       const gauss = gaussianFrom(mulberry32(20260512));
-      const beta = ridgeStabilityBeta(committedN, committedD, lam, 6, unif, gauss);
-      const dev = bousquetElisseefDeviation(beta, committedN, delta);
+      const beta = ridgeStabilityBeta(committedN, committedD, lam, N_SWAPS, unif, gauss);
+      const dev = bousquetElisseeffDeviation(beta, committedN, delta);
       return { lam, beta, dev, theoretical: 4.0 / (lam * committedN) };
     });
   }, [committedN, committedD, delta]);
@@ -128,7 +131,7 @@ export default function RidgeStabilityExplorer() {
         <label style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
           d:
           <input
-            type="range" min={10} max={150} step={5} value={displayD}
+            type="range" min={10} max={100} step={5} value={displayD}
             onChange={(e) => setDisplayD(parseInt(e.target.value, 10))}
             onMouseUp={() => setCommittedD(displayD)}
             onTouchEnd={() => setCommittedD(displayD)}

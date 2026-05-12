@@ -23,7 +23,7 @@
 // =============================================================================
 
 import {
-  bousquetElisseefDeviation,
+  bousquetElisseeffDeviation,
   canonicalBound,
   dkwEnvelope,
   dudleyIntegral,
@@ -268,7 +268,7 @@ console.log('\n[9] §11 ridge stability + BE deviation');
   const n = 100;
   const delta = 0.05;
   const expected = beta + (2 * n * beta + 1) * Math.sqrt(Math.log(1 / delta) / (2 * n));
-  approxEq('be_closed_form', bousquetElisseefDeviation(beta, n, delta), expected, 1e-9, 'BE closed form');
+  approxEq('be_closed_form', bousquetElisseeffDeviation(beta, n, delta), expected, 1e-9, 'BE closed form');
 
   // β-stability: large λ should give smaller β than small λ.
   const unif = mulberry32(20260511);

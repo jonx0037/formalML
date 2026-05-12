@@ -180,7 +180,7 @@ export default function VacuousnessDemo() {
             <svg ref={rightRef} width={panelWidth || 360} height={HEIGHT} role="img" aria-label="MLP prediction histogram by true class." />
           </div>
           <figcaption style={{ marginTop: 12, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-            Classical Rademacher bound ≈ {payload.results.corollary3_bound.toFixed(1)}; empirical generalization gap ≈ {payload.results.empirical_gap.toFixed(4)}. Bound is ~{Math.round(payload.results.ratio_bound_over_gap)}× looser than the actual gap.
+            Corollary 3 bound ≈ {payload.results.corollary3_bound.toFixed(1)} (Rademacher upper bound ≈ {payload.results.classical_rademacher_bound.toFixed(1)} plus the McDiarmid deviation term); empirical generalization gap ≈ {payload.results.empirical_gap.toFixed(4)}. Bound is ~{Math.round(payload.results.ratio_bound_over_gap)}× looser than the actual gap.
           </figcaption>
         </>
       ) : (

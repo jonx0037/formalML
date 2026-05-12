@@ -68,7 +68,11 @@ def main() -> None:
     X_train, y_raw = make_moons(n_samples=200, noise=0.20, random_state=SEED)
     y_train = 2 * y_raw - 1  # {0, 1} -> {-1, +1}
 
-    clf = SVC(kernel="rbf", C=10.0, gamma=1.0)
+    # gamma is set explicitly so we can reuse the same value below — avoiding
+    # the private `clf._gamma` attribute (which can change between sklearn
+    # versions).  Keep the SVC `gamma=` argument and the rbf_kernel call in sync.
+    rbf_gamma = 1.0
+    clf = SVC(kernel="rbf", C=10.0, gamma=rbf_gamma)
     clf.fit(X_train, y_train)
     scores_train = clf.decision_function(X_train)
 
@@ -76,7 +80,7 @@ def main() -> None:
     # clf.dual_coef_ has shape (1, n_sv) for binary; squeeze to 1-D.
     dual_coefs = clf.dual_coef_.ravel()
     sv = clf.support_vectors_
-    K_sv = rbf_kernel(sv, sv, gamma=clf._gamma)  # (n_sv, n_sv) Gram
+    K_sv = rbf_kernel(sv, sv, gamma=rbf_gamma)  # (n_sv, n_sv) Gram
     w_norm = float(np.sqrt(dual_coefs @ K_sv @ dual_coefs))
     R_kernel = 1.0  # RBF kernel: K(x, x) = 1
 
@@ -101,7 +105,7 @@ def main() -> None:
     median_margin = float(np.median(positive_margins)) if positive_margins.size else 0.0
 
     payload = {
-        "config": {"n": n, "delta": delta, "C": 10.0, "rbf_gamma": float(clf._gamma), "seed": SEED},
+        "config": {"n": n, "delta": delta, "C": 10.0, "rbf_gamma": rbf_gamma, "seed": SEED},
         "train": {"X": X_train, "y": y_train.astype(int)},
         "decision_grid": {"xs": xs, "ys": ys, "Z": Z},
         "margins": {
