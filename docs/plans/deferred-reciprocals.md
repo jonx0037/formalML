@@ -667,14 +667,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Hilbert-space gradient descent converges because the Riesz identification turns dual-space gradients into primal-space descent directions — no dual-space bookkeeping needed._
 
-## When `formalml/pac-bayes-bounds` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/empirical-processes** declares `formalmlConnections` → `pac-bayes-bounds` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PAC-Bayes lifts Topic 32's function-class complexity arguments to a posterior-over-hypotheses setting; McAllester's 1999 bound uses the same symmetrization technique §32.4 introduces._
-
 ## When `formalml/post-selection-inference` ships
 
 Add the reciprocal pointer back to:
