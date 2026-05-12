@@ -52,15 +52,21 @@ export default function CatoniLambdaSlider() {
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', alignItems: 'center', marginBottom: '0.5rem' }}>
         <label htmlFor="cls-lam" style={{ display: 'flex', flexDirection: 'column', fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>
-          <span>temperature λ = {lambda} (log slider)</span>
+          <span>temperature λ = {lambda} (log slider; leftmost = 0)</span>
           <input
             id="cls-lam"
             type="range"
-            value={Math.log10(Math.max(1, lambda))}
-            min={0}
+            // Slider value in [-0.5, 4]: anything ≤ −0.25 maps to λ=0 explicitly
+            // (so the leftmost position reproduces the uniform prior); otherwise
+            // λ = round(10^v) for v ∈ [0, 4] giving λ ∈ [1, 10000].
+            value={lambda === 0 ? -0.5 : Math.log10(Math.max(1, lambda))}
+            min={-0.5}
             max={4}
             step={0.05}
-            onChange={(e) => setLambda(Math.round(Math.pow(10, parseFloat(e.target.value))))}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setLambda(v <= -0.25 ? 0 : Math.round(Math.pow(10, Math.max(0, v))));
+            }}
             style={{ width: '13rem' }}
           />
         </label>

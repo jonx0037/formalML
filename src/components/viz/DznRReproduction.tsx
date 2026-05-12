@@ -21,9 +21,11 @@ type DznRPayload = {
   bound_trajectory: { steps: number[]; values: number[] };
   final_decomposition: {
     empirical_risk: number;
-    mean_shift_kl_slack: number;
-    variance_kl_slack: number;
-    log_K_delta_overhead: number;
+    mean_shift_kl_nats: number;
+    variance_kl_nats: number;
+    log_K_delta_nats: number;
+    numerator_nats: number;
+    slack: number;
     total: number;
   };
   baseline_comparison: {
@@ -169,28 +171,32 @@ function DecompositionPanel({ payload, width }: { payload: DznRPayload; width: n
     (svg) => {
       svg.selectAll('*').remove();
       if (width <= 0) return;
-      const margin = { top: 26, right: 20, bottom: 60, left: 56 };
+      const margin = { top: 26, right: 20, bottom: 60, left: 60 };
       const w = width - margin.left - margin.right;
       const h = HEIGHT - margin.top - margin.bottom;
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
+      // Plot the three ADDITIVE nats components inside the Catoni-slack numerator
+      // (mean-shift KL + variance KL + log(K/δ) = numerator), and the total
+      // numerator as a separate bar.  This is mathematically honest: the three
+      // KL-nats pieces sum to `numerator_nats`, then slack = sqrt(numerator / 2n).
       const decomp = payload.final_decomposition;
       const segs = [
-        { name: 'E_Q[R̂]', value: decomp.empirical_risk, color: '#D97706' },
-        { name: 'mean-shift KL', value: decomp.mean_shift_kl_slack, color: '#534AB7' },
-        { name: 'variance KL', value: decomp.variance_kl_slack, color: '#0F6E56' },
-        { name: 'log(K/δ)', value: decomp.log_K_delta_overhead, color: 'var(--color-text-secondary)' },
+        { name: 'mean-shift KL', value: decomp.mean_shift_kl_nats, color: '#534AB7' },
+        { name: 'variance KL', value: decomp.variance_kl_nats, color: '#0F6E56' },
+        { name: 'log(K/δ)', value: decomp.log_K_delta_nats, color: 'var(--color-text-secondary)' },
+        { name: 'sum (numerator)', value: decomp.numerator_nats, color: '#1A1A1A' },
       ];
 
       const x = d3.scaleBand().domain(segs.map((s) => s.name)).range([0, w]).padding(0.2);
-      const yMax = decomp.total * 1.1;
+      const yMax = decomp.numerator_nats * 1.12;
       const y = d3.scaleLinear().domain([0, yMax]).range([h, 0]);
 
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x))
         .selectAll('text').attr('transform', 'rotate(-25)').style('text-anchor', 'end');
       g.append('g').call(d3.axisLeft(y).ticks(6));
-      g.append('text').attr('transform', 'rotate(-90)').attr('x', -h / 2).attr('y', -44).attr('text-anchor', 'middle')
-        .style('font-size', '11px').style('fill', 'var(--color-text-secondary)').text('contribution to bound');
+      g.append('text').attr('transform', 'rotate(-90)').attr('x', -h / 2).attr('y', -48).attr('text-anchor', 'middle')
+        .style('font-size', '11px').style('fill', 'var(--color-text-secondary)').text('KL nats (additive)');
 
       segs.forEach((s) => {
         g.append('rect')
@@ -204,20 +210,19 @@ function DecompositionPanel({ payload, width }: { payload: DznRPayload; width: n
           .attr('y', y(s.value) - 4)
           .attr('text-anchor', 'middle')
           .style('font-size', '10px').style('fill', 'var(--color-text-secondary)')
-          .text(s.value.toFixed(3));
+          .text(s.value.toFixed(2));
       });
 
-      // Total line
-      g.append('line').attr('x1', 0).attr('x2', w)
-        .attr('y1', y(decomp.total)).attr('y2', y(decomp.total))
-        .style('stroke', 'var(--color-text)').style('stroke-dasharray', '4,3');
-      g.append('text').attr('x', w - 4).attr('y', y(decomp.total) - 4).attr('text-anchor', 'end')
-        .style('font-size', '10px').style('fill', 'var(--color-text)')
-        .text(`total = ${decomp.total.toFixed(3)}`);
-
+      // Annotation: slack = sqrt(numerator/(2n)), final bound = E_Q[R̂] + slack
       g.append('text').attr('x', 0).attr('y', -8)
         .style('font-size', '11px').style('font-weight', 600).style('fill', 'var(--color-text)')
-        .text('Figure B — final bound decomposition');
+        .text('Figure B — KL-nats decomposition inside the slack');
+      g.append('text').attr('x', 4).attr('y', 14)
+        .style('font-size', '9.5px').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-mono)')
+        .text(`slack = √(${decomp.numerator_nats.toFixed(1)} / (2n)) = ${decomp.slack.toFixed(4)}`);
+      g.append('text').attr('x', 4).attr('y', 26)
+        .style('font-size', '9.5px').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-mono)')
+        .text(`cert = E_Q[R̂] (${decomp.empirical_risk.toFixed(4)}) + slack = ${decomp.total.toFixed(4)}`);
     },
     [payload, width],
   );

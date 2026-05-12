@@ -224,11 +224,18 @@ export function logExpEnvelope(P: Float64Array, f: Float64Array): number {
 
 /**
  * Binary (Bernoulli) KL divergence kl(p ∥ q) = p log(p/q) + (1-p) log((1-p)/(1-q)).
- * Handles the boundary cases p ∈ {0, 1} robustly (returns −log(1-q) and −log(q)
- * respectively, per the limit p · log(p) → 0).
+ * Handles boundary cases robustly:
+ *   - kl(0 ∥ 0) = kl(1 ∥ 1) = 0  (degenerate-coincident, the identity case)
+ *   - kl(0 ∥ q) = −log(1 − q),  kl(1 ∥ q) = −log(q)  (per p · log p → 0)
+ *   - kl(p ∥ 0) = +∞ for p > 0,  kl(p ∥ 1) = +∞ for p < 1  (support mismatch)
  */
 export function binaryKL(p: number, q: number): number {
+  // Coincident degenerate distributions: 0/0 and 1/1 are the identity case.
+  if (p <= 0 && q <= 0) return 0;
+  if (p >= 1 && q >= 1) return 0;
+  // Non-coincident degenerate q: KL is infinite (Q has no support where P does).
   if (q <= 0 || q >= 1) return Number.POSITIVE_INFINITY;
+  // Coincident-with-interior shouldn't be reached given the above; handle p endpoints next.
   if (p <= 0) return -Math.log(1 - q);
   if (p >= 1) return -Math.log(q);
   return p * Math.log(p / q) + (1 - p) * Math.log((1 - p) / (1 - q));

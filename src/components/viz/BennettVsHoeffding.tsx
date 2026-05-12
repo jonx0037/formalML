@@ -10,9 +10,12 @@ import {
 // =============================================================================
 // BennettVsHoeffding — §7.5
 // Hoeffding (Catoni-optimized) vs empirical-Bernstein (Tolstikhin–Seldin) slack
-// as p̂ ∈ [0, 0.5] sweeps, at fixed (n, KL, δ, K).  At the running-example's
-// p̂ ≈ 0.064 with n=200 / K=10 grid, the ratio is 0.74 — i.e., Hoeffding is
-// actually TIGHTER here (the §7.2 large-n claim flips at small n with this K).
+// as p̂ ∈ [0, 0.5] sweeps, at fixed (n, KL, δ, K).  The displayed ratio is
+// `bernstein / hoeffding`, so ratio > 1 means Hoeffding is TIGHTER (Bernstein
+// slack larger).  At the running-example regime (n=200, KL=2.28, K=10,
+// p̂=0.064) the verified notebook prints Bernstein = 0.1562 / Hoeffding =
+// 0.1148 ⇒ ratio ≈ 1.36 — i.e., Hoeffding wins at this small-n / wide-K
+// config (the §7.2 large-n claim flips here).
 // =============================================================================
 
 const HEIGHT = 360;
@@ -115,9 +118,8 @@ function Panel({ data, width }: { data: DataT; width: number }) {
       const yMax = Math.max(d3.max(data.hoeffding) ?? 0.3, d3.max(data.bernstein) ?? 0.3) * 1.05;
       const y = d3.scaleLinear().domain([0, yMax]).range([h, 0]);
 
-      // Improvement region (Bernstein under Hoeffding where it wins)
-      const minLine = new Float64Array(data.pGrid.length);
-      for (let i = 0; i < data.pGrid.length; i++) minLine[i] = Math.min(data.hoeffding[i], data.bernstein[i]);
+      // Shaded gap region between the two slacks — fills whichever curve is on
+      // top down to whichever is on the bottom at each p̂.
       const area = d3.area<number>()
         .x((_, i) => x(data.pGrid[i]))
         .y0((_, i) => y(Math.max(data.hoeffding[i], data.bernstein[i])))

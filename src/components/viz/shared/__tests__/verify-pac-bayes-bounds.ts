@@ -92,6 +92,14 @@ approxEq('binaryKL boundary p=0, q=0.1', binaryKL(0, 0.1), -Math.log(0.9), 1e-14
 approxEq('binaryKL boundary p=0, q=0.5', binaryKL(0, 0.5), -Math.log(0.5), 1e-14, 'kl(0,0.5)');
 approxEq('binaryKL boundary p=1, q=0.5', binaryKL(1, 0.5), -Math.log(0.5), 1e-14, 'kl(1,0.5)');
 approxEq('binaryKL symmetric kl(0.3||0.3)=0', binaryKL(0.3, 0.3), 0, 1e-14, 'kl identity');
+// Coincident-degenerate identity cases — Bernoulli(0) ≡ Bernoulli(0), Bernoulli(1) ≡ Bernoulli(1).
+approxEq('binaryKL coincident kl(0||0)=0', binaryKL(0, 0), 0, 1e-14, 'identity at p=q=0');
+approxEq('binaryKL coincident kl(1||1)=0', binaryKL(1, 1), 0, 1e-14, 'identity at p=q=1');
+// Support-mismatch boundary — Q's mass disappears where P has support.
+ok('binaryKL support mismatch kl(0.5||0)=∞', binaryKL(0.5, 0) === Number.POSITIVE_INFINITY, 'kl(0.5,0) infinite');
+ok('binaryKL support mismatch kl(0.5||1)=∞', binaryKL(0.5, 1) === Number.POSITIVE_INFINITY, 'kl(0.5,1) infinite');
+ok('binaryKL support mismatch kl(0||1)=∞', binaryKL(0, 1) === Number.POSITIVE_INFINITY, 'kl(0,1) infinite');
+ok('binaryKL support mismatch kl(1||0)=∞', binaryKL(1, 0) === Number.POSITIVE_INFINITY, 'kl(1,0) infinite');
 approxEq(
   'binaryKL kl(0.5||0.6) exact closed form',
   binaryKL(0.5, 0.6),

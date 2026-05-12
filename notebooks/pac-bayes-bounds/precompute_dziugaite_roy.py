@@ -237,13 +237,17 @@ def main() -> None:
     print("*** Rademacher / classical bound: >= 1.0 (vacuous) ***")
     print(f"\nTotal runtime: {time.time() - t_total:.1f}s")
 
-    # Build JSON payload
+    # Build JSON payload.  The decomposition exposes the ADDITIVE pieces of the
+    # numerator inside the Catoni slack — `mean_shift_kl_nats + variance_kl_nats
+    # + log_K_delta_nats = numerator_nats` — and the resulting `slack` so the
+    # viz can plot a mathematically honest sum-to-the-numerator bar chart.
     final = best_traj[-1]
     delta_eff = DELTA_DR / K_GRID
-    log_overhead = math.log(1.0 / delta_eff)
-    mean_shift_kl_slack = math.sqrt(final["mean_shift"] / (2.0 * N_TR))
-    variance_kl_slack = math.sqrt(final["variance"] / (2.0 * N_TR))
-    log_K_delta_overhead_slack = math.sqrt(log_overhead / (2.0 * N_TR))
+    log_K_delta_nats = math.log(1.0 / delta_eff)
+    mean_shift_nats = float(final["mean_shift"])
+    variance_nats = float(final["variance"])
+    numerator_nats = mean_shift_nats + variance_nats + log_K_delta_nats
+    slack = math.sqrt(numerator_nats / (2.0 * N_TR))
 
     payload = {
         "bound_trajectory": {
@@ -252,9 +256,11 @@ def main() -> None:
         },
         "final_decomposition": {
             "empirical_risk": float(final["emp_risk"]),
-            "mean_shift_kl_slack": float(mean_shift_kl_slack),
-            "variance_kl_slack": float(variance_kl_slack),
-            "log_K_delta_overhead": float(log_K_delta_overhead_slack),
+            "mean_shift_kl_nats": mean_shift_nats,
+            "variance_kl_nats": variance_nats,
+            "log_K_delta_nats": float(log_K_delta_nats),
+            "numerator_nats": float(numerator_nats),
+            "slack": float(slack),
             "total": float(best_bound),
         },
         "baseline_comparison": {

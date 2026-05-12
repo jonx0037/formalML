@@ -29,9 +29,11 @@ export default function KLFormVsSqrt() {
       mc[i] = mcAllesterCertificate(p, kl, n, delta);
       sg[i] = seegerCertificate(p, kl, n, delta);
     }
-    // Improvement factor at p̂ = 0
-    const improvementAtZero = mc[0] / sg[0];
-    return { pGrid, mc, sg, improvementAtZero };
+    // Tightening factor at p̂ = 0: Seeger is `seegerTighterBy`× tighter than McAllester
+    // (i.e., McAllester certificate is this multiple of Seeger's).  Larger ⇒ Seeger wins
+    // by more; we compute as mc/sg so the value is the multiplier directly.
+    const seegerTighterBy = sg[0] > 0 ? mc[0] / sg[0] : Number.POSITIVE_INFINITY;
+    return { pGrid, mc, sg, seegerTighterBy };
   }, [n, kl, delta]);
 
   return (
@@ -49,8 +51,8 @@ export default function KLFormVsSqrt() {
         <Slider id="klf-n" label={`n = ${n}`} value={n} min={50} max={5000} step={50} onChange={setN} />
         <Slider id="klf-kl" label={`KL = ${kl.toFixed(2)}`} value={kl} min={0.1} max={10} step={0.1} onChange={setKl} />
         <div style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
-          δ = {delta}, Seeger/McAllester at p̂ = 0:&nbsp;
-          <strong>{data.improvementAtZero === 0 ? '∞' : (1 / data.improvementAtZero).toFixed(2)}× tighter</strong>
+          δ = {delta}, Seeger vs McAllester at p̂ = 0:&nbsp;
+          <strong>{Number.isFinite(data.seegerTighterBy) ? `${data.seegerTighterBy.toFixed(2)}×` : '∞'} tighter</strong>
         </div>
       </div>
       <Panel data={data} width={containerWidth || 800} />
@@ -82,7 +84,7 @@ type DataT = {
   pGrid: Float64Array;
   mc: Float64Array;
   sg: Float64Array;
-  improvementAtZero: number;
+  seegerTighterBy: number;
 };
 
 function Panel({ data, width }: { data: DataT; width: number }) {
