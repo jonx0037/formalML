@@ -125,7 +125,6 @@ export const tracks = [
     planned: [
       'vc-dimension',
       'uncertainty-quantification',
-      'pac-bayes-bounds',
       'semiparametric-inference',
       'causal-inference-methods',
       'double-descent',

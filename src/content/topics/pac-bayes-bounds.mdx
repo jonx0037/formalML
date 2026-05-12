@@ -1,0 +1,1465 @@
+---
+title: "PAC-Bayes Bounds"
+subtitle: "Posterior-averaged generalization theory — the change-of-measure inequality, McAllester / Seeger / Catoni bounds, the Gibbs distribution, and the first non-vacuous deep-network certificates"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "generalization-bounds"
+  - "kl-divergence"
+  - "concentration-inequalities"
+  - "pac-learning"
+formalstatisticsPrereqs:
+  - topic: "empirical-processes"
+    site: "formalstatistics"
+    relationship: "Reciprocates an existing forward-pointer from formalStatistics §32, which declares PAC-Bayes as the posterior-averaged refinement of its function-class complexity arguments. PAC-Bayes inherits the empirical-process viewpoint — uniform deviations of empirical means from population means over function classes — and replaces the supremum over H with an expectation under Q, charging the drift KL(Q ∥ P) instead of the function-class complexity."
+  - topic: "large-deviations"
+    site: "formalstatistics"
+    relationship: "Maurer's 2004 moment lemma (§4.2 Lemma 1) and the Cramér-transform machinery underlying §4's MGF-based bound chain are the canonical large-deviations tools. PAC-Bayes is a posterior-averaged refinement of Cramér's theorem — the Donsker–Varadhan variational form of §3 IS the Legendre transform of relative entropy on the function space of bounded measurable functions."
+  - topic: "expectation-moments"
+    site: "formalstatistics"
+    relationship: "KL divergence is an expected log-density-ratio (§3.1), and the moment generating function of the empirical risk is the technical workhorse of every bound proof in §§4–6. Both depend on the expectation-and-moments machinery developed there — in particular Hoeffding's MGF bound for bounded random variables, used directly in §6's Catoni proof."
+  - topic: "modes-of-convergence"
+    site: "formalstatistics"
+    relationship: "The √(1/n) rate that all PAC-Bayes bounds achieve in the agnostic regime is the standard rate of convergence in probability for sample means of bounded random variables — the canonical statement of modes-of-convergence at the rate the kl-form and McAllester forms recover. The §7 fast-rate refinements give O(1/n) under low-variance conditions, which is the L²-convergence regime."
+formalcalculusPrereqs:
+  - topic: "lebesgue-integral"
+    site: "formalcalculus"
+    relationship: "The Radon–Nikodym derivative dQ/dP — the central object of the change-of-measure inequality (§3) — requires the Lebesgue integral to define and the change-of-variables formula to manipulate. PAC-Bayes uses dQ/dP as the bridge between P-expectations and Q-expectations throughout §§3–6. Every appearance of E_Q[·] = ∫ · dQ in the proofs is a Lebesgue integral against the posterior measure."
+  - topic: "radon-nikodym"
+    site: "formalcalculus"
+    relationship: "The Donsker–Varadhan variational form of KL divergence (§3.3 Theorem 1) depends on the existence of the Radon–Nikodym derivative dQ/dP whenever Q is absolutely continuous w.r.t. P. This is the technical condition that makes the master tool of §3 well-defined, and consequently every PAC-Bayes bound presumes Q ≪ P from §2.3 onward."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "learning-theory"
+  - "pac-bayes"
+  - "generalization-bounds"
+  - "change-of-measure"
+  - "gibbs-distribution"
+  - "bayesian-frequentist-bridge"
+  - "dziugaite-roy"
+  - "deep-network-bounds"
+  - "machine-learning"
+domain: "learning-theory"
+videoId: null
+notebookPath: "notebooks/pac-bayes-bounds/01_pac_bayes_bounds.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/pac-bayes-bounds.mdx"
+datePublished: 2026-05-12
+estimatedReadTime: 60
+abstract: "PAC-Bayes is the framework that closes the gap classical generalization theory cannot. Rademacher complexity goes vacuous when the hypothesis class is rich enough to memorize noise — exactly the regime modern over-parameterized networks live in. PAC-Bayes side-steps the worst-case-over-H charge by averaging the gap under a posterior Q over hypotheses and paying for Q's drift from a prior P fixed before the data. The price is the KL divergence between Q and P, finite for any Q ≪ P even when |H| is infinite. We develop the framework from first principles: the Donsker–Varadhan change-of-measure inequality as the master tool; McAllester's 1999 square-root bound, Maurer's 2004 tightening, Seeger's binary-KL form that beats McAllester near the realizable regime, and Catoni's linear bound whose RHS minimizer is the Gibbs distribution; the four-step refinement table (variance-adaptive Tolstikhin–Seldin, jointly-quasiconvex Thiemann, small-n Foong–Bruinsma–Burt–Turner); the Bayesian–PAC-Bayes correspondence at temperature λ = n with log-likelihood loss and the cold-posterior debate it clarifies; a Dziugaite–Roy reproduction certifying a stochastic MLP on binary MNIST below the Rademacher floor; and finally the four ML applications where the framework lands — meta-learning, compression, information-theoretic generalization, and tighter empirical neural-net bounds — with honest limits on what PAC-Bayes can and cannot say."
+connections:
+  - topic: "generalization-bounds"
+    relationship: "Direct predecessor. §14.1 of that topic states McAllester's bound as a forward-pointer and §12.5 closes with the vacuousness reckoning — this topic develops the full PAC-Bayes machinery that closes that gap, reproducing the Dziugaite–Roy non-vacuous deep-network bound in §11 and the bound comparison on the shared threshold-class running example in §10."
+  - topic: "kl-divergence"
+    relationship: "KL divergence is the load-bearing penalty in every PAC-Bayes bound: the change-of-measure inequality of §3 routes E_Q expectations through E_P expectations at a cost of KL(Q ∥ P), and the Donsker–Varadhan variational form (§3.3) is exactly the convex-conjugate relation that kl-divergence develops in its variational characterization section."
+  - topic: "concentration-inequalities"
+    relationship: "Hoeffding's MGF bound and the Bernoulli-MGF lemma (Maurer 2004) are the moment-control tools that turn each fixed-hypothesis statement into a high-probability-over-S bound via Markov's inequality. The §4 McAllester proof, §6 Catoni proof, and §7.2 Tolstikhin–Seldin empirical-Bernstein refinement all rest on the concentration toolkit."
+  - topic: "pac-learning"
+    relationship: "PAC-Bayes is PAC learning where the learner outputs a distribution Q over hypotheses rather than a point hypothesis, and the analysis charges KL(Q ∥ P) instead of class complexity. The frequentist (1 − δ)-over-S guarantee is the same PAC guarantee — only the complexity-charging mechanism changes."
+  - topic: "variational-inference"
+    relationship: "The Gibbs distribution Q*_λ ∝ P · exp(−λ R̂_S) of §6.2 is exactly what variational inference produces in the limit of perfect approximation (the family of all Q ≪ P). The ELBO is structurally the Donsker–Varadhan dual of a free energy, and the §9 Bayesian–PAC-Bayes correspondence at λ = n is the formal bridge between VI's optimization target and a frequentist generalization guarantee."
+references:
+  - type: "paper"
+    title: "Some PAC-Bayesian Theorems"
+    authors: "McAllester"
+    year: 1999
+    url: "https://doi.org/10.1023/A:1007618624809"
+    note: "The original PAC-Bayes paper introducing the square-root bound (Machine Learning)."
+  - type: "paper"
+    title: "PAC-Bayesian Stochastic Model Selection"
+    authors: "McAllester"
+    year: 2003
+    url: "https://doi.org/10.1023/A:1021840411064"
+    note: "Refined constants and stochastic-model-selection framing (Machine Learning)."
+  - type: "paper"
+    title: "PAC-Bayesian Generalisation Error Bounds for Gaussian Process Classification"
+    authors: "Seeger"
+    year: 2002
+    url: "https://www.jmlr.org/papers/v3/seeger02a.html"
+    note: "Original kl-form (binary-KL) bound; tighter than McAllester near the realizable regime (JMLR)."
+  - type: "paper"
+    title: "A Note on the PAC Bayesian Theorem"
+    authors: "Maurer"
+    year: 2004
+    url: "https://arxiv.org/abs/cs/0411099"
+    note: "Tightened moment lemma giving the modern 2√n constant; source of §4.2 Lemma 1 (arXiv)."
+  - type: "book"
+    title: "PAC-Bayesian Supervised Classification: The Thermodynamics of Statistical Learning"
+    authors: "Catoni"
+    year: 2007
+    url: "https://arxiv.org/abs/0712.0248"
+    note: "The linear-form bound and the Gibbs-distribution-as-RHS-minimizer view (IMS Lecture Notes 56)."
+  - type: "paper"
+    title: "(Not) Bounding the True Error"
+    authors: "Langford & Caruana"
+    year: 2001
+    url: "https://papers.nips.cc/paper_files/paper/2001/hash/98c7242894844ecd6ec94af67ac8247d-Abstract.html"
+    note: "The δ-union-over-discretized-prior recipe used in §8.3 (NeurIPS)."
+  - type: "paper"
+    title: "Asymptotic Evaluation of Certain Markov Process Expectations for Large Time, I"
+    authors: "Donsker & Varadhan"
+    year: 1975
+    url: "https://doi.org/10.1002/cpa.3160280102"
+    note: "The variational form of KL that drives every PAC-Bayes proof (Comm. Pure Appl. Math.)."
+  - type: "book"
+    title: "Elements of Information Theory"
+    authors: "Cover & Thomas"
+    year: 2006
+    url: "https://doi.org/10.1002/047174882X"
+    note: "Theorem 2.7.2 (joint convexity of KL) used in the §5 Seeger proof (Wiley, 2nd ed.)."
+  - type: "paper"
+    title: "PAC-Bayesian Learning of Linear Classifiers"
+    authors: "Germain, Lacasse, Laviolette & Marchand"
+    year: 2009
+    url: "https://dl.acm.org/doi/10.1145/1553374.1553419"
+    note: "Modern unified PAC-Bayes proof template used as basis for §6's Catoni derivation (ICML)."
+  - type: "paper"
+    title: "PAC-Bayes-Empirical-Bernstein Inequality"
+    authors: "Tolstikhin & Seldin"
+    year: 2013
+    url: "https://proceedings.neurips.cc/paper/2013/hash/a97da629b098b75c294dffdc3e463904-Abstract.html"
+    note: "Variance-adaptive PAC-Bayes via empirical Bernstein; §7.2 (NeurIPS)."
+  - type: "paper"
+    title: "A Strongly Quasiconvex PAC-Bayesian Bound"
+    authors: "Thiemann, Igel, Wintenberger & Seldin"
+    year: 2017
+    url: "https://proceedings.mlr.press/v76/thiemann17a.html"
+    note: "Quasiconvex form enabling joint (Q, β) gradient optimization; §7.3 (ALT)."
+  - type: "paper"
+    title: "How Tight Can PAC-Bayes Be in the Small Data Regime?"
+    authors: "Foong, Bruinsma, Burt & Turner"
+    year: 2021
+    url: "https://proceedings.neurips.cc/paper/2021/hash/214cfbe603b7f9f9bc005d5f53f7a1d3-Abstract.html"
+    note: "Small-n analysis showing Seeger is essentially tight in the realizable regime; §7.4 (NeurIPS)."
+  - type: "paper"
+    title: "On the Properties of Variational Approximations of Gibbs Posteriors"
+    authors: "Alquier, Ridgway & Chopin"
+    year: 2016
+    url: "https://jmlr.org/papers/v17/15-290.html"
+    note: "PAC-Bayes for sub-Gaussian losses via variational approximations of Gibbs posteriors (JMLR)."
+  - type: "paper"
+    title: "Computing Nonvacuous Generalization Bounds for Deep (Stochastic) Neural Networks with Many More Parameters than Training Data"
+    authors: "Dziugaite & Roy"
+    year: 2017
+    url: "https://arxiv.org/abs/1703.11008"
+    note: "The first non-vacuous deep-network PAC-Bayes bound; reproduction in §11 (UAI)."
+  - type: "paper"
+    title: "Tighter Risk Certificates for Neural Networks"
+    authors: "Pérez-Ortiz, Rivasplata, Shawe-Taylor & Szepesvári"
+    year: 2021
+    url: "https://www.jmlr.org/papers/v22/20-879.html"
+    note: "State-of-the-art applied PAC-Bayes on MNIST-binary (0.16 cert); §7.3 & §12.4 (JMLR)."
+  - type: "paper"
+    title: "A PAC-Bayesian Bound for Lifelong Learning"
+    authors: "Pentina & Lampert"
+    year: 2014
+    url: "https://proceedings.mlr.press/v32/pentina14.html"
+    note: "Hierarchical PAC-Bayes for sequential meta-learning; §12.1 (ICML)."
+  - type: "paper"
+    title: "Meta-Learning by Adjusting Priors Based on Extended PAC-Bayes Theory"
+    authors: "Amit & Meir"
+    year: 2018
+    url: "https://proceedings.mlr.press/v80/amit18a.html"
+    note: "PAC-Bayes guarantees for MAML-style meta-learning; §12.1 (ICML)."
+  - type: "paper"
+    title: "Stronger Generalization Bounds for Deep Nets via a Compression Approach"
+    authors: "Arora, Ge, Neyshabur & Zhang"
+    year: 2018
+    url: "https://proceedings.mlr.press/v80/arora18b.html"
+    note: "Compression-based PAC-Bayes for deep networks; §12.2 (ICML)."
+  - type: "paper"
+    title: "Non-Vacuous PAC-Bayes Bounds at Scale via Re-parameterization"
+    authors: "Zhou, Veitch, Austern, Adams & Orbanz"
+    year: 2019
+    url: "https://openreview.net/forum?id=BJgqqsAct7"
+    note: "Compression PAC-Bayes scaled to ImageNet-class models; §12.2 (ICLR)."
+  - type: "paper"
+    title: "Information-Theoretic Analysis of Generalization Capability of Learning Algorithms"
+    authors: "Xu & Raginsky"
+    year: 2017
+    url: "https://proceedings.neurips.cc/paper/2017/hash/ad71c82b22f4f65b9398f76d8be4c615-Abstract.html"
+    note: "Mutual-information generalization bound; PAC-Bayes-adjacent algorithm-level framework (NeurIPS)."
+  - type: "paper"
+    title: "Reasoning About Generalization via Conditional Mutual Information"
+    authors: "Steinke & Zakynthinou"
+    year: 2020
+    url: "https://proceedings.mlr.press/v125/steinke20a.html"
+    note: "Conditional MI refinement of Xu–Raginsky; §12.3 (COLT)."
+  - type: "paper"
+    title: "Information-Theoretic Generalization Bounds for SGLD via Data-Dependent Estimates"
+    authors: "Negrea, Haghifam, Dziugaite, Khisti & Roy"
+    year: 2019
+    url: "https://arxiv.org/abs/1911.02151"
+    note: "Improved MI bounds for SGLD via data-dependent priors (NeurIPS)."
+  - type: "paper"
+    title: "Sharpened Generalization Bounds based on Conditional Mutual Information and an Application to Noisy, Iterative Algorithms"
+    authors: "Haghifam, Negrea, Khisti, Roy & Dziugaite"
+    year: 2020
+    url: "https://arxiv.org/abs/2004.12983"
+    note: "Conditional MI refinement applied to Langevin dynamics (NeurIPS)."
+  - type: "paper"
+    title: "How Good is the Bayes Posterior in Deep Neural Networks Really?"
+    authors: "Wenzel, Roth, Veeling, Świątkowski, Tran, Mandt, Snoek, Salimans, Jenatton & Nowozin"
+    year: 2020
+    url: "https://proceedings.mlr.press/v119/wenzel20a.html"
+    note: "Empirical demonstration of the cold-posterior effect; §9.3 (ICML)."
+  - type: "paper"
+    title: "A statistical theory of cold posteriors in deep neural networks"
+    authors: "Aitchison"
+    year: 2021
+    url: "https://arxiv.org/abs/2008.05912"
+    note: "Data-curation explanation for the cold-posterior effect (ICLR)."
+  - type: "paper"
+    title: "What Are Bayesian Neural Network Posteriors Really Like?"
+    authors: "Izmailov, Vikram, Hoffman & Wilson"
+    year: 2021
+    url: "https://proceedings.mlr.press/v139/izmailov21a.html"
+    note: "Full-batch HMC study attributing cold-posterior effect to data augmentation; §9.3 (ICML)."
+  - type: "paper"
+    title: "On Margins and Derandomisation in PAC-Bayes"
+    authors: "Biggs & Guedj"
+    year: 2022
+    url: "https://proceedings.mlr.press/v151/biggs22a.html"
+    note: "Margin-based derandomisation of PAC-Bayes posteriors; §12.4 (AISTATS)."
+  - type: "paper"
+    title: "A General Framework for the Practical Disintegration of PAC-Bayesian Bounds"
+    authors: "Viallard, Germain, Habrard & Morvant"
+    year: 2024
+    url: "https://doi.org/10.1007/s10994-023-06391-0"
+    note: "Disintegrated bounds — single-hypothesis guarantees from PAC-Bayes; §12.4 / §14.2 (Mach. Learn.)."
+  - type: "paper"
+    title: "PAC-Bayes Un-Expected Bernstein Inequality"
+    authors: "Mhammedi, Grünwald & Guedj"
+    year: 2019
+    url: "https://arxiv.org/abs/1905.13367"
+    note: "Bernstein-like inequality with X² outside the expectation; bounded-loss extension (NeurIPS)."
+  - type: "paper"
+    title: "PAC-Bayes under potentially heavy tails"
+    authors: "Holland"
+    year: 2019
+    url: "https://arxiv.org/abs/1905.07900"
+    note: "PAC-Bayes for heavy-tailed losses via robust risk estimators; §14.2 (NeurIPS)."
+  - type: "paper"
+    title: "PAC-Bayesian Inequalities for Martingales"
+    authors: "Seldin, Laviolette, Cesa-Bianchi, Shawe-Taylor & Auer"
+    year: 2012
+    url: "https://arxiv.org/abs/1110.6886"
+    note: "Martingale-style PAC-Bayes for non-iid data; §14.2 (IEEE TIT)."
+  - type: "paper"
+    title: "Combining PAC-Bayesian and Generic Chaining Bounds"
+    authors: "Audibert & Bousquet"
+    year: 2007
+    url: "https://jmlr.org/papers/v8/audibert07a.html"
+    note: "Chaining-based PAC-Bayes extension (JMLR)."
+  - type: "paper"
+    title: "Understanding Deep Learning Requires Rethinking Generalization"
+    authors: "Zhang, Bengio, Hardt, Recht & Vinyals"
+    year: 2017
+    url: "https://openreview.net/forum?id=Sy8gdB9xx"
+    note: "The empirical observation driving §1.2's vacuousness puzzle (ICLR)."
+  - type: "paper"
+    title: "Bayesian Learning via Stochastic Gradient Langevin Dynamics"
+    authors: "Welling & Teh"
+    year: 2011
+    url: "https://dl.acm.org/doi/10.5555/3104482.3104568"
+    note: "SGLD samples Q*_n at log-likelihood loss; §14.4 forward-pointer (ICML)."
+  - type: "paper"
+    title: "Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks"
+    authors: "Finn, Abbeel & Levine"
+    year: 2017
+    url: "https://proceedings.mlr.press/v70/finn17a.html"
+    note: "MAML — the meta-learning algorithm Amit–Meir's PAC-Bayes framework analyzes (ICML)."
+  - type: "book"
+    title: "Statistical Learning Theory"
+    authors: "Vapnik"
+    year: 1998
+    url: "https://www.wiley.com/en-us/Statistical+Learning+Theory-p-9780471030034"
+    note: "VC framework reference; §14.3 alternative-routes comparison (Wiley)."
+  - type: "paper"
+    title: "Stability and Generalization"
+    authors: "Bousquet & Elisseeff"
+    year: 2002
+    url: "https://jmlr.org/papers/v2/bousquet02a.html"
+    note: "Algorithmic stability framework; §14.3 alternative-routes comparison (JMLR)."
+  - type: "paper"
+    title: "Train Faster, Generalize Better: Stability of Stochastic Gradient Descent"
+    authors: "Hardt, Recht & Singer"
+    year: 2016
+    url: "https://proceedings.mlr.press/v48/hardt16.html"
+    note: "SGD-based stability for non-convex losses; §14.3 (ICML)."
+  - type: "paper"
+    title: "The Sample Complexity of Pattern Classification with Neural Networks: The Size of the Weights Is More Important than the Size of the Network"
+    authors: "Bartlett"
+    year: 1998
+    url: "https://doi.org/10.1109/18.661502"
+    note: "Original norm-based deep-net generalization bound; §14.3 (IEEE TIT)."
+  - type: "paper"
+    title: "Norm-Based Capacity Control in Neural Networks"
+    authors: "Neyshabur, Tomioka & Srebro"
+    year: 2015
+    url: "https://proceedings.mlr.press/v40/Neyshabur15.html"
+    note: "Modern norm-based capacity control; §14.3 (COLT)."
+  - type: "paper"
+    title: "Spectrally-Normalized Margin Bounds for Neural Networks"
+    authors: "Bartlett, Foster & Telgarsky"
+    year: 2017
+    url: "https://proceedings.neurips.cc/paper/2017/hash/b22b257ad0519d4500539da3c8bcf4dd-Abstract.html"
+    note: "Spectral-norm-based margin bound; §14.3 (NeurIPS)."
+  - type: "paper"
+    title: "A Primer on PAC-Bayesian Learning"
+    authors: "Guedj"
+    year: 2019
+    url: "https://arxiv.org/abs/1901.05353"
+    note: "Modern survey of the PAC-Bayes literature (arXiv preprint)."
+  - type: "paper"
+    title: "User-Friendly Introduction to PAC-Bayes Bounds"
+    authors: "Alquier"
+    year: 2021
+    url: "https://arxiv.org/abs/2110.11216"
+    note: "Pedagogical survey covering the bound zoo and proof templates (arXiv preprint)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import UniformConvergenceVsPACBayes from '../../components/viz/UniformConvergenceVsPACBayes.tsx';
+import PriorPosteriorOnFinite from '../../components/viz/PriorPosteriorOnFinite.tsx';
+import ChangeOfMeasureExplorer from '../../components/viz/ChangeOfMeasureExplorer.tsx';
+import McAllesterBoundSurface from '../../components/viz/McAllesterBoundSurface.tsx';
+import KLFormVsSqrt from '../../components/viz/KLFormVsSqrt.tsx';
+import CatoniLambdaSlider from '../../components/viz/CatoniLambdaSlider.tsx';
+import GibbsPosteriorVisualizer from '../../components/viz/GibbsPosteriorVisualizer.tsx';
+import BennettVsHoeffding from '../../components/viz/BennettVsHoeffding.tsx';
+import GaussianKLPicker from '../../components/viz/GaussianKLPicker.tsx';
+import BayesianGibbsBridge from '../../components/viz/BayesianGibbsBridge.tsx';
+import ToyBoundComparison from '../../components/viz/ToyBoundComparison.tsx';
+import DznRReproduction from '../../components/viz/DznRReproduction.tsx';
+
+## Motivation: beyond uniform convergence
+
+### What `generalization-bounds` §14 promised
+
+The companion topic on [generalization bounds](/topics/generalization-bounds) closes by stating, but not developing, a remedy for its own central limitation. Rademacher complexity gives the cleanest non-vacuous bounds we have for *small* hypothesis classes — threshold classifiers, polynomials of bounded degree, linear models in low dimension. The bound it produces is a uniform statement: with probability at least $1 - \delta$ over the sample $S \sim \mathcal{D}^n$,
+
+$$
+\sup_{h \in \mathcal{H}} \bigl( R(h) - \hat R_S(h) \bigr) \;\le\; 2\,\mathfrak{R}_n(\mathcal{H}) + 3\sqrt{\frac{\log(2/\delta)}{2n}},
+$$
+
+where $R(h) := \mathbb{E}_{(X, Y) \sim \mathcal{D}}[\ell(h(X), Y)]$ is the population risk, $\hat R_S(h)$ its empirical counterpart on $S$, and $\mathfrak{R}_n(\mathcal{H})$ the Rademacher complexity — a single scalar that summarizes the richness of $\mathcal{H}$ on $n$ points. The bound holds for *every* hypothesis simultaneously, which is exactly why it goes vacuous when $\mathcal{H}$ is rich enough to memorize the training set.
+
+§14.1 of that topic stated, as a forward-pointer, McAllester's 1999 PAC-Bayes bound — a strictly different way to charge for complexity, one that doesn't pay uniformly over $\mathcal{H}$ and survives the deep-network regime that breaks Rademacher. This is the topic that develops it.
+
+### The deep-network puzzle revisited
+
+Zhang et al. (2017) showed something the classical theory cannot accommodate: a modern convolutional network with millions of parameters, trained by SGD on ImageNet, can fit randomly relabeled training data to zero error. Its Rademacher complexity is therefore at least $1$, so the bound above is $\ge 1$ — vacuous, since the risk lives in $[0, 1]$. Yet the same network, trained on real labels, generalizes. The empirical generalization gap is on the order of a few percent. The classical bound and the observed gap differ by orders of magnitude.
+
+The architectural fact that breaks uniform convergence is that $\mathcal{H}$ has the *capacity* to be terrible — to memorize noise — even when the specific $\hat h_S$ that SGD lands on is not. A bound that charges the complexity of $\mathcal{H}$ uniformly cannot distinguish those two facts. It pays for the worst-case hypothesis regardless of which one we actually use.
+
+### PAC-Bayes in one sentence
+
+PAC-Bayes changes the charging scheme. Instead of bounding $\sup_{h \in \mathcal{H}}(R - \hat R_S)$, we bound $\mathbb{E}_{h \sim Q}[R(h) - \hat R_S(h)]$ — the expected gap under a *posterior distribution* $Q$ over hypotheses. The price we pay is no longer a complexity measure of $\mathcal{H}$; it is the KL divergence between $Q$ and a *prior* distribution $P$ fixed before seeing the data. Roughly,
+
+$$
+\mathbb{E}_{h \sim Q}\bigl[ R(h) - \hat R_S(h) \bigr] \;\lesssim\; \sqrt{\frac{\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)}{2n}},
+$$
+
+with the precise form developed across §§3–6. The two ideas are dual: uniform convergence charges $\mathcal{H}$; PAC-Bayes charges $Q$'s drift from $P$. When $Q$ concentrates on hypotheses that look like the one SGD found, $\mathrm{KL}(Q \Vert P)$ stays small even when $\mathcal{H}$ is vast. Dziugaite & Roy (2017) used exactly this observation to compute the first non-vacuous bound for a deep network with more parameters than training points — a result we reproduce in miniature in §11.
+
+The hybrid framing matters. The object $Q$ is Bayesian in flavor — a distribution over hypotheses, often constructed from a Bayesian posterior or a stochastic version of the SGD output — but the guarantee is fully frequentist: it holds with probability at least $1 - \delta$ over the draw of the sample $S$, uniformly across all posteriors $Q \ll P$. PAC-Bayes is neither Bayesian inference nor classical learning theory; it is the bridge between them.
+
+### Roadmap
+
+Three canonical bounds anchor this topic. The McAllester (1999, Maurer-tightened 2004) square-root bound of §4 is the most legible — it produces the inequality above with explicit constants. The Seeger (2002) bound of §5 replaces $(R - \hat R_S)^2$ with the binary-KL function $\mathrm{kl}(\hat R_S \Vert R)$ and is tighter when $\hat R_S$ is near zero, which is the regime of interest for over-parameterized models. The Catoni (2007) linear bound of §6 is parametrized by a temperature $\lambda > 0$, and its right-hand-side minimizer is the *Gibbs distribution* $Q^*_\lambda(h) \propto P(h)\exp(-\lambda \hat R_S(h))$ — the same object that variational inference produces in the limit of perfect approximation, and the bridge to the Bayesian correspondence developed in §9.
+
+All three rest on a single technical tool: the Donsker–Varadhan change-of-measure inequality, which we develop from scratch in §3. The chain "DV → McAllester → Seeger → Catoni" is the spine of the topic.
+
+### The running example
+
+Throughout §§2–10 we work with the same toy: a one-dimensional binary-classification problem with a finite class of threshold classifiers. The data are $X_i \sim \mathcal{N}(0, 1)$, $Y_i = \mathrm{sign}(X_i - \mu^*)$ with $\mu^* = 0.3$, labels flipped independently with probability $\eta = 0.05$. The hypothesis class is $\mathcal{H} = \{h_t : t \in T\}$ where $T = \{-2, -1.96, \ldots, 1.96, 2\}$ enumerates $|\mathcal{H}| = 101$ thresholds, and $h_t(x) = \mathrm{sign}(x - t)$. The sample size is $n = 200$.
+
+This class is small enough to enumerate, finite enough that the Gibbs posterior is a discrete distribution we can plot, and rich enough that the choice of $Q$ — uniform-on-$\mathcal{H}$ versus concentrated-near-the-ERM — produces qualitatively different bounds. The numerical demo confirms that the empirical risk curve over $T$ is roughly U-shaped with a minimum near $t = \mu^*$, and the ERM threshold $\hat t_{\mathrm{ERM}}$ lands close to $\mu^*$ (with the noise-flip and finite-sample error from $n = 200$).
+
+<UniformConvergenceVsPACBayes client:visible />
+
+## The PAC-Bayes setup
+
+### Data, loss, hypothesis class
+
+Throughout the topic, $S = \{(X_i, Y_i)\}_{i=1}^n$ denotes an i.i.d. sample from an unknown distribution $\mathcal{D}$ on $\mathcal{X} \times \mathcal{Y}$. A hypothesis $h : \mathcal{X} \to \mathcal{Y}$ is evaluated by a bounded loss $\ell : \mathcal{Y} \times \mathcal{Y} \to [0, 1]$, and we write
+
+$$
+R(h) \;=\; \mathbb{E}_{(X, Y) \sim \mathcal{D}}\bigl[\ell(h(X), Y)\bigr], \qquad
+\hat R_S(h) \;=\; \frac{1}{n}\sum_{i=1}^n \ell(h(X_i), Y_i)
+$$
+
+for the population risk and its empirical counterpart on $S$. The hypothesis class $\mathcal{H}$ is the set of $h$ we are willing to consider — finite (as in the running example), parametric (Gaussian-process classifiers, linear models with a parameter prior), or non-parametric (the function space of an over-parameterized neural network).
+
+The boundedness assumption $\ell \in [0, 1]$ matters: it is what makes the Hoeffding moments of §4 finite. The classical 0/1 classification loss satisfies it directly; squared regression loss does not, and PAC-Bayes for unbounded losses requires extra moment assumptions we discuss in §14.2.
+
+### The prior $P$
+
+A **prior** is a probability distribution $P \in \mathcal{P}(\mathcal{H})$ over the hypothesis class, chosen *before* seeing the sample $S$. Two facts about $P$ deserve emphasis on first reading.
+
+First, $P$ is not a Bayesian prior in the inference-theoretic sense — it is not a statement of belief about which $h \in \mathcal{H}$ generated the data, and the analysis does not require that any $h \in \mathcal{H}$ be the "true" data-generating mechanism. $P$ is a *measuring stick*: a distribution against which we will charge our posterior's drift.
+
+Second, $P$ must be chosen *without* using $S$. If $P$ depends on $S$, the bounds of §§4–6 are false. (Data-dependent priors are a real technique, but they are constructed carefully — typically by splitting $S$, fitting $P$ on one half, and computing the bound on the other half; we develop this in §8.3.) For the running example $P$ will be uniform on the 101 thresholds; for the §11 deep-network bound $P$ will be a Gaussian in parameter space whose variance is selected from a $\delta$-union over a finite grid.
+
+### The posterior $Q$
+
+A **posterior** is a probability distribution $Q \in \mathcal{P}(\mathcal{H})$ that may depend arbitrarily on $S$. The only requirement is $Q \ll P$ — $Q$ is absolutely continuous with respect to $P$: every event $P$-null is also $Q$-null. On finite or countable $\mathcal{H}$ this just means $Q(h) > 0 \Rightarrow P(h) > 0$. The condition is what makes the Radon–Nikodym derivative $dQ/dP$ well-defined, and through it the KL divergence
+
+$$
+\mathrm{KL}(Q \,\Vert\, P) \;=\; \mathbb{E}_{h \sim Q}\!\left[\log \frac{dQ}{dP}(h)\right]
+\;=\;
+\begin{cases}
+\sum_h Q(h)\,\log\dfrac{Q(h)}{P(h)} & \text{(discrete)}\\[6pt]
+\int q(h)\,\log\dfrac{q(h)}{p(h)}\,dh & \text{(with densities)}.
+\end{cases}
+$$
+
+KL divergence is non-negative, equal to zero iff $Q = P$, and asymmetric — properties we'll need in §3 and document fully in the [KL divergence](/topics/kl-divergence) topic. For now the operational reading is: $\mathrm{KL}(Q \Vert P)$ measures how surprising $Q$ would be to someone who held $P$, in units of nats.
+
+The PAC-Bayes posterior $Q$ is the user's choice. It is not the output of any inference rule. Some natural constructions — the Bayesian posterior $P(\cdot \mid \mathcal{D})$, the Gibbs distribution $Q^*_\lambda \propto P\exp(-\lambda \hat R_S)$, a Gaussian centered on the SGD output — are *good* choices because they tend to balance the two competing terms of the bound (low empirical risk under $Q$ vs low KL from $P$). But the guarantee holds for *every* $Q \ll P$, including pathological ones.
+
+### The hybrid framing
+
+The PAC-Bayes statement we will prove in §4 has the form
+
+$$
+\Pr_{S \sim \mathcal{D}^n}\!\Biggl[\,\forall\, Q \ll P:\;\;
+\mathbb{E}_{h \sim Q}[R(h)] \;-\; \mathbb{E}_{h \sim Q}[\hat R_S(h)] \;\le\; \mathcal{B}(Q, P, n, \delta)
+\,\Biggr] \;\ge\; 1 - \delta,
+$$
+
+where $\mathcal{B}$ is some bound functional (square-root for McAllester, binary-KL for Seeger, linear for Catoni). Three structural features distinguish PAC-Bayes from neighboring frameworks.
+
+The bound is **uniform over $Q$** but *not* over $h$. The supremum over the hypothesis class that uniform-convergence bounds pay for is gone; in its place we have a supremum over *posteriors*. This is the trade that lets PAC-Bayes survive overparameterization — there are infinitely many posteriors $Q \ll P$, but most are far from $P$ in KL, and the bound only bites when we actually use one of them.
+
+The randomness is **over $S$**, not over $Q$. The $1 - \delta$ probability is taken with respect to the draw of the training sample. Once $S$ is drawn, the bound either holds or doesn't for every $Q$ simultaneously, and we can pick $Q$ after seeing $S$ — indeed, that's the whole point.
+
+The framework is **agnostic about $\mathcal{D}$**. No realizability assumption, no parametric form, no assumption that any $h \in \mathcal{H}$ is the truth. The guarantee is frequentist in the same sense as Hoeffding's inequality is frequentist.
+
+This hybrid — a Bayesian object ($Q$) inside a frequentist guarantee (probability over $S$) — is the conceptual move that makes the framework work. PAC-Bayes is not "Bayesian PAC learning" in the sense of treating $\mathcal{H}$ as a parameter space and updating via Bayes' rule. It is PAC learning where the learner outputs a distribution rather than a point, and the analysis charges the learner for how far that distribution drifted from a reference distribution fixed in advance.
+
+### Running example — prior $P$ and two candidate posteriors
+
+We carry forward the §1.5 toy. The prior $P$ is uniform on $\mathcal{H} = \{h_t : t \in T\}$ with $|T| = 101$: every threshold gets mass $P(h_t) = 1/101$. We will compare two candidate posteriors: $Q_{\mathrm{narrow}}$, a Gaussian-shape on the grid centered at the ERM threshold $\hat t_{\mathrm{ERM}}$ with bandwidth $\sigma_Q = 0.10$ (narrow enough that nearly all mass sits within ten grid steps of the ERM); and $Q_{\mathrm{broad}}$, the same shape with $\sigma_Q = 0.50$ (broad enough to keep substantial mass across most of $T$).
+
+For each we read off two numbers: the KL divergence $\mathrm{KL}(Q \Vert P)$ and the expected empirical risk $\mathbb{E}_{h \sim Q}[\hat R_S(h)]$. The narrow posterior pays a higher KL (more concentrated than uniform) but a lower expected empirical risk (its mass sits on near-ERM hypotheses); the broad posterior makes the opposite trade. On the verified notebook run the numerics are $\mathrm{KL}(Q_{\mathrm{narrow}} \Vert P) \approx 2.28$, $\mathbb{E}_{Q_{\mathrm{narrow}}}[\hat R_S] \approx 0.064$ and $\mathrm{KL}(Q_{\mathrm{broad}} \Vert P) \approx 0.67$, $\mathbb{E}_{Q_{\mathrm{broad}}}[\hat R_S] \approx 0.167$. The PAC-Bayes bound formalizes this trade-off, and §10 plots both posteriors against the McAllester, Seeger, and Catoni bounds explicitly.
+
+<PriorPosteriorOnFinite client:visible />
+
+## The change-of-measure inequality
+
+### KL divergence as a log-density-ratio expectation
+
+Before we develop the master tool, it pays to look at KL divergence from one more angle. We introduced it in §2.3 as the integral $\int q(h)\log(q(h)/p(h))\,dh$; equivalently, when $Q \ll P$,
+
+$$
+\mathrm{KL}(Q \,\Vert\, P) \;=\; \mathbb{E}_{h \sim Q}\!\left[\log \frac{dQ}{dP}(h)\right],
+$$
+
+where $dQ/dP$ is the Radon–Nikodym derivative — the unique-up-to-$P$-null-sets density of $Q$ with respect to $P$. (See <ExternalLink href="https://formalcalculus.com/topics/lebesgue-integral" site="formalcalculus" topic="lebesgue-integral" /> and <ExternalLink href="https://formalcalculus.com/topics/radon-nikodym" site="formalcalculus" topic="radon-nikodym" /> for the measure-theoretic foundations.) The derivative satisfies the **change-of-measure formula**
+
+$$
+\mathbb{E}_Q[g(h)] \;=\; \int g(h)\,dQ(h) \;=\; \int g(h) \frac{dQ}{dP}(h)\,dP(h) \;=\; \mathbb{E}_P\!\left[\,g(h)\,\frac{dQ}{dP}(h)\,\right]
+$$
+
+for every $Q$-integrable $g$. This is the simple algebraic fact that PAC-Bayes is built on: any expectation under $Q$ can be rewritten as an expectation under $P$, paid for by re-weighting with the density ratio. Equivalently, $\mathbb{E}_P[g(h)] = \mathbb{E}_Q[g(h)\,(dP/dQ)(h)]$, which is the direction we'll need in a moment.
+
+The KL term in the PAC-Bayes bound is precisely the price the change-of-measure formula extracts when the re-weighting is taken inside a $\log$ and pushed through Jensen's inequality. The next subsection makes this concrete numerically before we state the result.
+
+### Numerical hook — the variational form as an envelope
+
+Pick any bounded function $f : \mathcal{H} \to \mathbb{R}$. For each $Q \ll P$ compute the *variational functional*
+
+$$
+g(Q) \;:=\; \mathbb{E}_Q[f(h)] \;-\; \mathrm{KL}(Q \,\Vert\, P).
+$$
+
+On the running example with $P$ uniform on the 101 thresholds and $f(h_t) = -\lambda \hat R_S(h_t)$ (the negative empirical risk scaled by a temperature $\lambda$), trace $g$ across a restricted family: Gaussian-shaped distributions on the grid with fixed bandwidth $\sigma_Q$, parametrized by their center $c \in T$. The demo below plots $g(Q_c)$ as a function of $c$. Two observations.
+
+First, $g(Q_c)$ has a peak: among Gaussian-on-grid posteriors of this bandwidth, some center $c^*$ maximizes the functional. Second, the peak sits *strictly below* a horizontal line that we'll mark as $\log \mathbb{E}_P[e^{f(h)}]$ — a quantity that depends only on $P$ and $f$, not on $Q$. The gap between the family's peak and that horizontal line is the price the restricted family pays for not containing the global maximizer.
+
+When we widen the search to *all* $Q \ll P$, the global maximizer turns out to be the Gibbs distribution
+
+$$
+Q^*(h) \;=\; \frac{P(h)\,e^{f(h)}}{\mathbb{E}_P[e^{f(h)}]},
+$$
+
+and the maximum is exactly the horizontal envelope $\log \mathbb{E}_P[e^{f(h)}]$. The Donsker–Varadhan inequality is the statement that this envelope is universal — for every $f$ with $\mathbb{E}_P[e^f]$ finite, the gap $\log \mathbb{E}_P[e^f] - g(Q)$ is non-negative and tight at exactly one $Q$.
+
+<ChangeOfMeasureExplorer client:visible />
+
+### The variational form
+
+We now state it formally.
+
+<TheoremBlock type="theorem" number={1} title="Donsker–Varadhan variational form of KL">
+
+Let $P$ be a probability measure on a measurable space $(\mathcal{H}, \mathcal{F})$ and $f : \mathcal{H} \to \mathbb{R}$ a measurable function with $\mathbb{E}_P[e^{f(h)}] < \infty$. Then
+
+$$
+\log \mathbb{E}_P[e^{f(h)}] \;=\; \sup_{Q \ll P} \Bigl\{ \mathbb{E}_Q[f(h)] \;-\; \mathrm{KL}(Q \,\Vert\, P) \Bigr\},
+$$
+
+with the supremum achieved at the **tilted distribution**
+
+$$
+Q^*(dh) \;=\; \frac{e^{f(h)}}{\mathbb{E}_P[e^{f(h)}]} \, P(dh),
+$$
+
+i.e., $dQ^*/dP(h) = e^{f(h)} / Z$ where $Z := \mathbb{E}_P[e^{f(h)}]$.
+
+</TheoremBlock>
+
+Rearranging gives the form we'll actually use in §§4–6:
+
+<TheoremBlock type="corollary" number={1} title="Change-of-measure inequality">
+
+Under the hypotheses of Theorem 1, for every $Q \ll P$,
+
+$$
+\mathbb{E}_Q[f(h)] \;\le\; \mathrm{KL}(Q \,\Vert\, P) + \log \mathbb{E}_P[e^{f(h)}]. \qquad\qquad (\star)
+$$
+
+</TheoremBlock>
+
+This is the master tool. Plug in $f(h) = c \cdot (R(h) - \hat R_S(h))^2$ for a suitable constant $c$ and you'll get the McAllester bound; plug in $f(h) = n \cdot \mathrm{kl}(\hat R_S(h) \Vert R(h))$ and you'll get the Seeger bound; plug in $f(h) = -\lambda \hat R_S(h)$ and the maximizer $Q^*$ on the right is the Gibbs posterior of Catoni's linear bound. The proof in §3.4 is a single Jensen step in one direction and an explicit exhibit in the other.
+
+### Proof of Theorem 1
+
+The proof has two halves: an upper bound on the variational functional valid for every $Q \ll P$, and an exhibit showing it is achieved at $Q^*$.
+
+<TheoremBlock type="proof">
+
+**Upper bound** ($\le$ direction of Theorem 1, equivalent to Corollary 1). Fix $Q \ll P$. By Radon–Nikodym, the derivative $dQ/dP$ exists. On the support of $Q$ — i.e., on the set $\{h : dQ/dP > 0\}$ — the reciprocal $dP/dQ = 1/(dQ/dP)$ is also well-defined. (Outside the support of $Q$ the value of any integrand does not matter for an integral with respect to $Q$, so we ignore that set throughout.) The change-of-measure formula gives
+
+$$
+\mathbb{E}_P[e^{f(h)}] \;=\; \int e^{f(h)}\,dP(h) \;=\; \int e^{f(h)}\,\frac{dP}{dQ}(h)\,dQ(h) \;=\; \mathbb{E}_Q\!\left[ e^{f(h)} \cdot \frac{dP}{dQ}(h) \right].
+$$
+
+The integrand on the right is nonnegative and $Q$-integrable (since its $Q$-expectation equals $\mathbb{E}_P[e^f]$, finite by hypothesis). Take $\log$ of both sides and apply Jensen's inequality — the concave $\log$ commutes with expectation in the direction $\log \mathbb{E}_Q[Z] \ge \mathbb{E}_Q[\log Z]$ for any nonnegative $Z$ with $\mathbb{E}_Q[Z] < \infty$:
+
+$$
+\log \mathbb{E}_P[e^{f(h)}] \;=\; \log \mathbb{E}_Q\!\left[ e^{f(h)} \cdot \frac{dP}{dQ}(h) \right]
+\;\ge\; \mathbb{E}_Q\!\left[\, \log \!\Bigl( e^{f(h)} \cdot \frac{dP}{dQ}(h) \Bigr) \,\right].
+$$
+
+Split the logarithm:
+
+$$
+\mathbb{E}_Q\!\left[\, \log e^{f(h)} + \log \frac{dP}{dQ}(h) \,\right] \;=\; \mathbb{E}_Q[f(h)] \;+\; \mathbb{E}_Q\!\left[\log \frac{dP}{dQ}(h)\right].
+$$
+
+The second term is $-\mathrm{KL}(Q \Vert P)$ by definition, since $\log(dP/dQ) = -\log(dQ/dP)$. Combining,
+
+$$
+\log \mathbb{E}_P[e^{f(h)}] \;\ge\; \mathbb{E}_Q[f(h)] \;-\; \mathrm{KL}(Q \,\Vert\, P),
+$$
+
+which is the change-of-measure inequality $(\star)$ after rearranging.
+
+**Saturation at $Q^*$** ($\ge$ direction). Define $Q^*$ by $dQ^*/dP(h) = e^{f(h)}/Z$ with $Z = \mathbb{E}_P[e^{f(h)}]$. Then $Q^*$ is a probability measure (it integrates to $Z/Z = 1$) and $Q^* \ll P$ (by construction). Its KL divergence from $P$ is
+
+$$
+\mathrm{KL}(Q^* \,\Vert\, P) \;=\; \mathbb{E}_{Q^*}\!\left[\log \frac{dQ^*}{dP}(h)\right]
+\;=\; \mathbb{E}_{Q^*}\!\left[ f(h) - \log Z \right]
+\;=\; \mathbb{E}_{Q^*}[f(h)] - \log Z,
+$$
+
+so
+
+$$
+\mathbb{E}_{Q^*}[f(h)] - \mathrm{KL}(Q^* \,\Vert\, P) \;=\; \log Z \;=\; \log \mathbb{E}_P[e^{f(h)}].
+$$
+
+The variational functional equals the right-hand side of $(\star)$ at $Q^*$, so the supremum on the right of Theorem 1 is attained.
+
+Together the two halves give the variational form, and Corollary 1 follows by rearrangement.
+
+</TheoremBlock>
+
+The Jensen step is where every PAC-Bayes bound is born. Strict inequality holds whenever $Z = e^{f(h)} \cdot dP/dQ(h)$ is not $Q$-a.s. constant — which fails precisely when $Q \ne Q^*$. So the bound is tight iff $Q$ is the Gibbs distribution, and otherwise we pay a non-zero gap.
+
+### Demo — closed-form sanity check on Gaussians
+
+The Gaussian case admits a closed-form check of every quantity in Theorem 1, which is the cleanest way to verify the result independent of the running example. Take $P = \mathcal{N}(0, 1)$ on $\mathbb{R}$ and $f(h) = -h^2/2$. Three one-line calculations: the envelope is $\log \mathbb{E}_P[e^{f}] = -\tfrac{1}{2}\log 2$; the Gibbs maximizer is $Q^* = \mathcal{N}(0, 1/2)$; and the variational functional viewed as a function of $(\mu_{\mathrm{demo}}, \sigma_Q)$ for $Q = \mathcal{N}(\mu_{\mathrm{demo}}, \sigma_Q^2)$ reaches its closed-form maximum $-\tfrac{1}{2}\log 2$ at $(\mu_{\mathrm{demo}}, \sigma_Q) = (0, 1/\sqrt 2)$. The notebook's §3.5 cell confirms all three numerically and overlays a Monte-Carlo estimate of $\log \mathbb{E}_P[e^{f}]$ to ground the closed-form result in independent computation; saturation $|g(Q^*) - \log \mathbb{E}_P[e^f]|$ is verified to better than $10^{-10}$.
+
+The Gaussian-$Q$ mean parameter here is named $\mu_{\mathrm{demo}}$ to distinguish it from the §1.5 running-example threshold $\mu^* = 0.3$. The two objects are unrelated — one is a sanity-check parameter on $\mathbb{R}$, the other a fixed truth in the threshold-classifier problem.
+
+## The McAllester bound
+
+### Statement
+
+We can now state the load-bearing result of the topic. It is the bound McAllester (1999) introduced and Maurer (2004) tightened to its modern constants. The argument is a four-step chain combining the change-of-measure inequality of §3, a Bernoulli-MGF lemma due to Maurer, Markov's inequality, and a Jensen step in the opposite direction from §3.
+
+<TheoremBlock type="theorem" number={2} title="McAllester PAC-Bayes bound (Maurer-tightened form)">
+
+Let $\mathcal{D}$ be any distribution on $\mathcal{X} \times \mathcal{Y}$, let $\ell : \mathcal{Y} \times \mathcal{Y} \to [0, 1]$ be a bounded loss, let $P$ be a prior on $\mathcal{H}$ chosen before seeing the data, fix $\delta \in (0, 1)$, and let $n \ge 8$. Then
+
+$$
+\Pr_{S \sim \mathcal{D}^n}\!\left[\,\forall\, Q \ll P :\;\;
+\mathbb{E}_{h \sim Q}[R(h)] \;-\; \mathbb{E}_{h \sim Q}[\hat R_S(h)]
+\;\le\;
+\sqrt{\frac{\mathrm{KL}(Q \,\Vert\, P) + \log\!\bigl(2\sqrt{n}/\delta\bigr)}{2n}}
+\,\right] \;\ge\; 1 - \delta.
+$$
+
+</TheoremBlock>
+
+Two features worth flagging before the proof. The $1 - \delta$ probability is over the sample $S$ only; the quantifier over $Q$ sits *inside* the probability, so any posterior we construct from $S$ — including a $Q$ we choose specifically to minimize the right-hand side — inherits the same $\delta$. And the $\sqrt{n}$ inside the logarithm comes from the Maurer moment bound of §4.2; the original McAllester (1999) statement carried a worse constant, replaced by McAllester (2003) and tightened to its modern form by Maurer (2004).
+
+The proof is the chain we previewed: a Hoeffding-type moment bound for each fixed hypothesis, integration against the prior, Markov's inequality to convert from expectation to a high-probability statement over $S$, the change-of-measure inequality to flip from a $P$-expectation to a $Q$-expectation, and a Jensen step to pull the square root outside.
+
+### Step 1 — Maurer's moment bound
+
+The technical heart of the bound lives in a lemma about a single hypothesis. For a fixed $h \in \mathcal{H}$, the losses $\ell(h(X_i), Y_i)$ are i.i.d. random variables in $[0, 1]$ with mean $R(h)$, and the empirical risk $\hat R_S(h) = \frac{1}{n}\sum_i \ell(h(X_i), Y_i)$ is their sample mean. We need a bound on the moment generating function of $2n(R(h) - \hat R_S(h))^2$.
+
+<TheoremBlock type="lemma" number={1} title="Maurer's moment bound (Maurer 2004, Theorem 1)">
+
+For every fixed $h \in \mathcal{H}$ with $\ell(h(\cdot), \cdot) \in [0, 1]$ and every $n \ge 8$,
+
+$$
+\mathbb{E}_{S \sim \mathcal{D}^n}\!\left[\, e^{n \cdot \mathrm{kl}(\hat R_S(h) \Vert R(h))} \,\right] \;\le\; 2\sqrt{n},
+$$
+
+where $\mathrm{kl}(p \Vert q) := p\log(p/q) + (1-p)\log((1-p)/(1-q))$ is the binary-KL function. Consequently, by Pinsker's inequality $\mathrm{kl}(p \Vert q) \ge 2(p - q)^2$,
+
+$$
+\mathbb{E}_{S \sim \mathcal{D}^n}\!\left[\, e^{2n (R(h) - \hat R_S(h))^2} \,\right] \;\le\; 2\sqrt{n}.
+$$
+
+</TheoremBlock>
+
+Two notes on this lemma before we use it. First, the moment bound is *uniform in $\mathcal{D}$* — it depends only on $n$, not on the distribution of the data. That uniformity is what makes the bound work distribution-free. Second, the $\sqrt{n}$ rather than constant comes from a Stirling-type analysis of the worst-case loss distribution. The argument runs as follows. By a convexity / exchangeability argument (Maurer 2004 Lemma 3), the worst-case bounded loss with given mean is the Bernoulli, so it suffices to bound the moment when $\hat R_S(h) = K/n$ for $K \sim \text{Binomial}(n, R(h))$. The Bernoulli MGF evaluates explicitly:
+
+$$
+\mathbb{E}\!\left[ e^{n \cdot \mathrm{kl}(K/n \Vert R(h))} \right]
+\;=\; \sum_{k=0}^n \binom{n}{k} R(h)^k (1 - R(h))^{n-k} \cdot \frac{(k/n)^k ((n-k)/n)^{n-k}}{R(h)^k (1 - R(h))^{n-k}}
+\;=\; \sum_{k=0}^n \binom{n}{k} (k/n)^k ((n-k)/n)^{n-k},
+$$
+
+an expression independent of $R(h)$ — a remarkable cancellation. Stirling's approximation gives this sum is bounded by $2\sqrt{n}$ for $n \ge 8$. Pinsker's inequality $\mathrm{kl}(p\Vert q) \ge 2(p - q)^2$ then converts the binary-KL form to the squared-difference form. Pinsker is the lossy step in McAllester's chain — Seeger's bound in §5 skips it.
+
+### Step 2 — integrating against the prior
+
+The moment bound holds *for each fixed $h$* with the data-randomness on the outside. To combine it with the change-of-measure inequality, we need to put a $P$-expectation on the outside too. Because the prior $P$ does not depend on $S$, we may integrate without restriction:
+
+$$
+\mathbb{E}_{S \sim \mathcal{D}^n}\!\left[\, \mathbb{E}_{h \sim P}\!\left[ e^{2n (R(h) - \hat R_S(h))^2} \right] \,\right]
+\;\le\;
+\mathbb{E}_{S}\!\left[\, \mathbb{E}_P[\,2\sqrt{n}\,] \,\right]
+\;=\;
+2\sqrt{n}.
+$$
+
+The first inequality uses Lemma 1 pointwise in $h$, then takes the $P$-expectation; the inner $S$-expectation is bounded by $2\sqrt{n}$ at each $h$, and the bound passes through the $P$-expectation. Then by Fubini's theorem — applicable because both expectations of the nonnegative integrand are finite, and because $P$ is independent of $S$ — we may swap the order of integration:
+
+$$
+\mathbb{E}_S\!\left[\, W(S) \,\right] \;\le\; 2\sqrt{n}, \quad \text{where} \quad W(S) := \mathbb{E}_P\!\left[ e^{2n (R(h) - \hat R_S(h))^2} \right].
+$$
+
+The second form is the one we'll plug into Markov's inequality: it is a statement about the random variable $W(S)$ — a function of the sample $S$ — whose expectation over $S$ is bounded by $2\sqrt{n}$.
+
+This "data-independence of $P$" assumption is the workhorse of the proof. Drop it and the proof collapses: a data-dependent $P$ would make $\mathbb{E}_P$ and $\mathbb{E}_S$ non-commuting, and the moment bound — which presumes $h$ is fixed independently of $S$ — would not pass through. §8.3 develops the careful construction that allows data-dependent priors via a sample split.
+
+### Step 3 — Markov + change-of-measure
+
+Step 2 gave a bound on $\mathbb{E}_S[W(S)]$. Markov's inequality converts that expectation bound into a high-probability bound on $W(S)$ itself: for any $\delta \in (0, 1)$,
+
+$$
+\Pr_S\!\left[\, W(S) > \frac{2\sqrt{n}}{\delta} \,\right] \;\le\; \frac{\mathbb{E}_S[W(S)]}{2\sqrt{n}/\delta} \;\le\; \delta.
+$$
+
+Taking complements, with probability at least $1 - \delta$ over $S \sim \mathcal{D}^n$,
+
+$$
+W(S) \;=\; \mathbb{E}_P\!\left[ e^{2n (R(h) - \hat R_S(h))^2} \right] \;\le\; \frac{2\sqrt{n}}{\delta}. \qquad (\dagger)
+$$
+
+This is the event on which all subsequent statements hold. We now condition on it for the remainder of the proof — every "with probability $\ge 1 - \delta$" in the statement of Theorem 2 traces back to this single Markov step.
+
+On the event $(\dagger)$, the change-of-measure inequality from §3 (Corollary 1) with $f(h) = 2n(R(h) - \hat R_S(h))^2$ gives, for every $Q \ll P$ simultaneously,
+
+$$
+\mathbb{E}_Q\!\left[ 2n (R(h) - \hat R_S(h))^2 \right] \;\le\; \mathrm{KL}(Q \,\Vert\, P) + \log \mathbb{E}_P\!\left[ e^{2n (R(h) - \hat R_S(h))^2} \right]
+\;\le\; \mathrm{KL}(Q \,\Vert\, P) + \log\!\bigl(2\sqrt{n}/\delta\bigr).
+$$
+
+The uniformity in $Q$ matters: the change-of-measure inequality holds for every $Q \ll P$ on a single fixed value of $S$, so once $(\dagger)$ is in hand we get the bound for every $Q$ at once — including any $Q$ we construct adaptively from $S$.
+
+### Step 4 — Jensen and the final square root
+
+The previous step bounded $\mathbb{E}_Q[(R(h) - \hat R_S(h))^2]$ from above. We want a bound on $\mathbb{E}_Q[R(h)] - \mathbb{E}_Q[\hat R_S(h)]$ — the *expected gap*, not the expected squared gap. Jensen's inequality, applied in the direction $(\mathbb{E}_Q[Z])^2 \le \mathbb{E}_Q[Z^2]$ for the convex map $x \mapsto x^2$, gives
+
+$$
+\bigl( \mathbb{E}_Q[R(h) - \hat R_S(h)] \bigr)^2 \;\le\; \mathbb{E}_Q\!\left[ (R(h) - \hat R_S(h))^2 \right].
+$$
+
+Combining with §4.3,
+
+$$
+2n \,\bigl( \mathbb{E}_Q[R(h)] - \mathbb{E}_Q[\hat R_S(h)] \bigr)^2 \;\le\; \mathrm{KL}(Q \,\Vert\, P) + \log\!\bigl(2\sqrt{n}/\delta\bigr).
+$$
+
+Dividing by $2n$ and taking square roots,
+
+$$
+\mathbb{E}_Q[R(h)] - \mathbb{E}_Q[\hat R_S(h)] \;\le\; \sqrt{\frac{\mathrm{KL}(Q \,\Vert\, P) + \log\!\bigl(2\sqrt{n}/\delta\bigr)}{2n}}.
+$$
+
+This is the statement of Theorem 2.
+
+The Jensen step in §4.4 is the second source of looseness in the McAllester chain — the first being Pinsker in §4.1. Both can be removed by a more careful argument, and the result is the Seeger bound of §5: it skips Pinsker (keeping the binary-KL form) and skips this Jensen step (working directly with the kl-form of the gap). The price is that the Seeger bound has no closed-form expression for the population risk in terms of the empirical one — it must be inverted numerically.
+
+On the verified running example $(n = 200$, $\delta = 0.05$, $\mathrm{KL}(Q_{\mathrm{narrow}} \Vert P) = 2.28)$, the McAllester slack evaluates to $\sqrt{(2.28 + \log(2\sqrt{200}/0.05))/400} \approx 0.147$, giving a certificate $\mathbb{E}_{Q_{\mathrm{narrow}}}[R] \le 0.064 + 0.147 = 0.211$.
+
+<McAllesterBoundSurface client:visible />
+
+## The Seeger / kl-form bound
+
+### The binary-KL function and why Pinsker is lossy
+
+The McAllester bound's chain in §4 hit two lossy steps: Pinsker's inequality in the moment lemma and Jensen-for-squares at the end. Both can be avoided if we work directly with the **binary-KL function**
+
+$$
+\mathrm{kl}(p \,\Vert\, q) \;:=\; p \log \frac{p}{q} \;+\; (1 - p) \log \frac{1 - p}{1 - q}, \qquad p, q \in [0, 1],
+$$
+
+i.e., the KL divergence between $\mathrm{Bernoulli}(p)$ and $\mathrm{Bernoulli}(q)$. This is the same function that appeared in Maurer's moment lemma; it satisfies $\mathrm{kl}(p \Vert q) \ge 0$ with equality iff $p = q$, is jointly convex in $(p, q)$, and obeys Pinsker's inequality $\mathrm{kl}(p \Vert q) \ge 2(p - q)^2$.
+
+The Pinsker bound is the version McAllester's chain plugs in. But Pinsker is *very* slack near the boundary. To see why, fix $p = 0$ and vary $q$:
+
+$$
+\mathrm{kl}(0 \,\Vert\, q) \;=\; -\log(1 - q) \;=\; q + \frac{q^2}{2} + \frac{q^3}{3} + \cdots,
+$$
+
+so for small $q$, $\mathrm{kl}(0 \Vert q) \approx q$. The Pinsker lower bound is $2q^2 \ll q$ for small $q$. At $p = 0$ and $q = 0.1$, $\mathrm{kl}(0 \Vert q) \approx 0.105$ vs. Pinsker $2(0.1)^2 = 0.02$ — a factor of five looser. At $p = 0$ and $q = 0.01$, $\mathrm{kl}(0 \Vert q) \approx 0.0101$ vs Pinsker $0.0002$ — a factor of fifty looser. The discrepancy grows as $q \to 0$, and the regime of interest for over-parameterized modern ML is exactly $\hat R_S \to 0$.
+
+At $p = 1/2$, Pinsker is locally tight: $\mathrm{kl}(1/2 \Vert q) = 2(q - 1/2)^2 + O((q - 1/2)^4)$. The kl-form and the squared-difference form coincide to leading order at the symmetric midpoint, which is why McAllester's bound is competitive in the "agnostic" regime where $\hat R_S \approx 1/2$ and badly off in the realizable regime where $\hat R_S \approx 0$. The Seeger bound skips Pinsker and keeps the kl-form; the price is that the resulting statement has no closed-form solution for $R$ in terms of $\hat R_S$ and must be inverted numerically.
+
+### Statement
+
+<TheoremBlock type="theorem" number={3} title="Seeger / Maurer–Langford–Seeger kl-form bound">
+
+Under the same hypotheses as Theorem 2 ($\mathcal{D}$, $\ell \in [0, 1]$, $P$ data-independent, $\delta \in (0, 1)$, $n \ge 8$),
+
+$$
+\Pr_{S \sim \mathcal{D}^n}\!\left[\,\forall\, Q \ll P :\;\;
+\mathrm{kl}\!\Bigl(\, \mathbb{E}_{h \sim Q}[\hat R_S(h)] \;\Big\Vert\; \mathbb{E}_{h \sim Q}[R(h)] \,\Bigr)
+\;\le\;
+\frac{\mathrm{KL}(Q \,\Vert\, P) + \log\!\bigl(2\sqrt{n}/\delta\bigr)}{n}
+\,\right] \;\ge\; 1 - \delta.
+$$
+
+</TheoremBlock>
+
+The statement is implicit in $\mathbb{E}_Q[R]$: it says that the Bernoulli-KL between the *expected empirical risk* (a known quantity once $S$ is in hand) and the *expected population risk* (the object we want to bound) does not exceed a quantity computable from $n$, $\delta$, and the KL between $Q$ and $P$. To extract a number for $\mathbb{E}_Q[R]$, we solve numerically (§5.4).
+
+Two structural notes. First, the kl-form is **strictly tighter than McAllester's** whenever $\mathbb{E}_Q[\hat R_S]$ is bounded away from $1/2$, and dramatically so near the boundary. Second, the bound is on the binary-KL between the *averages* $\mathbb{E}_Q[\hat R_S]$ and $\mathbb{E}_Q[R]$, not on the average $\mathbb{E}_Q[\mathrm{kl}(\hat R_S(h) \Vert R(h))]$ of pointwise binary-KLs. The proof in §5.3 uses the joint convexity of $\mathrm{kl}$ to move the expectation inside.
+
+### Proof
+
+The proof reuses the first three steps of the McAllester chain — Lemma 1, Fubini, Markov — and replaces only the last two (Pinsker + Jensen-for-squares) with a single Jensen step that exploits the joint convexity of $\mathrm{kl}$.
+
+<TheoremBlock type="proof">
+
+Apply Lemma 1 with $f(h) = n \cdot \mathrm{kl}(\hat R_S(h) \Vert R(h))$:
+
+$$
+\mathbb{E}_{S \sim \mathcal{D}^n}\!\left[\, e^{n \cdot \mathrm{kl}(\hat R_S(h) \,\Vert\, R(h))} \,\right] \;\le\; 2\sqrt{n}
+$$
+
+for each fixed $h$. By the §4.2 Fubini argument (with $P$ independent of $S$ so the expectations commute),
+
+$$
+\mathbb{E}_S\!\left[\, \mathbb{E}_P\!\left[ e^{n \cdot \mathrm{kl}(\hat R_S(h) \,\Vert\, R(h))} \right] \,\right] \;\le\; 2\sqrt{n}.
+$$
+
+By Markov's inequality, with probability at least $1 - \delta$ over $S$,
+
+$$
+\mathbb{E}_P\!\left[ e^{n \cdot \mathrm{kl}(\hat R_S(h) \,\Vert\, R(h))} \right] \;\le\; \frac{2\sqrt{n}}{\delta}. \qquad (\dagger')
+$$
+
+On the event $(\dagger')$, the change-of-measure inequality (Corollary 1 of §3) with this choice of $f$ gives, for every $Q \ll P$,
+
+$$
+\mathbb{E}_Q\!\left[ n \cdot \mathrm{kl}(\hat R_S(h) \,\Vert\, R(h)) \right]
+\;\le\; \mathrm{KL}(Q \,\Vert\, P) + \log\!\bigl(2\sqrt{n}/\delta\bigr).
+$$
+
+**The key step:** the binary-KL function $\mathrm{kl}(p \Vert q)$ is *jointly convex* in $(p, q)$ — a standard fact about KL divergences on finite alphabets (Cover & Thomas 2006, Theorem 2.7.2). Jensen's inequality applied to a jointly convex function gives, for any pair of random variables $(P_h, Q_h)$ on $[0, 1]^2$ with $h \sim Q$,
+
+$$
+\mathrm{kl}\bigl( \mathbb{E}_Q[P_h] \,\Vert\, \mathbb{E}_Q[Q_h] \bigr) \;\le\; \mathbb{E}_Q\bigl[\, \mathrm{kl}(P_h \,\Vert\, Q_h) \,\bigr].
+$$
+
+Setting $P_h = \hat R_S(h)$ and $Q_h = R(h)$,
+
+$$
+\mathrm{kl}\bigl( \mathbb{E}_Q[\hat R_S(h)] \,\Vert\, \mathbb{E}_Q[R(h)] \bigr) \;\le\; \mathbb{E}_Q\bigl[\, \mathrm{kl}(\hat R_S(h) \,\Vert\, R(h)) \,\bigr].
+$$
+
+Combining with the change-of-measure inequality and dividing by $n$,
+
+$$
+\mathrm{kl}\bigl( \mathbb{E}_Q[\hat R_S] \,\Vert\, \mathbb{E}_Q[R] \bigr) \;\le\; \frac{\mathrm{KL}(Q \,\Vert\, P) + \log\!\bigl(2\sqrt{n}/\delta\bigr)}{n},
+$$
+
+which is the statement of Theorem 3.
+
+</TheoremBlock>
+
+The chain "Lemma 1 → Fubini → Markov → DV → Jensen-for-convex-kl" replaces McAllester's "Lemma 1 → Pinsker → Fubini → Markov → DV → Jensen-for-squares." The single Jensen step here is the same direction as the one in §4.4 — both use $(\mathbb{E} Z)^? \le \mathbb{E}[Z^?]$ for a convex $?$ — but with $\mathrm{kl}$ in place of squaring, the constants are tight enough that no other Pinsker-style relaxation is needed.
+
+### Inverting the bound numerically
+
+Theorem 3 is an implicit statement: given $\hat p := \mathbb{E}_Q[\hat R_S]$ and the RHS $c := (\mathrm{KL}(Q \Vert P) + \log(2\sqrt{n}/\delta))/n$, we want the **upper-confidence value** $\bar q$ defined by
+
+$$
+\bar q \;:=\; \sup\!\bigl\{\, q \in [0, 1] : \mathrm{kl}(\hat p \,\Vert\, q) \le c \,\bigr\}.
+$$
+
+The function $q \mapsto \mathrm{kl}(\hat p \Vert q)$ is convex with minimum $0$ at $q = \hat p$ and strictly increasing on $[\hat p, 1]$ (heading to $+\infty$ as $q \to 1^-$). So $\bar q$ is the unique root of $\mathrm{kl}(\hat p \Vert q) = c$ in $[\hat p, 1]$. Bracketing the root in $[\hat p + \varepsilon, 1 - \varepsilon]$ and bisecting (or calling `scipy.optimize.brentq`) gives $\bar q$ in a few dozen iterations.
+
+Three numerical traps to flag for the implementation. The endpoints have closed forms — at $\hat p = 0$, $\mathrm{kl}(0 \Vert q) = -\log(1 - q)$ so $\bar q = 1 - e^{-c}$; at $\hat p = 1$, the upper-confidence bound is vacuous. The RHS $c$ can exceed $-\log(1 - \hat p)$, in which case the bound is vacuous; return $\bar q = 1$ rather than letting `brentq` fail on a missing bracket. And use `scipy.special.kl_div(p, q) + scipy.special.kl_div(1-p, 1-q)` (which handles $0 \log 0 = 0$ correctly), not raw $p \log(p/q)$ which `nan`s at $p = 0$.
+
+### Demo — McAllester vs Seeger across $\hat R$
+
+The demo at the close of the section makes the §5.1 claim concrete: for fixed $(n, \mathrm{KL}, \delta)$, we plot the upper confidence bound on $\mathbb{E}_Q[R]$ produced by each of the two bounds as a function of $\hat p = \mathbb{E}_Q[\hat R_S]$. At $\hat p = 0$ the Seeger bound is dramatically tighter — its slope is $\sim 1 \cdot c$ rather than $\sim \sqrt{c/2}$ — and the two converge as $\hat p$ approaches $1/2$ where Pinsker is locally tight. The McAllester bound is symmetric in $\hat p$ around $1/2$ (because $(p - q)^2$ is); Seeger's bound is asymmetric, with a longer arm extending into low-$\hat p$ territory.
+
+At the canonical demo point $(n, \mathrm{KL}, \delta) = (500, 3.0, 0.05)$, the certificates at $\hat p = 0$ are McAllester $\approx 0.099$ and Seeger $\approx 0.0194$ — a factor of about five tighter; by $\hat p = 0.5$ they converge to $\approx 0.599$ and $\approx 0.598$.
+
+<KLFormVsSqrt client:visible />
+
+## The Catoni / linear bound and the Gibbs posterior
+
+### Statement
+
+The third canonical bound goes back to Catoni's 2007 monograph. It is **linear in $\mathbb{E}_Q[\hat R_S]$** — no implicit equation to invert — parametrized by a **temperature** $\lambda > 0$ chosen before seeing the data, and structurally crucial because its right-hand-side minimizer over $Q$ is a recognizable object: the Gibbs distribution.
+
+<TheoremBlock type="theorem" number={4} title="Catoni linear-form PAC-Bayes bound">
+
+Let $\mathcal{D}$ be any distribution on $\mathcal{X} \times \mathcal{Y}$, $\ell \in [0, 1]$ bounded, $P$ a prior chosen before seeing the data, $\delta \in (0, 1)$, and $\lambda > 0$ a fixed temperature. Then
+
+$$
+\Pr_{S \sim \mathcal{D}^n}\!\left[\,\forall\, Q \ll P :\;\;
+\mathbb{E}_{h \sim Q}[R(h)] \;\le\; \mathbb{E}_{h \sim Q}[\hat R_S(h)] \;+\; \frac{\lambda}{8n} \;+\; \frac{\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)}{\lambda}
+\,\right] \;\ge\; 1 - \delta.
+$$
+
+</TheoremBlock>
+
+Three features distinguish this from Theorems 2 and 3. The RHS is **linear in $\mathbb{E}_Q[\hat R_S]$ and in $\mathrm{KL}(Q \Vert P)$** — a single closed-form expression, no numerical inversion. The temperature $\lambda$ must be **fixed before seeing the data** for the bound to hold with the stated $1 - \delta$ confidence; data-dependent $\lambda$ (a grid search over a finite set) is allowed via a union bound that adds $\log K$ to the numerator for $K$ candidate values (§13.3). The bound's RHS — viewed as a function of $Q$ at fixed $\lambda$ — has a closed-form minimizer that is precisely the Gibbs distribution, which §6.2 derives.
+
+### The Gibbs distribution as the RHS minimizer
+
+Fix $\lambda > 0$ and the sample $S$. The RHS of Theorem 4 as a function of $Q$ is
+
+$$
+\mathcal{R}_\lambda(Q) \;:=\; \mathbb{E}_Q[\hat R_S(h)] \;+\; \frac{\lambda}{8n} \;+\; \frac{\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)}{\lambda},
+$$
+
+and the $Q$-dependent piece is $\mathbb{E}_Q[\hat R_S] + \mathrm{KL}(Q \Vert P)/\lambda$. Multiplying by $\lambda$, we want to minimize
+
+$$
+\lambda \mathbb{E}_Q[\hat R_S(h)] \;+\; \mathrm{KL}(Q \,\Vert\, P) \;=\; -\bigl( \mathbb{E}_Q[-\lambda \hat R_S(h)] \;-\; \mathrm{KL}(Q \,\Vert\, P) \bigr).
+$$
+
+The expression in parentheses is exactly the variational functional from Theorem 1 of §3 with $f(h) = -\lambda \hat R_S(h)$. Its **maximum** over $Q$ is $\log \mathbb{E}_P[e^{-\lambda \hat R_S(h)}]$, attained at
+
+$$
+Q^*_\lambda(h) \;=\; \frac{P(h) \, e^{-\lambda \hat R_S(h)}}{\mathbb{E}_P[e^{-\lambda \hat R_S(h)}]} \;=\; \frac{P(h) \, e^{-\lambda \hat R_S(h)}}{Z_\lambda(S)},
+$$
+
+where the **partition function** $Z_\lambda(S) := \mathbb{E}_P[e^{-\lambda \hat R_S(h)}]$ is computable from the sample. The minimum of $\lambda \mathbb{E}_Q[\hat R_S] + \mathrm{KL}(Q \Vert P)$ over $Q$ is therefore $-\log Z_\lambda(S)$, and plugging back into $\mathcal{R}_\lambda(Q^*_\lambda)$,
+
+$$
+\mathcal{R}_\lambda(Q^*_\lambda) \;=\; -\frac{\log Z_\lambda(S)}{\lambda} \;+\; \frac{\lambda}{8n} \;+\; \frac{\log(1/\delta)}{\lambda}.
+$$
+
+This is the **tightest Catoni bound at temperature $\lambda$**: every other $Q \ll P$ gives a strictly larger RHS, and the difference is precisely $\mathrm{KL}(Q \Vert Q^*_\lambda)/\lambda$ (cf. the saturation discussion in §3.4).
+
+The distribution $Q^*_\lambda$ has a name in every statistical-physics-adjacent literature: it is the **Gibbs distribution** at temperature $\lambda$ — also called the **tilted distribution**, the **exponentially weighted posterior**, or, in the PAC-Bayes literature specifically, the **Catoni-optimal posterior**. The temperature controls its concentration: low $\lambda$ means $Q^*_\lambda$ stays close to $P$ (light tilt); high $\lambda$ means $Q^*_\lambda$ concentrates on hypotheses with low empirical risk (sharp tilt). §6.4 makes this precise.
+
+The Gibbs distribution is also exactly what variational inference produces in the limit of perfect approximation (the family of all probability measures $Q \ll P$), and what the Bayesian posterior is when the loss is interpreted as a negative log-likelihood and $\lambda = n$. §9 develops both correspondences carefully.
+
+### Proof of Theorem 4
+
+The proof is a four-line application of the §3 machinery.
+
+<TheoremBlock type="proof">
+
+For each fixed $h \in \mathcal{H}$, the random variables $\ell(h(X_i), Y_i) \in [0, 1]$ are i.i.d. with mean $R(h)$, so $\hat R_S(h)$ is an average of $n$ bounded variables and Hoeffding's MGF bound gives, for every $\lambda \in \mathbb{R}$,
+
+$$
+\mathbb{E}_{S}\!\left[\, e^{\lambda(R(h) - \hat R_S(h))} \,\right] \;\le\; e^{\lambda^2/(8n)}.
+$$
+
+Set $f(h) := \lambda R(h) - \lambda \hat R_S(h) - \lambda^2/(8n)$ — a function of $h$ that depends on $S$ through $\hat R_S$. Then $\mathbb{E}_S[e^{f(h)}] \le 1$ for each fixed $h$. By Fubini (with $P$ data-independent),
+
+$$
+\mathbb{E}_S\!\left[\, \mathbb{E}_P[ e^{f(h)} ] \,\right] \;=\; \mathbb{E}_P\!\left[\, \mathbb{E}_S[ e^{f(h)} ] \,\right] \;\le\; 1.
+$$
+
+Markov's inequality: with probability $\ge 1 - \delta$ over $S$,
+
+$$
+\mathbb{E}_P[e^{f(h)}] \;\le\; 1/\delta.
+$$
+
+On that event, the change-of-measure inequality (Corollary 1 of §3) with this $f$ gives, for every $Q \ll P$,
+
+$$
+\mathbb{E}_Q[f(h)] \;\le\; \mathrm{KL}(Q \,\Vert\, P) + \log \mathbb{E}_P[e^{f(h)}] \;\le\; \mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta).
+$$
+
+Expanding $\mathbb{E}_Q[f(h)] = \lambda \mathbb{E}_Q[R(h)] - \lambda \mathbb{E}_Q[\hat R_S(h)] - \lambda^2/(8n)$ and dividing by $\lambda > 0$,
+
+$$
+\mathbb{E}_Q[R(h)] - \mathbb{E}_Q[\hat R_S(h)] - \frac{\lambda}{8n} \;\le\; \frac{\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)}{\lambda},
+$$
+
+which rearranges to the statement of Theorem 4.
+
+</TheoremBlock>
+
+Two observations on the proof. The Hoeffding MGF bound $e^{\lambda^2/(8n)}$ is the slack term we pay for working with arbitrary bounded losses (rather than Bernoullis specifically — which would give a tighter exponential form due to Catoni 2007). Replacing it with the exact Bernoulli cumulant produces Catoni's **exponential-form** bound; the linearized version above is what most modern papers use. And the proof uses **none** of the lossy steps of McAllester's chain — no Pinsker, no Jensen-for-squares. The cost is paid entirely in the temperature parameter: the bound depends on $\lambda$ in two competing terms ($\lambda/(8n)$ rising linearly, $(\mathrm{KL} + \log(1/\delta))/\lambda$ falling), and choosing $\lambda$ is the substance of §6.4.
+
+### Choosing $\lambda$ and the bias–variance trade-off
+
+The RHS of Theorem 4 viewed as a function of $\lambda > 0$ at fixed $(Q, n, \delta)$ has a clean U-shape. Differentiating,
+
+$$
+\frac{\partial}{\partial \lambda}\!\left[ \frac{\lambda}{8n} + \frac{\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)}{\lambda} \right] \;=\; \frac{1}{8n} \;-\; \frac{\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)}{\lambda^2},
+$$
+
+zero at $\lambda^* = \sqrt{8n \bigl(\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)\bigr)}$. Plugging back, the optimized bound is
+
+$$
+\mathbb{E}_Q[R] \;\le\; \mathbb{E}_Q[\hat R_S] + \sqrt{\frac{\mathrm{KL}(Q \,\Vert\, P) + \log(1/\delta)}{2n}}.
+$$
+
+This is **structurally identical to McAllester** (Theorem 2) but with $\log(1/\delta)$ in place of $\log(2\sqrt{n}/\delta)$ — a saving of $\frac{1}{2}\log n$ nats, sometimes meaningful. The catch is that $\lambda^*$ depends on $\mathrm{KL}(Q \Vert P)$, which is data-dependent. To choose $\lambda^*$ honestly, we must $\delta$-union over a finite grid of $\lambda$ values, which adds $\log K$ to the numerator for $K$ candidates — typically $K = O(\sqrt n)$, recovering McAllester's constant up to lower-order terms.
+
+The Catoni form's practical edge is therefore *not* in being asymptotically tighter than McAllester. It is in two other places. At fixed $\lambda$, the linearity in $\mathbb{E}_Q[\hat R_S]$ and $\mathrm{KL}(Q \Vert P)$ makes joint optimization over $Q$ tractable — which is what the Dziugaite–Roy reproduction of §11 exploits, gradient-descenting on $(\mu, \log\sigma)$ for a Gaussian $Q$ to minimize the linear RHS. And the **Gibbs minimizer** $Q^*_\lambda$ is a recognizable object that bridges to variational inference and Bayesian inference; minimizing McAllester's bound over $Q$ produces a similar object but without the clean exponential form.
+
+The temperature parameter has an interpretive role too. Small $\lambda$ corresponds to "trust the prior more" — $Q^*_\lambda$ stays close to $P$, the KL term is small, but $\mathbb{E}_{Q^*_\lambda}[\hat R_S]$ stays near the prior average (likely a bad value). Large $\lambda$ corresponds to "trust the data more" — $Q^*_\lambda$ concentrates near the ERM, $\mathbb{E}_{Q^*_\lambda}[\hat R_S]$ drops, but the KL term grows. The optimal $\lambda^*$ is the bias-variance sweet spot.
+
+### Demo — temperature sweep and Gibbs sharpening
+
+We sweep $\lambda$ across roughly $[10^{-1}, 10^4]$ on the running example. The first visualization shows $Q^*_\lambda$ on the threshold grid at five representative temperatures: $\lambda \in \{0, 10, 50, 200, 5000\}$. At $\lambda = 0$, $Q^*_0 = P$ uniform; at $\lambda \to \infty$, $Q^*_\lambda$ concentrates on the ERM cell. The intermediate values show smooth sharpening.
+
+<CatoniLambdaSlider client:visible />
+
+The second decomposes the optimized Catoni bound $\mathcal{R}_\lambda(Q^*_\lambda) = \mathbb{E}_{Q^*_\lambda}[\hat R_S] + \lambda/(8n) + (\mathrm{KL}(Q^*_\lambda \Vert P) + \log(1/\delta))/\lambda$ into its three components as a function of $\lambda$. The empirical-risk component decreases monotonically from $\mathbb{E}_P[\hat R_S]$ at $\lambda = 0$ to $\hat R_S(\mathrm{ERM})$ at $\lambda \to \infty$. The linearization penalty $\lambda/(8n)$ rises linearly. The KL term $(\mathrm{KL}(Q^*_\lambda \Vert P) + \log(1/\delta))/\lambda$ rises from zero, peaks, and falls back. The total has a U-shape with a clear minimum, and the verified empirical $\lambda^* \approx 96$ gives bound $\approx 0.174$ — the Gibbs-at-its-own-optimum certificate.
+
+<GibbsPosteriorVisualizer client:visible />
+
+## Refinements
+
+The three canonical bounds of §§4–6 are the load-bearing results, but the PAC-Bayes literature has produced a substantial body of refinements that bite in specific regimes: tighter constants for problems where the slack matters operationally, variance-adaptive bounds for low-variance losses, jointly-quasiconvex forms suitable for gradient-based optimization, and small-$n$ analyses that show where the canonical bounds saturate. This section is a survey rather than a full development; we sketch the four most consequential refinements at the level needed to use them, defer full proofs to their sources, and close with a numerical demonstration of the variance-adaptive trade-off.
+
+### Maurer (2004) — tighter constants and the realizable rate
+
+Maurer's 2004 note is the source we have already drawn on twice — first for the moment lemma in §4.1, and second for the Pinsker step that converts the kl-form to the squared-difference form. Two further contributions of the same paper sharpen practical computations.
+
+The **realizable-case improvement**. When $\hat R_S(h) = 0$ (zero empirical risk for some $h$ in the support of $Q$), the binary-KL $\mathrm{kl}(0 \Vert R(h)) = -\log(1 - R(h))$ is the Taylor expansion $R(h) + R(h)^2/2 + \cdots$ rather than $2 R(h)^2$. The Seeger bound in this regime certifies $\mathbb{E}_Q[R] \le 1 - e^{-c}$ where $c = (\mathrm{KL} + \log(2\sqrt{n}/\delta))/n$, which for small $c$ is approximately $c$ itself — a **fast rate of $O(1/n)$** rather than the slow rate $O(1/\sqrt{n})$ of McAllester. The Dziugaite–Roy reproduction in §11 lands precisely in this realizable regime, and the fast rate is what makes the bound non-vacuous at finite $n$.
+
+The **best constant** $2\sqrt{n}$ in the moment lemma: Maurer proves this is sharp for the Bernoulli, with no further refinement available without distributional assumptions. Tighter versions exist for sub-Gaussian losses (Catoni 2007) or losses with known variance bound (Tolstikhin–Seldin 2013; §7.2 below), but they require extra structure.
+
+### Tolstikhin–Seldin (2013) — empirical-Bernstein PAC-Bayes
+
+The McAllester and Catoni bounds use Hoeffding-style moment bounds that pay for the worst-case variance of a $[0, 1]$-bounded loss, namely $\sigma^2 \le 1/4$. When the actual variance is much smaller — as in any realizable or near-realizable regime — that worst case is grossly conservative. **Bernstein's inequality** replaces the worst-case variance with the empirical variance, and Tolstikhin & Seldin (2013) lift the substitution into a PAC-Bayes bound.
+
+The empirical variance of the loss family under $Q$ is
+
+$$
+V_n(Q, S) \;:=\; \mathbb{E}_{h \sim Q} \!\left[ \frac{1}{n} \sum_{i=1}^n \bigl( \ell(h(X_i), Y_i) - \hat R_S(h) \bigr)^2 \right].
+$$
+
+The Tolstikhin–Seldin bound — with probability $\ge 1 - \delta$ over $S$ and over a finite $\delta$-union grid of $K$ candidate variance bounds — gives, for every $Q \ll P$,
+
+$$
+\mathbb{E}_Q[R] - \mathbb{E}_Q[\hat R_S] \;\le\; \sqrt{\frac{2 \widehat V_n(Q, S) \bigl( \mathrm{KL}(Q \Vert P) + \log(K/\delta) \bigr)}{n}} \;+\; \frac{7\,\bigl(\mathrm{KL}(Q \Vert P) + \log(K/\delta)\bigr)}{3(n - 1)}.
+$$
+
+The leading term is variance-adaptive: when $\widehat V_n \ll 1/4$, the bound is much tighter than McAllester's. The $O(1/n)$ correction term is the cost of working with the empirical (vs. true) variance. In the realizable regime $V_n = 0$, and only the $O(1/n)$ second-order remains — the **fast rate**, without needing kl-form inversion. Mhammedi, Grünwald & Guedj (2019) refine the bound with an "Un-Expected Bernstein" inequality that vanishes whenever the learning algorithm is sufficiently stable on $S$.
+
+### Thiemann et al. (2017) — a strongly quasiconvex form
+
+The Catoni bound of §6 is jointly convex in $\mathbb{E}_Q[\hat R_S]$ and $\mathrm{KL}(Q \Vert P)$ at fixed $\lambda$, and convex in $\lambda$ at fixed $Q$. But it is **not jointly convex in $(Q, \lambda)$** simultaneously — the $\mathrm{KL}/\lambda$ term has a saddle structure. For applied PAC-Bayes, where one wants to gradient-descend on a parametric posterior with the temperature as a learnable parameter, this is a real obstacle.
+
+Thiemann, Igel, Wintenberger, and Seldin (2017) sidestep it. Their bound, for any $\beta \in (0, 1)$ chosen alongside $Q$,
+
+$$
+\mathbb{E}_Q[R(h)] \;\le\; \frac{\mathbb{E}_Q[\hat R_S(h)]}{1 - \beta/2} \;+\; \frac{\mathrm{KL}(Q \Vert P) + \log(2\sqrt{n}/\delta)}{\beta (1 - \beta/2) \, n},
+$$
+
+is **strongly quasiconvex in $(Q, \beta)$** when $Q$ is parametrized by a vector in $\mathbb{R}^d$. Strong quasiconvexity is weaker than convexity but strong enough that gradient descent finds the global minimum from any initialization. Pérez-Ortiz, Rivasplata, Shawe-Taylor & Szepesvári (2021) used this bound to train neural networks where the network parameters and the bound coefficient $\beta$ are optimized jointly via SGD, producing some of the tightest published non-vacuous bounds for deep nets (theirs land at 0.16 on MNIST-binary, vs Dziugaite & Roy's 0.21 on the same architecture).
+
+The trade-off: a worse leading constant at the optimal $\beta$, but joint-optimization tractability matters more in practice.
+
+### Foong et al. (2021) — how tight can PAC-Bayes be at small $n$?
+
+Foong, Bruinsma, Burt, and Turner (2021) carry out the analysis. Their main result: the **kl-form (Seeger) bound is essentially tight** in the realizable regime at any finite $n$ — for the specific worst-case data distribution among those compatible with the observed $S$, the Seeger bound matches the true expected risk up to lower-order terms. McAllester is loose by a factor that depends on $\hat R_S$, which is the gap we visualized in §5.5.
+
+A second contribution: in regimes where the loss has small variance but is not exactly realizable, the empirical-Bernstein form (§7.2) can beat the kl-form by a constant factor — but only when $n$ is large enough that the $O(1/n)$ second-order term in Tolstikhin–Seldin is dominated by the leading variance-adaptive term. Foong et al. note that at small $n$ with a non-trivial $\delta$-union over candidate variance bounds, Bernstein's $\log K/\delta$ overhead can flip the comparison in Hoeffding's favor. The takeaway for applied work — there is **no uniformly tightest bound**. Pick the bound for the regime you're in:
+
+| Regime | Recommended bound |
+|---|---|
+| Realizable, $\hat R_S \approx 0$ | Seeger (§5) |
+| Small-variance, large-$n$, non-realizable | Tolstikhin–Seldin (§7.2) |
+| Agnostic, $\hat R_S \approx 1/2$ | McAllester (§4) or Catoni (§6) |
+| Jointly-optimized neural-net bounds | Thiemann (§7.3) |
+
+### Demo — variance-adaptive slack and the small-$n$ regime flip
+
+The Tolstikhin–Seldin advantage is most visible when the empirical variance is much less than the Hoeffding worst-case $1/4$. We plot the certificate slack — i.e., the $\sqrt{\ldots}$ term above $\mathbb{E}_Q[\hat R_S]$ — for both Catoni-Hoeffding and Catoni-Bernstein as a function of $\hat R_S$ at fixed $(n, \mathrm{KL}, \delta, K)$, treating the loss as Bernoulli (variance $\hat R_S(1 - \hat R_S)$). The two slacks coincide at $\hat R_S = 1/2$ where Hoeffding is locally tight; they diverge as $\hat R_S \to 0$ or $\hat R_S \to 1$, but the direction of divergence depends on $n$ and $K$.
+
+At the running example's regime $(n = 200, \mathrm{KL} = 2.28, \delta = 0.05, K = 10)$ and $\hat p = 0.064$ (the $Q_{\mathrm{narrow}}$ empirical risk), the verified notebook outputs are Catoni-Hoeffding slack $0.1148$ and Tolstikhin–Seldin slack $0.1562$ — a Bernstein/Hoeffding ratio of $\approx 1.36$, meaning **Hoeffding is actually tighter at this small-$n$ config**. The variance-adaptive promise of §7.2 is real, but it kicks in for either larger $n$ (so the $O(1/n)$ second-order term shrinks) or smaller $K$ (so the $\log(K/\delta)$ overhead shrinks). Foong et al. (2021) flag this regime flip explicitly. Drag the $n$ slider in the demo below — the Bernstein curve drops below Hoeffding when $n$ exceeds a few thousand.
+
+<BennettVsHoeffding client:visible />
+
+## Choosing prior and posterior in continuous classes
+
+### From finite enumeration to parameter-space priors
+
+The running example used a finite hypothesis class with a uniform prior, which made the KL term a discrete sum capped at $\log |\mathcal{H}| \approx 4.6$ nats. Every practical PAC-Bayes application — including the §11 Dziugaite–Roy reproduction — works in continuous parameter space, typically with Gaussian $P$ and Gaussian $Q$.
+
+A neural network with $d$ parameters defines $\mathcal{H} = \{h_w : w \in \mathbb{R}^d\}$, and a Gaussian distribution on $\mathbb{R}^d$ induces a distribution on $\mathcal{H}$ via the pushforward. The prior $P = \mathcal{N}(0, \sigma_P^2 I_d)$ — isotropic Gaussian, mean zero, single scalar variance $\sigma_P^2$ — is the canonical choice and the one Dziugaite & Roy (2017) used to compute the first non-vacuous deep-network PAC-Bayes bound. The posterior $Q = \mathcal{N}(\mu, \mathrm{diag}(\sigma_{Q,i}^2))$ — diagonal-covariance Gaussian with learnable mean $\mu \in \mathbb{R}^d$ and learnable per-coordinate variances $\sigma_{Q,i}^2$ — is the standard parametric posterior family for the same reason: it makes the KL term computable in closed form.
+
+The lift from finite to continuous changes nothing about the bounds of §§4–6 themselves — McAllester, Seeger, and Catoni all hold for any $P$ on any measurable hypothesis space, with KL on the right computed in the same way. What changes is the *technique* for working out the KL: it's now an integral over $\mathbb{R}^d$ instead of a sum over $|\mathcal{H}|$ cells, and we need that integral in closed form to make the bound computable. The diagonal-covariance restriction on $Q$ is a parametric approximation; a fully general $Q$ could have arbitrary correlation structure, but the resulting KL involves a determinant computation that scales as $O(d^3)$, prohibitive for $d \gtrsim 10^4$. The diagonal restriction is the practical compromise.
+
+### The Gaussian–Gaussian KL closed form
+
+<TheoremBlock type="proposition" number={1} title="Multivariate Gaussian KL">
+
+Let $Q = \mathcal{N}(\mu_Q, \Sigma_Q)$ and $P = \mathcal{N}(\mu_P, \Sigma_P)$ be two non-degenerate Gaussians on $\mathbb{R}^d$. Then
+
+$$
+\mathrm{KL}(Q \,\Vert\, P) \;=\; \frac{1}{2}\!\left[\, \mathrm{tr}\bigl(\Sigma_P^{-1} \Sigma_Q\bigr) + (\mu_P - \mu_Q)^\top \Sigma_P^{-1} (\mu_P - \mu_Q) - d + \log \frac{\det \Sigma_P}{\det \Sigma_Q} \,\right].
+$$
+
+In the **diagonal case** with $\Sigma_Q = \mathrm{diag}(\sigma_{Q,i}^2)$ and isotropic prior $\Sigma_P = \sigma_P^2 I_d$, $\mu_P = 0$, this specializes to
+
+$$
+\mathrm{KL}(Q \,\Vert\, P) \;=\; \frac{\|\mu_Q\|^2}{2\sigma_P^2} \;+\; \frac{1}{2}\sum_{i=1}^d \!\left[\, \frac{\sigma_{Q,i}^2}{\sigma_P^2} - 1 - \log \frac{\sigma_{Q,i}^2}{\sigma_P^2} \,\right].
+$$
+
+</TheoremBlock>
+
+The two terms have distinct interpretations and matter at very different scales in the deep-net regime.
+
+The **mean-shift term** $\|\mu_Q\|^2 / (2\sigma_P^2)$ is quadratic in the posterior mean and inversely quadratic in the prior bandwidth. It charges for $Q$'s mean drifting away from the prior's. In dimension $d$, this term scales with the *squared norm* of $\mu_Q$ — not with $d$ explicitly — but a SGD-trained network's parameter vector tends to have norm growing as $\sqrt{d}$, so $\|\mu_Q\|^2$ is typically $\Theta(d)$.
+
+The **variance term** $\frac{1}{2}\sum_i [\rho_i - 1 - \log \rho_i]$ where $\rho_i := \sigma_{Q,i}^2/\sigma_P^2$ charges for each posterior variance differing from the prior's. The function $\rho \mapsto \rho - 1 - \log \rho$ is convex with minimum $0$ at $\rho = 1$ and growing toward $+\infty$ at both endpoints. For $d = 10^4$ and $\rho_i$ all equal to a single $\rho$, the variance term scales with $d$, so even a small per-coordinate deviation $\rho \ne 1$ accumulates into a substantial KL bill. Matching $\sigma_{Q,i}^2$ to $\sigma_P^2$ across coordinates is therefore not optional in high dimension — it is the dominant constraint on the bound.
+
+The full KL is the sum, and the two terms are independently controllable. In the §11 Dziugaite–Roy reproduction the optimization separates into roughly these two pieces — the mean $\mu_Q$ trades off against empirical risk via SGD-like dynamics, while the log-variances $\log \sigma_{Q,i}^2$ trade off against the variance KL via a per-coordinate scaling.
+
+### Data-independent prior — $\delta$-union over discretized $\sigma_P^2$
+
+The PAC-Bayes bounds of §§4–6 require the prior to be chosen *before* seeing the data. For a Gaussian prior this means $\sigma_P^2$ must be fixed in advance — but the right $\sigma_P^2$ is data-dependent. The standard recipe, due to Langford & Caruana (2001) for SVMs and adapted by Dziugaite & Roy (2017) for deep networks, is to **discretize $\sigma_P^2$ over a finite grid and union-bound over the choice**.
+
+Concretely: fix a finite grid $\mathcal{G} = \{c_1, c_2, \ldots, c_K\}$ of candidate prior variances, chosen *before* seeing any data. For each $c_k \in \mathcal{G}$, compute the McAllester (or Catoni, Seeger, etc.) bound with confidence $\delta / K$ in place of $\delta$, treating $P_k = \mathcal{N}(0, c_k I_d)$ as the prior. By a union bound over $k$, with probability at least $1 - \delta$ over $S$ all $K$ bounds hold simultaneously, and we are then free to report the tightest one with no penalty beyond the $\log K$ added to the numerator.
+
+The grid is typically logarithmic: $\mathcal{G} = \{2^{-K}, 2^{-K+1}, \ldots, 2^0\}$ for $K = 10$ to $20$, costing $\log K \approx 2.3$–$3.0$ nats in the numerator. This is a one-time cost regardless of $d$ and is dwarfed by the mean-shift and variance terms in any realistic high-dimensional setting. The grid must be chosen and fixed before any inspection of $S$.
+
+A natural temptation, when implementing this, is to optimize $\sigma_P^2$ continuously over $(0, \infty)$ based on the data. *This is invalid.* A continuous data-dependent prior makes $P$ a function of $S$, and the moment lemmas of §§4–6 fail because the Fubini swap requires independence. The Pérez-Ortiz et al. (2021) work pushes the data-dependence further with sample splitting — use one half of $S$ to choose $\sigma_P^2$, compute the bound on the other half — but the discrete-grid approach is the simpler and more widely used recipe and is what §11 follows.
+
+### The weight-decay correspondence
+
+When the loss is approximately constant over $Q$'s support around $\mu$ — equivalently, when $Q$ is concentrated enough that resampling $h \sim Q$ doesn't change predictions much — the expected empirical risk $\mathbb{E}_Q[\hat R_S]$ is approximately $\hat R_S(\mu)$. In this regime the Catoni bound at fixed $\lambda$ becomes
+
+$$
+\mathbb{E}_Q[R] \;\lesssim\; \hat R_S(\mu) \;+\; \frac{\lambda}{8n} \;+\; \frac{1}{\lambda}\!\left[\, \frac{\|\mu\|^2}{2\sigma_P^2} \;+\; \text{(variance term)} \;+\; \log(1/\delta) \,\right].
+$$
+
+If we further fix the per-coordinate variances at their prior values ($\sigma_{Q,i} = \sigma_P$, so the variance term is zero) and minimize the right-hand side over $\mu$ at fixed $\lambda$, we are solving
+
+$$
+\min_{\mu \in \mathbb{R}^d}\!\left[ \hat R_S(\mu) \;+\; \frac{1}{2\lambda \sigma_P^2}\,\|\mu\|^2 \right].
+$$
+
+This is **exactly $L_2$-regularized empirical risk minimization** — what every introductory machine-learning course calls weight decay. The regularization strength is
+
+$$
+\alpha_{\text{wd}} \;=\; \frac{1}{2\lambda \sigma_P^2},
+$$
+
+with $\lambda$ the PAC-Bayes temperature and $\sigma_P^2$ the prior variance. Larger temperatures and broader priors both correspond to weaker regularization. The result is structural: every weight-decay-regularized model can be read as the posterior mean of a Gaussian–Gaussian PAC-Bayes setup, and the PAC-Bayes bound at that $\mu$ gives a generalization guarantee. Conversely, every Gaussian PAC-Bayes bound at fixed variance reduces to weight decay when minimized over the posterior mean.
+
+Two qualifications. The approximation $\mathbb{E}_Q[\hat R_S] \approx \hat R_S(\mu)$ is good only when $Q$'s support is small enough that the loss is locally well-modeled by its value at $\mu$. For wide $Q$, the gap between $\mathbb{E}_Q[\hat R_S]$ and $\hat R_S(\mu)$ is exactly what makes the bound *non-trivial* compared to a straight regularized-ERM analysis — this is where the §11 reproduction extracts its non-vacuous guarantee. And jointly optimizing $(\mu, \sigma_{Q,i})$ rather than holding $\sigma_{Q,i} = \sigma_P$ fixed is the better strategy in practice, since the variance term can be reduced per-coordinate.
+
+### Demo — the KL surface and its two terms
+
+<GaussianKLPicker client:visible />
+
+The demo visualizes the §8.2 scaling argument: in high dimension, the variance term ($\Theta(d)$ unless $\rho_i = 1$) dominates the mean-shift term ($\Theta(\|\mu\|^2)$) by orders of magnitude unless $\sigma_Q$ is carefully matched to $\sigma_P$. Setting $d = 10^4$, $\|\mu\| = 50$, $\sigma_P = 1$ — the regime the §11 reproduction lives in — the mean-shift contribution is $1250$ nats while the variance term blows up if $\rho_i$ is even modestly off $1$; for $\rho = 0.5$ the variance term contributes about $2200$ nats. Both dwarf the $\log K$ overhead of the $\delta$-union over prior variances.
+
+## The Bayesian–PAC-Bayes correspondence
+
+### Gibbs at $\lambda = n$ with log-likelihood loss
+
+The Gibbs distribution of §6.2,
+
+$$
+Q^*_\lambda(h) \;=\; \frac{P(h)\,e^{-\lambda \hat R_S(h)}}{Z_\lambda(S)},
+$$
+
+is parametrized by a temperature $\lambda > 0$ chosen by the user. At one specific temperature with one specific loss, it coincides with a familiar object from Bayesian inference. The choice is **likelihood loss**: take the per-sample loss to be the negative log-likelihood, $\ell(h(X_i), Y_i) = -\log p(Y_i \mid h, X_i)$, assumed bounded in $[0, 1]$. The empirical risk is then
+
+$$
+\hat R_S(h) \;=\; -\frac{1}{n}\sum_{i=1}^n \log p(Y_i \mid h, X_i) \;=\; -\frac{1}{n}\log p(\mathcal{D} \mid h),
+$$
+
+where $\mathcal{D} := \{(X_i, Y_i)\}_{i=1}^n$ is the joint sample and $p(\mathcal{D} \mid h) = \prod_i p(Y_i \mid h, X_i)$ is its likelihood under hypothesis $h$. Setting $\lambda = n$ in the Gibbs distribution,
+
+$$
+Q^*_n(h) \;\propto\; P(h)\,e^{-n \hat R_S(h)} \;=\; P(h)\,e^{\log p(\mathcal{D} \mid h)} \;=\; P(h)\,p(\mathcal{D} \mid h) \;\propto\; P(h \mid \mathcal{D}).
+$$
+
+The right-hand side is the **Bayesian posterior** under prior $P$ and likelihood $p(\mathcal{D} \mid h)$, by Bayes' theorem.
+
+<TheoremBlock type="proposition" number={2} title="Bayesian–PAC-Bayes correspondence">
+
+Under likelihood loss $\ell(h(X_i), Y_i) = -\log p(Y_i \mid h, X_i)$ with bounded likelihood ratios, the PAC-Bayes Gibbs distribution at temperature $\lambda = n$ equals the Bayesian posterior:
+
+$$
+Q^*_n(h) \;=\; P(h \mid \mathcal{D}) \;=\; \frac{P(h)\,p(\mathcal{D} \mid h)}{\int P(h')\,p(\mathcal{D} \mid h')\,dh'}.
+$$
+
+</TheoremBlock>
+
+The result is elementary algebra given the right loss, but it has a structural significance worth pulling apart: it shows that **Bayesian inference is the PAC-Bayes posterior optimizer at one specific temperature, for one specific loss**.
+
+### The bound holds at $Q = P(\cdot \mid \mathcal{D})$
+
+A consequence of the correspondence: the PAC-Bayes bounds of §§4–6 apply to the Bayesian posterior. Plugging $Q = P(\cdot \mid \mathcal{D})$ into Theorem 2 (McAllester),
+
+$$
+\mathbb{E}_{h \sim P(\cdot \mid \mathcal{D})}[R(h)] \;-\; \mathbb{E}_{h \sim P(\cdot \mid \mathcal{D})}[\hat R_S(h)]
+\;\le\;
+\sqrt{\frac{\mathrm{KL}\bigl(P(\cdot \mid \mathcal{D}) \,\Vert\, P\bigr) + \log(2\sqrt n/\delta)}{2n}}
+$$
+
+with probability $\ge 1 - \delta$ over $S$. This is a **frequentist generalization guarantee for Bayesian inference** — the kind of statement Bayesian methodology by itself does not produce, since Bayesian probability calculations condition on the data and do not deliver tail bounds over data realizations.
+
+Two notes. The bound at $Q = P(\cdot \mid \mathcal{D})$ is generally **not the tightest PAC-Bayes bound available** — the Catoni-optimal $Q^*_{\lambda^*}$ at $\lambda^* \ne n$ produces a smaller RHS in most regimes. And the KL term $\mathrm{KL}(P(\cdot \mid \mathcal{D}) \,\Vert\, P)$ — sometimes called the **information gain** in the Bayesian literature — is a computable quantity in closed form for conjugate families.
+
+The correspondence runs in both directions. Bayesians get a frequentist tail bound for free. PAC-Bayesians get a recognizable "default" choice of posterior, with familiar geometric properties, that always satisfies the bound.
+
+### The cold-posterior effect
+
+If the Bayesian posterior were optimal for some objective beyond bound-minimization — say, test-set accuracy on the held-out distribution $\mathcal{D}$ — we would expect $\lambda = n$ to be the empirically preferred temperature for predictive performance. It is not. Wenzel et al. (2020), "How Good is the Bayes Posterior in Deep Neural Networks Really?", showed that for SGD-trained deep networks, the **cold posterior** — $Q^*_\lambda$ for $\lambda > n$, i.e., a Gibbs distribution more concentrated than the Bayesian posterior — consistently outperforms the Bayes posterior on test-set predictive accuracy.
+
+The PAC-Bayes view of the cold-posterior effect is clarifying. There is **no theoretical reason to expect $\lambda = n$ to be the optimal temperature** for any objective. The bound-optimal temperature from §6.4 is $\lambda^* = \sqrt{8n(\mathrm{KL}(Q^*_{\lambda^*} \Vert P) + \log(1/\delta))}$, an implicit equation whose solution depends on the actual KL geometry of the problem. For a deep network with $\mathrm{KL} \sim 100$ nats and $n \sim 10^4$, the bound-optimal $\lambda^* \approx 2800$ — colder than the prior ($\lambda = 0$) and warmer than Bayes ($\lambda = n = 10^4$). For different problem regimes, $\lambda^*$ can fall on either side of $n$.
+
+The empirical cold-posterior effect — $\lambda > n$ wins on test accuracy — does not contradict any PAC-Bayes statement, because PAC-Bayes does not claim $\lambda = n$ is optimal. Several explanations have been proposed for *why* cold posteriors win in practice. Aitchison (2021) argues the effect is a downstream consequence of dataset curation — standard image benchmarks like CIFAR-10 have been hand-curated to be unambiguous, which makes the implicit likelihood overconfident and the Bayes posterior insufficiently sharp. Izmailov et al. (2021), using full-batch HMC to sample the true posterior, find that without data augmentation the cold-posterior effect largely disappears, and attribute the empirical phenomenon to misspecification introduced by augmentation. The PAC-Bayes framework is agnostic about which is the right diagnosis; it just provides the right framing for the question.
+
+### What the correspondence does not say
+
+Three non-implications worth stating explicitly.
+
+**Bayesian inference is not "the right way" to do PAC-Bayes.** $Q = P(\cdot \mid \mathcal{D})$ is one valid choice of posterior; it is rarely the bound-optimal choice. Dziugaite & Roy's (2017) non-vacuous deep-network bound uses a Gaussian $Q$ centered on SGD output — neither the Bayesian posterior nor any Gibbs distribution.
+
+**PAC-Bayes does not validate Bayesian inference in misspecified settings.** The frequentist guarantee requires the loss to be a proper bounded negative log-likelihood AND the prior $P$ to be data-independent. Real Bayesian workflows routinely involve weakly informative priors chosen after data inspection, data-dependent hyperparameter tuning, and likelihoods that are model approximations rather than data-generating truths.
+
+**The "agreement" is at $\lambda = n$ and likelihood loss only.** Other losses (0/1, hinge, squared) have no corresponding Bayesian posterior. PAC-Bayes is strictly broader than Bayesian inference; the correspondence is a coincidence in a specific corner, not a general unification.
+
+### Demo — temperature sweep on a Bernoulli toy
+
+The cleanest demonstration of the correspondence is in a toy where the correspondence applies exactly. We work with a Bernoulli mean-estimation problem: $Y_i \sim \mathrm{Bernoulli}(\theta^*)$ with $\theta^* = 0.3$, $n = 200$ samples, hypothesis class $\Theta = \{0.005, 0.015, \ldots, 0.995\}$ (100 discrete candidates), uniform prior $P$, per-sample loss $\ell(\theta, y) = -\log p(y \mid \theta)$. The verified correspondence: at $\lambda = n$, $|Q^*_n(\theta) - P(\theta \mid \mathcal{D})| < 10^{-12}$ across the entire grid — exact to machine precision.
+
+<BayesianGibbsBridge client:visible />
+
+## Three bounds on the running example
+
+We have now developed four certificate-producing tools: the classical union bound for finite hypothesis classes from [generalization bounds §3](/topics/generalization-bounds), McAllester (§4), Seeger (§5), and Catoni (§6). This section puts all four on the running example, reads off the numerics, and identifies the regimes where each dominates.
+
+### Setup and the union-bound baseline
+
+The §1.5 setup: $|\mathcal{H}| = 101$ threshold classifiers, $n = 200$, $\delta = 0.05$, $\eta = 0.05$ label noise, $\mu^* = 0.3$, uniform prior $P$. The ERM threshold $\hat h_{\text{ERM}}$ has empirical risk near zero (the noise lands inside the margin between $\mu^*$ and the cell boundaries).
+
+The **union-bound baseline** from [generalization-bounds §3](/topics/generalization-bounds): with probability $\ge 1 - \delta$,
+
+$$
+\sup_{h \in \mathcal{H}} R(h) - \hat R_S(h) \;\le\; \sqrt{\frac{\log(2|\mathcal{H}|/\delta)}{2n}}.
+$$
+
+For our setup: $\log(2 \cdot 101 / 0.05) \approx 8.3$, slack $\sqrt{8.3/400} \approx 0.144$. This is a per-hypothesis statement; PAC-Bayes is per-posterior. Both are valid; §10.2 just confirms when each dominates.
+
+### The three PAC-Bayes bounds at $Q_{\mathrm{narrow}}$
+
+Evaluating at $Q_{\mathrm{narrow}}$ from §2.5 ($\mathrm{KL} = 2.28$, $\mathbb{E}_Q[\hat R_S] = 0.064$) at $n = 200$, $\delta = 0.05$:
+
+| Certificate | Value | Slack above $\mathbb{E}_Q[\hat R_S]$ |
+|---|---:|---:|
+| Union bound (on ERM point-mass) | $0.144$ | $0.144$ |
+| McAllester (§4) at $Q_{\mathrm{narrow}}$ | $0.211$ | $0.147$ |
+| Catoni-optimized (§6.4) closed form at $Q_{\mathrm{narrow}}$ | $0.179$ | $0.114$ |
+| Seeger (§5) at $Q_{\mathrm{narrow}}$ | $\approx 0.14$ | $\approx 0.08$ |
+
+**Catoni-optimized beats McAllester** on the slack side because it replaces $\log(2\sqrt n/\delta)$ with $\log(1/\delta)$ — a $\tfrac{1}{2}\log n$-nat saving when the data-dependent $\lambda^*$ can be chosen freely. With an honest $\delta$-union over candidate $\lambda$ values (typically $K = O(\sqrt n)$), the saving shrinks back to McAllester-equivalent. **Seeger dominates everything** because the realizable-regime advantage from §5.5 bears out: at $\hat R_S \approx 0.064$, the kl-form is much tighter than the Pinsker-relaxed square-root form. For a topic where the typical empirical risk is small — as in any modern over-parameterized setting — Seeger should be the default.
+
+For comparison, at $Q_{\mathrm{broad}}$ (KL $= 0.67$, $\mathbb{E}_Q[\hat R_S] = 0.167$): McAllester certificate $= 0.299$, slack $0.132$. The broad posterior pays less in KL but more in expected empirical risk; the bound trade-off is on a different point of the KL-vs-risk curve.
+
+### When PAC-Bayes wins
+
+The §10.2 numbers show PAC-Bayes winning by 15–40% — real but modest, because $|\mathcal{H}| = 101$ is small. The advantage grows in three regimes.
+
+**Large or infinite $\mathcal{H}$.** Union bound scales as $\sqrt{\log|\mathcal{H}|/n}$, going to infinity as $|\mathcal{H}| \to \infty$. PAC-Bayes with continuous Gaussian $Q$ has KL that stays finite. The §11 Dziugaite–Roy reproduction is the marquee case: $\sim 10^4$ parameters means $\log|\mathcal{H}| = \infty$ (union bound vacuous), but PAC-Bayes lands at $\sim 0.24$.
+
+**Concentrated $Q$ with $\mathrm{KL}(Q \Vert P) \ll \log|\mathcal{H}|$.** When the posterior concentrates on a small effective subset, KL is dramatically less than $\log|\mathcal{H}|$. For higher-dimensional classes the saving can be orders of magnitude.
+
+**Realizable or near-realizable regimes.** At $\hat R_S \approx 0$, Seeger certifies $\mathbb{E}_Q[R] \le c$ with $c = O((\mathrm{KL} + \log n)/n)$ — fast rate, dominating union bound's $\sqrt{\log|\mathcal{H}|/n}$ at large $n$.
+
+### When the union bound wins
+
+Two restricted settings.
+
+**Tiny $|\mathcal{H}|$ with point-estimate output.** If committing to the ERM as a point estimate and $|\mathcal{H}|$ is small ($\le 100$), the union bound's slack is competitive with — and often slightly tighter than — McAllester for a point-mass $Q$, which pays the extra $\log(2\sqrt n)$ in the numerator. In our running example, point-mass McAllester slack $\approx 0.166$ vs union $0.144$.
+
+**Adversarial classes where a uniform prior is correct.** If no prior preference exists and the analyst is committed to reporting bounds for an arbitrary $h$ to be chosen later (rather than a specific posterior $Q$), the union bound is the right tool.
+
+In practice, neither restriction holds in modern ML. Hypothesis classes are continuous and high-dimensional, the analyst is willing to commit to a posterior, and the loss is in a realizable or near-realizable regime.
+
+### Demo — bound comparison curves
+
+<ToyBoundComparison client:visible />
+
+The first panel sweeps $n$ at fixed $Q_{\mathrm{narrow}}$; all four bounds scale as $\sqrt{1/n}$ or faster, Seeger dominates throughout the realizable regime, Catoni-optimized sits below McAllester by a constant gap, and Union and McAllester overlap. The second panel groups the four bounds at fixed $n = 200$ across three posteriors. The union-bound bars are constant across clusters (the bound doesn't depend on $Q$); the PAC-Bayes bars track the empirical-risk floor of each posterior plus its certificate slack.
+
+## Non-vacuous deep-network bounds (Dziugaite–Roy 2017)
+
+### The vacuousness reckoning, revisited
+
+The companion topic on [generalization bounds](/topics/generalization-bounds) closes its §12 demo with an unsettling observation. A multi-layer perceptron with ~12,000 parameters trained on 1,000 binary-MNIST samples has Rademacher complexity at least 1 (the network can fit randomized labels to zero training error), so the classical uniform-convergence bound is $\ge 1$ — vacuous. The observed generalization gap on the same network is around 1–3% in test error. Classical bound and observed reality differ by two orders of magnitude.
+
+Dziugaite & Roy (NeurIPS 2017), "Computing Nonvacuous Generalization Bounds for Deep (Stochastic) Neural Networks with Many More Parameters than Training Data," produced the first PAC-Bayes bound that closed this gap. Their result: a non-vacuous bound of approximately 0.21 on the 0/1 expected risk of a stochastic version of a SGD-trained MLP on binary MNIST. The same network's Rademacher bound on the same data is vacuous; the same network's test 0/1 error is around 0.02. Their 0.21 bound is loose by an order of magnitude relative to test error, but it is the first bound that lives in the right neighborhood at all.
+
+The technical move that closes the gap is exactly the PAC-Bayes posterior-vs-class duality of §1.3. Uniform convergence charges $\mathcal{H} = \mathbb{R}^d$, which has unbounded Rademacher complexity for any $d$. PAC-Bayes charges $Q$'s drift from $P$, and for a Gaussian $Q$ centered on the SGD output, the KL divergence is finite and can be optimized to balance against empirical risk.
+
+### The recipe
+
+The Dziugaite–Roy construction has four steps.
+
+**Step 1: train a deterministic network with SGD.** Use standard machine-learning tools — sklearn's `MLPClassifier` — to fit a network with $d$ parameters to a training set $S$ of size $n$. Call the output $w_0 \in \mathbb{R}^d$. This is the starting point.
+
+**Step 2: build a Gaussian PAC-Bayes posterior centered on $w_0$.** Define $Q = \mathcal{N}(\mu, \mathrm{diag}(\sigma_{Q,i}^2))$ with diagonal covariance and learnable mean $\mu \in \mathbb{R}^d$ and learnable per-coordinate log-variances $\log \sigma_{Q,i}^2$. Initialize $\mu = w_0$ and $\log \sigma_{Q,i}^2 = \log \sigma_0^2$ for some small initial value.
+
+**Step 3: choose the prior variance $\sigma_P^2$ from a discretized grid.** Per §8.3, the prior $P = \mathcal{N}(0, \sigma_P^2 I_d)$ must be data-independent, so we fix a grid $\mathcal{G} = \{c_1, c_2, \ldots, c_K\}$ of candidate prior variances *before* seeing any data and union-bound the analysis with confidence $\delta/K$ at each grid point.
+
+**Step 4: optimize the bound jointly over $(\mu, \log \sigma_{Q,i}^2)$.** At each fixed $\sigma_P^2 = c_k$, minimize the Catoni-optimized PAC-Bayes bound
+
+$$
+\mathcal{B}(\mu, \log \sigma_Q; c_k) \;=\; \mathbb{E}_{w \sim Q}[\hat R_S(h_w)] \;+\; \sqrt{\frac{\mathrm{KL}(Q \,\Vert\, P_k) + \log(K/\delta)}{2n}}
+$$
+
+over $(\mu, \log \sigma_Q)$ via gradient descent. Closed-form KL gradient (§8.2) + reparametrization-trick empirical-risk gradient (§11.3). At convergence, evaluate the final certificate by computing $\mathbb{E}_Q[\hat R_S]$ via Monte Carlo on the 0/1 loss and plugging into the bound.
+
+### Implementation in plain NumPy
+
+The bound optimization in step 4 is what would, in a fuller-featured implementation, use PyTorch or JAX for automatic differentiation. The topic's code-language policy is NumPy / SciPy / sklearn, so we implement the gradients by hand.
+
+**The KL gradient is closed-form.** From Proposition 1 of §8.2,
+
+$$
+\frac{\partial \mathrm{KL}}{\partial \mu_i} \;=\; \frac{\mu_i}{\sigma_P^2}, \qquad
+\frac{\partial \mathrm{KL}}{\partial \log \sigma_{Q,i}^2} \;=\; \frac{1}{2}\!\left( \frac{\sigma_{Q,i}^2}{\sigma_P^2} - 1 \right).
+$$
+
+Per-coordinate, $O(1)$ operations.
+
+**The empirical-risk gradient uses the reparametrization trick.** Reparametrize $w = \mu + \sigma_Q \odot \epsilon$ for $\epsilon \sim \mathcal{N}(0, I_d)$. Then
+
+$$
+\nabla_\mu \mathbb{E}_Q[\hat R_S(h_w)] \;=\; \mathbb{E}_\epsilon\!\left[\, \nabla_w \hat R_S(h_w) \big|_{w = \mu + \sigma_Q \odot \epsilon} \,\right],
+$$
+
+$$
+\nabla_{\log \sigma_{Q,i}^2} \mathbb{E}_Q[\hat R_S(h_w)] \;=\; \mathbb{E}_\epsilon\!\left[\, \tfrac{1}{2}\,\sigma_{Q,i}\,\epsilon_i \cdot \nabla_{w_i} \hat R_S(h_w) \big|_{w = \mu + \sigma_Q \odot \epsilon} \,\right].
+$$
+
+Estimated by Monte Carlo with $K = 1$ sample per gradient step. The inner gradient $\nabla_w \hat R_S(h_w)$ is the standard backpropagation gradient through the MLP, implemented manually in NumPy.
+
+The empirical-risk loss used for the gradient is a smooth surrogate — binary cross-entropy with sigmoid output — even though the bound certificate is reported on the 0/1 loss. Standard practice: the 0/1 loss has zero gradient almost everywhere, so a smooth surrogate is needed for the optimizer. Final certification computes $\mathbb{E}_Q[\hat R_S]$ on the 0/1 loss with a separate Monte Carlo step ($K_{\text{final}} = 30$ samples).
+
+### $\delta$-union over discretized $\sigma_P^2$
+
+A logarithmic grid $\mathcal{G} = \{2^{-K}, 2^{-K+1}, \ldots, 2^0\}$ for $K = 10$–$20$ candidate prior variances, fixed before any inspection of $S$. For each $c_k \in \mathcal{G}$:
+
+1. Compute the optimized bound $\mathcal{B}^*(c_k)$ by running the §11.3 gradient descent at fixed $\sigma_P^2 = c_k$.
+2. Evaluate the final certificate with $\delta/K$ in place of $\delta$ in the Catoni-optimized formula.
+
+By a union bound over the grid, with probability $\ge 1 - \delta$ over $S$, all $K$ certificates hold simultaneously, and the reported certificate is $\mathcal{B}_{\text{reported}} = \min_k \mathcal{B}^*(c_k)$. The cost is $\log K \approx 2.3$–$3.0$ nats added to the bound's numerator — a one-time fixed cost regardless of $d$.
+
+For the miniature implementation in §11.5, we use a 5-point grid $\mathcal{G} = \{0.01, 0.03, 0.1, 0.3, 1.0\}$ to keep total runtime under budget.
+
+### The reproduction in miniature
+
+The §11.5 demo runs the full pipeline on a binary-MNIST subset: digits 0 vs 1, $n_{\text{train}} = 1000$, $n_{\text{test}} = 500$, MLP with one hidden layer of 16 ReLU units (so $d \approx 1.3 \times 10^4$ parameters), Adam optimizer for the bound minimization with $\sim 500$ steps per prior, $K = 1$ Monte Carlo sample per Adam step, $K_{\text{final}} = 30$ samples for the 0/1 certificate evaluation.
+
+The verified notebook output: final certificate $\mathcal{B}_{\text{reported}} = 0.2369$ at $\sigma_P^2 = 0.030$ — non-vacuous (well below $1$), an order of magnitude looser than the SGD test 0/1 error of $\sim 0.005$, and in the same neighborhood as Dziugaite & Roy's 2017 result on a similar architecture. The whole pipeline runs in about 8 seconds on a 2020-era laptop.
+
+<DznRReproduction client:visible />
+
+**Caveat.** The miniature reproduction does not match the original Dziugaite–Roy (2017) bound of 0.21 on MNIST-binary or the Pérez-Ortiz et al. (2021) bound of 0.16 on the same data. The state-of-the-art numbers use larger training sets, more careful priors (data-dependent via sample splitting), and substantially more compute. Our miniature demonstrates the *phenomenon* — that PAC-Bayes can produce non-vacuous bounds for over-parameterized networks where uniform convergence cannot — at a scale that fits the topic's 60-second CPU budget.
+
+## ML applications
+
+PAC-Bayes is not just a tool for producing generalization certificates on individual models. The change-of-measure inequality and its consequences turn up across modern machine-learning theory in places that don't obviously involve a posterior over hypotheses. This section sketches four such connections.
+
+### Meta-learning
+
+In meta-learning we observe a sequence of related tasks $\tau_1, \tau_2, \ldots$ drawn from a meta-distribution, each task providing a training set $S_\tau$. The natural PAC-Bayes structure is **hierarchical**: an outer PAC-Bayes bound at the task level (with a meta-prior over task-specific priors) plus an inner PAC-Bayes bound within each task.
+
+Pentina & Lampert (ICML 2014), "A PAC-Bayesian Bound for Lifelong Learning," developed the framework in the sequential-task setting. Amit & Meir (ICML 2018), "Meta-Learning by Adjusting Priors Based on Extended PAC-Bayes Theory," extended this to the standard meta-learning setting with i.i.d. tasks, giving rigorous PAC-Bayes guarantees for what model-agnostic meta-learning (MAML; Finn, Abbeel, Levine 2017) does in practice. The framework has since been extended to continual learning, transfer learning, and few-shot classification.
+
+### Compression-based bounds
+
+A network compressible to $k$ bits has effective parameter count $k$, not original $d$. Arora, Ge, Neyshabur, and Zhang (ICML 2018), "Stronger Generalization Bounds for Deep Nets via a Compression Approach," made this precise via PAC-Bayes. The construction: given a $k$-bit compression scheme preserving test error within $\varepsilon$, build a posterior $Q$ supported on the $2^k$ compressed networks. With uniform prior over the same set, $\mathrm{KL}(Q \Vert P) \le k \log 2$ nats, and PAC-Bayes gives
+
+$$
+\mathbb{E}_Q[R(h)] - \mathbb{E}_Q[\hat R_S(h)] \;\le\; \sqrt{\frac{k \log 2 + \log(2\sqrt{n}/\delta)}{2n}} \;+\; \varepsilon.
+$$
+
+For networks compressible to $k \sim 1000$ bits — common for over-parameterized models in their "winning ticket" subspace — the bound is non-vacuous at moderate $n$ even when $d \sim 10^6$.
+
+Zhou, Veitch, Austern, Adams, and Orbanz (ICLR 2019), "Non-Vacuous PAC-Bayes Bounds at Scale via Re-parameterization," extended the compression framework to large-scale ImageNet-class models.
+
+### Information-theoretic generalization
+
+Xu & Raginsky (NeurIPS 2017), "Information-Theoretic Analysis of Generalization Capability of Learning Algorithms," proved a bound on the generalization gap in terms of the **mutual information** between the learning algorithm's output $\hat W$ and the training sample $S$:
+
+$$
+\Bigl|\, \mathbb{E}[R(\hat W)] - \mathbb{E}[\hat R_S(\hat W)] \,\Bigr| \;\le\; \sqrt{\frac{2 \sigma^2 \, I(\hat W; S)}{n}},
+$$
+
+where $\sigma^2$ is a sub-Gaussian bound on the per-sample loss. The mutual information $I(\hat W; S) = \mathbb{E}_S[\mathrm{KL}(Q(\hat W \mid S) \,\Vert\, P(\hat W))]$ is exactly the expected PAC-Bayes KL term, averaged over the sample randomness.
+
+Steinke & Zakynthinou (COLT 2020), "Reasoning About Generalization via Conditional Mutual Information," refined the Xu–Raginsky bound to use **conditional** mutual information given an auxiliary "supersample" of $2n$ points, often dramatically tighter. Negrea, Haghifam, Dziugaite, Khisti & Roy (NeurIPS 2019) and Haghifam et al. (NeurIPS 2020) applied the conditional-MI framework to Langevin dynamics, yielding state-of-the-art guarantees for SGD-based algorithms with $O(1/n)$ rates under stability assumptions.
+
+The cmi and PAC-Bayes views are complementary. PAC-Bayes is the natural tool for *certifying* a specific stochastic predictor; cmi is the natural tool for *analyzing* the generalization properties of a learning algorithm.
+
+### Tighter empirical bounds — Pérez-Ortiz et al. (2021)
+
+The current state-of-the-art applied PAC-Bayes bound on a vision benchmark is due to Pérez-Ortiz, Rivasplata, Shawe-Taylor, and Szepesvári, "Tighter Risk Certificates for Neural Networks" (JMLR 2021). On MNIST-binary they achieve 0.16 — versus Dziugaite & Roy (2017)'s 0.21 and the §11 miniature's 0.24.
+
+Their construction combines several techniques developed earlier in this topic: data-dependent priors via sample splitting; the Thiemann et al. (2017) quasiconvex form (§7.3); SVD-reduced features (PCA on the input) to reduce effective dimensionality; probabilistic networks trained from scratch with the PAC-Bayes bound as the loss.
+
+The 0.16 result is the upper edge of what current techniques can achieve. The gap to test error reflects two sources of looseness: the McAllester / Catoni constants themselves, and the choice of stochastic posterior $Q$ which has lower expected accuracy than the deterministic $\mu$. The latter source is fundamental — PAC-Bayes certifies $\mathbb{E}_Q[R]$, not $R(\mu)$ — and §14.2 discusses de-randomization. Biggs & Guedj (AISTATS 2022) develop margin-based derandomisation techniques that recover deterministic guarantees from PAC-Bayes posteriors. Viallard, Germain, Habrard & Morvant (Mach. Learn. 2024) push further into *disintegrated* PAC-Bayes bounds that give single-hypothesis guarantees rather than averaged ones — a recent thread expected to keep tightening published bounds.
+
+## Computational notes
+
+This section collects practical numerical considerations for implementing the bounds developed in §§4–11. The math is correct in finite precision only if certain standard tricks are observed.
+
+### Inverting the kl-form
+
+The Seeger bound (§5) is implicit in $\mathbb{E}_Q[R]$: given $\hat p = \mathbb{E}_Q[\hat R_S]$ and $c = (\mathrm{KL} + \log(2\sqrt n/\delta))/n$, we need
+
+$$
+\bar q \;=\; \sup\!\bigl\{\, q \in [0, 1] : \mathrm{kl}(\hat p \,\Vert\, q) \le c \,\bigr\}.
+$$
+
+`scipy.optimize.brentq` handles this with four small additions:
+
+- **Bracket carefully.** Use $[\hat p + \varepsilon, 1 - \varepsilon]$ with $\varepsilon \sim 10^{-9}$.
+- **Handle endpoints in closed form.** At $\hat p = 0$: $\bar q = 1 - e^{-c}$. At $\hat p = 1$: bound is vacuous.
+- **Use `scipy.special.kl_div`.** Don't compute $p \log(p/q)$ raw — it `nan`s at $p = 0$. Use `kl_div(p, q) + kl_div(1-p, 1-q)`.
+- **Detect vacuous regime.** If $c \ge -\log(1 - \hat p)$, no root in $[\hat p, 1)$ — return $\bar q = 1$.
+
+### Stable log-sum-exp for partition functions
+
+The Gibbs $Q^*_\lambda(h) \propto P(h) e^{-\lambda \hat R_S(h)}$ has log-partition $\log Z_\lambda(S) = \mathrm{logsumexp}(-\lambda \hat R_S) - \log |\mathcal{H}|$ (for uniform $P$). The naive $\log \sum e^{x_k}$ overflows when $\max_k x_k$ is large; the standard trick:
+
+$$
+\mathrm{logsumexp}(x) \;=\; \max(x) + \log \sum_k e^{x_k - \max(x)}.
+$$
+
+`scipy.special.logsumexp` does this. For PAC-Bayes where $\lambda$ can be hundreds and $\hat R_S \in [0, 1]$, $e^{-\lambda}$ underflows for $\lambda \gtrsim 700$ in double precision without the subtraction. The Gibbs itself in log-space:
+
+```python
+log_Q = np.log(P) - lam * risks
+log_Q -= log_Q.max()       # stabilize
+Q = np.exp(log_Q)
+Q /= Q.sum()               # renormalize off float noise
+```
+
+### The $\delta$-union over discretized hyperparameters
+
+The trick recurs in §§6.4 (temperature $\lambda$), §8.3 (prior $\sigma_P^2$), §11.4 (Dziugaite–Roy). Recipe:
+
+1. Fix a finite grid $\mathcal{G} = \{\theta_1, \ldots, \theta_K\}$ **before** seeing the data.
+2. At each $\theta_k$, compute the bound with confidence $\delta/K$ in place of $\delta$.
+3. Report the minimum certificate over the grid.
+
+Cost: $\log K$ added to the numerator — 2–3 nats for $K = 10$–$20$. **The grid must be data-independent.** Setting the prior-variance grid by inspecting the trained network's weight norm invalidates the bound.
+
+### KL gradients for Gaussian–Gaussian — closed form vs autograd
+
+For the §11 implementation in NumPy, every PAC-Bayes step needs the gradient of $\mathrm{KL}(Q \Vert P)$ with respect to $(\mu, \log \sigma_Q^2)$. The closed-form expressions from §8.2 are short:
+
+$$
+\frac{\partial \mathrm{KL}}{\partial \mu_i} = \frac{\mu_i}{\sigma_P^2}, \qquad
+\frac{\partial \mathrm{KL}}{\partial \log \sigma_{Q,i}^2} = \frac{1}{2}\!\left( \frac{\sigma_{Q,i}^2}{\sigma_P^2} - 1 \right).
+$$
+
+For a $d \approx 10^4$ implementation in pure NumPy (as in §11), the closed form is the right choice: speed (single vectorized computation), numerical stability (exact in finite precision), and code simplicity (5 lines vs the apparatus of a graph-building library).
+
+The empirical-risk gradient does require backpropagation through the network — no closed form for $\nabla_w \hat R_S(h_w)$ in general. For the §11 single-hidden-layer MLP, manual backprop is roughly 15 lines of NumPy and substantially faster than spinning up a PyTorch tape.
+
+**Per-coordinate $\sigma_Q$ versus single scalar.** The closed-form KL gradient is per-coordinate, so optimizing per-coordinate $\sigma_{Q,i}$ adds no asymptotic cost. The Dziugaite–Roy paper uses per-coordinate; it tends to land at tighter bounds because the optimal $\sigma_{Q,i}$ varies dramatically across coordinates. §11.5 uses per-coordinate.
+
+## Connections and limits
+
+### What the topic delivered
+
+The fourteen sections above developed PAC-Bayes from first principles. The framework's distinctive features are worth restating concisely.
+
+PAC-Bayes is **distribution-free**: bounds hold for every $\mathcal{D}$ satisfying only the boundedness assumption on $\ell$. **Finite-sample**: non-asymptotic, explicit constants. **Posterior-averaged**: bounds $\mathbb{E}_Q[R(h)]$, not $\sup_h R(h)$. This is the structural feature that makes PAC-Bayes survive overparameterization. **Uniform over $Q$**: once the $1 - \delta$ over $S$ event occurs, the bound holds for every $Q \ll P$ simultaneously — including any $Q$ we construct from $S$ after seeing it.
+
+The three canonical bounds form a hierarchy. **McAllester** (§4) is the most legible. **Seeger** (§5) is the tightest in the realizable regime; the price is numerical inversion. **Catoni** (§6) is linear in the posterior's empirical risk and KL, parametrized by a temperature $\lambda$, and its RHS minimizer is the Gibbs distribution that bridges to Bayesian inference (§9). For applied work, the §7.4 table summarizes when each dominates.
+
+### What PAC-Bayes can't do
+
+**De-randomization.** PAC-Bayes certifies $\mathbb{E}_Q[R(h)]$, not $R(\hat h)$ for a deterministic predictor. Standard workaround: report a guarantee on the randomized predictor. Biggs & Guedj (AISTATS 2022) and Viallard et al. (Mach. Learn. 2024) develop PAC-Bayes-derandomization techniques that extract a deterministic predictor from $Q$ with similar generalization properties, but the conversion is loose and the de-randomization is an active research area.
+
+**Unbounded losses.** The boundedness assumption is load-bearing for moment lemmas. Extensions exist — Alquier, Ridgway & Chopin (JMLR 2016) develop PAC-Bayes for sub-Gaussian losses via variational approximations of Gibbs posteriors; Mhammedi, Grünwald & Guedj (NeurIPS 2019) refine the bounded case with the "Un-Expected Bernstein" inequality; Holland (NeurIPS 2019) handles heavy-tailed losses via robust risk estimators — but each requires extra moment assumptions, and the bound's distribution-freeness is partially lost.
+
+**Non-iid data.** The bounds assume i.i.d. samples. Extensions exist (Seldin, Laviolette, Cesa-Bianchi, Shawe-Taylor & Auer 2012 for martingale-style PAC-Bayes; Audibert & Bousquet 2007 for chaining-based bounds), but they require explicit dependence structure.
+
+**Regression vs. classification.** PAC-Bayes is most cleanly developed for classification with bounded loss. Regression with unbounded loss requires the extensions above; even with bounded regression loss, the kl-form bound's Bernoulli-MGF basis doesn't translate directly.
+
+**The gap to test error.** Even the tightest current PAC-Bayes bound on MNIST-binary (Pérez-Ortiz et al. 2021: 0.16) is an order of magnitude looser than test error ($\sim 0.005$). Closing this gap is the central open problem. Two sources of looseness drive it. The bounds are worst-case over data distributions compatible with $S$; for the actual benign $\mathcal{D}$, they are loose by a factor that depends on $\mathcal{D}$ but is not computable from $S$ alone. And the framework certifies stochastic predictors, whose risk is worse than the underlying deterministic predictor's; even a perfect bound on $\mathbb{E}_Q[R]$ would not match $R(\hat h)$.
+
+### Alternative routes to generalization theory
+
+PAC-Bayes is one of several frameworks. Each has its scope.
+
+**Norm-based bounds** (Bartlett 1998; Neyshabur, Tomioka, and Srebro 2015; Bartlett, Foster, and Telgarsky 2017) bound the gap in terms of weight-matrix norms. Capture the qualitative "small weights $\Rightarrow$ good generalization" intuition cleanly but typically loose in practice.
+
+**Compression-based bounds** (§12.2). Tight for networks with low effective rank or structured sparsity; less effective for dense networks.
+
+**Information-theoretic bounds** (§12.3). PAC-Bayes-adjacent but framed in terms of algorithm-level rather than predictor-level analysis.
+
+**Algorithmic stability** (Bousquet and Elisseeff 2002; Hardt, Recht, and Singer 2016 for SGD). Bounds the gap in terms of the sensitivity of the algorithm's output to a single training example. Tighter than PAC-Bayes for specific algorithms; less general.
+
+**VC-style uniform convergence** (Vapnik 1998). The classical framework. Vacuous for over-parameterized neural networks for the reasons §11.1 reviewed.
+
+No single framework dominates across all regimes. The right choice depends on what is known about the problem: VC for simple parametric classes, norm-based for explicitly weight-regularized models, compression-based for sparse or low-rank networks, PAC-Bayes for stochastic predictors with explicit posterior structure, information-theoretic for algorithm-level analysis.
+
+### Forward-pointers in the curriculum
+
+Three formalML topics use PAC-Bayes machinery as a substantial component when shipped.
+
+[Variational inference](/topics/variational-inference) shares the change-of-measure machinery developed in §3 and the Gaussian–Gaussian KL apparatus of §8.2. The variational lower bound (ELBO) is structurally the Donsker–Varadhan dual of a free energy, and the Gibbs distribution of §6.2 is what VI produces in the limit of perfect approximation. The §9 Bayesian–PAC-Bayes correspondence is the formal bridge.
+
+**Bayesian neural networks** *(coming soon)* uses Gaussian $Q$ on parameter space identically to §8 and §11. The PAC-Bayes bound on a Bayesian neural network is one of the two primary ways to give a generalization guarantee for such a model.
+
+**Meta-learning** *(coming soon)* uses the hierarchical PAC-Bayes structure of §12.1 — outer bound at the task level, inner bound within each task — as the canonical framework for theoretical analysis.
+
+Two further connections. **Density ratio estimation** *(coming soon)*: the Radon–Nikodym derivative $dQ/dP$ that appears in the change-of-measure inequality is the same object that density-ratio estimation methods (KLIEP, LSIF, neural ratio estimation) compute. And **stochastic gradient MCMC** *(coming soon)*: Welling and Teh's (2011) SGLD samples from the Gibbs distribution $Q^*_\lambda$ at temperature $\lambda = n$, recovering the Bayesian posterior.
+
+The topic concludes here, but the techniques carry forward. PAC-Bayes is the right framework for thinking about generalization of stochastic predictors, the right bridge from frequentist learning theory to Bayesian inference, and — with the ongoing tightening of constants and prior-engineering techniques — currently the only framework that produces non-vacuous bounds on the over-parameterized neural networks of modern practice.
