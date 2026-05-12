@@ -469,26 +469,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Fourier neural operators learn mappings between L²(ℝᵈ) spaces. The completeness (Riesz-Fischer) and inner product structure of L² are prerequisites for their well-definedness._
 
-## When `formalml/generalization-bounds` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/central-limit-theorem** declares `formalmlConnections` → `generalization-bounds` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Rademacher complexity bounds use symmetrization and CLT-type reasoning. The empirical Rademacher complexity converges to its expectation at rate 1/√n, giving the O(1/√n) generalization bound for bo…_
-- **formalStatistics/empirical-processes** declares `formalmlConnections` → `generalization-bounds` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§32.4's G-C-for-VC bound is the empirical-process core of PAC generalization bounds; formalML develops the learning-theory framing with Rademacher complexity and uniform convergence of risk._
-- **formalStatistics/large-deviations** declares `formalmlConnections` → `generalization-bounds` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PAC learning bounds use Hoeffding: P(|R(ĥ) − R̂ₙ(ĥ)| > ε) ≤ 2|H| exp(−2nε²). Rademacher symmetrization uses McDiarmid's inequality. The O(1/√n) generalization rate for bounded loss classes originat…_
-- **formalStatistics/law-of-large-numbers** declares `formalmlConnections` → `generalization-bounds` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PAC learning bounds are WLLN statements: P(|R̂(h) − R(h)| > ε) ≤ δ. Uniform convergence over hypothesis classes (Vapnik–Chervonenkis theory) extends the Glivenko–Cantelli theorem from indicators to…_
-- **formalStatistics/modes-of-convergence** declares `formalmlConnections` → `generalization-bounds` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PAC learning bounds state that the empirical risk converges to the true risk in probability: P(|R̂(h) − R(h)| > ε) ≤ δ. The uniform convergence version (over hypothesis classes) uses the Glivenko–C…_
-
 ## When `formalml/generalized-linear-models` ships
 
 Add the reciprocal pointer back to:
