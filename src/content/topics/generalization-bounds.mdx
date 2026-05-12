@@ -1,0 +1,1092 @@
+---
+title: "Generalization Bounds"
+subtitle: "Rademacher complexity, uniform convergence, and the limits of classical theory"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "pac-learning"
+  - "concentration-inequalities"
+formalstatisticsPrereqs:
+  - topic: "empirical-processes"
+    site: "formalstatistics"
+    relationship: "Sister-site source of uniform-convergence machinery — Glivenko–Cantelli, Donsker classes, and the bracketing / metric-entropy framework that §8's real-valued function-class material specializes. Topic 32 §32.4's G-C-for-VC bound is the empirical-process core of the canonical Rademacher bound developed in §7."
+  - topic: "law-of-large-numbers"
+    site: "formalstatistics"
+    relationship: "The pointwise concentration in §2 is the WLLN with an explicit rate: for any fixed h, P(|R̂_n(h) − R(h)| > ε) ≤ δ. §3's finite-class bound and §4's Glivenko–Cantelli theorem extend the WLLN from a single hypothesis to uniform statements across an entire hypothesis class — the conceptual move that defines learning theory."
+  - topic: "modes-of-convergence"
+    site: "formalstatistics"
+    relationship: "Uniform convergence (Definition 4) — a.s. convergence of sup_h |R̂_S(h) − R(h)| → 0 — is the right mode of convergence for the §§4–7 development. The §4 Glivenko–Cantelli theorem is uniform-a.s. convergence; the §6 symmetrization argument lifts pointwise mean-square convergence to uniform expectation control via Jensen's inequality."
+  - topic: "central-limit-theorem"
+    site: "formalstatistics"
+    relationship: "Rademacher symmetrization (§6) routes the generalization-gap statistic through a sum of bounded mean-zero random variables — the CLT regime. The empirical Rademacher complexity itself converges to its population expectation at the CLT rate O(1/√n), giving the §7 canonical O(1/√n) generalization bound for bounded loss classes."
+  - topic: "large-deviations"
+    site: "formalstatistics"
+    relationship: "Hoeffding's inequality (§3) and McDiarmid's bounded-differences inequality (§7) are large-deviation statements: the empirical risk concentrates around the true risk at an exponential rate. The §3 union bound and the §7 two-step concentration both use these large-deviation rates directly, and the §11 algorithmic-stability bound applies McDiarmid to a different bounded-differences functional."
+formalcalculusPrereqs:
+  - topic: "lebesgue-integral"
+    site: "formalcalculus"
+    relationship: "Rigorous foundation for the risk functional R(h) = ∫ ℓ(h(x), y) dP(x, y) as a Lebesgue integral against the population probability measure. The gap between empirical averages (Riemann-style sample sums) and population integrals (Lebesgue integrals) is the central object of every bound in this topic; the change-of-variables and dominated-convergence machinery developed in lebesgue-integral underwrites every convergence claim here."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "learning-theory"
+  - "rademacher-complexity"
+  - "uniform-convergence"
+  - "generalization-bounds"
+  - "algorithmic-stability"
+  - "margin-bounds"
+  - "machine-learning"
+domain: "learning-theory"
+videoId: null
+notebookPath: "notebooks/generalization-bounds/01_generalization_bounds.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/generalization-bounds.mdx"
+datePublished: 2026-05-11
+estimatedReadTime: 50
+abstract: "Generalization bounds are the formal answer to the question every practitioner asks: will my model do as well on new data as it did on training? We develop the theory progressively from the finite-class warmup (union bound + Hoeffding gives O(log|H|/ε²) sample complexity) to the full Rademacher-complexity machinery — symmetrization, Massart's lemma, Talagrand's contraction, McDiarmid concentration — that yields the canonical uniform-convergence bound. We extend to real-valued function classes through pseudo-dimension, fat-shattering, and Dudley's entropy integral; sharpen to fast rates via local Rademacher complexity under a Bernstein-type variance condition; specialize to margin bounds for SVMs and norm-based linear classifiers; and present algorithmic stability as the orthogonal route that bypasses hypothesis-class complexity altogether. A worked example computes empirical Rademacher complexity for thresholds and confronts the topic's signature open puzzle: classical bounds become vacuous for moderately overparameterized neural networks despite trivial empirical generalization."
+connections:
+  - topic: "pac-learning"
+    relationship: "Direct prerequisite — ERM, the Fundamental Theorem of Statistical Learning, and the boundary marker for Rademacher complexity. pac-learning introduces Rademacher in one shallow section; this topic goes deep into the symmetrization argument, the canonical bound, fast rates, margin bounds, and stability."
+  - topic: "concentration-inequalities"
+    relationship: "Direct prerequisite — Hoeffding's inequality drives the §3 finite-class warmup; McDiarmid's bounded-differences inequality is the concentration engine that powers the §7 canonical uniform-convergence bound and the §11 Bousquet–Elisseeff stability bound."
+references:
+  - type: "paper"
+    title: "On the Uniform Convergence of Relative Frequencies of Events to Their Probabilities"
+    authors: "Vapnik & Chervonenkis"
+    year: 1971
+    url: "https://doi.org/10.1137/1116025"
+    note: "The foundational paper of statistical learning theory; the uniform-convergence framework that underwrites §§4–7 originates here (Theory of Probability & Its Applications)."
+  - type: "paper"
+    title: "Rademacher and Gaussian Complexities: Risk Bounds and Structural Results"
+    authors: "Bartlett & Mendelson"
+    year: 2002
+    url: "https://www.jmlr.org/papers/v3/bartlett02a.html"
+    note: "The reference modernization of Rademacher complexity as the standard distribution-free complexity measure; §§5–7 follow this paper's structure (JMLR)."
+  - type: "paper"
+    title: "Rademacher Penalties and Structural Risk Minimization"
+    authors: "Koltchinskii"
+    year: 2001
+    url: "https://doi.org/10.1109/18.930926"
+    note: "Independent contemporaneous development of the Rademacher-penalty framework (IEEE TIT)."
+  - type: "paper"
+    title: "Local Rademacher Complexities"
+    authors: "Bartlett, Bousquet & Mendelson"
+    year: 2005
+    url: "https://doi.org/10.1214/009053605000000282"
+    note: "The fast-rate framework via local Rademacher; §9 follows this paper's fixed-point argument (Annals of Statistics)."
+  - type: "paper"
+    title: "Stability and Generalization"
+    authors: "Bousquet & Elisseeff"
+    year: 2002
+    url: "https://www.jmlr.org/papers/v2/bousquet02a.html"
+    note: "The algorithmic-stability framework developed in §11; Theorem 7 is from this paper (JMLR)."
+  - type: "paper"
+    title: "Asymptotic Minimax Character of the Sample Distribution Function and of the Classical Multinomial Estimator"
+    authors: "Dvoretzky, Kiefer & Wolfowitz"
+    year: 1956
+    url: "https://doi.org/10.1214/aoms/1177728174"
+    note: "The DKW inequality used in §4 (Annals of Mathematical Statistics)."
+  - type: "paper"
+    title: "The Tight Constant in the Dvoretzky–Kiefer–Wolfowitz Inequality"
+    authors: "Massart"
+    year: 1990
+    url: "https://doi.org/10.1214/aop/1176990746"
+    note: "The sharp constant for DKW (Annals of Probability); pairs with Massart's finite-class lemma (§5)."
+  - type: "book"
+    title: "Foundations of Machine Learning"
+    authors: "Mohri, Rostamizadeh & Talwalkar"
+    year: 2018
+    url: "https://mitpress.mit.edu/9780262039406/foundations-of-machine-learning/"
+    note: "Ch. 3–5 give a textbook treatment of Rademacher and margin bounds (MIT Press, 2nd ed.)."
+  - type: "book"
+    title: "Understanding Machine Learning: From Theory to Algorithms"
+    authors: "Shalev-Shwartz & Ben-David"
+    year: 2014
+    url: "https://doi.org/10.1017/CBO9781107298019"
+    note: "The standard pedagogical companion to PAC and Rademacher theory (Cambridge)."
+  - type: "book"
+    title: "High-Dimensional Statistics: A Non-Asymptotic Viewpoint"
+    authors: "Wainwright"
+    year: 2019
+    url: "https://doi.org/10.1017/9781108627771"
+    note: "Ch. 5 develops the chaining argument behind Dudley's entropy integral (§8) (Cambridge)."
+  - type: "book"
+    title: "Empirical Processes in M-Estimation"
+    authors: "van de Geer"
+    year: 2000
+    url: "https://www.cambridge.org/9780521650021"
+    note: "The empirical-process companion that the cross-site formalstatistics:empirical-processes topic develops in detail (Cambridge)."
+  - type: "book"
+    title: "Probability in Banach Spaces: Isoperimetry and Processes"
+    authors: "Ledoux & Talagrand"
+    year: 1991
+    url: "https://doi.org/10.1007/978-3-642-20212-4"
+    note: "Source for Talagrand's contraction lemma used in §5 (Springer)."
+  - type: "paper"
+    title: "The Sample Complexity of Pattern Classification with Neural Networks: The Size of the Weights Is More Important than the Size of the Network"
+    authors: "Bartlett"
+    year: 1998
+    url: "https://doi.org/10.1109/18.661502"
+    note: "Original norm-based generalization bound for neural networks — the §10.4 preview and §12.3 vacuousness diagnosis use this style (IEEE TIT)."
+  - type: "paper"
+    title: "Exploring Generalization in Deep Learning"
+    authors: "Neyshabur, Bhojanapalli, McAllester & Srebro"
+    year: 2017
+    url: "https://papers.nips.cc/paper_files/paper/2017/hash/10ce03a1ed01077e3e289f3e53c72813-Abstract.html"
+    note: "The modern norm-based / margin-based deep-net bound; §14.3 references it (NeurIPS)."
+  - type: "paper"
+    title: "Understanding Deep Learning Requires Rethinking Generalization"
+    authors: "Zhang, Bengio, Hardt, Recht & Vinyals"
+    year: 2017
+    url: "https://openreview.net/forum?id=Sy8gdB9xx"
+    note: "The empirical observation driving §12's vacuousness puzzle and §14.3's open-questions discussion (ICLR)."
+  - type: "paper"
+    title: "Computing Nonvacuous Generalization Bounds for Deep (Stochastic) Neural Networks with Many More Parameters than Training Data"
+    authors: "Dziugaite & Roy"
+    year: 2017
+    url: "https://auai.org/uai2017/proceedings/papers/173.pdf"
+    note: "PAC-Bayes route to non-vacuous deep-net bounds; the §14.1 outlook (UAI)."
+  - type: "paper"
+    title: "Train Faster, Generalize Better: Stability of Stochastic Gradient Descent"
+    authors: "Hardt, Recht & Singer"
+    year: 2016
+    url: "https://proceedings.mlr.press/v48/hardt16.html"
+    note: "SGD-based algorithmic stability for non-convex losses; §14 references it (ICML)."
+  - type: "paper"
+    title: "Reconciling Modern Machine-Learning Practice and the Classical Bias–Variance Trade-Off"
+    authors: "Belkin, Hsu, Ma & Mandal"
+    year: 2019
+    url: "https://doi.org/10.1073/pnas.1903070116"
+    note: "Empirical double-descent phenomena that classical bounds do not yet predict (PNAS); §14.4."
+  - type: "paper"
+    title: "Deep Learning: A Statistical Viewpoint"
+    authors: "Bartlett, Montanari & Rakhlin"
+    year: 2021
+    url: "https://doi.org/10.1017/S0962492921000027"
+    note: "Modern survey of the deep-learning generalization landscape (Acta Numerica)."
+  - type: "paper"
+    title: "The Tradeoffs of Large Scale Learning"
+    authors: "Bottou & Bousquet"
+    year: 2008
+    url: "https://papers.nips.cc/paper_files/paper/2007/hash/0d3180d672e08b4c5312dcdafdf6ef36-Abstract.html"
+    note: "The approximation–estimation–optimization decomposition Proposition 1 follows (NeurIPS)."
+  - type: "paper"
+    title: "Spectrally-Normalized Margin Bounds for Neural Networks"
+    authors: "Bartlett, Foster & Telgarsky"
+    year: 2017
+    url: "https://papers.nips.cc/paper_files/paper/2017/hash/b22b257ad0519d4500539da3c8bcf4dd-Abstract.html"
+    note: "The product-of-layer-norms Rademacher bound previewed in §10.4 (NeurIPS)."
+  - type: "paper"
+    title: "Stronger Generalization Bounds for Deep Nets via a Compression Approach"
+    authors: "Arora, Ge, Neyshabur & Zhang"
+    year: 2018
+    url: "https://proceedings.mlr.press/v80/arora18b.html"
+    note: "Compression-based deep-net bounds; §14.3 reference (ICML)."
+  - type: "paper"
+    title: "Neural Tangent Kernel: Convergence and Generalization in Neural Networks"
+    authors: "Jacot, Gabriel & Hongler"
+    year: 2018
+    url: "https://papers.nips.cc/paper_files/paper/2018/hash/5a4be1fa34e62bb8a6ec6b91d2462f5a-Abstract.html"
+    note: "The NTK regime where overparameterized networks behave like kernel methods; §14.3 reference (NeurIPS)."
+  - type: "paper"
+    title: "The Implicit Bias of Gradient Descent on Separable Data"
+    authors: "Soudry, Hoffer, Nacson, Gunasekar & Srebro"
+    year: 2018
+    url: "https://www.jmlr.org/papers/v19/18-188.html"
+    note: "The implicit-bias-of-SGD line referenced in §14.4 (JMLR)."
+  - type: "paper"
+    title: "Benign Overfitting in Linear Regression"
+    authors: "Bartlett, Long, Lugosi & Tsigler"
+    year: 2020
+    url: "https://doi.org/10.1073/pnas.1907378117"
+    note: "The benign-overfitting story behind §14.4 (PNAS)."
+---
+
+import Figure from '../../components/ui/Figure.astro';
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import GeneralizationGapDemo from '../../components/viz/GeneralizationGapDemo';
+import UnionBoundCalculator from '../../components/viz/UnionBoundCalculator';
+import GlivenkoCantelliExplorer from '../../components/viz/GlivenkoCantelliExplorer';
+import RademacherComplexityExplorer from '../../components/viz/RademacherComplexityExplorer';
+import SymmetrizationVisualizer from '../../components/viz/SymmetrizationVisualizer';
+import UniformConvergenceBound from '../../components/viz/UniformConvergenceBound';
+import DudleyIntegralExplorer from '../../components/viz/DudleyIntegralExplorer';
+import LocalRademacherExplorer from '../../components/viz/LocalRademacherExplorer';
+import MarginBoundDemo from '../../components/viz/MarginBoundDemo';
+import RidgeStabilityExplorer from '../../components/viz/RidgeStabilityExplorer';
+import VacuousnessDemo from '../../components/viz/VacuousnessDemo';
+
+## Motivation: why bound the generalization gap?
+
+There is a question every practitioner has asked, and most have asked it under their breath: *the model fits the training set, but will it work on data I haven't seen yet?* The training error is a number we can compute; the test error is the number we actually care about. This chapter is about the gap between them — how big it can be, what makes it bigger or smaller, and what kinds of *guarantees* we can write down in advance.
+
+The gap matters even when training accuracy is excellent. A neural network with a billion parameters can interpolate ImageNet — zero training error, ten million images memorized — and still fail miserably on a held-out test image. The same network can sometimes generalize beautifully. *Why?* When we ask "why," what we want is a bound: a number $\epsilon$ such that the test error is at most the training error plus $\epsilon$, with high probability over the random draw of the training set. The size of $\epsilon$ should depend on something — the size of the training set, the complexity of the model, the noise in the data, the choice of algorithm. Producing such a bound is what generalization theory does, and the rest of this chapter is the story of how we produce them.
+
+A first principle. The chapter does **not** deliver bounds in the practitioner's sense of "this number will be the test error to within ten percent." Almost no classical bound, applied to a real neural network on a real dataset, gives a number you would stake money on. The classical bounds are too loose; the practical estimates (held-out validation, cross-validation) come without theoretical guarantees on the bound's tightness. The classical theory's value is structural, not numerical: it tells us *what features of a learning problem* tighten or loosen the gap, and *which proof techniques bite hardest on which kinds of hypothesis class*. When we eventually look at a 2-layer MLP on a binary MNIST subset (§12) and see that the classical Rademacher bound exceeds one — i.e., is uninformative — that's not a failure of the chapter; that's the chapter delivering an honest reckoning of what the classical machinery does and does not yet say about deep nets. We end (§14) with pointers to the post-classical bounds (PAC-Bayes, norm-based, compression-based) that improve on this picture.
+
+A second principle. Bounds come in flavors, and a meaningful bound has to be both *valid* (it really is an upper bound on the gap, with high probability) and *non-vacuous* (its numerical value is less than the trivial bound of one). Both conditions matter. A valid bound that says "the gap is at most $4.7$" is useless when losses live in $[0, 1]$. A non-vacuous bound that holds only on average, not with high probability, is a different (weaker) statement than what we want. The bar to clear is non-vacuous high-probability validity, and the rest of the chapter is engineered to clear that bar in as many regimes as the classical theory can manage.
+
+### The test-error question — what we actually want to estimate
+
+Formally, the data are iid draws $(X_i, Y_i) \sim P$ for $i = 1, \ldots, n$ from some unknown joint distribution $P$ on $\mathcal{X} \times \mathcal{Y}$. A *hypothesis* $h: \mathcal{X} \to \mathcal{Y}$ assigns predictions to inputs; the *loss* $\ell(h(x), y)$ measures how badly hypothesis $h$ does at the example $(x, y)$. The *risk* (also: true risk, population risk, test error in expectation) is
+
+$$
+R(h) = \mathbb{E}_{(X, Y) \sim P}[\ell(h(X), Y)].
+$$
+
+This is the quantity we want to control. We never see it directly: $P$ is unknown, and the expectation under $P$ is the thing the training set is supposed to approximate.
+
+### Training error as an optimistic estimator
+
+What we *do* see is the *empirical risk* on the training sample $S = \{(X_i, Y_i)\}_{i=1}^n$:
+
+$$
+\hat{R}_S(h) = \frac{1}{n} \sum_{i=1}^n \ell(h(X_i), Y_i).
+$$
+
+For any *fixed* hypothesis $h$, the law of large numbers says $\hat{R}_S(h) \to R(h)$ as $n \to \infty$, and Hoeffding's inequality says the convergence is exponential in $n$. So if the learner picked $h$ before seeing the training set, we'd be done. But the learner *uses* the training set to pick $h$ — that's what learning means. The hypothesis $\hat h_S$ output by empirical risk minimization,
+
+$$
+\hat h_S \in \arg\min_{h \in \mathcal{H}} \hat{R}_S(h),
+$$
+
+is a function of the data, and the law of large numbers does *not* directly apply to $\hat{R}_S(\hat h_S)$ as an estimator of $R(\hat h_S)$. The empirical risk of the ERM is *systematically optimistic*: the learner has shopped over $\mathcal{H}$ for the hypothesis that fits this particular $S$ best, and that hypothesis is by construction not a typical member of $\mathcal{H}$ on $S$. We have to control the *worst-case* gap
+
+$$
+\sup_{h \in \mathcal{H}} \big| R(h) - \hat{R}_S(h) \big|
+$$
+
+across the entire class, not the gap for any single hypothesis. That switch — from pointwise to uniform — is the whole game.
+
+### Vacuous vs. non-vacuous bounds: the bar to clear
+
+A *generalization bound* is a statement of the form: with probability at least $1 - \delta$ over the draw of $S$,
+
+$$
+R(\hat h_S) \le \hat{R}_S(\hat h_S) + \epsilon(\mathcal{H}, n, \delta),
+$$
+
+where $\epsilon$ depends on the complexity of the hypothesis class $\mathcal{H}$, the sample size $n$, and the failure probability $\delta$. The bound is *valid* if the inequality holds with the stated probability; it is *non-vacuous* if the numerical value of $\epsilon$ leaves room below the trivial range of the loss (e.g., $\epsilon < 1$ for 0-1 loss). All the classical machinery we build in §§3–11 produces valid bounds; whether those bounds are non-vacuous depends on $\mathcal{H}$, $n$, and the problem. The vacuousness puzzle for deep nets (§12) is that valid classical bounds for a typical overparameterized network on a standard image dataset come out larger than one — valid, but uninformative.
+
+### What this chapter delivers
+
+The chapter develops seven generalization-bound recipes, each tightening the previous in some regime:
+
+1. **Union bound + Hoeffding** for finite $\mathcal{H}$ (§3) — the warmup.
+2. **Uniform convergence via Glivenko–Cantelli** (§4) — the right *notion*, before the right tooling.
+3. **Rademacher complexity** (§§5–7) — the tooling; the canonical bound.
+4. **Metric-entropy / Dudley** (§8) — beyond $\{0, 1\}$ losses.
+5. **Local Rademacher complexity** (§9) — fast $O(1/n)$ rates under variance restrictions.
+6. **Margin bounds** (§10) — what changes when classifiers come with a confidence score.
+7. **Algorithmic stability** (§11) — bypassing $\mathcal{H}$-complexity entirely.
+
+By the end of §11 we have seven different lenses on the same gap. §12 then runs them all on two examples — a small threshold class where they all bite tightly, and a small MLP where the classical ones go vacuous — and §14 honestly reports the open questions about what tightens the bounds for deep networks.
+
+## The generalization gap and its decomposition
+
+§1 introduced the gap informally as the difference between training and test error. §2 makes that gap a formal mathematical object, decomposes it into three structurally distinct sources of error, and presents the first picture of the gap as a function of sample size — the empirical anchor every subsequent bound will refine.
+
+### Risk and empirical risk, formally
+
+Throughout this chapter we fix a *data distribution* $P$ on $\mathcal{X} \times \mathcal{Y}$ and a *loss function* $\ell: \mathcal{Y} \times \mathcal{Y} \to [0, M]$, bounded above by some constant $M$ (almost always $M = 1$ for the 0-1 loss $\ell(y', y) = \mathbb{1}[y' \ne y]$). A *hypothesis class* $\mathcal{H}$ is a set of functions $h: \mathcal{X} \to \mathcal{Y}$. The reader can keep $\mathcal{H}$ concrete: it might be all decision stumps, all linear classifiers in $\mathbb{R}^d$, or all 2-layer ReLU networks of width $w$.
+
+<TheoremBlock type="definition" number={1} title="Risk">
+The *risk*, or *generalization error*, or *true error* of a hypothesis $h$ is
+$$
+R(h) = \mathbb{E}_{(X, Y) \sim P}\big[\ell(h(X), Y)\big].
+$$
+When $\ell$ is the 0-1 loss, $R(h) = \Pr_{(X,Y) \sim P}[h(X) \ne Y]$ is the misclassification probability.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={2} title="Empirical risk">
+Given an iid sample $S = \{(X_i, Y_i)\}_{i=1}^n$ from $P$, the *empirical risk* of $h$ on $S$ is
+$$
+\hat{R}_S(h) = \frac{1}{n} \sum_{i=1}^n \ell(h(X_i), Y_i).
+$$
+</TheoremBlock>
+
+For fixed $h$, $\hat{R}_S(h)$ is an unbiased estimator of $R(h)$: $\mathbb{E}_S[\hat{R}_S(h)] = R(h)$. By Hoeffding's inequality (cited from [concentration-inequalities](/topics/concentration-inequalities)), the empirical risk concentrates exponentially: for any $h$ and any $t > 0$,
+$$
+\Pr_S\big[|\hat{R}_S(h) - R(h)| \ge t\big] \le 2 \exp(-2nt^2 / M^2).
+$$
+This is the pointwise bound — it controls one $h$ at a time, with $h$ fixed in advance.
+
+### The generalization gap as the central object
+
+<TheoremBlock type="definition" number={3} title="Generalization gap">
+The *generalization gap* of a hypothesis $h$ on sample $S$ is
+$$
+\mathrm{gap}_S(h) = R(h) - \hat{R}_S(h).
+$$
+</TheoremBlock>
+
+A positive gap means $h$ does worse on test data than on training; a negative gap means $h$ got *lucky* on $S$. For a fixed $h$, the gap has mean zero ($\mathbb{E}_S[\mathrm{gap}_S(h)] = 0$) and is exponentially concentrated by Hoeffding. The problem is that we never use a fixed $h$ — we pick $\hat{h}_S$ as a function of $S$, and the gap of a data-dependent hypothesis is *not* mean-zero. In fact, $\mathbb{E}_S[\mathrm{gap}_S(\hat{h}_S)] \ge 0$ in general: the ERM systematically overfits.
+
+To get a handle on $\mathrm{gap}_S(\hat{h}_S)$ we control the *uniform deviation*
+$$
+\Phi_S(\mathcal{H}) = \sup_{h \in \mathcal{H}} \big| R(h) - \hat{R}_S(h) \big|,
+$$
+which sandwiches the gap of any data-dependent $\hat{h}_S$:
+$$
+|\mathrm{gap}_S(\hat{h}_S)| \le \Phi_S(\mathcal{H}).
+$$
+A bound on $\Phi_S(\mathcal{H})$ — a single number that controls the gap *simultaneously* across all hypotheses in $\mathcal{H}$ — is what we need. The rest of the chapter is the story of how to bound $\Phi_S(\mathcal{H})$ tightly for various classes $\mathcal{H}$.
+
+<GeneralizationGapDemo client:visible />
+
+### Approximation–estimation–optimization
+
+The gap is one piece of a larger decomposition. Following Bottou & Bousquet (2008), let
+
+- $h^*$ be the *Bayes-optimal* hypothesis (the minimizer of $R$ over *all* measurable functions);
+- $h^*_{\mathcal{H}} = \arg\min_{h \in \mathcal{H}} R(h)$ be the *best in class* (the minimizer restricted to $\mathcal{H}$);
+- $\hat{h}_S = \arg\min_{h \in \mathcal{H}} \hat{R}_S(h)$ be the *ERM*;
+- $h_{\mathrm{alg}}$ be the *algorithm's output* — typically not exact ERM (SGD doesn't run to convergence; even when it does, gradient descent on non-convex losses finds only local minima).
+
+<TheoremBlock type="proposition" number={1} title="Excess-risk decomposition">
+The *excess risk* of the algorithm's output decomposes as
+$$
+\underbrace{R(h_{\mathrm{alg}}) - R(h^*)}_{\text{excess risk}}
+= \underbrace{R(h^*_{\mathcal{H}}) - R(h^*)}_{\text{approximation}}
++ \underbrace{R(\hat{h}_S) - R(h^*_{\mathcal{H}})}_{\text{estimation}}
++ \underbrace{R(h_{\mathrm{alg}}) - R(\hat{h}_S)}_{\text{optimization}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+All three terms on the right telescope, leaving $R(h_{\mathrm{alg}}) - R(h^*)$ on the left.
+</TheoremBlock>
+
+The three terms have orthogonal sources:
+
+- *Approximation error* depends only on $\mathcal{H}$ and $P$. A class too small to express the truth (linear classifiers for a quadratic boundary) has irreducible approximation error.
+- *Estimation error* depends on $\mathcal{H}$, $n$, and the proof technique. This is the gap-controlled term — the rest of this chapter is dedicated to bounding it.
+- *Optimization error* depends on the algorithm. SGD-on-a-deep-net is the most studied modern case; convex programming (linear regression, SVM) typically achieves $0$ optimization error.
+
+Generalization theory's job is the middle term. The approximation term is the model-selection literature's problem; the optimization term is the optimization literature's problem. We will (almost always) assume $h_{\mathrm{alg}} = \hat{h}_S$ — i.e., optimization is exact — and bound the estimation term.
+
+### Connection to bias–variance
+
+For square loss in regression — $\ell(y', y) = (y' - y)^2$ — and a class indexed by parameters, the excess risk decomposes Bayes-additively into squared bias plus variance:
+$$
+\mathbb{E}_S\big[R(\hat{h}_S)\big] - R(h^*) = \underbrace{\mathbb{E}_S\big[(\bar h_S - h^*)^2\big]}_{\text{bias}^2} + \underbrace{\mathbb{E}_S\big[(\hat{h}_S - \bar h_S)^2\big]}_{\text{variance}},
+$$
+where $\bar h_S = \mathbb{E}_S[\hat{h}_S]$ is the average estimator across data draws. The bias term parallels the approximation error (how well does the class express the truth?); the variance term parallels the estimation error (how variable is the ERM around its mean?). The parallel is exact for square loss; for 0-1 loss the decomposition does not factor as cleanly (the loss is non-additive), but the intuition transfers: a low-complexity class has small variance but possibly large bias; a high-complexity class has small bias but large variance; the trade-off chooses $\mathcal{H}$. Classical generalization theory makes the variance/estimation side of this trade-off rigorous.
+
+## Finite-class warmup
+
+We can write down our first generalization bound, today. The recipe is two ingredients we already have: Hoeffding's inequality for a fixed hypothesis, and the union bound to make it uniform across a finite class. The result — sometimes called the *Occam bound* — controls the gap by $\sqrt{\log|\mathcal{H}|/n}$, an $O(1/\sqrt{n})$ rate with logarithmic dependence on class size. It is the right starting point for two reasons: it is genuinely useful in its own right (it bites for small finite classes), and the proof technique generalizes — every later bound is some refinement of "control fixed-$h$ deviations, then make the bound uniform across $\mathcal{H}$."
+
+### Hoeffding for a single hypothesis
+
+Fix one $h \in \mathcal{H}$. The empirical risk $\hat{R}_S(h) = \frac{1}{n}\sum_i \ell(h(X_i), Y_i)$ is the mean of $n$ iid random variables, each bounded in $[0, M]$. Hoeffding's inequality (proved in [concentration-inequalities](/topics/concentration-inequalities)) gives a two-sided bound: for any $t > 0$,
+$$
+\Pr_S\big[|R(h) - \hat{R}_S(h)| \ge t\big] \le 2 \exp\!\Big({-}\frac{2 n t^2}{M^2}\Big).
+$$
+Choosing $t = M\sqrt{\log(2/\delta)/(2n)}$ makes the right-hand side equal $\delta$, so with probability at least $1 - \delta$,
+$$
+|R(h) - \hat{R}_S(h)| \le M\sqrt{\frac{\log(2/\delta)}{2n}}.
+$$
+This is a pointwise bound — it holds for any specific $h$ chosen before $S$ was drawn. It does **not** hold uniformly across $\mathcal{H}$.
+
+### Union bound across $|\mathcal{H}|$
+
+If $\mathcal{H}$ is finite with $|\mathcal{H}| = N$ hypotheses, label them $h_1, \ldots, h_N$. For each $h_i$, Hoeffding bounds the failure probability $\Pr_S[|R(h_i) - \hat{R}_S(h_i)| \ge t] \le 2\exp(-2nt^2/M^2)$. The probability that *any* of the $N$ hypotheses fails is at most the sum:
+$$
+\Pr_S\big[\exists i : |R(h_i) - \hat{R}_S(h_i)| \ge t\big] \le \sum_{i=1}^N \Pr_S[\cdot] \le 2N \exp\!\Big({-}\frac{2nt^2}{M^2}\Big).
+$$
+Set the right-hand side equal to $\delta$ and solve for $t$:
+$$
+2N \exp(-2nt^2 / M^2) = \delta \quad \Longrightarrow \quad t = M\sqrt{\frac{\log(2N/\delta)}{2n}}.
+$$
+
+<TheoremBlock type="theorem" number={1} title="Finite-class generalization bound">
+Let $\mathcal{H}$ be a finite hypothesis class with $|\mathcal{H}| = N$, let $S$ be an iid sample of size $n$ from $P$, and let $\ell$ be a loss bounded in $[0, M]$. For any $\delta \in (0, 1)$, with probability at least $1 - \delta$ over $S$,
+$$
+\sup_{h \in \mathcal{H}} |R(h) - \hat{R}_S(h)| \le M \sqrt{\frac{\log(2N/\delta)}{2n}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply Hoeffding pointwise to each $h \in \mathcal{H}$ with $t = M\sqrt{\log(2N/\delta)/(2n)}$; the per-hypothesis failure probability is $\delta/N$. The union bound across the $N$ hypotheses gives total failure probability at most $N \cdot \delta/N = \delta$. The contrapositive — that no hypothesis fails — gives the stated bound.
+</TheoremBlock>
+
+### Sample complexity $n = O(\log|\mathcal{H}|/\epsilon^2)$
+
+Theorem 1 inverts to a sample-complexity statement: how many samples does $\mathcal{H}$ need so the gap is at most $\epsilon$ with confidence $1 - \delta$?
+
+<TheoremBlock type="corollary" number={1} title="Sample complexity for finite classes">
+To guarantee $\sup_h |R(h) - \hat{R}_S(h)| \le \epsilon$ with probability $\ge 1 - \delta$, it suffices that
+$$
+n \ge \frac{M^2 \log(2|\mathcal{H}|/\delta)}{2\epsilon^2}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Solve Theorem 1's bound for $n$ given the target $\epsilon$.
+</TheoremBlock>
+
+Three observations sharpen the corollary into intuition:
+
+1. **Dependence on class size is logarithmic.** Doubling $|\mathcal{H}|$ increases the required sample size by an additive constant $\log 2 / (2\epsilon^2)$, not a multiplicative factor. This is the *Occam* in Occam bound: complexity is cheap, in the sense that very large but finite hypothesis classes are still PAC-learnable with modest samples.
+2. **Dependence on $\epsilon$ is quadratic.** Halving $\epsilon$ quadruples the required $n$. The $\epsilon^{-2}$ rate is the canonical *slow rate* of distribution-free generalization theory; §9 shows when fast rates ($\epsilon^{-1}$) are possible.
+3. **Dependence on $\delta$ is logarithmic.** Halving $\delta$ adds $\log 2 / (2\epsilon^2)$ to the required $n$. High-confidence bounds come cheap.
+
+<UnionBoundCalculator client:visible />
+
+### Why $\log|\mathcal{H}|$ misleads for infinite classes
+
+Theorem 1 needs $\mathcal{H}$ finite. Every interesting class in machine learning — linear classifiers in $\mathbb{R}^d$, decision trees, neural networks — is *uncountably* infinite. A naive application of the bound to an infinite class gives a useless $\log \infty$.
+
+A natural workaround discretizes. Take the threshold class $\mathcal{H}_{\mathrm{thresh}} = \{x \mapsto \mathbb{1}[x \ge \tau] : \tau \in [0, 1]\}$, replace it with the $N$-point grid $\mathcal{H}_N = \{x \mapsto \mathbb{1}[x \ge k/N] : k = 0, \ldots, N\}$, apply Theorem 1, and take $N \to \infty$. The bound rate becomes $\sqrt{\log N / n}$, which diverges as $N \to \infty$. So discretization alone doesn't work — the bound goes vacuous as the discretization refines.
+
+But the *true* worst-case gap of $\mathcal{H}_{\mathrm{thresh}}$ on an $n$-sample is bounded; it grows like $\sqrt{\log n / n}$ (we'll prove this in §5 via Rademacher complexity). The discretization argument has lost information about the *combinatorial structure* of the class. Two thresholds $\tau, \tau'$ are different elements of $\mathcal{H}_N$, but if no sample point falls between them, they produce identical predictions on $S$ — they are *effectively the same* hypothesis from the point of view of the data. The right complexity is not "how many hypotheses are there?" but "how many distinct labelings of an $n$-sample can the class produce?" That switch — from counting hypotheses to counting *behaviors* — is the conceptual move §4 and §5 develop, via Glivenko–Cantelli classes and Rademacher complexity respectively. By the end of §5 we will have replaced $\log|\mathcal{H}|$ with $\mathfrak{R}_n(\mathcal{H})$, a quantity that stays finite for the genuinely-infinite classes ML actually uses.
+
+## Uniform convergence and Glivenko–Cantelli
+
+§3 showed that for *finite* hypothesis classes, the gap is controlled uniformly. §4 elevates "uniform convergence" from a proof technique to a *property* of a hypothesis class. We will see that some infinite classes have the property — they are *Glivenko–Cantelli* classes — and others do not. The classical Glivenko–Cantelli theorem (1933) is the prototype: the class of half-line indicators on $\mathbb{R}$ has uniform convergence, even though the class is uncountably infinite. The right complexity is structural, not cardinal — and §5 (Rademacher) will give the structural complexity measure we need.
+
+### Uniform convergence: the right notion
+
+For a class of functions $\mathcal{F}$ on a space $\mathcal{Z}$, the *empirical measure* of $f \in \mathcal{F}$ on sample $S = \{Z_1, \ldots, Z_n\}$ is $P_n f = \frac{1}{n}\sum_i f(Z_i)$, and its *population mean* is $Pf = \mathbb{E}[f(Z)]$.
+
+<TheoremBlock type="definition" number={4} title="Uniform convergence; Glivenko–Cantelli class">
+The class $\mathcal{F}$ has the *uniform convergence property* with respect to a distribution $P$ on $\mathcal{Z}$, written *$\mathcal{F}$ is a Glivenko–Cantelli class for $P$*, if
+$$
+\sup_{f \in \mathcal{F}} |P_n f - P f| \xrightarrow[n \to \infty]{} 0 \quad \text{in probability (equivalently, a.s. for our purposes).}
+$$
+</TheoremBlock>
+
+The connection to risk and empirical risk is direct: take $\mathcal{F} = \{(x, y) \mapsto \ell(h(x), y) : h \in \mathcal{H}\}$, the *loss class* induced by $\mathcal{H}$. Then $P f = R(h)$, $P_n f = \hat{R}_S(h)$, and $\mathcal{F}$ being GC means $\sup_h |R(h) - \hat{R}_S(h)| \to 0$ — uniform convergence of empirical risks to true risks across the entire hypothesis class. Distribution-free uniform convergence (GC for every $P$) is what makes a hypothesis class PAC-learnable in the agnostic setting.
+
+### Classical Glivenko–Cantelli (empirical CDF)
+
+The original GC theorem is the special case of half-line indicators on $\mathbb{R}$.
+
+<TheoremBlock type="theorem" number={2} title="Glivenko–Cantelli, 1933">
+Let $X_1, \ldots, X_n$ be iid from a distribution on $\mathbb{R}$ with CDF $F(t) = \Pr[X \le t]$, and let $\hat F_n(t) = \frac{1}{n}\sum_i \mathbb{1}[X_i \le t]$ be the empirical CDF. Then
+$$
+\sup_{t \in \mathbb{R}} |\hat F_n(t) - F(t)| \xrightarrow[n \to \infty]{\mathrm{a.s.}} 0.
+$$
+</TheoremBlock>
+
+The qualitative version (a.s. convergence with no rate) was proved by Glivenko and Cantelli independently in 1933. A *quantitative* version with an exponential rate is the **DKW inequality** (Dvoretzky–Kiefer–Wolfowitz 1956, sharpened by Massart 1990): for all $n$ and $t > 0$,
+$$
+\Pr\!\left[\sup_{t \in \mathbb{R}} |\hat F_n(t) - F(t)| \ge t \right] \le 2 \exp(-2nt^2).
+$$
+
+Two observations make this quantitatively striking:
+
+1. The rate is the *same* as Hoeffding for a single function. The supremum across the uncountable family $\{\mathbb{1}[\cdot \le t] : t \in \mathbb{R}\}$ costs **no extra log factor** compared to a single $h$. The combinatorial structure of half-line indicators on $\mathbb{R}$ is rich enough to be uncountable but lean enough to behave like a single function in the bound.
+2. The constant is dimension-free. The bound has no dependence on $F$, the underlying distribution — uniform convergence holds for any continuous, discrete, or mixed distribution on $\mathbb{R}$.
+
+The connection of Theorem 2 to learning theory is the half-line classifier: $\mathcal{H} = \{x \mapsto \mathbb{1}[x \le t] : t \in \mathbb{R}\}$ is the simplest non-trivial classifier class. The DKW inequality says this class has $O(1/\sqrt{n})$ uniform-convergence rate independent of the data distribution — a property the discretization argument from §3 failed to recover. The reason the half-line class succeeds where naive discretization fails is the *combinatorial richness* of half-line indicators: on a sample of size $n$, the class produces exactly $n + 1$ distinct labelings (one for each "break" between consecutive ordered sample points). This count grows *polynomially* in $n$ — the seed of the Sauer–Shelah polynomial growth lemma.
+
+<GlivenkoCantelliExplorer client:visible />
+
+### GC classes and Donsker classes
+
+The classical Glivenko–Cantelli theorem generalizes well beyond half-lines. The empirical-processes literature studies broad classes $\mathcal{F}$ for which uniform convergence holds:
+
+- **VC-subgraph classes** (loosely: classes with finite VC dimension applied to indicator functions) are GC for every $P$. Half-lines are the simplest example; half-planes in $\mathbb{R}^d$, intervals, and convex sets in $\mathbb{R}^d$ are also GC.
+- **Donsker classes** are a strictly stronger notion: the *centered and scaled* empirical process $\sqrt{n}(P_n - P)$ converges, as a process indexed by $f \in \mathcal{F}$, to a Gaussian process on $\mathcal{F}$. Donsker implies GC (and gives the right rate); the converse is false.
+- **Bracketing entropy** and **uniform covering numbers** are the two technical workhorses that certify a class as GC or Donsker. We use them in §8 for real-valued function classes.
+
+For now the takeaway is structural: GC-ness is a property of the combinatorial / metric structure of $\mathcal{F}$, not of its raw cardinality. The next two sections develop a *quantitative* notion that subsumes GC: a class is GC if and only if its Rademacher complexity vanishes as $n \to \infty$.
+
+### A non-GC counterexample
+
+Some classes are *not* Glivenko–Cantelli — and naming one cleanly is the test of whether the definition has bite. The cleanest counterexample is the class of indicators of finite sets:
+$$
+\mathcal{F}_{\mathrm{fin}} = \{ \mathbb{1}_A : A \subset \mathcal{X}, |A| < \infty \}.
+$$
+
+<TheoremBlock type="example" number={1} title="A non-GC class">
+For any continuous distribution $P$ on $\mathcal{X}$ — say uniform on $[0, 1]$ — the class $\mathcal{F}_{\mathrm{fin}}$ fails the uniform convergence property catastrophically. The argument: for any sample $S = \{X_1, \ldots, X_n\}$, the indicator of $A_S = \{X_1, \ldots, X_n\}$ (a finite set) is in $\mathcal{F}_{\mathrm{fin}}$, and
+$$
+P_n \mathbb{1}_{A_S} = \frac{1}{n}\sum_{i=1}^n \mathbb{1}[X_i \in A_S] = 1, \qquad P \mathbb{1}_{A_S} = P(A_S) = 0,
+$$
+where $P(A_S) = 0$ because $A_S$ is a finite set under a continuous distribution. Therefore $\sup_{f \in \mathcal{F}_{\mathrm{fin}}} |P_n f - P f| \ge 1$ *for every $n$* — uniform convergence fails maximally.
+</TheoremBlock>
+
+What went wrong? The class $\mathcal{F}_{\mathrm{fin}}$ is *too rich* — it shatters every sample, in the VC sense. Whatever the labels on $S$, some $A \in \mathcal{F}_{\mathrm{fin}}$ produces them. A class that can produce any labeling of any sample is unconstrained, and unconstrained means no uniform convergence. **VC Dimension** *(coming soon)* makes this precise via the Sauer–Shelah lemma: a class with finite VC dimension produces only polynomially many distinct labelings on an $n$-sample, while a shattering class produces $2^n$ — and only the polynomial regime is GC. A GC class is one whose *behavior* on $n$ samples is constrained, not one whose *cardinality* is small.
+
+## Rademacher complexity
+
+We have now established two things. First, that uniform convergence is the right notion for a hypothesis class — the property that simultaneously controls the gap across all $h \in \mathcal{H}$. Second, that the cardinality $|\mathcal{H}|$ is the wrong complexity measure for infinite classes — what matters is the *combinatorial behavior* of $\mathcal{H}$ on samples. §5 introduces the quantity that puts a finger on that combinatorial behavior: the *Rademacher complexity* of $\mathcal{H}$. It is the canonical complexity measure for distribution-free generalization theory, the data-dependent quantity that we will see in every subsequent bound, and the one that allows us to *compute* — not just upper-bound — the relevant complexity of finite-and-infinite classes alike.
+
+### The random-labels intuition
+
+Here is the picture. Fix a sample $S = \{x_1, \ldots, x_n\}$ in $\mathcal{X}$. Forget the true labels; draw fresh ones uniformly at random: $\sigma_i \in \{-1, +1\}$ iid with probability $1/2$ each. Each *Rademacher label vector* $\sigma = (\sigma_1, \ldots, \sigma_n) \in \{-1, +1\}^n$ is a different "random labeling" of the sample. There are $2^n$ such labelings.
+
+For a binary classifier $h: \mathcal{X} \to \{-1, +1\}$, the quantity $\frac{1}{n}\sum_i \sigma_i h(x_i)$ is the *correlation* between the classifier's outputs and the random labels $\sigma$. It is +1 if $h$'s outputs match $\sigma$ exactly, $-1$ if they are everywhere opposite, $0$ in expectation if $h$ is independent of $\sigma$. The supremum across $h \in \mathcal{H}$,
+$$
+\sup_{h \in \mathcal{H}} \frac{1}{n} \sum_{i=1}^n \sigma_i h(x_i),
+$$
+measures the *best fit any $h \in \mathcal{H}$ can produce to the random label vector $\sigma$*. A class that can fit *any* labeling perfectly achieves a supremum of $1$ for every $\sigma$. A class with no labeling flexibility achieves a value that concentrates around $0$ at $O(1/\sqrt n)$. The expected supremum over the random $\sigma$ interpolates between these extremes — and that expectation is the empirical Rademacher complexity.
+
+### Empirical and population Rademacher complexity
+
+<TheoremBlock type="definition" number={5} title="Empirical Rademacher complexity">
+Given a class $\mathcal{F}$ of real-valued functions $f: \mathcal{Z} \to \mathbb{R}$ and a sample $S = \{Z_1, \ldots, Z_n\}$, the *empirical Rademacher complexity* of $\mathcal{F}$ on $S$ is
+$$
+\hat{\mathfrak{R}}_S(\mathcal{F}) = \mathbb{E}_\sigma\!\left[ \sup_{f \in \mathcal{F}} \frac{1}{n} \sum_{i=1}^n \sigma_i f(Z_i) \,\Big|\, S \right],
+$$
+where $\sigma = (\sigma_1, \ldots, \sigma_n)$ is an iid Rademacher vector ($\sigma_i \in \{-1, +1\}$ with $\Pr[\sigma_i = +1] = 1/2$), independent of $S$.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={6} title="Population Rademacher complexity">
+The *population* (or *expected*) *Rademacher complexity* is the expectation of the empirical Rademacher over the draw of $S$:
+$$
+\mathfrak{R}_n(\mathcal{F}) = \mathbb{E}_S[\hat{\mathfrak{R}}_S(\mathcal{F})] = \mathbb{E}_{S, \sigma}\!\left[ \sup_{f \in \mathcal{F}} \frac{1}{n} \sum_{i=1}^n \sigma_i f(Z_i) \right].
+$$
+</TheoremBlock>
+
+Three basic observations:
+
+1. **Translation invariance / centering.** Adding a constant $c$ to every $f \in \mathcal{F}$ shifts the sum by $c \cdot \frac{1}{n}\sum \sigma_i$, which has mean zero — so Rademacher complexity is unchanged. It measures *variability* across the class, not absolute level.
+2. **Convex hull invariance.** $\hat{\mathfrak{R}}_S(\mathrm{conv}(\mathcal{F})) = \hat{\mathfrak{R}}_S(\mathcal{F})$: taking convex combinations of functions cannot help fit random labels better than the extreme points already do.
+3. **Monotone in the class.** $\mathcal{F}_1 \subset \mathcal{F}_2 \implies \hat{\mathfrak{R}}_S(\mathcal{F}_1) \le \hat{\mathfrak{R}}_S(\mathcal{F}_2)$: a bigger class fits random labels better.
+
+The relationship to the uniform deviation $\Phi_S(\mathcal{H})$ is made precise in §6 (symmetrization) and §7 (the canonical bound). Punch line: $\mathbb{E}_S[\Phi_S(\mathcal{H})] \le 2 \mathfrak{R}_n(\mathcal{L} \circ \mathcal{H})$ — Rademacher of the *loss class* is what shows up.
+
+<RademacherComplexityExplorer client:visible />
+
+### Massart's finite-class lemma
+
+<TheoremBlock type="lemma" number={1} title="Massart's finite-class lemma">
+Let $A \subset \mathbb{R}^n$ be a *finite* set with $|A| = N$, and let $B = \sup_{a \in A} \|a\|_2$. Then
+$$
+\mathbb{E}_\sigma\!\left[ \max_{a \in A} \frac{1}{n} \sum_{i=1}^n \sigma_i a_i \right] \le \frac{B \sqrt{2 \log N}}{n}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $Y_a = \sum_i \sigma_i a_i$. By Hoeffding's lemma for Rademacher random variables, $\mathbb{E}[\exp(\lambda Y_a)] \le \exp(\lambda^2 \|a\|_2^2 / 2) \le \exp(\lambda^2 B^2 / 2)$. For any $\lambda > 0$,
+$$
+\exp\!\big( \lambda \mathbb{E}[\max_a Y_a] \big) \;\overset{(\text{Jensen})}{\le}\; \mathbb{E}\!\big[ \exp(\lambda \max_a Y_a) \big] = \mathbb{E}\!\big[ \max_a \exp(\lambda Y_a) \big] \le \sum_{a \in A} \mathbb{E}[\exp(\lambda Y_a)] \le N \exp(\lambda^2 B^2 / 2).
+$$
+Taking logarithms and dividing by $\lambda$,
+$$
+\mathbb{E}[\max_a Y_a] \le \frac{\log N}{\lambda} + \frac{\lambda B^2}{2}.
+$$
+Setting the derivative to zero gives $\lambda^* = \sqrt{2 \log N / B^2}$ and substituting back,
+$$
+\mathbb{E}[\max_a Y_a] \le B \sqrt{2 \log N}.
+$$
+Dividing by $n$ gives Massart's lemma.
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={2} title="Rademacher complexity of a finite hypothesis class">
+For a binary classifier class $\mathcal{H}$ with $h: \mathcal{X} \to \{-1, +1\}$ and $|\mathcal{H}| = N$,
+$$
+\hat{\mathfrak{R}}_S(\mathcal{H}) \le \sqrt{\frac{2 \log N}{n}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply Lemma 1 with $A = \{(h(X_1), \ldots, h(X_n)) : h \in \mathcal{H}\}$. Each $a \in A$ has $\|a\|_2^2 = n$, so $B = \sqrt n$.
+</TheoremBlock>
+
+Massart's bound is the basis of the Rademacher refinement of §3. Even if $|\mathcal{H}| = 2^{100}$, on a sample of $n = 1000$ the Rademacher complexity is at most $\sqrt{200 \log 2 / 1000} \approx 0.37$ — informative, where the union-bound treatment is identical in rate but routes through enumeration of $\mathcal{H}$ rather than a single computable quantity.
+
+### Talagrand's contraction lemma
+
+<TheoremBlock type="lemma" number={2} title="Talagrand's contraction lemma">
+Let $\phi: \mathbb{R} \to \mathbb{R}$ be $L$-Lipschitz with $\phi(0) = 0$, and let $\mathcal{F}$ be a class of real-valued functions on $\mathcal{Z}$. Then for any sample $S$,
+$$
+\hat{\mathfrak{R}}_S(\phi \circ \mathcal{F}) \le L \cdot \hat{\mathfrak{R}}_S(\mathcal{F}),
+$$
+where $\phi \circ \mathcal{F} = \{ z \mapsto \phi(f(z)) : f \in \mathcal{F} \}$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof goes by induction on $n$. The base case $n = 1$ is direct from Lipschitzness. For the inductive step, one conditions on $\sigma_1, \ldots, \sigma_{n-1}$ and uses a comparison inequality that reduces to the Lipschitz condition. The full argument is in Ledoux & Talagrand (1991), Ch. 4.
+</TheoremBlock>
+
+The contraction lemma is how we move from the predictor class $\mathcal{H}$ to the loss class $\mathcal{L} \circ \mathcal{H}$. For the 0-1 loss on binary classifiers, rewrite $\ell(h(x), y) = \frac{1}{2}(1 - y h(x))$ — which is $\frac{1}{2}$-Lipschitz in $h(x)$ — and conclude $\hat{\mathfrak{R}}_S(\mathcal{L} \circ \mathcal{H}) \le \frac{1}{2} \hat{\mathfrak{R}}_S(\mathcal{H})$. For margin losses (§10), $\phi(t) = \max(0, 1 - t/\gamma)$ is $1/\gamma$-Lipschitz, and the contraction lemma gives the $\gamma$-in-the-denominator dependence of the margin bound.
+
+## Symmetrization
+
+§5 introduced Rademacher complexity as a data-dependent complexity measure. §6 is the proof technique that connects Rademacher complexity to the uniform deviation: *symmetrization*, also called the *ghost-sample trick*. The lemma proved here is the structural backbone of every Rademacher generalization bound — including the canonical one in §7. The technique is clever in a way that rewards a careful, slow read. We will lay every step out.
+
+### The ghost-sample trick
+
+Recall the central object: the uniform deviation $\Phi_S(\mathcal{F}) = \sup_{f \in \mathcal{F}} (Pf - P_n f)$ (we work one-sided here; the two-sided version follows by applying the argument to $\mathcal{F} \cup (-\mathcal{F})$). We want to bound $\mathbb{E}_S[\Phi_S(\mathcal{F})]$ by something computable. The challenge is that $Pf = \mathbb{E}_{Z}[f(Z)]$ is a *population* expectation — invisible to us, and a single deterministic number per $f$. The empirical $P_n f$ is a sample average. The supremum couples both, and the asymmetry between the two is what makes the bound hard.
+
+The trick is to introduce a *ghost sample* $S' = (Z'_1, \ldots, Z'_n)$, iid from $P$, independent of $S$. The ghost sample never gets drawn — it is a mathematical fiction we use to symmetrize the difference. The key observation: $Pf = \mathbb{E}_{S'}[\hat P_{S'} f]$, where $\hat P_{S'} f = \frac{1}{n} \sum_i f(Z'_i)$ is the ghost empirical measure. The pair $(Z_i, Z'_i)$ is iid from $P \times P$, exchangeable under coordinate swap — and that exchangeability is what lets us introduce iid Rademacher signs without changing the joint distribution.
+
+### Generalization-gap moments → Rademacher averages
+
+For any fixed function $g(z, z') = f(z') - f(z)$, the pair $(Z_i, Z'_i)$ and its swap $(Z'_i, Z_i)$ have the same joint distribution; the function $g$ is antisymmetric under the swap, so $g(Z'_i, Z_i) = -g(Z_i, Z'_i)$. Equivalently, $f(Z'_i) - f(Z_i)$ has the same distribution as its negation, conditional on the pair being drawn iid. Inserting an iid Rademacher sign $\sigma_i$ leaves the joint distribution unchanged for each fixed $f$ — and the supremum can be moved through by Jensen-like arguments. The full chain follows.
+
+### A full proof, written out
+
+<TheoremBlock type="lemma" number={3} title="Symmetrization lemma">
+For any class $\mathcal{F}$ of bounded functions on $\mathcal{Z}$ and any $n \ge 1$,
+$$
+\mathbb{E}_S\!\Big[\sup_{f \in \mathcal{F}} (Pf - P_n f)\Big] \le 2 \, \mathfrak{R}_n(\mathcal{F}).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $S = (Z_1, \ldots, Z_n)$ be the original sample (iid from $P$), and let $S' = (Z'_1, \ldots, Z'_n)$ be an independent *ghost sample* (also iid from $P$). For any $f \in \mathcal{F}$,
+$$
+Pf = \mathbb{E}_{Z' \sim P}[f(Z')] = \mathbb{E}_{S'}\!\Big[\frac{1}{n}\sum_{i=1}^n f(Z'_i)\Big] = \mathbb{E}_{S'}[\hat P_{S'} f]. \qquad (1)
+$$
+Substituting (1) into the uniform deviation:
+$$
+\sup_f (Pf - P_n f) = \sup_f \mathbb{E}_{S'}\!\big[\hat P_{S'} f - P_n f\big]. \qquad (2)
+$$
+The function $f \mapsto \mathbb{E}_{S'}[\hat P_{S'} f - P_n f]$ depends on the random variable $S'$ only through its expectation. By Jensen's inequality applied to the convex function $\sup_f$ (a pointwise supremum of linear functions),
+$$
+\sup_f \mathbb{E}_{S'}[\hat P_{S'} f - P_n f] \le \mathbb{E}_{S'}\!\Big[\sup_f (\hat P_{S'} f - P_n f)\Big]. \qquad (3)
+$$
+Taking $\mathbb{E}_S$ on both sides of (3) and combining with (2),
+$$
+\mathbb{E}_S\!\Big[\sup_f (Pf - P_n f)\Big] \le \mathbb{E}_{S, S'}\!\Big[\sup_f \frac{1}{n} \sum_{i=1}^n (f(Z'_i) - f(Z_i))\Big]. \qquad (4)
+$$
+
+Now introduce iid Rademacher random variables $\sigma_1, \ldots, \sigma_n \in \{-1, +1\}$ with $\Pr[\sigma_i = +1] = 1/2$, independent of $(S, S')$. Because the pair $(Z_i, Z'_i)$ is exchangeable under coordinate swap (iid from $P \times P$), the swapped pair $(Z^{(\sigma)}_i, Z'^{(\sigma)}_i)$ has the same joint distribution as $(Z_i, Z'_i)$ for any fixed $\sigma$. Therefore
+$$
+\mathbb{E}_{S, S'}\!\Big[\sup_f \frac{1}{n} \sum_i (f(Z'_i) - f(Z_i))\Big] = \mathbb{E}_{S, S', \sigma}\!\Big[\sup_f \frac{1}{n} \sum_i \sigma_i (f(Z'_i) - f(Z_i))\Big]. \qquad (5)
+$$
+
+Apply the triangle inequality on the supremum:
+$$
+\sup_f \frac{1}{n} \sum_i \sigma_i (f(Z'_i) - f(Z_i)) \le \sup_f \frac{1}{n} \sum_i \sigma_i f(Z'_i) + \sup_f \frac{1}{n} \sum_i \sigma_i (-f(Z_i)).
+$$
+Taking expectations,
+$$
+\mathbb{E}_{S, S', \sigma}\!\Big[\sup_f \frac{1}{n} \sum_i \sigma_i (f(Z'_i) - f(Z_i))\Big] \le \mathbb{E}_{S', \sigma}\!\Big[\sup_f \frac{1}{n} \sum_i \sigma_i f(Z'_i)\Big] + \mathbb{E}_{S, \sigma}\!\Big[\sup_f \frac{1}{n} \sum_i \sigma_i (-f(Z_i))\Big]. \qquad (6)
+$$
+The first term in (6) is the definition of $\mathfrak{R}_n(\mathcal{F})$. For the second term: $-\sigma_i$ has the same distribution as $\sigma_i$ (the Rademacher distribution is symmetric under negation), so the second term also equals $\mathfrak{R}_n(\mathcal{F})$.
+
+Combining (4), (5), and (6):
+$$
+\mathbb{E}_S\!\big[\sup_f (Pf - P_n f)\big] \le \mathfrak{R}_n(\mathcal{F}) + \mathfrak{R}_n(\mathcal{F}) = 2 \, \mathfrak{R}_n(\mathcal{F}).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The one-sided bound in Lemma 3 is sometimes stated as a two-sided bound $\mathbb{E}_S[\sup_f |Pf - P_n f|] \le 2 \mathfrak{R}_n(\mathcal{F})$. The two-sided version follows by applying the lemma to the class $\mathcal{F} \cup (-\mathcal{F})$. A more refined symmetrization yields the empirical Rademacher bound $\mathbb{E}_S[\sup_f (Pf - P_n f)] \le 2 \, \mathbb{E}_S[\hat{\mathfrak{R}}_S(\mathcal{F})]$, which is what shows up in the canonical bound in §7.
+</TheoremBlock>
+
+<SymmetrizationVisualizer client:visible />
+
+## McDiarmid + Rademacher → uniform convergence
+
+We have two ingredients: symmetrization (Lemma 3) controls $\mathbb{E}_S[\Phi_S(\mathcal{F})]$ by $2 \mathfrak{R}_n(\mathcal{F})$; concentration (McDiarmid, from [concentration-inequalities](/topics/concentration-inequalities)) promotes "expectation $\le$ ..." into "with probability $\ge 1 - \delta$, ... $\le$ ...". Combine them and we get the canonical generalization bound — the theorem the whole chapter has been building toward.
+
+### Bounded differences for $\sup_h (R - \hat R_S)$
+
+The function $S \mapsto \Phi_S(\mathcal{F})$ has the **bounded-differences property** for losses bounded in $[0, M]$. Replacing one sample $Z_i$ with a different value $Z'_i$ changes $\hat{R}_S(h)$ by at most $M/n$ for any fixed $h$ (the loss term for the $i$-th sample contributes at most $M/n$ to the average). Therefore $\sup_h (R(h) - \hat R_S(h))$ changes by at most $M/n$ — the supremum operation preserves the bounded-differences constant.
+
+### McDiarmid concentration on $\Phi_S$
+
+By McDiarmid's bounded-differences inequality, for any $t > 0$,
+$$
+\Pr_S\big[\Phi_S(\mathcal{F}) - \mathbb{E}[\Phi_S(\mathcal{F})] \ge t\big] \le \exp\!\Big({-}\frac{2 n t^2}{M^2}\Big).
+$$
+This is a *concentration* statement: $\Phi_S$ is tightly concentrated around its mean. To deduce a high-probability upper bound on $\Phi_S$ itself, we use the (one-sided) failure inversion: with probability at least $1 - \delta'$,
+$$
+\Phi_S(\mathcal{F}) \le \mathbb{E}[\Phi_S(\mathcal{F})] + M \sqrt{\frac{\log(1/\delta')}{2n}}.
+$$
+The bound on $\mathbb{E}[\Phi_S]$ comes from Lemma 3 (symmetrization). The remaining task is to upgrade the *population* Rademacher in Lemma 3 to the *empirical* Rademacher — the latter is what we can compute from a single sample.
+
+### The two-step recipe and the canonical bound
+
+Apply McDiarmid a second time, this time to $\hat{\mathfrak{R}}_S(\mathcal{F})$ as a function of $S$. The empirical Rademacher also has bounded differences: replacing $Z_i$ with $Z'_i$ changes the inner $\frac{1}{n}\sum \sigma_j f(Z_j)$ by at most $M/n$ for any fixed $f$ and $\sigma$, and supremum + expectation over $\sigma$ both preserve the bound. So with probability $\ge 1 - \delta''$,
+$$
+\mathbb{E}_S[\hat{\mathfrak{R}}_S(\mathcal{F})] \le \hat{\mathfrak{R}}_S(\mathcal{F}) + M \sqrt{\frac{\log(1/\delta'')}{2n}}.
+$$
+
+<TheoremBlock type="theorem" number={3} title="Canonical Rademacher generalization bound">
+Let $\mathcal{F}$ be a class of functions $f: \mathcal{Z} \to [0, M]$, let $S = \{Z_1, \ldots, Z_n\}$ be an iid sample from $P$, and let $\delta \in (0, 1)$. With probability at least $1 - \delta$ over $S$,
+$$
+\sup_{f \in \mathcal{F}} (Pf - P_n f) \;\le\; 2\, \hat{\mathfrak{R}}_S(\mathcal{F}) \;+\; 3 M \sqrt{\frac{\log(2/\delta)}{2n}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+**Step (i)**: bounded-differences verification of $\Phi_S(\mathcal{F})$, done above; the constant is $c_i = M/n$ for each coordinate.
+
+**Step (ii)**: McDiarmid on $\Phi_S$. By the bounded-differences inequality with $\delta' = \delta/2$, with probability $\ge 1 - \delta/2$,
+$$
+\Phi_S(\mathcal{F}) \le \mathbb{E}_S[\Phi_S(\mathcal{F})] + M \sqrt{\frac{\log(2/\delta)}{2n}}. \qquad \text{(I)}
+$$
+
+**Step (iii)**: symmetrization (Lemma 3, data-dependent form),
+$$
+\mathbb{E}_S[\Phi_S(\mathcal{F})] \le 2 \, \mathbb{E}_S[\hat{\mathfrak{R}}_S(\mathcal{F})]. \qquad \text{(II)}
+$$
+
+**Step (iv)**: McDiarmid on $\hat{\mathfrak{R}}_S$. By the bounded-differences inequality with $\delta'' = \delta/2$, with probability $\ge 1 - \delta/2$,
+$$
+\mathbb{E}_S[\hat{\mathfrak{R}}_S(\mathcal{F})] \le \hat{\mathfrak{R}}_S(\mathcal{F}) + M \sqrt{\frac{\log(2/\delta)}{2n}}. \qquad \text{(III)}
+$$
+
+**Step (v)**: combine. By the union bound over the two failure events (each $\delta/2$), with probability $\ge 1 - \delta$ both (I) and (III) hold simultaneously. Chaining (I) $\to$ (II) $\to$ (III) and summing the three $M\sqrt{\log(2/\delta)/(2n)}$ terms gives $3M\sqrt{\log(2/\delta)/(2n)}$.
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={3} title="For binary classification with 0-1 loss">
+Let $\mathcal{H}$ be a class of binary classifiers $h: \mathcal{X} \to \{-1, +1\}$ and $\ell$ the 0-1 loss ($M = 1$). For any $\delta \in (0, 1)$, with probability $\ge 1 - \delta$, for every $h \in \mathcal{H}$,
+$$
+R(h) \le \hat{R}_S(h) + \hat{\mathfrak{R}}_S(\mathcal{H}) + 3 \sqrt{\frac{\log(2/\delta)}{2n}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply Theorem 3 to the loss class $\mathcal{L} \circ \mathcal{H}$. By Talagrand's contraction lemma (Lemma 2) and the $\frac{1}{2}$-Lipschitz form $\ell(h(x), y) = \frac{1}{2}(1 - y h(x))$,
+$$
+\hat{\mathfrak{R}}_S(\mathcal{L} \circ \mathcal{H}) \le \tfrac{1}{2} \hat{\mathfrak{R}}_S(\mathcal{H}).
+$$
+Theorem 3 then gives $R(h) - \hat R_S(h) \le 2 \cdot \frac{1}{2} \hat{\mathfrak{R}}_S(\mathcal{H}) + 3\sqrt{\log(2/\delta)/(2n)}$.
+</TheoremBlock>
+
+### When the bound bites — and when it doesn't
+
+Three sanity checks:
+
+1. **The bound vanishes as $n \to \infty$.** Both $\hat{\mathfrak{R}}_S(\mathcal{H})$ and the $\sqrt{\log(2/\delta)/n}$ term decay as $O(1/\sqrt n)$, so the right-hand side of Corollary 3 approaches $\hat R_S(h) \approx R(h)$. Good: the bound is *consistent*.
+2. **The bound is informative when $\hat{\mathfrak{R}}_S(\mathcal{H})$ is small.** For the threshold class on $n$ samples, $\hat{\mathfrak{R}}_S(\mathcal{H}_{\mathrm{thresh}}) \approx \sqrt{\log n / n}$. At $n = 1000$, this is $\approx 0.083$ — comfortably below the trivial bound of $1$ (the bound is *non-vacuous*). At $n = 10$, this is $\approx 0.48$ — already large but still informative.
+3. **The bound is uninformative ("vacuous") when $\hat{\mathfrak{R}}_S(\mathcal{H}) \ge 1/2$ or so.** For a moderately overparameterized neural network, $\hat{\mathfrak{R}}_S(\mathcal{H})$ approaches $1$ on standard image datasets (Zhang et al. 2017's signature observation: deep nets can memorize random labels). The classical bound therefore gives $R(h) - \hat R_S(h) \le 1 + 3\sqrt{\log(2/\delta)/(2n)} \approx 1$, which is the trivial bound. §12 makes this vacuousness explicit, and §14 points to PAC-Bayes *(coming soon)* as the post-classical remedy.
+
+The empirical-Rademacher term $\hat{\mathfrak{R}}_S(\mathcal{H})$ is the *whole* generalization-bound story for classical theory. Sample size $n$, confidence $\delta$, and the loss range $M$ enter cleanly and obviously; the hypothesis class $\mathcal{H}$ enters only through $\hat{\mathfrak{R}}_S(\mathcal{H})$.
+
+<UniformConvergenceBound client:visible />
+
+## Real-valued function classes
+
+§§5–7 developed Rademacher complexity for $\{-1, +1\}$-valued classifiers. §8 extends to *real-valued* function classes — regression problems where the predictor $f: \mathcal{X} \to \mathbb{R}$ and the loss $\ell(f(x), y) = (f(x) - y)^2$ are both continuously valued; margin classifiers where $f$ is a real score and the decision is $\mathrm{sign}(f)$; neural networks viewed as real-valued functions before the final activation. The combinatorial machinery (shattering, VC dimension) doesn't apply directly. The right substitutes are *pseudo-dimension* / *fat-shattering* (the real-valued analogs of VC dim) and *covering numbers* (the metric-entropy substitute), combined through *Dudley's entropy integral*.
+
+### Beyond $\{0, 1\}$ losses: margin and regression
+
+Two motivating settings:
+
+**Regression.** $\mathcal{F} = \{f: \mathbb{R}^d \to \mathbb{R}\}$ with square loss $\ell(f(x), y) = (f(x) - y)^2$. The loss is bounded only if $|f(x)|$ and $|y|$ are bounded; the predictor class is real-valued.
+
+**Margin classification.** $\mathcal{F} = \{f: \mathbb{R}^d \to \mathbb{R}\}$ with margin loss $\ell_\gamma(f(x), y) = \max(0, 1 - y f(x) / \gamma)$ for some margin parameter $\gamma > 0$. The classifier is $\mathrm{sign}(f(x))$, but the *score* $y f(x)$ — the "confidence" — drives the bound. This is the setting for §10.
+
+Both settings require complexity measures finer than VC dimension.
+
+### Pseudo-dimension and fat-shattering
+
+<TheoremBlock type="definition" number={7} title="Pseudo-dimension">
+A class $\mathcal{F}$ of real-valued functions on $\mathcal{X}$ has *pseudo-dimension* $\mathrm{Pdim}(\mathcal{F}) \ge d$ if there exist $x_1, \ldots, x_d \in \mathcal{X}$ and witness values $r_1, \ldots, r_d \in \mathbb{R}$ such that for every $\epsilon \in \{-1, +1\}^d$ there exists $f \in \mathcal{F}$ with $\mathrm{sign}(f(x_i) - r_i) = \epsilon_i$ for every $i$. The pseudo-dimension is the largest such $d$.
+</TheoremBlock>
+
+Pseudo-dimension is the VC dimension of the *subgraph class* $\{ \{(x, t) : t \le f(x)\} : f \in \mathcal{F} \}$ in $\mathcal{X} \times \mathbb{R}$. For linear regression in $\mathbb{R}^d$, $\mathrm{Pdim} = d + 1$. For neural networks, $\mathrm{Pdim}$ depends on the architecture and is polynomial in the parameter count.
+
+<TheoremBlock type="definition" number={8} title="Fat-shattering dimension">
+For $\gamma > 0$, $\mathcal{F}$ *$\gamma$-fat-shatters* a set $\{x_1, \ldots, x_d\}$ with witness values $r_i$ if for every $\epsilon \in \{-1, +1\}^d$ there exists $f \in \mathcal{F}$ such that $f(x_i) \ge r_i + \gamma$ when $\epsilon_i = +1$ and $f(x_i) \le r_i - \gamma$ when $\epsilon_i = -1$. The *fat-shattering dimension at scale $\gamma$* is $\mathrm{fat}_\gamma(\mathcal{F}) = $ the largest $d$ that is $\gamma$-fat-shattered.
+</TheoremBlock>
+
+Fat-shattering is the right notion for margin classifiers: at margin $\gamma$, only the *separability above margin* matters, not infinitesimal differences. The dimension typically *decreases* as $\gamma$ increases (a larger margin is harder to achieve, so fewer points can be fat-shattered).
+
+### Covering numbers and Dudley's entropy integral
+
+For a class $\mathcal{F}$ of functions on $\mathcal{Z}$, a *pseudo-metric* $d$ on $\mathcal{F}$, and $\epsilon > 0$, the *covering number* $N(\epsilon, \mathcal{F}, d)$ is the smallest cardinality of an $\epsilon$-net — a set $\mathcal{G} \subset \mathcal{F}$ such that every $f \in \mathcal{F}$ has some $g \in \mathcal{G}$ with $d(f, g) \le \epsilon$. The *metric entropy* is $\log N(\epsilon, \mathcal{F}, d)$. For a sample $S$, the canonical metric is $L_2(P_n)$: $d_2(f, g) = \big(\frac{1}{n}\sum_i (f(z_i) - g(z_i))^2\big)^{1/2}$.
+
+<TheoremBlock type="theorem" number={4} title="Dudley's entropy integral">
+For any class $\mathcal{F}$ of functions $f: \mathcal{Z} \to \mathbb{R}$ and any sample $S$,
+$$
+\hat{\mathfrak{R}}_S(\mathcal{F}) \;\le\; \frac{12}{\sqrt n} \int_0^{D_n} \sqrt{\log N(\epsilon, \mathcal{F}, L_2(P_n))} \, d\epsilon,
+$$
+where $D_n = \sup_{f \in \mathcal{F}} \sqrt{P_n f^2}$ is the $L_2$-diameter of $\mathcal{F}$ on $S$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The full proof goes by **chaining**: construct $\epsilon_k$-nets $\mathcal{G}_k$ at dyadic scales $\epsilon_k = 2^{-k} D_n$, and telescope each $f \in \mathcal{F}$ as $f = g_0(f) + \sum_k (g_{k+1}(f) - g_k(f))$. Each telescoping increment is bounded in $L_2(P_n)$ by $3 \epsilon_{k+1}$, so by Massart's lemma applied to the finite set of differences, the Rademacher complexity of the increments is geometric in $k$ and the sum converges to Dudley's integral. The constant $12$ is sharp up to small factors. Full argument: Wainwright (2019) Theorem 5.22.
+</TheoremBlock>
+
+For VC-subgraph classes (finite pseudo-dimension $d$), the covering number satisfies $\log N(\epsilon, \mathcal{F}, L_2(P_n)) \le c \cdot d \cdot \log(1/\epsilon)$ for some constant $c$, and Dudley's integral evaluates to $\hat{\mathfrak{R}}_S(\mathcal{F}) = O(\sqrt{d/n})$ — the *parametric* rate. This recovers and generalizes the VC bound to real-valued classes.
+
+<DudleyIntegralExplorer client:visible />
+
+### Bracketing vs uniform covering
+
+Two notions of covering co-exist in the empirical-processes literature:
+
+- **Uniform covering** $N(\epsilon, \mathcal{F}, L_2(P_n))$: $\epsilon$-net under the *sample* $L_2$ metric. What shows up in Rademacher / Dudley bounds.
+- **Bracketing covering** $N_{[\,]}(\epsilon, \mathcal{F}, L_2(P))$: $\epsilon$-net of "brackets" $[\ell, u]$ with $\|u - \ell\|_{L_2(P)} \le \epsilon$, such that every $f \in \mathcal{F}$ lies in some bracket. Bracketing controls $\sup_{f} |Pf - P_n f|$ directly through the supremum over bracket-pairs.
+
+Bracketing is strictly stronger than uniform covering (every $\epsilon$-bracket-net is a $2\epsilon$-uniform-covering net, but not conversely). Bracketing is more natural for *non-Donsker* classes where uniform covering doesn't control the empirical process. For our chapter we mostly use uniform covering, which suffices for VC-subgraph and parametric classes; bracketing matters in more delicate settings.
+
+## Data-dependent bounds
+
+The canonical bound of §7 has rate $O(\hat{\mathfrak{R}}_S + 1/\sqrt n)$ — uniformly across the entire class $\mathcal{H}$. But the *ERM* $\hat h_S$ is not just any $h$: it has small empirical risk, hence small *variance* (in the sense that $\ell(\hat h_S(X), Y)$ has small variance under $P$). For such low-variance hypotheses, the bound can be sharpened from the slow $O(1/\sqrt n)$ to the *fast* rate $O(1/n)$. This is the **local Rademacher complexity** technology of Bartlett, Bousquet, and Mendelson (2005). The price is a Bernstein-type variance condition that ties the loss variance to its mean; under that condition, the *local* Rademacher complexity — restricted to the variance-small subclass — replaces the global one in the bound, and a fixed-point characterization gives the fast-rate scaling.
+
+### Why classical bounds are slow
+
+Theorem 3 gives $R(\hat h_S) - \hat R_S(\hat h_S) \le \hat{\mathfrak{R}}_S(\mathcal{L} \circ \mathcal{H}) + 3\sqrt{\log(2/\delta)/(2n)}$. Both terms decay as $O(1/\sqrt n)$. This is the *slow rate* of distribution-free generalization: no matter how small the empirical risk, the bound's deviation term is $\Omega(1/\sqrt n)$.
+
+For *realizable* problems (the Bayes classifier $h^*$ is in $\mathcal{H}$, label noise $\eta = 0$), $\hat R_S(\hat h_S) = 0$ and $R(\hat h_S) \to 0$ as $n \to \infty$. The classical bound says $R(\hat h_S) \le 0 + O(1/\sqrt n)$ — informative but loose; the actual rate for realizable PAC learning is $O(1/n)$ (covered in [pac-learning](/topics/pac-learning)'s realizable section). The slow-rate gap is the price the *agnostic* / *worst-case* analysis pays for not exploiting low-noise structure.
+
+### Local Rademacher complexity
+
+The fix: replace the *global* Rademacher complexity $\hat{\mathfrak{R}}_S(\mathcal{H})$ with a *local* version computed over the low-variance subclass.
+
+<TheoremBlock type="definition" number={9} title="Local Rademacher complexity">
+For a class $\mathcal{F}$ and a level $r > 0$,
+$$
+\hat{\mathfrak{R}}_S(\mathcal{F}_r) = \mathbb{E}_\sigma\!\left[ \sup_{f \in \mathcal{F},\, P_n f^2 \le r} \frac{1}{n} \sum_i \sigma_i f(Z_i) \,\Big|\, S \right],
+$$
+where the supremum is over functions with bounded *empirical* second moment $P_n f^2 \le r$.
+</TheoremBlock>
+
+The local Rademacher restricts attention to a small ball in $L_2(P_n)$ around $0$; functions far away (large variance) are excluded. The empirical risk of the ERM is small, so the ERM lies in this small ball — the local complexity is what controls its gap.
+
+### A Bernstein-type variance condition
+
+For the local Rademacher to give a meaningful bound, we need a relation between the *variance* of $f$ (the radius $r$) and its *mean* (the risk). The cleanest such condition:
+
+**Bernstein condition.** A class $\mathcal{F}$ satisfies the *Bernstein condition* with parameter $\beta \in [0, 1]$ if there exists $c > 0$ such that for every $f \in \mathcal{F}$,
+$$
+P f^2 \le c \, (P f)^\beta.
+$$
+
+The condition couples the second moment to the first. The two extremes:
+
+- $\beta = 0$: $Pf^2 \le c$ — only the boundedness of $f$ is used, no link to $Pf$. This gives the classical slow rate.
+- $\beta = 1$: $Pf^2 \le c \, Pf$ — Massart's case. Holds for 0-1 losses with Tsybakov's *low-noise condition* (the margin separates classes cleanly): $\eta \to 0$ rapidly near the Bayes boundary.
+
+For $\beta \in (0, 1)$, the Bernstein condition interpolates: the fast rate becomes $O(n^{-1/(2 - \beta)})$, which is $O(1/n)$ for $\beta = 1$ and $O(1/\sqrt n)$ for $\beta = 0$. Tsybakov noise conditions give specific values of $\beta$.
+
+### Fast rates via the fixed-point theorem
+
+<TheoremBlock type="theorem" number={5} title="Local Rademacher fast-rate bound (Bartlett–Bousquet–Mendelson 2005)">
+Suppose $\mathcal{F}$ satisfies the Bernstein condition with parameter $\beta = 1$ (the canonical Massart case), and let $r^*$ be the largest solution of the fixed-point equation
+$$
+r = c_1 \, \hat{\mathfrak{R}}_S(\mathcal{F}_r) + c_2 \frac{\log(1/\delta)}{n}
+$$
+for universal constants $c_1, c_2$. Then with probability $\ge 1 - \delta$,
+$$
+R(\hat h_S) - R(h^*_{\mathcal{H}}) \le c_3 \, r^* = O(1/n).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The proof is technical and runs many pages; the full argument is BBM 2005 §3. The picture to keep is the **fixed point**: the local Rademacher complexity $\hat{\mathfrak{R}}_S(\mathcal{F}_r)$ shrinks as $r$ shrinks (smaller class, smaller Rademacher), so the equation has a unique fixed point $r^*$ that scales as $O(1/n)$ rather than $O(1/\sqrt n)$ — and that fixed point is the excess-risk bound.
+</TheoremBlock>
+
+<LocalRademacherExplorer client:visible />
+
+## Margin bounds
+
+A linear classifier $h(x) = \mathrm{sign}(w^\top x)$ gives a discrete output, but the *score* $w^\top x$ has continuous information: its magnitude is the *confidence*, and points far from the boundary (large $|w^\top x|$ with the correct sign) are "easy." A *margin bound* exploits this confidence: classifiers that not only get the right answer but get it with margin $\gamma$ generalize better than ones that just barely separate the data. The result is the foundation of *kernel methods* (SVM), *boosting* margin theory, and the modern *norm-based* generalization bounds for deep nets.
+
+### From 0-1 loss to margin / ramp loss
+
+Define the *margin* of $f$ on $(x, y)$ as $\rho(f; x, y) = y f(x)$ (positive when $f$ classifies correctly; magnitude is the confidence). For a margin parameter $\gamma > 0$, the *ramp loss* (also: margin loss, hinge loss) is
+
+$$
+\ell_\gamma(t) = \begin{cases} 1 & t \le 0 \\ 1 - t/\gamma & 0 < t < \gamma \\ 0 & t \ge \gamma \end{cases}.
+$$
+
+Equivalently $\ell_\gamma(t) = \min(1, \max(0, 1 - t/\gamma))$. Key properties: $\ell_\gamma$ is $1/\gamma$-Lipschitz, $\ell_\gamma(0) = 1$, $\ell_\gamma(t) \ge \mathbb{1}[t \le 0]$ (ramp loss upper-bounds 0-1 loss), and $\ell_\gamma(t) \le \mathbb{1}[t \le \gamma]$ (ramp loss lower-bounds the "margin-violation" indicator).
+
+<TheoremBlock type="definition" number={10} title="Margin / margin loss">
+The *margin* of $f$ on $(x, y)$ is $\rho(f; x, y) = y f(x)$. The *empirical margin loss at margin $\gamma$* is
+$$
+\hat R_S^\gamma(f) = \frac{1}{n} \sum_{i=1}^n \ell_\gamma(y_i f(x_i)) = \frac{1}{n} \sum_{i=1}^n \min\!\Big(1, \max\!\Big(0, 1 - \frac{y_i f(x_i)}{\gamma}\Big)\Big).
+$$
+</TheoremBlock>
+
+Two boundary cases: $\hat R_S^{0^+}(f) = R_{0-1}^{\mathrm{emp}}(f)$ (the empirical 0-1 risk), and $\hat R_S^\gamma$ is increasing in $\gamma$ — a larger margin demand more readily counts borderline classifications as misclassified.
+
+### SVM margin bound (kernel methods)
+
+Consider the kernel-method class $\mathcal{F}_B = \{ x \mapsto \langle w, \phi(x) \rangle : \|w\|_2 \le B \}$ for a feature map $\phi: \mathcal{X} \to \mathcal{H}$ into a reproducing kernel Hilbert space with kernel $K(x, x') = \langle \phi(x), \phi(x') \rangle$. Two key Rademacher facts (proofs in Mohri et al. 2018 Ch. 5):
+
+1. $\hat{\mathfrak{R}}_S(\mathcal{F}_B) \le \frac{B \sqrt{\mathrm{tr}(K)}}{n} \le \frac{B \sqrt{\sup_x K(x, x)}}{\sqrt n}$, where $K$ is the kernel Gram matrix on $S$.
+2. By Talagrand contraction (Lemma 2) applied to the $1/\gamma$-Lipschitz $\ell_\gamma$: $\hat{\mathfrak{R}}_S(\ell_\gamma \circ \mathcal{F}_B) \le \frac{1}{\gamma} \hat{\mathfrak{R}}_S(\mathcal{F}_B)$.
+
+<TheoremBlock type="theorem" number={6} title="Margin-based generalization bound for kernel classifiers">
+Let $\mathcal{F}_B = \{x \mapsto \langle w, \phi(x) \rangle : \|w\|_2 \le B\}$ with kernel $K$, and let $R = \sqrt{\sup_x K(x, x)}$. For any $\gamma > 0$ and $\delta \in (0, 1)$, with probability $\ge 1 - \delta$ over $S$, for every $f \in \mathcal{F}_B$,
+$$
+\Pr_{(X, Y) \sim P}[Y f(X) \le 0] \le \hat R_S^\gamma(f) + \frac{2 B R}{\gamma \sqrt n} + 3\sqrt{\frac{\log(2/\delta)}{2n}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Apply Theorem 3 to the loss class $\ell_\gamma \circ \mathcal{F}_B$ (range $[0, 1]$). The bound from Theorem 3 has $2 \hat{\mathfrak{R}}_S(\ell_\gamma \circ \mathcal{F}_B) \le \frac{2}{\gamma} \hat{\mathfrak{R}}_S(\mathcal{F}_B) \le \frac{2BR}{\gamma\sqrt n}$ via the two facts above. The 0-1 risk is $\Pr[Y f(X) \le 0] \le \mathbb{E}[\ell_\gamma(Y f(X))] = R_\gamma(f)$ because $\ell_\gamma$ upper-bounds the 0-1 loss; Theorem 3 bounds $R_\gamma(f) - \hat R_S^\gamma(f)$ by the displayed expression.
+</TheoremBlock>
+
+The $\gamma$ in the denominator makes the bound tight for *high-margin* classifiers: doubling the margin halves the complexity term. For SVMs, $B$ corresponds to the norm of the weight vector and $\gamma$ to the margin width — both standard quantities in the SVM training objective.
+
+### Linear classifiers and the norm-based bound
+
+The kernel-method bound specializes to plain linear classifiers when $\phi(x) = x$ (identity feature map) and $\mathcal{X} \subset \mathbb{R}^d$. Then $K(x, x') = x^\top x'$ and $R = \sup_x \|x\|_2$. The bound becomes
+
+$$
+\Pr_{(X, Y)}[Y f(X) \le 0] \le \hat R_S^\gamma(f) + \frac{2 \|w\|_2 \sup_x \|x\|_2}{\gamma \sqrt n} + 3\sqrt{\frac{\log(2/\delta)}{2n}}.
+$$
+
+Two observations:
+
+1. The complexity term scales as $\|w\|_2 / \gamma$ — *not* as $d$ or any explicit dimension. This is dimension-free; it depends only on the *norm of the weight vector* and the *margin*. Linear classifiers in million-dimensional feature spaces still get a meaningful bound, as long as the *norm* of the optimal weight vector is moderate.
+2. SVM training minimizes $\|w\|_2^2$ subject to a margin constraint $y_i (w^\top x_i + b) \ge 1$ — this is exactly the *quantity* that controls the generalization bound. SVMs aren't just "good classifiers"; their training objective *directly* optimizes the bound.
+
+<MarginBoundDemo client:visible />
+
+### Margin bounds for neural networks: a preview
+
+Margin bounds for neural networks have an analogous form but with $\|w\|_2$ replaced by a *product of layer norms*:
+$$
+\hat{\mathfrak{R}}_S(\mathcal{F}_{\mathrm{NN}}) \le \frac{R \prod_\ell \|W_\ell\|}{\sqrt n} \cdot (\text{small factors})
+$$
+(Bartlett 1998, Neyshabur–Bhojanapalli–McAllester–Srebro 2017, Bartlett–Foster–Telgarsky 2017). The picture: a deep network is a composition of Lipschitz maps; Talagrand contraction propagates margin through the layers, multiplying Lipschitz constants. For a network with $L$ layers and per-layer norm $\|W_\ell\| \approx 1$, the product is $\sim 1$ and the bound is informative; for networks with large per-layer norms (typical of unregularized training), the product blows up. §12 shows this empirically — the margin bound for a 2-layer MLP trained without explicit norm control comes out larger than $1$, vacuous. Modern post-classical bounds (PAC-Bayes, **PAC-Bayes Bounds** *(coming soon)*) use *flatness* of the loss landscape instead of layer norms, recovering non-vacuous bounds for some deep nets.
+
+## Algorithmic stability bounds
+
+The whole §§5–10 program routes generalization through *hypothesis-class complexity*. But generalization doesn't have to go that way. A different route — *algorithmic stability* — controls generalization through a property of the *learning algorithm*: how much does the algorithm's output change if we perturb one training example? If the answer is "not much," the empirical risk is close to the population risk, and we get a generalization bound that doesn't mention hypothesis-class complexity at all. This is the Bousquet–Elisseeff (2002) framework: regularization implies stability, and stability implies generalization.
+
+### Uniform $\beta$-stability defined
+
+A learning algorithm is a map $A: \mathcal{Z}^n \to \mathcal{H}$ from samples to hypotheses. For $i \in \{1, \ldots, n\}$, let $S^{(i)}$ denote $S$ with the $i$-th sample replaced by an iid copy $Z'_i$.
+
+<TheoremBlock type="definition" number={11} title="Uniform β-stability">
+$A$ is *uniformly $\beta$-stable* with respect to loss $\ell$ if for every $S \in \mathcal{Z}^n$, every $i \in \{1, \ldots, n\}$, and every $Z'_i \in \mathcal{Z}$,
+$$
+\sup_{(x, y) \in \mathcal{Z}} \big| \ell(A(S)(x), y) - \ell(A(S^{(i)})(x), y) \big| \le \beta.
+$$
+</TheoremBlock>
+
+The supremum is over *all* test points, not just $S$ — uniform stability is a strong condition. $\beta = \beta(n)$ typically decreases with $n$ (more data $\Rightarrow$ less sensitive to any one example).
+
+### Regularization implies stability (ridge regression)
+
+<TheoremBlock type="example" number={2} title="Ridge regression is β-stable">
+Consider ridge regression
+$$
+A(S) = \arg\min_{w \in \mathbb{R}^d} \frac{1}{n}\sum_{i=1}^n (y_i - w^\top x_i)^2 + \lambda \|w\|^2.
+$$
+The closed-form solution is $w_S = (X^\top X + n\lambda I)^{-1} X^\top y$. Suppose $\|x\|_2 \le R_X$ for all $x$ and $|y| \le R_Y$. The stability constant is $\beta = O(R_X^2 R_Y^2 / (\lambda n))$.
+</TheoremBlock>
+
+Three observations:
+
+1. $\beta$ decreases linearly in $n$ — more data, more stability.
+2. $\beta$ decreases linearly in $\lambda$ — stronger regularization, more stability.
+3. $\beta$ does *not* depend on $d$ — dimension-free, even in the under-determined case $d \gg n$.
+
+The proof goes through the closed-form $(X^\top X + n\lambda I)^{-1}$ and a perturbation argument: replacing one $x_i$ changes the inverse by an outer-product rank-one update, and the spectral norm of that update is bounded by $\|x_i\|_2^2 / (n \lambda)$ (full derivation: Bousquet–Elisseeff 2002 §3).
+
+### Stability implies generalization (Bousquet–Elisseeff)
+
+<TheoremBlock type="theorem" number={7} title="Bousquet–Elisseeff stability bound">
+If $A$ is uniformly $\beta$-stable with respect to a loss bounded in $[0, M]$, then for any $\delta \in (0, 1)$, with probability $\ge 1 - \delta$ over the iid sample $S$,
+$$
+R(A(S)) \le \hat R_S(A(S)) + \beta + (2 n \beta + M) \sqrt{\frac{\log(1/\delta)}{2n}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $g(S) = R(A(S)) - \hat R_S(A(S))$. The proof verifies three properties:
+
+1. $\mathbb{E}_S[g(S)] \le \beta$: a stability-based version of symmetrization (the ghost-sample trick) gives the expected gap directly.
+2. $g(S)$ has bounded differences in the McDiarmid sense: replacing $Z_i$ with $Z'_i$ changes $g(S)$ by at most $2\beta + M/n$ (the $2\beta$ comes from stability, the $M/n$ from the single-coordinate change of $\hat R_S$).
+3. McDiarmid concentration: $\Pr[g(S) - \mathbb{E}[g(S)] \ge t] \le \exp(-2t^2 / (n \cdot (2\beta + M/n)^2))$, giving with probability $\ge 1 - \delta$,
+$$
+g(S) \le \mathbb{E}[g(S)] + (2n\beta + M)\sqrt{\frac{\log(1/\delta)}{2n}}.
+$$
+Combining with $\mathbb{E}[g(S)] \le \beta$ gives the theorem. Full proof: Bousquet–Elisseeff 2002 §4.
+</TheoremBlock>
+
+For ridge regression with $\beta = O(L^2/(\lambda n))$, Theorem 7 yields
+$$
+R(w_S) \le \hat R_S(w_S) + \frac{L^2}{\lambda n} + \left(\frac{2 L^2}{\lambda} + M\right) \sqrt{\frac{\log(1/\delta)}{2n}}.
+$$
+The $L^2/\lambda$ in the deviation term is the regularization-stability cost; choosing $\lambda$ to balance this with the empirical risk's smaller $\lambda$ dependence gives an optimized excess-risk bound.
+
+<RidgeStabilityExplorer client:visible />
+
+### Why this route bypasses class complexity
+
+Theorem 7 contains no $\hat{\mathfrak{R}}_S(\mathcal{H})$, no $\mathrm{VCdim}(\mathcal{H})$, no covering number. The hypothesis class $\mathcal{H}$ doesn't appear at all — only $\beta$ does. This has three consequences:
+
+1. **The bound is algorithm-specific.** Two different algorithms applied to the same class produce different bounds. Ridge regression with $\lambda = 1$ has $\beta = O(1/n)$ and gets the fast $O(1/n)$ rate; the ERM over the same class (unregularized least squares) is *not* uniformly stable and gets only the slow $O(1/\sqrt n)$ Rademacher bound. *The choice of algorithm matters.*
+2. **The bound is dimension-free for ridge.** For under-determined least squares ($d > n$), the ERM over $\mathcal{H} = \mathbb{R}^d$ has $\hat{\mathfrak{R}}_S(\mathcal{H}) \to \infty$ — the Rademacher bound is useless. But ridge with $\lambda > 0$ has $\beta = O(1/(\lambda n))$ — finite, useful, dimension-free. Regularization buys generalization through stability, not through restricting $\mathcal{H}$.
+3. **The bound applies to randomized / SGD algorithms.** Define stability over the randomness of the algorithm too; SGD has approximate stability properties (Hardt–Recht–Singer 2016) that give generalization bounds for deep nets — non-trivial in regimes where Rademacher bounds are vacuous.
+
+The stability framework is one of the post-classical paths to non-vacuous deep-net bounds.
+
+## Worked example: empirical Rademacher and vacuousness
+
+We have built seven bound recipes. §12 puts them on two examples — one where they bite tightly, one where they go vacuous — and lets the reader see the classical theory's reach and its honest limits in the same picture.
+
+### Threshold classifier — Rademacher complexity in closed form
+
+Recap from §5: on a sample of $n$ uniform $[0,1]$ points, the threshold class produces exactly $n+1$ distinct labelings. Massart's lemma gives $\hat{\mathfrak{R}}_S(\mathcal{H}_{\mathrm{thresh}}) \le \sqrt{2 \log(n+1)/n}$, matching the true rate $O(\sqrt{\log n / n})$ to a constant factor. Corollary 3 plugs into the canonical bound for any $n$, $\delta$: the bound is *non-vacuous* (under $1$) for $n \gtrsim 10$, and tightens rapidly with $n$.
+
+### Gap-vs-$n$ scaling vs the theoretical envelope
+
+For the threshold class with $\eta = 0.10$ noise, the empirical worst-case gap matches the Corollary 3 envelope across $n \in \{30, 100, 300, 1000, 3000\}$ — §7 already showed this. The classical theory works as advertised in the *tabular small-class* regime: bounds are informative, the rate is correct, and the constant slack is a small multiple.
+
+### A 2-layer MLP on binary MNIST: classical bounds become vacuous
+
+We now apply the same machinery to a modest neural network on a real dataset and observe that the classical bound *exceeds $1$* — vacuous — *despite the model having trivial generalization gap*. The setup: subsample $n = 1000$ examples from the MNIST digits 0 and 1 (a binary classification task; the easiest non-trivial vision problem). Train a 2-layer ReLU MLP with hidden width $w = 64$. Evaluate generalization gap by held-out test accuracy. Compute the classical norm-based Rademacher upper bound and the Corollary 3 envelope.
+
+For a 2-layer MLP $f(x) = w_2^\top \mathrm{ReLU}(W_1 x)$ with $w_2 \in \mathbb{R}^w$ and $W_1 \in \mathbb{R}^{w \times d}$, the layer-norm-based Rademacher upper bound (Bartlett 1998 / Neyshabur et al. 2017) is
+
+$$
+\hat{\mathfrak{R}}_S(\mathcal{F}_{\mathrm{NN}}) \le \frac{R_X \cdot \|W_1\|_{\mathrm{op}} \cdot \|w_2\|_2}{\sqrt n} \cdot O(\sqrt{\log w}),
+$$
+
+where $R_X = \sup_x \|x\|_2$ is the input radius and $\|\cdot\|_{\mathrm{op}}$ is the spectral / operator norm. For MNIST with pixels normalized to $[0, 1]$, $R_X \le \sqrt{784} \approx 28$. After training, the layer norms produce a classical Rademacher upper bound that comfortably exceeds the trivial range of the loss — vacuous. Meanwhile the actual generalization gap (test error minus train error) is $\sim 0.005$. Classical theory says nothing useful about why this network generalizes.
+
+<VacuousnessDemo client:visible />
+
+### What the failure tells us
+
+Three honest takeaways:
+
+1. **The bound isn't *wrong*.** Corollary 3 holds with high probability for any $\mathcal{H}$, including 2-layer MLPs. The MLP could, in principle, fit random labels — Zhang et al. 2017 demonstrated this empirically — and a classical bound has to cover that worst case. So Rademacher complexity for typical neural network classes really is close to $1$, and the bound really is vacuous.
+2. **The classical bound charges $\mathcal{H}$ uniformly.** Rademacher complexity is a property of the entire class. It does not care that the *specific* trained network $\hat h_S$ is in a "good neighborhood" of $\mathcal{H}$ where networks all generalize. *Data-dependent* and *algorithm-dependent* refinements — PAC-Bayes (Dziugaite & Roy 2017), the implicit bias of SGD (Neyshabur et al. 2017), and compression-based bounds (Arora et al. 2018) — locate the trained network in a tighter implicit hypothesis class and recover non-vacuous bounds for some deep nets.
+3. **Stability is an alternative route.** Stability bounds (§11) for SGD on smooth losses (Hardt–Recht–Singer 2016) give non-vacuous bounds without going through $\hat{\mathfrak{R}}_S$ at all. The trade-off: stability bounds work only for certain optimization schedules and don't yet match the empirical accuracy of practical deep nets.
+
+The vacuousness puzzle is the chapter's central honest reckoning. Classical generalization theory delivers crisp bounds for tabular and kernel methods; it falls silent for modern deep nets. The post-classical bounds are an active research area, surveyed in §14.
+
+## Computational notes
+
+### Rademacher Monte Carlo: cost and structure
+
+The naive Rademacher estimator $\hat{\mathfrak{R}}_S(\mathcal{H}) \approx \frac{1}{B}\sum_{b=1}^B \sup_h \frac{1}{n}\sum_i \sigma_i^{(b)} h(x_i)$ costs $O(B \cdot |\mathcal{H}| \cdot n)$ time when $\mathcal{H}$ is finite, $O(B \cdot \mathrm{OPT}(\mathcal{H}, n))$ when $\sup_h$ requires optimization. For "nice" classes (linear, kernel) the supremum is a quadratic program in the Rademacher labels; for thresholds / intervals it has a closed-form $O(n \log n)$ solution per Rademacher draw. Variance of the MC estimator decreases as $1/\sqrt{B}$, so $B \sim 1000$ gives 2-decimal-place accuracy. For high-dimensional or NN classes, the supremum can't be optimized exactly; *upper bounds* via Massart, Dudley, or layer-norm propagation are the practical alternatives.
+
+### Class-evaluation matrices and structured shortcuts
+
+For finite or finitely-enumerable classes, build $H \in \{0, 1\}^{|\mathcal{H}| \times n}$ where $H[h, i] = h(X_i)$. Empirical Rademacher reduces to a single matrix multiplication $(H \cdot \sigma^\top) / n$ followed by row-wise max and average. NumPy broadcasting handles this in vectorized form. For real-valued classes use $H \in \mathbb{R}^{|\mathcal{H}| \times n}$. For continuous classes (linear, kernel) replace the enumeration by the *minimal* class that realizes all distinct labelings on $S$ — for thresholds, that's $n + 1$ rows; for half-planes in $\mathbb{R}^d$, $\binom{n}{d}$ rows by the Sauer–Shelah lemma; for sufficiently rich classes, $2^n$.
+
+### Pitfalls
+
+Three common errors: (i) confusing empirical and population Rademacher — the Corollary 3 bound uses *empirical*; (ii) forgetting to standardize $h(x) \in \{0, 1\}$ to $\{-1, +1\}$ for the Rademacher inner product (the unstandardized case shifts the sum by a $\sigma$-independent mean, but the supremum-of-sigma cancels it out — the result is correct but the variance is slightly off); (iii) computing covering numbers on the *population* metric when the bound uses the *empirical* metric (Dudley with $L_2(P_n)$, not $L_2(P)$). For high-dimensional Monte Carlo, prefer Rademacher antithetic pairs $\sigma, -\sigma$ for variance reduction.
+
+## Connections and limits
+
+§14 is the chapter's closing reckoning.
+
+### PAC-Bayes bounds (coming soon)
+
+The *PAC-Bayesian* framework (McAllester 1999, Catoni 2007, Maurer 2004) does not bound the gap of a single hypothesis; it bounds the *expected* gap under a posterior distribution $Q$ over hypotheses. The bound has the form
+$$
+\mathbb{E}_{h \sim Q}[R(h)] \le \mathbb{E}_{h \sim Q}[\hat R_S(h)] + \sqrt{\frac{\mathrm{KL}(Q \| P) + \log(1/\delta)}{2n}},
+$$
+where $P$ is a prior fixed before seeing the data. The bound is tighter than Rademacher precisely when $Q$ concentrates on hypotheses with small empirical risk *and* small KL to the prior. For deep networks, $Q$ as a Gaussian posterior around the SGD output produces non-vacuous bounds (Dziugaite & Roy 2017), giving the first classical theory bounds that match the empirical generalization of trained networks.
+
+<TheoremBlock type="remark">
+PAC-Bayes is the standard route to non-vacuous deep-net bounds and is the natural extension of generalization theory for modern overparameterized models. The forthcoming **PAC-Bayes Bounds** *(coming soon)* topic develops it in detail.
+</TheoremBlock>
+
+### VC dimension (coming soon)
+
+The Vapnik–Chervonenkis dimension is the *combinatorial* complexity measure for $\{0, 1\}$-valued classes — the largest $d$ such that some $d$-point set is *shattered* by $\mathcal{H}$ (every $2^d$ labeling is realizable). VC dimension underlies the Sauer–Shelah polynomial growth lemma, the Fundamental Theorem of Statistical Learning, and the realizable PAC bounds. For Rademacher-flavored bounds, the standard chain is: finite VC dimension $\Rightarrow$ polynomial growth function $\Rightarrow$ polynomial covering numbers $\Rightarrow$ Dudley integral evaluates to $O(\sqrt{d/n})$. The forthcoming **VC Dimension** *(coming soon)* topic develops all this in detail and complements `generalization-bounds` from the combinatorial direction (this topic develops it from the Rademacher direction).
+
+### The deep-network puzzle (Zhang et al. 2017)
+
+<TheoremBlock type="remark">
+Zhang et al. (2017) "Understanding deep learning requires rethinking generalization" demonstrated that standard convolutional networks can perfectly fit *random labels* on CIFAR-10 — meaning $\hat{\mathfrak{R}}_S(\mathcal{F}_{\mathrm{NN}}) \approx 1$ and the classical Rademacher bound is identically vacuous. Yet the same networks trained on *real* labels generalize well. This is the central empirical observation that classical theory cannot explain. Active responses include: (a) implicit-bias arguments — SGD prefers low-norm or "flat" solutions out of the infinitely many ERMs (Neyshabur et al. 2017, Soudry et al. 2018); (b) compression-based bounds (Arora et al. 2018); (c) PAC-Bayes — the SGD posterior has small KL to a reasonable prior; (d) the *neural tangent kernel* regime — overparameterized nets approximate kernel methods with margin bounds that *are* meaningful (Jacot et al. 2018). None has fully solved the puzzle. Tractable, computable non-vacuous deep-net bounds remain an active research target.
+</TheoremBlock>
+
+### Implicit bias, double descent, and beyond
+
+The classical regime $d < n$ has clean theory; the modern regime $d \gg n$ has surprising empirical phenomena like *double descent* (Belkin et al. 2019): generalization error first increases (as model size approaches interpolation threshold) then *decreases again* as the model grows further. Classical Rademacher and VC bounds predict monotone risk in model size, contradicting the empirical curve. Resolution requires data-dependent bounds (§9) that depend on which solution the algorithm finds — the *implicit bias* of SGD toward minimum-norm interpolators (Bartlett et al. 2020; *benign overfitting* literature). The post-classical landscape is still being mapped; this chapter ends with the classical theory's honest limit and the post-classical roadmap as the open frontier.
