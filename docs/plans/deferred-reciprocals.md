@@ -792,14 +792,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PAC-Bayes and VC-dimension generalization bounds are uniform-concentration statements whose proofs mirror the indicator-function comparison of Proof 1 (Neyman-Pearson). The 'MP test = LR test' dual…_
 
-## When `formalml/structural-risk-minimization` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/model-selection-and-information-criteria** declares `formalmlConnections` → `structural-risk-minimization` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Vapnik's SRM generalizes information criteria to function classes via VC dimension or Rademacher complexity. §24.10 Rem 26._
-
 ## When `formalml/uncertainty-quantification` ships
 
 Add the reciprocal pointer back to:
