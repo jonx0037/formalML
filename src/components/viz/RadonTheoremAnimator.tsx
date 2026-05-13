@@ -111,7 +111,7 @@ function renderPanel(
       .style('fill', color)
       .style('cursor', 'grab')
       .style('stroke', 'var(--color-bg)')
-      .style('stroke-width', 1.5)
+      .style('stroke-width', 2.5)
       .call(
         d3
           .drag<SVGCircleElement, unknown>()
