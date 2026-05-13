@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
-import * as d3 from 'd3';
+import { useMemo } from 'react';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
-import { isInTriangle, paletteVC, type Point2D } from './shared/vc-dimension';
+import { paletteVC, type Point2D } from './shared/vc-dimension';
 
 // =============================================================================
 // ShatteringPlayground — §2.5
@@ -70,12 +69,6 @@ function computeRow(points: Point2D[], type: 'halfline' | 'halfplane'): number {
     if (realizable) mask |= 1 << m;
   }
   return mask;
-}
-
-function isCollinear(p: Point2D[]): boolean {
-  // Cross product
-  const [a, b, c] = p;
-  return Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) < 1e-9;
 }
 
 export default function ShatteringPlayground() {

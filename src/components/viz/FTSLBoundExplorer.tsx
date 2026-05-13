@@ -93,6 +93,11 @@ export default function FTSLBoundExplorer() {
     [n, d, delta, cursorBound, half, containerWidth],
   );
 
+  // Payload's empirical gap was generated with the payload's fixed (d, δ);
+  // Panel B's bound line is recomputed from the current slider values so it
+  // tracks the right panel's controls. The empirical-gap dashed line stays
+  // tied to the precomputed Monte Carlo — its shape is fixed by the
+  // notebook's seed and is what we're comparing the bound against.
   const refB = useD3<SVGSVGElement>(
     (svg) => {
       const margin = { top: 22, right: 30, bottom: 40, left: 56 };
@@ -104,8 +109,12 @@ export default function FTSLBoundExplorer() {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
       const empRows = payload.empirical_half_planes;
+      const liveBounds = empRows.map((r) => ftslBoundEpsilon(r.n, d, delta));
       const ns = empRows.map((r) => r.n);
-      const allY = empRows.flatMap((r) => [r.bound, r.gap_mean]).filter((v) => v > 0);
+      const allY = [
+        ...liveBounds.filter((v) => v > 0),
+        ...empRows.map((r) => r.gap_mean).filter((v) => v > 0),
+      ];
       const yMin = Math.max(1e-3, Math.min(...allY) * 0.5);
       const yMax = Math.max(...allY) * 1.3;
       const x = d3.scaleLog().domain([Math.min(...ns) * 0.7, Math.max(...ns) * 1.4]).range([0, W]);
@@ -115,22 +124,23 @@ export default function FTSLBoundExplorer() {
       g.append('text').attr('x', W / 2).attr('y', H + 30).attr('text-anchor', 'middle').style('fill', 'var(--color-text)').style('font-size', '11px').text('sample size n (log)');
       g.append('text').attr('transform', 'rotate(-90)').attr('x', -H / 2).attr('y', -42).attr('text-anchor', 'middle').style('fill', 'var(--color-text)').style('font-size', '11px').text('gap (log)');
 
-      const lineBound = d3.line<EmpiricalRow>().x((r) => x(r.n)).y((r) => y(r.bound));
+      const boundData = empRows.map((r, i) => ({ n: r.n, bound: liveBounds[i] }));
+      const lineBound = d3.line<{ n: number; bound: number }>().x((p) => x(p.n)).y((p) => y(p.bound));
       const lineEmp = d3.line<EmpiricalRow>().x((r) => x(r.n)).y((r) => y(r.gap_mean));
-      g.append('path').datum(empRows).attr('d', lineBound).attr('fill', 'none').attr('stroke', paletteVC.primary).attr('stroke-width', 2.4);
+      g.append('path').datum(boundData).attr('d', lineBound).attr('fill', 'none').attr('stroke', paletteVC.primary).attr('stroke-width', 2.4);
       g.append('path').datum(empRows).attr('d', lineEmp).attr('fill', 'none').attr('stroke', paletteVC.emp).attr('stroke-width', 2.0).attr('stroke-dasharray', '5 3');
 
       empRows.forEach((r) => {
         g.append('circle').attr('cx', x(r.n)).attr('cy', y(r.gap_mean)).attr('r', 3).attr('fill', paletteVC.emp);
       });
 
-      const legend = g.append('g').attr('transform', `translate(${Math.max(8, W - 140)}, 6)`);
+      const legend = g.append('g').attr('transform', `translate(${Math.max(8, W - 200)}, 6)`);
       legend.append('line').attr('x1', 0).attr('x2', 14).attr('y1', 6).attr('y2', 6).attr('stroke', paletteVC.primary).attr('stroke-width', 2.4);
-      legend.append('text').attr('x', 18).attr('y', 10).style('fill', 'var(--color-text)').style('font-size', '10px').text('FTSL bound');
+      legend.append('text').attr('x', 18).attr('y', 10).style('fill', 'var(--color-text)').style('font-size', '10px').text(`FTSL bound (d=${d}, δ=${delta.toFixed(2)})`);
       legend.append('line').attr('x1', 0).attr('x2', 14).attr('y1', 20).attr('y2', 20).attr('stroke', paletteVC.emp).attr('stroke-width', 2).attr('stroke-dasharray', '5 3');
-      legend.append('text').attr('x', 18).attr('y', 24).style('fill', 'var(--color-text)').style('font-size', '10px').text('empirical (HP, d=3)');
+      legend.append('text').attr('x', 18).attr('y', 24).style('fill', 'var(--color-text)').style('font-size', '10px').text(`empirical (HP, d=${payload.config.d_VC_half_plane}, δ=${payload.config.delta})`);
     },
-    [payload, half, containerWidth],
+    [payload, d, delta, half, containerWidth],
   );
 
   return (

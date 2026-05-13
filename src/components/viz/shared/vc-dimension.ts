@@ -44,8 +44,11 @@ export const paletteVC = {
 export type VCColorKey = keyof typeof paletteVC;
 
 // -----------------------------------------------------------------------------
-// Binomial coefficients — log-domain to handle large n without overflow.
-// Notebook uses scipy.special.comb(n, k, exact=True).
+// Binomial coefficients — iterative multiplicative form using IEEE-754 doubles.
+// Safe for the viz range (n ≤ 50, k ≤ n/2) where intermediate products stay
+// well below 2^53; the result fits in a double up to roughly C(1029, 514).
+// Notebook uses scipy.special.comb(n, k, exact=True). For larger n than the
+// viz cap, switch to a log-Gamma identity or BigInt.
 // -----------------------------------------------------------------------------
 
 export function binomialCoefficient(n: number, k: number): number {
@@ -314,7 +317,10 @@ export function enumerateRectangleDichotomies(points: Point2D[]): Set<string> {
 // I- = {i : lambda_i < 0}, with shared point p in conv(I+) ∩ conv(I-).
 //
 // In R^2 we have 4 points and 3 equations (2 for x_i + 1 for the lambda sum).
-// We solve via SVD of the 3x4 matrix.
+// We extract a null-space generator by cofactor expansion of the 3×4 matrix:
+// lambda_i = (-1)^i · det(3×3 minor obtained by deleting column i).
+// This is exact (no SVD or iterative solver needed) and avoids floating-point
+// pivoting issues on the small system.
 // -----------------------------------------------------------------------------
 
 export interface RadonResult {
