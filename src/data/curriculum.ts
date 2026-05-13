@@ -126,7 +126,6 @@ export const tracks = [
       'vc-dimension',
       'uncertainty-quantification',
       'semiparametric-inference',
-      'causal-inference-methods',
       'double-descent',
     ],
     calculusDependent: false,

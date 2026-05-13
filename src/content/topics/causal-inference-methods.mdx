@@ -1,0 +1,908 @@
+---
+title: "Causal Inference Methods"
+subtitle: "Identification, doubly-robust estimation, and inference under confounding — from potential outcomes and IPW through AIPW, TMLE, and DML, with instrumental variables, front-door identification, heterogeneous treatment effects, and sensitivity analysis"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "high-dimensional-regression"
+  - "concentration-inequalities"
+formalstatisticsPrereqs:
+  - topic: "empirical-processes"
+    site: "formalstatistics"
+    relationship: "The §6 AIPW estimator's efficient-influence-function representation, the §7 TMLE rate theorem, and the §8 DML $\\sqrt{n}$ result all depend on uniform central-limit theorems and Donsker-class machinery developed in the empirical-processes topic. The functional delta method underwrites the semiparametric asymptotic theory throughout §§4–8."
+  - topic: "generalized-linear-models"
+    site: "formalstatistics"
+    relationship: "Logistic regression is the canonical propensity-score model throughout §§4–8, and GLM machinery (M-estimation, sandwich variance, score equations) underlies the §4.3 asymptotic-normality result for IPW. The outcome regression in §5 is a generic GLM-style fit, with the partial-linear Robinson model that threads the §13 worked example a GLM with semiparametric component."
+  - topic: "linear-regression"
+    site: "formalstatistics"
+    relationship: "The §5 outcome regression, the §9 two-stage least squares framework, and the partial-linear Robinson (1988) model that threads the worked example all build directly on linear-regression machinery. The §8 DML cross-fitting reference is Chernozhukov et al. (2018), which generalizes the linear-regression sandwich variance to ML-nuisance settings."
+  - topic: "point-estimation"
+    site: "formalstatistics"
+    relationship: "AIPW (§6), TMLE (§7), and DML (§8) are M-estimators / Z-estimators with augmented score functions, and their asymptotic-normality follows from the same Stefanski–Boos (2002) M-estimator framework developed in the point-estimation topic. The §4.3 sandwich variance and the §6.4 EIF-based variance are both M-estimator sandwich formulas."
+  - topic: "confidence-intervals-and-duality"
+    site: "formalstatistics"
+    relationship: "Wald confidence intervals for the ATE — appearing throughout §§4, 6, 8, 13 — invoke the duality between hypothesis tests and CIs developed in the confidence-intervals-and-duality topic. The §12 Rosenbaum bounds and Anderson–Rubin confidence sets for IV (§9.4) are non-Wald CIs constructed via test inversion using the same duality."
+  - topic: "hypothesis-testing"
+    site: "formalstatistics"
+    relationship: "The §9.4 weak-IV-robust tests (Anderson–Rubin, conditional likelihood ratio) and the §12 Rosenbaum sensitivity bounds are inverted from hypothesis tests of the null treatment effect under various nuisance assumptions. The §11.4 heterogeneity tests for CATE are hypothesis tests of constant treatment effect."
+formalcalculusPrereqs:
+  - topic: "mean-value-taylor"
+    site: "formalcalculus"
+    relationship: "The Taylor expansion of the AIPW score around the true nuisances underlies the §6.3 product-of-errors decomposition and the §8.2 Neyman-orthogonality derivation. The mean-value-theorem-based argument that the bias has a second-order remainder in the nuisance estimation error is what licenses ML nuisances in the DML framework."
+  - topic: "inverse-implicit"
+    site: "formalcalculus"
+    relationship: "The §9 instrumental-variables identification argument relies on the implicit-function theorem to ensure the first-stage map $e(Z) \\to D$ is locally invertible when the relevance condition $\\operatorname{Cov}(Z, D) \\neq 0$ holds. The rank condition for IV identification is an inverse/implicit-function existence claim at the population level."
+  - topic: "multiple-integrals"
+    site: "formalcalculus"
+    relationship: "The §3.4 g-formula functional $\\mathbb{E}_X[\\mu_1(X) - \\mu_0(X)] = \\int (\\mu_1(x) - \\mu_0(x)) \\, dF_X(x)$ is an explicit multivariate integral over the covariate distribution. The longitudinal extension in §14.2 iterates this integral across time-points, requiring the Fubini machinery developed in the formalcalculus multiple-integrals topic."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "learning-theory"
+  - "causal-inference"
+  - "identification"
+  - "ipw"
+  - "aipw"
+  - "tmle"
+  - "double-machine-learning"
+  - "late"
+  - "front-door"
+  - "sensitivity-analysis"
+  - "cate"
+  - "propensity-score"
+  - "targeted-learning"
+  - "machine-learning"
+domain: "learning-theory"
+videoId: null
+notebookPath: "notebooks/causal-inference-methods/01_causal_inference_methods.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/causal-inference-methods.mdx"
+datePublished: 2026-05-12
+estimatedReadTime: 60
+abstract: "How do we estimate causal effects from observational data? This topic develops the modern toolkit for the binary-treatment average treatment effect under ignorability — potential outcomes, identification, inverse-probability weighting (IPW), outcome regression, augmented IPW (AIPW) with its doubly-robust property, targeted maximum likelihood (TMLE), and double / debiased machine learning (DML) — then extends to instrumental variables and front-door identification when ignorability fails, to heterogeneous treatment effects with meta-learners and causal forests, and to sensitivity analysis via E-values and Cinelli–Hazlett robustness values. The signature theorem is the doubly-robust property of AIPW: consistency for the average treatment effect whenever either the propensity model or the outcome model is correctly specified — a remarkable two-shots-on-goal guarantee no single-model estimator can match. The framework is threaded through a single Robinson partially-linear DGP from §1 onward, so that every estimator can be compared empirically on the same canonical workbench."
+connections:
+  - topic: "pac-bayes-bounds"
+    relationship: "PAC-Bayes bounds and the §8.2 Neyman-orthogonality argument share the same Taylor-expansion-around-truth machinery: the first-order term vanishes at the true parameter / true nuisance, leaving a second-order remainder that the Donsker-class structure tames. DML inherits the $\\sqrt{n}$ rate from a Neyman-orthogonal score the way PAC-Bayes inherits the dimension-free bound from its orthogonality between the posterior and the prior."
+  - topic: "structural-risk-minimization"
+    relationship: "SRM picks a single hypothesis class from a nested family; DML picks a single ATE estimator from a class of cross-fitted nuisance fits. Both rely on the rate of nuisance estimation falling below a critical threshold ($o_P(n^{-1/4})$ for DML, $o_P(n^{-1/2})$ for SRM consistency); both depend on uniform-convergence machinery underwriting the per-instance plug-in argument. SRM is model selection in supervised learning; DML is model selection at the nuisance-estimation step of causal inference."
+  - topic: "high-dimensional-regression"
+    relationship: "Lasso is the workhorse nuisance estimator in §§8, 13 of this topic; the restricted-eigenvalue + sparsity rate that delivers $o_P(n^{-1/4})$ consistency comes directly from the high-dimensional-regression topic. The §8.2 Neyman-orthogonality argument requires $\\|\\hat\\eta - \\eta_0\\|_2 = o_P(n^{-1/4})$, which lasso achieves under sparsity (Bickel–Ritov–Tsybakov 2009) covered in that topic."
+  - topic: "concentration-inequalities"
+    relationship: "The plug-in sandwich variance for IPW (§4.3), the AIPW EIF variance (§6.4), and the DML $\\sqrt{n}$-asymptotic-normality result (§8.4) all rely on standard concentration inequalities (Hoeffding, Bernstein, McDiarmid) for the empirical-process step. The §12 Rosenbaum bound is itself a closed-form Bernoulli concentration result expressed in tipping-point form."
+references:
+  - type: "paper"
+    title: "Estimation of the Parameters of a Single Equation in a Complete System of Stochastic Equations"
+    authors: "Anderson & Rubin"
+    year: 1949
+    url: "https://doi.org/10.1214/aoms/1177730090"
+    note: "The original Anderson–Rubin weak-IV-robust test, inverted to produce confidence sets that remain valid when the first-stage F-statistic is small."
+  - type: "paper"
+    title: "Weak Instruments in Instrumental Variables Regression: Theory and Practice"
+    authors: "Andrews, Stock & Sun"
+    year: 2019
+    url: "https://doi.org/10.1146/annurev-economics-080218-025643"
+    note: "Modern survey of weak-IV diagnostics and inference, including the $F > 23.1$ tightening of the Staiger–Stock rule of thumb (Annu. Rev. Econ. 11)."
+  - type: "paper"
+    title: "Recursive Partitioning for Heterogeneous Causal Effects"
+    authors: "Athey & Imbens"
+    year: 2016
+    url: "https://doi.org/10.1073/pnas.1510489113"
+    note: "Heterogeneity tests for CATE via causal trees (PNAS 113.27)."
+  - type: "paper"
+    title: "Generalized Random Forests"
+    authors: "Athey, Tibshirani & Wager"
+    year: 2019
+    url: "https://doi.org/10.1214/18-AOS1709"
+    note: "The honest-splitting + local-moment machinery behind causal forests (Ann. Stat. 47.2)."
+  - type: "paper"
+    title: "Policy Learning with Observational Data"
+    authors: "Athey & Wager"
+    year: 2021
+    url: "https://doi.org/10.3982/ECTA15732"
+    note: "Optimal treatment-rule estimation built on the DR-score (Econometrica 89.1)."
+  - type: "paper"
+    title: "Contextual Bandits in a Survey Experiment on Charitable Giving"
+    authors: "Athey, Byambadalai, Hadad, Krishnamurthy, Leung & Williams"
+    year: 2022
+    url: "https://arxiv.org/abs/2211.12004"
+    note: "Adaptive policy learning on a real survey experiment (arXiv)."
+  - type: "paper"
+    title: "Doubly Robust Estimation in Missing Data and Causal Inference Models"
+    authors: "Bang & Robins"
+    year: 2005
+    url: "https://doi.org/10.1111/j.1541-0420.2005.00377.x"
+    note: "The modern crisp formulation of AIPW that we adopt in §6 (Biometrics 61.4)."
+  - type: "book"
+    title: "Statistical Methods for Dynamic Treatment Regimes"
+    authors: "Chakraborty & Moodie"
+    year: 2013
+    url: "https://doi.org/10.1007/978-1-4614-7428-9"
+    note: "Reference for longitudinal extensions (§14.2) and dynamic-treatment-regime estimation (Springer)."
+  - type: "paper"
+    title: "Double/Debiased Machine Learning for Treatment and Structural Parameters"
+    authors: "Chernozhukov, Chetverikov, Demirer, Duflo, Hansen, Newey & Robins"
+    year: 2018
+    url: "https://doi.org/10.1111/ectj.12097"
+    note: "The DML paper; the §8.4 theorem we present is Theorem 3.1 (Econometrics Journal 21.1)."
+  - type: "paper"
+    title: "Making Sense of Sensitivity: Extending Omitted Variable Bias"
+    authors: "Cinelli & Hazlett"
+    year: 2020
+    url: "https://doi.org/10.1111/rssb.12348"
+    note: "Robustness Value $RV_q$ and the associated benchmarking framework used in §12.3 (JRSS-B 82.1)."
+  - type: "paper"
+    title: "Plausibly Exogenous"
+    authors: "Conley, Hansen & Rossi"
+    year: 2012
+    url: "https://doi.org/10.1162/REST_a_00139"
+    note: "Sensitivity analysis for partial-exclusion-violation in IV (Rev. Econ. Stat. 94.1)."
+  - type: "paper"
+    title: "Smoking and Lung Cancer: Recent Evidence and a Discussion of Some Questions"
+    authors: "Cornfield, Haenszel, Hammond, Lilienfeld, Shimkin & Wynder"
+    year: 1959
+    url: "https://doi.org/10.1093/jnci/22.1.173"
+    note: "The Cornfield-condition argument — the historical antecedent of the E-value (J. Natl. Cancer Inst. 22.1)."
+  - type: "paper"
+    title: "Dealing with Limited Overlap in Estimation of Average Treatment Effects"
+    authors: "Crump, Hotz, Imbens & Mitnik"
+    year: 2009
+    url: "https://doi.org/10.1093/biomet/asn055"
+    note: "Optimal trimming for IPW under near-positivity violation (Biometrika 96.1)."
+  - type: "paper"
+    title: "Deep Neural Networks for Estimation and Inference"
+    authors: "Farrell, Liang & Misra"
+    year: 2021
+    url: "https://doi.org/10.3982/ECTA16901"
+    note: "Neural-net rate conditions sufficient for DML (Econometrica 89.1)."
+  - type: "paper"
+    title: "Confidence Intervals for Policy Evaluation in Adaptive Experiments"
+    authors: "Hadad, Hirshberg, Zhan, Wager & Athey"
+    year: 2021
+    url: "https://doi.org/10.1073/pnas.2014602118"
+    note: "Inference for adaptively-collected experimental data (PNAS 118.15)."
+  - type: "paper"
+    title: "On the Role of the Propensity Score in Efficient Semiparametric Estimation of Average Treatment Effects"
+    authors: "Hahn"
+    year: 1998
+    url: "https://www.jstor.org/stable/2998560"
+    note: "The Hahn efficiency bound for the ATE (Econometrica 66.2)."
+  - type: "book"
+    title: "Causal Inference: What If"
+    authors: "Hernán & Robins"
+    year: 2020
+    url: "https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/"
+    note: "Standard reference; freely available online (Chapman & Hall/CRC)."
+  - type: "paper"
+    title: "Efficient Estimation of Average Treatment Effects Using the Estimated Propensity Score"
+    authors: "Hirano, Imbens & Ridder"
+    year: 2003
+    url: "https://doi.org/10.1111/1468-0262.00442"
+    note: "The estimated-propensity efficiency result we cite in §4.3 (Econometrica 71.4)."
+  - type: "paper"
+    title: "Statistics and Causal Inference"
+    authors: "Holland"
+    year: 1986
+    url: "https://doi.org/10.1080/01621459.1986.10478354"
+    note: "Names the fundamental problem of causal inference (JASA 81.396)."
+  - type: "paper"
+    title: "A Generalization of Sampling Without Replacement from a Finite Universe"
+    authors: "Horvitz & Thompson"
+    year: 1952
+    url: "https://doi.org/10.1080/01621459.1952.10483446"
+    note: "The Horvitz–Thompson IPW estimator (JASA 47.260)."
+  - type: "paper"
+    title: "Sensitivity to Exogeneity Assumptions in Program Evaluation"
+    authors: "Imbens"
+    year: 2003
+    url: "https://doi.org/10.1257/000282803321946921"
+    note: "Sensitivity analysis for treatment-effect estimators (AER 93.2)."
+  - type: "paper"
+    title: "Identification and Estimation of Local Average Treatment Effects"
+    authors: "Imbens & Angrist"
+    year: 1994
+    url: "https://doi.org/10.2307/2951620"
+    note: "The LATE theorem under monotonicity (Econometrica 62.2)."
+  - type: "paper"
+    title: "Optimal Doubly Robust Estimation of Heterogeneous Causal Effects"
+    authors: "Kennedy"
+    year: 2020
+    url: "https://arxiv.org/abs/2004.14497"
+    note: "The DR-learner construction we use in §11.2 (arXiv)."
+  - type: "paper"
+    title: "Who Should Be Treated? Empirical Welfare Maximization Methods for Treatment Choice"
+    authors: "Kitagawa & Tetenov"
+    year: 2018
+    url: "https://doi.org/10.3982/ECTA13288"
+    note: "Optimal-policy estimation in finite-sample (Econometrica 86.2)."
+  - type: "paper"
+    title: "Metalearners for Estimating Heterogeneous Treatment Effects Using Machine Learning"
+    authors: "Künzel, Sekhon, Bickel & Yu"
+    year: 2019
+    url: "https://doi.org/10.1073/pnas.1804597116"
+    note: "The S/T/X-learner taxonomy used in §11.2 (PNAS 116.10)."
+  - type: "paper"
+    title: "Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems"
+    authors: "Levine, Kumar, Tucker & Fu"
+    year: 2020
+    url: "https://arxiv.org/abs/2005.01643"
+    note: "Forward pointer to off-policy RL in §14.4 (arXiv)."
+  - type: "paper"
+    title: "Robust Metrics and Sensitivity Analyses for Meta-Analyses of Heterogeneous Effects"
+    authors: "Mathur & VanderWeele"
+    year: 2020
+    url: "https://doi.org/10.1097/EDE.0000000000001180"
+    note: "E-value applications in meta-analysis (Epidemiology 31.3)."
+  - type: "paper"
+    title: "A Conditional Likelihood Ratio Test for Structural Models"
+    authors: "Moreira"
+    year: 2003
+    url: "https://doi.org/10.1111/1468-0262.00438"
+    note: "Conditional likelihood-ratio test for weak IV (Econometrica 71.4)."
+  - type: "paper"
+    title: "Optimal Dynamic Treatment Regimes"
+    authors: "Murphy"
+    year: 2003
+    url: "https://doi.org/10.1111/1467-9868.00389"
+    note: "Foundational paper on dynamic treatment regimes (JRSS-B 65.2)."
+  - type: "paper"
+    title: "On the Application of Probability Theory to Agricultural Experiments"
+    authors: "Neyman"
+    year: 1990
+    url: "https://doi.org/10.1214/ss/1177012031"
+    note: "1923 original, translated 1990; the first formal potential-outcomes framework (Statistical Science 5.4)."
+  - type: "paper"
+    title: "Quasi-Oracle Estimation of Heterogeneous Treatment Effects"
+    authors: "Nie & Wager"
+    year: 2021
+    url: "https://doi.org/10.1093/biomet/asaa076"
+    note: "The R-learner construction with Neyman-orthogonal residual loss (Biometrika 108.2)."
+  - type: "paper"
+    title: "Causal Diagrams for Empirical Research"
+    authors: "Pearl"
+    year: 1995
+    url: "https://doi.org/10.1093/biomet/82.4.669"
+    note: "Front-door criterion + do-calculus (Biometrika 82.4)."
+  - type: "book"
+    title: "Causality: Models, Reasoning, and Inference"
+    authors: "Pearl"
+    year: 2009
+    url: "https://doi.org/10.1017/CBO9780511803161"
+    note: "Comprehensive reference for the graphical / do-calculus framework (Cambridge University Press, 2nd ed.)."
+  - type: "paper"
+    title: "A New Approach to Causal Inference in Mortality Studies with a Sustained Exposure Period"
+    authors: "Robins"
+    year: 1986
+    url: "https://doi.org/10.1016/0270-0255(86)90088-6"
+    note: "The g-computation algorithm (Math. Modelling 7)."
+  - type: "paper"
+    title: "Estimation of Regression Coefficients When Some Regressors Are Not Always Observed"
+    authors: "Robins, Rotnitzky & Zhao"
+    year: 1994
+    url: "https://doi.org/10.1080/01621459.1994.10476818"
+    note: "The original AIPW score in missing-data form (JASA 89.427)."
+  - type: "paper"
+    title: "Root-N-Consistent Semiparametric Regression"
+    authors: "Robinson"
+    year: 1988
+    url: "https://www.jstor.org/stable/1912705"
+    note: "The partial-linear model that threads the worked example (Econometrica 56.4)."
+  - type: "paper"
+    title: "Sensitivity Analysis for Certain Permutation Inferences in Matched Observational Studies"
+    authors: "Rosenbaum"
+    year: 1987
+    url: "https://doi.org/10.1093/biomet/74.1.13"
+    note: "The Rosenbaum-bound construction (Biometrika 74.1)."
+  - type: "book"
+    title: "Observational Studies"
+    authors: "Rosenbaum"
+    year: 2002
+    url: "https://doi.org/10.1007/978-1-4757-3692-2"
+    note: "Comprehensive reference for sensitivity analysis (Springer, 2nd ed.)."
+  - type: "paper"
+    title: "The Central Role of the Propensity Score in Observational Studies for Causal Effects"
+    authors: "Rosenbaum & Rubin"
+    year: 1983
+    url: "https://doi.org/10.1093/biomet/70.1.41"
+    note: "The propensity-score balancing-score theorem (Biometrika 70.1)."
+  - type: "paper"
+    title: "Estimating Causal Effects of Treatments in Randomized and Nonrandomized Studies"
+    authors: "Rubin"
+    year: 1974
+    url: "https://doi.org/10.1037/h0037350"
+    note: "The Rubin Causal Model (J. Educ. Psychol. 66.5)."
+  - type: "paper"
+    title: "Discussion of 'Randomization Analysis of Experimental Data: The Fisher Randomization Test' by D. Basu"
+    authors: "Rubin"
+    year: 1980
+    url: "https://doi.org/10.1080/01621459.1980.10477512"
+    note: "SUTVA formulation (JASA 75.371)."
+  - type: "paper"
+    title: "Identification of Joint Interventional Distributions in Recursive Semi-Markovian Causal Models"
+    authors: "Shpitser & Pearl"
+    year: 2006
+    url: "https://aaai.org/papers/01219-aaai06-191-identification-of-joint-interventional-distributions-in-recursive-semi-markovian-causal-models/"
+    note: "Completeness theorem for do-calculus (AAAI-06)."
+  - type: "paper"
+    title: "Instrumental Variables Regression with Weak Instruments"
+    authors: "Staiger & Stock"
+    year: 1997
+    url: "https://doi.org/10.2307/2171753"
+    note: "The original $F > 10$ rule of thumb (Econometrica 65.3)."
+  - type: "paper"
+    title: "The Calculus of M-Estimation"
+    authors: "Stefanski & Boos"
+    year: 2002
+    url: "https://doi.org/10.1198/000313002753631330"
+    note: "M-estimator sandwich variance framework underwriting §§4.3, 6.4 (American Statistician 56.1)."
+  - type: "book"
+    title: "Testing for Weak Instruments in Linear IV Regression"
+    authors: "Stock & Yogo"
+    year: 2005
+    url: "https://doi.org/10.1017/CBO9780511614491.006"
+    note: "Stock–Yogo critical-value tables for weak-IV inference (Cambridge University Press)."
+  - type: "paper"
+    title: "Data-Efficient Off-Policy Policy Evaluation for Reinforcement Learning"
+    authors: "Thomas & Brunskill"
+    year: 2016
+    url: "https://proceedings.mlr.press/v48/thomasa16.html"
+    note: "Off-policy evaluation that imports IPW/AIPW into RL (ICML)."
+  - type: "book"
+    title: "Targeted Learning: Causal Inference for Observational and Experimental Data"
+    authors: "van der Laan & Rose"
+    year: 2011
+    url: "https://doi.org/10.1007/978-1-4419-9782-1"
+    note: "Comprehensive TMLE reference (Springer)."
+  - type: "paper"
+    title: "Targeted Maximum Likelihood Learning"
+    authors: "van der Laan & Rubin"
+    year: 2006
+    url: "https://doi.org/10.2202/1557-4679.1043"
+    note: "The original TMLE paper (Int. J. Biostat. 2.1)."
+  - type: "book"
+    title: "Explanation in Causal Inference: Methods for Mediation and Interaction"
+    authors: "VanderWeele"
+    year: 2015
+    url: "https://doi.org/10.1093/ije/dyw277"
+    note: "Mediation analysis (Oxford University Press)."
+  - type: "paper"
+    title: "Sensitivity Analysis in Observational Research: Introducing the E-Value"
+    authors: "VanderWeele & Ding"
+    year: 2017
+    url: "https://doi.org/10.7326/M16-2607"
+    note: "The E-value, with VanderWeele–Ding moderate/strong benchmarks 1.5 / 3 / 5+ (Ann. Intern. Med. 167.4)."
+  - type: "paper"
+    title: "Estimation and Inference of Heterogeneous Treatment Effects Using Random Forests"
+    authors: "Wager & Athey"
+    year: 2018
+    url: "https://doi.org/10.1080/01621459.2017.1319839"
+    note: "Causal forests with pointwise asymptotic normality (JASA 113.523)."
+  - type: "book"
+    title: "The Tariff on Animal and Vegetable Oils"
+    authors: "Wright"
+    year: 1928
+    url: "https://doi.org/10.7551/mitpress/6809.001.0001"
+    note: "Appendix B introduces the original IV identification argument (Macmillan)."
+  - type: "paper"
+    title: "The Method of Path Coefficients"
+    authors: "Wright"
+    year: 1934
+    url: "https://doi.org/10.1214/aoms/1177732676"
+    note: "The path-diagram precursor to modern DAGs (Ann. Math. Stat. 5.3)."
+  - type: "paper"
+    title: "DAGs with NO TEARS: Continuous Optimization for Structure Learning"
+    authors: "Zheng, Aragam, Ravikumar & Xing"
+    year: 2018
+    url: "https://proceedings.neurips.cc/paper/2018/hash/e347c51419ffb23ca3fd5050202f9c3d-Abstract.html"
+    note: "Modern continuous-optimization approach to causal discovery (NeurIPS 31)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import CounterfactualPanel from '../../components/viz/CounterfactualPanel.tsx';
+import PropensityOverlapDiagnostic from '../../components/viz/PropensityOverlapDiagnostic.tsx';
+import IPWEstimatorExplorer from '../../components/viz/IPWEstimatorExplorer.tsx';
+import OutcomeRegressionVsIPW from '../../components/viz/OutcomeRegressionVsIPW.tsx';
+import DoublyRobustToggle from '../../components/viz/DoublyRobustToggle.tsx';
+import TMLEvsAIPW from '../../components/viz/TMLEvsAIPW.tsx';
+import DMLComparison from '../../components/viz/DMLComparison.tsx';
+import IVStrengthExplorer from '../../components/viz/IVStrengthExplorer.tsx';
+import CATEHeterogeneityHeatmap from '../../components/viz/CATEHeterogeneityHeatmap.tsx';
+import SensitivityToUnmeasuredConfounding from '../../components/viz/SensitivityToUnmeasuredConfounding.tsx';
+import CausalEstimatorForestPlot from '../../components/viz/CausalEstimatorForestPlot.tsx';
+
+## §1 Motivation: prediction is not enough
+
+A trained-and-tested machine-learning model that predicts well on held-out data is a wonderful thing. It tells us — with quantified uncertainty, even — what we should expect to *see* when a fresh covariate vector $X$ arrives at deployment. It does not, in general, tell us anything about what would *happen* if we intervened to change $X$. Those are different questions, and the distinction is the whole reason this topic exists.
+
+This section establishes the distinction concretely, surveys the standard pathologies of naive adjustment, sketches the rest of the topic, and previews the running example we'll thread through every estimator. The arc is short: predictive estimands measure *associations* in a distribution; causal estimands measure *effects of interventions*; under the right assumptions the two coincide; and the methods we'll develop are recipes for moving from association to effect when those assumptions hold.
+
+**Statistical estimands vs causal estimands.** Let $D \in \{0, 1\}$ be a binary treatment, $Y$ a real-valued outcome, and $X$ a vector of pre-treatment covariates we observe. Two estimands sit close together in notation and very far apart in meaning:
+
+$$
+\tau_{\text{assoc}} \;=\; \mathbb{E}[Y \mid D = 1] - \mathbb{E}[Y \mid D = 0],
+\qquad
+\tau \;=\; \mathbb{E}[Y(1)] - \mathbb{E}[Y(0)].
+$$
+
+The first is a contrast of conditional means in the observed-data distribution — a *statistical* estimand, computable from any iid sample $(X_i, D_i, Y_i)_{i=1}^n$ by replacing each $\mathbb{E}[\cdot]$ with a sample average. The second is a contrast of expected *potential outcomes* $Y(1), Y(0)$: the values $Y$ would take if every unit were forced into treatment (resp. control). Those potential outcomes are counterfactual — for any given unit we observe only one of them, namely $Y = Y(D)$ — so the second estimand cannot, in general, be read off the observed-data distribution without further assumptions. We unpack that machinery in §2 (notation) and §3 (assumptions). For now, take it on faith that $\tau$ is the object of interest and $\tau_{\text{assoc}}$ is its statistical doppelgänger.
+
+The two estimands agree in randomized experiments, where treatment is assigned independently of $X$: randomization severs the link that would otherwise let $X$ drive both $D$ and $Y$ simultaneously. They disagree in observational data — sometimes by a lot. A treatment that looks like it works because sicker patients are the ones who receive it can produce $\mathbb{E}[Y \mid D = 1] < \mathbb{E}[Y \mid D = 0]$, *apparently harmful*, when $\mathbb{E}[Y(1)] > \mathbb{E}[Y(0)]$, *actually beneficial*. That sign-flip is the bias the rest of this topic is built to retire.
+
+**When "controlling for $X$" goes wrong.** The textbook prescription — *adjust for all variables that affect both $D$ and $Y$* — is correct in spirit and easy to get wrong in practice. Two mistakes are common enough to deserve names.
+
+*Colliders.* A *collider* is a variable that is a common effect of two others. Conditioning on a collider — say, by adding it as a regressor — opens a path between its parents that was not there before. The cleanest example: take $A$ and $B$ as independent standard normals and let $C = A + B + \varepsilon$ be a noisy sum. Marginally, $\operatorname{Cor}(A, B) = 0$. Conditional on $C \approx 0$, the only way to have $C \approx 0$ is to have $A \approx -B$, so $\operatorname{Cor}(A, B \mid C \approx 0)$ is sharply negative. We have *manufactured* a dependence by adjusting for a variable we should have left alone.
+
+*Mediators.* A *mediator* sits on a causal path from $D$ to $Y$ — treatment causes the mediator, the mediator causes the outcome. Adjusting for a mediator subtracts out part of the very effect we want to measure, leaving only the direct portion. This is sometimes exactly what we want (controlled-direct-effect questions) and sometimes catastrophic (when the total effect is the thing that matters). The mistake is symmetric to the collider one: the textbook rule "control for $X$" is not a license to control for *every* $X$.
+
+The lesson is not "adjust less" or "adjust more." It is *adjust correctly* — which requires knowing enough of the causal structure to identify confounders without sweeping up colliders or mediators. §2 makes this precise via potential outcomes; §3 makes it precise via d-separation on DAGs.
+
+<Figure
+  src="/images/topics/causal-inference-methods/01_confounding_and_collider.png"
+  alt="Two panels: distribution of the naive contrast under confounding (biased upward away from the true τ = 1), and a scatter plot showing the manufactured anti-correlation between A and B conditional on C ≈ 0."
+  caption="Two failure modes on a stripped-down DGP. Left: confounding inflates the naive contrast above the true τ = 1. Right: conditioning on a common-effect collider C manufactures a spurious anti-correlation between independent A and B."
+/>
+
+**Map of the topic.** The topic is organized along the *identification-and-confounding-control axis*: given an estimand, what assumptions let us recover it from observed data, and what estimators implement that recovery efficiently? §§2–3 build the framework — potential outcomes, ignorability, positivity, the identification theorem. §§4–8 develop estimators that assume ignorability: IPW (§4), outcome regression and the g-formula (§5), augmented IPW (§6), targeted maximum likelihood (§7), and double machine learning (§8). The pedagogical arc is that each new estimator improves on its predecessors by being more robust to nuisance-model misspecification, culminating in DML, which licenses arbitrary off-the-shelf ML nuisance fits while preserving $\sqrt{n}$-asymptotic inference. §§9–10 handle the case where ignorability is unavailable: instrumental variables and front-door identification. §§11–12 cover heterogeneous treatment effects and sensitivity to unmeasured confounding. §13 threads the running example through every estimator end-to-end, and §14 closes with limits and connections.
+
+The *signature theorem* of this topic is the **doubly-robust property of AIPW** (§6.2): AIPW is consistent for $\tau$ whenever *either* the propensity model or the outcome model is correctly specified — a remarkable two-shots-on-goal guarantee no single-model estimator can match. The doubly-robust property is the bridge from the §§4–5 single-model estimators to the §§7–8 machinery that lets us use modern ML for nuisance estimation.
+
+**The running example.** Throughout the topic we work with a partially-linear data-generating process in the Robinson (1988) tradition:
+
+$$
+Y \;=\; \tau D + g(X) + \varepsilon, \qquad D \mid X \sim \text{Bernoulli}(e(X)),
+$$
+
+with $X \in \mathbb{R}^{10}$, $\varepsilon \sim \mathcal{N}(0, 1)$ independent of $(X, D)$, smooth nonlinear *outcome confounder* $g$, smooth nonlinear *propensity score* $e$, and known true ATE $\tau = 1$. The concrete forms we use are
+
+$$
+g(X) \;=\; \sin(X_1) + \tfrac{1}{2} X_2^2,
+\qquad
+e(X) \;=\; \sigma\!\bigl(1.5\bigl(0.5 X_1 + \Phi(X_3) - 0.3\,X_4 - 0.5\bigr)\bigr),
+$$
+
+where $\sigma$ is the logistic sigmoid and $\Phi$ the standard normal CDF. Propensity is coupled to the outcome via $X_1$ (the same variable that drives the nonlinear $\sin$ component of $g$); without this coupling, the naive contrast would be unbiased and the §5 misspec demonstration would fail to land. The DGP is benign enough that closed-form intuition is available, but rich enough that lasso, random-forest, and OLS nuisance fits give *qualitatively different* downstream behavior — which is exactly what we need to make the §6–§8 robustness story visible.
+
+## §2 The potential-outcomes framework
+
+§1 introduced the causal estimand $\tau = \mathbb{E}[Y(1) - Y(0)]$ without defining the notation. This section unpacks it: what $Y(d)$ means, what assumptions make it well-defined, why we can never observe it directly, and how the various target estimands of causal inference (ATE, ATT, CATE) relate. The framework we adopt is the Neyman–Rubin potential-outcomes framework, due to Neyman (1923) and elevated to general statistical use by Rubin (1974). The DAG-based framework of Pearl reappears in §3 and §10; for setting up notation, potential outcomes are cleaner.
+
+**Counterfactual notation.** For each unit $i$, the *potential outcomes* are $Y_i(0)$ and $Y_i(1)$ — the values of the outcome that would obtain if unit $i$ received control ($D = 0$) or treatment ($D = 1$), respectively. We treat $(Y_i(0), Y_i(1))$ as fixed, unit-level attributes — properties of the unit, not random variables associated with the experiment. Randomness enters through treatment assignment $D_i$ and through whatever measurement error or post-treatment noise is built into the outcome. The *unit-level treatment effect* is $\tau_i = Y_i(1) - Y_i(0)$. This is the quantity we would want to know for each unit if we could observe both potential outcomes. In reality we observe only $Y_i = Y_i(D_i)$, the realized outcome under the assigned treatment, and never the counterfactual $Y_i(1 - D_i)$.
+
+<TheoremBlock type="definition" number={1} title="SUTVA, consistency, ATE">
+The Stable Unit Treatment Value Assumption (SUTVA; Rubin 1980) requires both *no interference* — unit $i$'s potential outcomes depend on $i$'s own treatment, not on other units' treatments — and *no hidden treatment versions* — each value $d$ corresponds to a single well-defined intervention. Under SUTVA the **consistency** identity is definitional:
+
+$$
+Y_i \;=\; Y_i(D_i) \;=\; D_i \, Y_i(1) + (1 - D_i) \, Y_i(0).
+$$
+
+The **average treatment effect** is $\tau \;=\; \mathbb{E}[Y(1) - Y(0)]$; the **ATT** is $\tau_{\text{ATT}} = \mathbb{E}[Y(1) - Y(0) \mid D = 1]$; and the **conditional average treatment effect** is $\tau(x) = \mathbb{E}[Y(1) - Y(0) \mid X = x]$. The three are linked by $\tau = \mathbb{E}_X[\tau(X)]$ and $\tau_{\text{ATT}} = \mathbb{E}[\tau(X) \mid D = 1]$.
+</TheoremBlock>
+
+**The fundamental problem of causal inference.** The defining difficulty of causal inference is that for each unit we observe $Y(D)$ but never $Y(1 - D)$. The unit-level effect $\tau_i$ is unobservable. Holland (1986) named this the **fundamental problem of causal inference**, and it is genuinely a problem — not a technical detail to be waved away. Standard statistical inference deals with missing data as a contingent feature of the sampling design; here, the missing data is *structural* — half of every potential-outcome pair, every time.
+
+<CounterfactualPanel client:visible />
+
+The way out is to give up on unit-level effects and aim for *averages* over the population. The estimand $\tau$ is an average over the population's unit-level effects, not a unit-level quantity. Under the assumptions of §3, those averages can be expressed as functionals of the observed-data distribution despite the structural missingness.
+
+## §3 Identification under ignorability and positivity
+
+§2 set up the potential-outcomes notation and showed why unit-level effects are unobservable. The next question is when *averages* of those unit-level effects can be recovered from observed-data quantities. The answer comes in three pieces: a structural condition (ignorability), a regularity condition (positivity), and a theorem that exhibits the ATE as two distinct functionals of the observed-data distribution — one a propensity-weighted contrast, the other a covariate-adjusted regression contrast. These two representations are the seeds of the §4 IPW estimator and the §5 outcome-regression estimator, respectively.
+
+<TheoremBlock type="definition" number={2} title="Ignorability and positivity">
+**Conditional ignorability** (no unmeasured confounding, conditional exchangeability) is
+
+$$
+\{Y(0), Y(1)\} \;\perp\!\!\!\perp\; D \,\big|\, X.
+$$
+
+**Positivity** (overlap) is $0 < e(x) < 1$ a.s., where the **propensity score** is $e(x) = \Pr(D = 1 \mid X = x)$.
+</TheoremBlock>
+
+Ignorability is a *substantive* assumption about the data-generating process. It holds, by construction, when $X$ contains every variable that simultaneously affects both treatment assignment and potential outcomes. There is no statistical test for ignorability from observed data alone; the field treats it as a structural claim defended on substantive grounds (study design, domain knowledge, sensitivity analysis — §12). Positivity is a regularity condition that makes $1/e(X)$ and $1/(1 - e(X))$ finite. *Practical* positivity violations — where $e(x)$ is technically bounded but lives close to $\{0, 1\}$ on a non-trivial mass of $X$ — are a frequent cause of trouble in real applied work.
+
+<PropensityOverlapDiagnostic client:visible />
+
+**Randomized experiments.** The cleanest setting where both ignorability and positivity hold by construction is a randomized experiment. If $D \perp\!\!\!\perp (Y(0), Y(1))$ unconditionally and $\Pr(D = 1) \in (0, 1)$, then ignorability holds trivially with any $X$ and positivity holds because the propensity is just the fixed assignment probability. Everything we develop in §§4–10 is in some sense machinery for *approximating* the conditions of a randomized experiment when randomization is impossible — by reweighting (IPW), by regression adjustment (g-formula), by augmentation (AIPW), or by instrumental-variable manipulation (IV).
+
+<TheoremBlock type="theorem" number={1} title="Identification of the ATE">
+Assume SUTVA, consistency, ignorability $\{Y(0), Y(1)\} \perp\!\!\!\perp D \mid X$, and positivity $0 < e(x) < 1$ a.s. Then the ATE $\tau = \mathbb{E}[Y(1) - Y(0)]$ is identified by both:
+
+(a) The **g-formula** (standardization) functional:
+$$
+\tau \;=\; \mathbb{E}_X\!\bigl[\mu_1(X) - \mu_0(X)\bigr], \qquad \text{where } \mu_d(x) = \mathbb{E}[Y \mid X = x, D = d].
+$$
+
+(b) The **inverse-probability-weighting** (IPW) functional:
+$$
+\tau \;=\; \mathbb{E}\!\left[\frac{D \, Y}{e(X)} \;-\; \frac{(1 - D)\, Y}{1 - e(X)}\right].
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We show (a): $\mathbb{E}[Y(d)] = \mathbb{E}_X[\mu_d(X)]$ for each $d \in \{0, 1\}$; the ATE follows by taking the difference. The three-step chain is *iterated expectation → ignorability → consistency*:
+
+$$
+\begin{aligned}
+\mathbb{E}[Y(d)]
+  &= \mathbb{E}_X\!\bigl[\mathbb{E}[Y(d) \mid X]\bigr] && (\text{iterated expectation}) \\
+  &= \mathbb{E}_X\!\bigl[\mathbb{E}[Y(d) \mid X, D = d]\bigr] && (\text{ignorability}) \\
+  &= \mathbb{E}_X\!\bigl[\mathbb{E}[Y \mid X, D = d]\bigr] && (\text{consistency}) \\
+  &= \mathbb{E}_X[\mu_d(X)].
+\end{aligned}
+$$
+
+The second line is the load-bearing one. Ignorability says the conditional distribution of $Y(d)$ given $X$ does not depend on $D$, so conditioning on $D = d$ adds no information beyond $X$. The third line is a pure relabeling: within the sub-population $\{D = d\}$, the observed $Y$ *is* the potential outcome $Y(d)$ by consistency. Positivity enters implicitly: we need the conditioning event $\{D = d, X = x\}$ to have positive probability in every covariate stratum $x$.
+
+For (b), show $\mathbb{E}[D Y / e(X)] = \mathbb{E}[Y(1)]$; the second term follows by symmetry. The five-step chain is *consistency → iterated expectation → factoring → ignorability → cancellation*:
+
+$$
+\begin{aligned}
+\mathbb{E}\!\left[\frac{D Y}{e(X)}\right]
+  &= \mathbb{E}\!\left[\frac{D \, Y(1)}{e(X)}\right] && (\text{consistency: } D Y = D Y(1)) \\
+  &= \mathbb{E}\!\left[\,\mathbb{E}\!\left[\frac{D Y(1)}{e(X)} \,\big|\, X, Y(1)\right]\right] && (\text{iterated expectation}) \\
+  &= \mathbb{E}\!\left[\frac{Y(1)}{e(X)} \cdot \mathbb{E}[D \mid X, Y(1)]\right] && (\text{factor } (X, Y(1))\text{-measurable}) \\
+  &= \mathbb{E}\!\left[\frac{Y(1)}{e(X)} \cdot \mathbb{E}[D \mid X]\right] && (\text{ignorability}) \\
+  &= \mathbb{E}\!\left[\frac{Y(1)}{e(X)} \cdot e(X)\right] && (\text{definition of } e) \\
+  &= \mathbb{E}[Y(1)].
+\end{aligned}
+$$
+
+The fourth line is the load-bearing one — ignorability says $D \perp\!\!\!\perp Y(1) \mid X$, so $\mathbb{E}[D \mid X, Y(1)] = e(X)$, which cancels against the $1/e(X)$ weight. Symmetric calculation for $D = 0$ gives $\mathbb{E}[(1 - D) Y / (1 - e(X))] = \mathbb{E}[Y(0)]$; subtraction yields (b).
+</TheoremBlock>
+
+The two representations are point-equal but constructed from different ingredients — outcome means $\mu_d$ in (a), propensity $e$ in (b). That asymmetry is exactly what §6's augmented-IPW estimator will exploit to deliver double robustness.
+
+<Figure
+  src="/images/topics/causal-inference-methods/03_positivity_overlap.png"
+  alt="Histograms of fitted propensity scores by treatment arm on the canonical Robinson DGP."
+  caption="Static fallback for §3: propensity histograms by arm on the canonical Robinson DGP. The interactive viz above varies the steepness slider in [0.5, 5] and shades the positivity-violation regions [0, δ] ∪ [1−δ, 1]."
+/>
+
+## §4 The IPW estimator
+
+The IPW functional from §3 is literally an expectation, so the natural estimator just replaces it with a sample average. This gives the **inverse-probability-weighting** estimator (Horvitz–Thompson 1952; Robins, Rotnitzky & Zhao 1994).
+
+**The Horvitz–Thompson construction.** Given a sample $(X_i, D_i, Y_i)_{i=1}^n$ and access to (or a fitted estimate of) the propensity $e(X_i)$, the **HT-IPW** estimator is
+
+$$
+\hat\tau_{\text{IPW}} \;=\; \frac{1}{n}\sum_{i=1}^n \left[\frac{D_i Y_i}{e(X_i)} \;-\; \frac{(1-D_i)\, Y_i}{1 - e(X_i)}\right].
+$$
+
+The intuition is *reweighting to balance*. Each treated unit gets weight $1/e(X_i)$ — larger weight for units unlikely to be treated, smaller for those nearly guaranteed treatment. The reweighted treatment arm behaves as though drawn from the marginal distribution of $X$. The same construction balances the control arm. IPW constructs a *synthetic randomized experiment* from observational data: each unit's contribution is up-weighted by the reciprocal of the probability that it ended up in the arm we observe it in.
+
+**The propensity score as a balancing score.** Rosenbaum and Rubin (1983) showed that the propensity is a **balancing score**: conditional on $e(X)$ alone — not on the full $X$ — treated and control units have the same distribution of $X$:
+
+$$
+X \;\perp\!\!\!\perp\; D \,\big|\, e(X).
+$$
+
+Under ignorability, the same conditioning transfers to potential outcomes: $\{Y(0), Y(1)\} \perp\!\!\!\perp D \mid e(X)$. This is the structural reason IPW works with a *scalar* nuisance even when $X$ is high-dimensional. The downside is that a *misspecified* propensity model loses this property — the estimated $\hat e$ is no longer a true balancing score, and IPW becomes biased in proportion to the misspecification error.
+
+**Asymptotic normality and the sandwich.** Under ignorability, positivity, and correct specification, IPW is asymptotically normal:
+
+$$
+\sqrt{n}\,(\hat\tau_{\text{IPW}} - \tau) \;\xrightarrow{d}\; \mathcal{N}\!\bigl(0,\; V_{\text{IPW}}\bigr),
+$$
+
+with $V_{\text{IPW}} = \mathbb{E}[\psi_{\text{IPW}}^2]$ the variance of the per-unit summand $\psi_{\text{IPW}} = D Y / e(X) - (1 - D) Y / (1 - e(X)) - \tau$. The result follows from M-estimator theory (Stefanski & Boos 2002), with details on the <ExternalLink href="https://formalstatistics.com/topics/point-estimation" site="formalstatistics" topic="Point Estimation" /> page. Remarkably, estimating the propensity gives a *more efficient* IPW estimator than using the truth (Hirano, Imbens, and Ridder 2003). The plug-in sandwich gives valid Wald 95% CIs $\hat\tau \pm 1.96\sqrt{\widehat{\text{Var}}}$.
+
+**Stabilized weights and trimming.** The chief weakness of IPW is variance inflation under near-positivity violation. When some unit has $\hat e(X_i)$ near $\{0, 1\}$, its weight explodes; that single unit dominates and $\hat\tau$ inherits enormous variance. The **Hájek** (stabilized) estimator normalizes weights to sum to 1 within each arm; **trimming** discards units with $\hat e(X) \notin [\delta, 1 - \delta]$ at the cost of changing the estimand to the trimmed sub-population's ATE. Crump et al. (2009) gives an optimal trimming rule; $\delta \in [0.01, 0.05]$ is the practical default.
+
+<IPWEstimatorExplorer client:visible />
+
+## §5 Outcome regression and the g-formula
+
+The g-formula representation $\tau = \mathbb{E}_X[\mu_1(X) - \mu_0(X)]$ is the second identification functional. Where IPW reweights, the **outcome-regression** estimator fills in the missing potential outcomes via a regression model.
+
+**Standardization.** Fit a regression model for the conditional outcome means $\mu_d(x)$ — typically by splitting the sample on $D$ and fitting separate regressions, or by fitting a single joint model with $D$ as a feature. Then plug into the g-formula sample average:
+
+$$
+\hat\tau_{\text{OR}} \;=\; \frac{1}{n}\sum_{i=1}^n \bigl[\hat\mu_1(X_i) - \hat\mu_0(X_i)\bigr].
+$$
+
+For each unit — *regardless of which arm they were observed in* — we compute the model-implied counterfactual contrast and average over the empirical $X$-distribution. Under correct specification, OR is consistent and asymptotically normal. The naive plug-in SE $n^{-1/2} \cdot \operatorname{sd}(\hat\mu_1(X_i) - \hat\mu_0(X_i))$ ignores first-stage fitting noise and tends to under-cover; proper inference uses the bootstrap or the §6 AIPW-based variance.
+
+**Bias under misspecification.** If $\hat\mu_d \to \tilde\mu_d \neq \mu_d$ in probability, the asymptotic bias is the population-mean difference $\mathbb{E}[\tilde\mu_1(X) - \tilde\mu_0(X)] - \tau$ — direct, with no correcting term. OR's failure mode is *bias without variance blowup*. IPW under near-positivity violation is high-bias-and-high-variance; OR under misspecification is high-bias-and-low-variance. The two trade off in opposite directions.
+
+**The g-formula as integral form.** The representation $\tau = \int [\mu_1(x) - \mu_0(x)] \, dF_X(x)$ integrates the conditional contrast against the *marginal* covariate distribution rather than the treatment-conditional one. The sample-average plug-in is the Monte Carlo approximation against $\hat F_X$. For longitudinal settings with time-varying treatment, this becomes Robins's **g-computation algorithm** (Robins 1986); §14.2 sketches the extension.
+
+<OutcomeRegressionVsIPW client:visible />
+
+## §6 Augmented IPW and double robustness
+
+*Signature section.* §4 gave us IPW: correct propensity gives consistency, misspecified propensity gives bias. §5 gave us OR: correct outcome gives consistency, misspecified outcome gives bias. AIPW combines both into a single score whose bias is the *product* of two nuisance errors. Either nuisance correct ⇒ AIPW consistent.
+
+**The AIPW score.**
+
+$$
+\psi_{\text{AIPW}}(W;\, \tau, e, \mu) \;=\; \mu_1(X) - \mu_0(X) \;+\; \frac{D\,(Y - \mu_1(X))}{e(X)} \;-\; \frac{(1-D)\,(Y - \mu_0(X))}{1 - e(X)} \;-\; \tau.
+$$
+
+The empirical estimator is the sample average. Structure: *OR plus IPW-weighted augmentation by outcome residuals*. The augmentation corrects OR when the outcome model is wrong; it vanishes in expectation when the outcome model is right ($\mathbb{E}[Y - \mu_d \mid X, D = d] = 0$). Symmetric rewriting shows it equally corrects IPW under wrong propensity and vanishes under right propensity. Each nuisance covers the other.
+
+<TheoremBlock type="theorem" number={2} title="Double robustness of AIPW">
+Assume SUTVA, consistency, ignorability $\{Y(0), Y(1)\} \perp\!\!\!\perp D \mid X$, and positivity $0 < e(x) < 1$ a.s. Suppose the plug-in nuisances satisfy $\hat\mu_d \xrightarrow{p} \tilde\mu_d$ and $\hat e \xrightarrow{p} \tilde e$, with $\tilde e$ bounded away from $\{0, 1\}$. If *at least one* of (i) $\tilde\mu_d = \mu_d$ (correct outcome), or (ii) $\tilde e = e$ (correct propensity), then $\hat\tau_{\text{AIPW}} \xrightarrow{p} \tau$. Under mild rate conditions on the nuisance estimators, $\sqrt n(\hat\tau_{\text{AIPW}} - \tau) \xrightarrow{d} \mathcal{N}(0, V_{\text{AIPW}})$ with $V_{\text{AIPW}} = \mathbb{E}[\psi_{\text{AIPW}}^2]$, equal to the Hahn (1998) semiparametric efficiency bound when both nuisances are correctly specified.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We decompose the asymptotic bias as a sum of two product-of-errors terms in six steps.
+
+Let $\bar\psi(\tilde\mu, \tilde e) = \mathbb{E}[\psi_{\text{AIPW}}(W;\, \tau, \tilde e, \tilde\mu) + \tau]$, so $\bar\psi(\mu, e) = \tau$. By the LLN, $\hat\tau_{\text{AIPW}} \xrightarrow{p} \bar\psi(\tilde\mu, \tilde e)$.
+
+*Step 1: Condition on $X$ in each summand.* For the IPW-weighted residual term, by consistency $D Y = D Y(1)$ and by ignorability $D \perp\!\!\!\perp Y(1) \mid X$:
+
+$$
+\mathbb{E}[D\,(Y - \tilde\mu_1(X)) \mid X] = e(X)\,(\mu_1(X) - \tilde\mu_1(X)).
+$$
+
+Dividing by $\tilde e(X)$ and taking the symmetric calculation for the control arm:
+
+$$
+\mathbb{E}\!\left[\frac{D\,(Y - \tilde\mu_1(X))}{\tilde e(X)} \,\big|\, X\right] = \frac{e(X)}{\tilde e(X)}\,(\mu_1(X) - \tilde\mu_1(X)),
+$$
+
+$$
+\mathbb{E}\!\left[\frac{(1-D)\,(Y - \tilde\mu_0(X))}{1 - \tilde e(X)} \,\big|\, X\right] = \frac{1 - e(X)}{1 - \tilde e(X)}\,(\mu_0(X) - \tilde\mu_0(X)).
+$$
+
+*Step 2: Combine.* The conditional expectation of the full AIPW summand (with $\tau$ added back) given $X$ is
+
+$$
+\tilde\mu_1(X) - \tilde\mu_0(X) + \frac{e(X)}{\tilde e(X)}(\mu_1(X) - \tilde\mu_1(X)) - \frac{1 - e(X)}{1 - \tilde e(X)}(\mu_0(X) - \tilde\mu_0(X)).
+$$
+
+*Step 3: Add and subtract $\mu_1(X) - \mu_0(X)$.* Write $\tilde\mu_d = \mu_d + \Delta_{\mu, d}$ with $\Delta_{\mu, d}(X) = \tilde\mu_d(X) - \mu_d(X)$:
+
+$$
+\bigl[\mu_1(X) - \mu_0(X)\bigr] + \Delta_{\mu,1}(X)\Bigl[1 - \tfrac{e(X)}{\tilde e(X)}\Bigr] - \Delta_{\mu,0}(X)\Bigl[1 - \tfrac{1 - e(X)}{1 - \tilde e(X)}\Bigr].
+$$
+
+*Step 4: Simplify the brackets.* Each is a propensity error: $1 - e(X)/\tilde e(X) = \Delta_e(X)/\tilde e(X)$ and $1 - (1 - e(X))/(1 - \tilde e(X)) = -\Delta_e(X)/(1 - \tilde e(X))$ where $\Delta_e(X) = \tilde e(X) - e(X)$. Substituting:
+
+$$
+\bigl[\mu_1(X) - \mu_0(X)\bigr] + \frac{\Delta_{\mu,1}(X)\,\Delta_e(X)}{\tilde e(X)} + \frac{\Delta_{\mu,0}(X)\,\Delta_e(X)}{1 - \tilde e(X)}.
+$$
+
+*Step 5: Take unconditional expectation.*
+
+$$
+\boxed{\;\bar\psi(\tilde\mu, \tilde e) - \tau \;=\; \mathbb{E}\!\left[\frac{\Delta_{\mu,1}\,\Delta_e}{\tilde e}\right] + \mathbb{E}\!\left[\frac{\Delta_{\mu,0}\,\Delta_e}{1 - \tilde e}\right].\;}
+$$
+
+*Step 6: Conclude.* The asymptotic bias is a sum of products of outcome-model and propensity errors. If either nuisance is correctly specified (one factor identically zero), both products vanish and the bias is zero.
+</TheoremBlock>
+
+A consequence: the bias is *second-order* in nuisance errors — bounded by $\|\Delta_\mu\|_2 \cdot \|\Delta_e\|_2$ via Cauchy–Schwarz. When both nuisances converge at rate $o_P(n^{-1/4})$, the product converges at rate $o_P(n^{-1/2})$, asymptotically negligible relative to the $\sqrt n$ leading-order CLT fluctuation. This is the Neyman-orthogonality mechanism underlying §8's DML — same algebra, repackaged as a $\sqrt n$-rate guarantee.
+
+**The efficient influence function and semiparametric efficiency.** The AIPW score is the EIF for the ATE under ignorability. Hahn (1998) established that for any regular estimator with $\sqrt n(\hat\tau - \tau) \xrightarrow{d} \mathcal{N}(0, V)$,
+
+$$
+V \geq V^* = \mathbb{E}\!\left[\frac{\sigma_1^2(X)}{e(X)} + \frac{\sigma_0^2(X)}{1 - e(X)} + (\mu_1(X) - \mu_0(X) - \tau)^2\right],
+$$
+
+with $\sigma_d^2(X) = \operatorname{Var}(Y \mid X, D = d)$, and AIPW achieves $V^*$ when both nuisances are correctly specified. The EIF is **Neyman-orthogonal** to the nuisances at the true values, which licenses ML nuisance estimators in DML (§8).
+
+<DoublyRobustToggle client:visible />
+
+## §7 Targeted Maximum Likelihood (TMLE)
+
+TMLE produces an estimator asymptotically equivalent to AIPW — same limit distribution, same efficiency bound, same doubly-robust consistency — via a different numerical construction that solves the EIF estimating equation *exactly* in-sample and preserves the parameter space for bounded outcomes. Introduced by van der Laan and Rubin (2006), developed in van der Laan and Rose (2011).
+
+**Motivation.** AIPW's augmentation term has generally non-zero empirical mean at the initial $\hat\mu$ — the initial fit wasn't optimized for the EIF. TMLE adjusts $\hat\mu \to \hat\mu^*$ to enforce the **targeting equations**:
+
+$$
+\frac{1}{n}\sum_i \frac{D_i(Y_i - \hat\mu_1^*(X_i))}{\hat e(X_i)} = 0, \qquad \frac{1}{n}\sum_i \frac{(1-D_i)(Y_i - \hat\mu_0^*(X_i))}{1 - \hat e(X_i)} = 0.
+$$
+
+The TMLE estimator is then $\hat\tau_{\text{TMLE}} = n^{-1}\sum_i [\hat\mu_1^*(X_i) - \hat\mu_0^*(X_i)]$ — OR with the targeted regression, equivalently AIPW with the augmentation absorbed.
+
+**The one-step targeting update.** The linear submodel is
+
+$$
+\hat\mu_d^*(X) = \hat\mu_d(X) + \hat\epsilon_d \cdot H_d(X), \qquad H_1(X) = 1/\hat e(X),\quad H_0(X) = 1/(1 - \hat e(X)).
+$$
+
+OLS on each arm regressing residuals on the clever covariate gives
+
+$$
+\hat\epsilon_d = \frac{\sum_{i:\,D_i = d} H_d(X_i)\,(Y_i - \hat\mu_d(X_i))}{\sum_{i:\,D_i = d} H_d(X_i)^2}.
+$$
+
+The OLS first-order condition *is* the targeting equation.
+
+<TheoremBlock type="remark" title="Logistic-submodel TMLE for bounded outcomes">
+For bounded $Y \in [0, 1]$ (e.g., binary $Y$, or a dichotomized continuous outcome), the **logistic submodel** is
+
+$$
+\operatorname{logit}\bigl(\hat\mu_d^*(X)\bigr) = \operatorname{logit}\bigl(\hat\mu_d(X)\bigr) + \hat\epsilon_d \cdot H_d(X),
+$$
+
+with $\hat\epsilon_d$ from logistic regression of $Y$ on $H_d(X)$ with $\operatorname{logit}(\hat\mu_d)$ as offset. The same targeting property holds, and the construction preserves $\hat\mu_d^*(X) \in [0, 1]$ by construction — the linear submodel can drift outside $[0, 1]$ for binary outcomes. The notebook verifies this on a dichotomized Robinson outcome: linear submodel gives $\hat\tau = +0.3316$, logistic submodel gives $\hat\tau = +0.3318$, all $\hat\mu_d^*(X) \in [0, 1]$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="Asymptotic equivalence of TMLE and AIPW">
+Under SUTVA, consistency, ignorability, positivity, and nuisance rate conditions $\|\hat\eta - \eta_0\|_{L^2(P)} = o_P(n^{-1/4})$, TMLE is asymptotically normal:
+
+$$
+\sqrt n(\hat\tau_{\text{TMLE}} - \tau) \xrightarrow{d} \mathcal{N}(0, V^*),
+$$
+
+where $V^*$ is the Hahn (1998) bound. The proof uses the same product-of-errors decomposition as §6.3 with the additional observation that $\hat\epsilon_d = O_P(n^{-1/2})$, asymptotically negligible.
+</TheoremBlock>
+
+Finite-sample regimes where TMLE wins over AIPW: (i) when the outcome model is misspecified but the propensity is correct, TMLE absorbs the augmentation correction into the regression, giving marginally tighter variance at small $n$; (ii) for bounded outcomes, the logistic submodel keeps $\hat\mu_d^*(X) \in [0, 1]$ by construction.
+
+<TMLEvsAIPW client:visible />
+
+## §8 Double / debiased Machine Learning (DML)
+
+DML (Chernozhukov et al. 2018) lets us use flexible ML nuisance estimators — lasso, random forests, neural nets — and still get $\sqrt n$-asymptotic-normal inference. Two ingredients: Neyman orthogonality (already in the AIPW score) and cross-fitting.
+
+**Why naive plug-in fails with ML nuisance.** When $\hat\eta$ and the score are computed on the same data, in-sample residuals are correlated with the in-sample fit; the overfit bias enters at order $n^{-1/2}$, swamping the leading-order $\sqrt n$ CLT fluctuation. For parametric estimators with $p/n \to 0$, the overfit bias is $O_P(p/n)$ and negligible. For ML estimators that can memorize or interpolate (RF, NN, lasso boundaries with CV), it is nontrivial.
+
+**Neyman orthogonality.** The AIPW score has the structural property that the first-order variation of the expected score under nuisance perturbations is identically zero at the truth: $\partial_t \mathbb{E}[\psi(W; \tau, \eta_0 + t h)]|_{t=0} = 0$ for every direction $h$. We verify this component-by-component for the AIPW score:
+
+(i) *Perturbing $e$.* The $e$-dependent terms are $D(Y - \mu_1)/e$ and $-(1-D)(Y - \mu_0)/(1-e)$. Differentiating: $\partial_e \psi[h_e] = -D(Y - \mu_{1,0}) h_e / e_0^2 - (1-D)(Y - \mu_{0,0}) h_e / (1 - e_0)^2$. At the truth, conditioning on $X$: $\mathbb{E}[D(Y - \mu_{1,0}) \mid X] = e_0(X) \cdot \mathbb{E}[Y(1) - \mu_{1,0}(X) \mid X] = 0$ by ignorability and the definition of $\mu_{1,0}$. The control term vanishes symmetrically.
+
+(ii) *Perturbing $\mu_1$.* The $\mu_1$-dependent terms are $+\mu_1$ and $-D\mu_1/e$. Differentiating: $\partial_{\mu_1} \psi[h_{\mu_1}] = h_{\mu_1}(X)(1 - D/e(X))$. At the truth, $\mathbb{E}[1 - D/e_0(X) \mid X] = 1 - e_0(X)/e_0(X) = 0$.
+
+(iii) *Perturbing $\mu_0$.* By symmetry, $\mathbb{E}[\partial_{\mu_0} \psi] = 0$.
+
+All three directional derivatives vanish — the AIPW score is Neyman-orthogonal at the true nuisances. Consequence: the Taylor expansion of $\mathbb{E}[\psi(W; \tau_0, \hat\eta)]$ around $\eta_0$ has the first-order term vanishing, leaving an $O(\|\hat\eta - \eta_0\|^2)$ remainder. If $\|\hat\eta - \eta_0\| = o_P(n^{-1/4})$, this is $o_P(n^{-1/2})$ — asymptotically negligible relative to the $\sqrt n$-rate CLT fluctuation.
+
+**Cross-fitting.** The Neyman-orthogonality argument requires $\hat\eta$ and the score evaluation to be independent. Sample-splitting restores independence: partition $\{1, \ldots, n\}$ into $K$ folds; for each fold, fit nuisance on the other $K-1$ folds and evaluate the score on the held-out fold; average. Common $K = 5$ or $K = 10$.
+
+<TheoremBlock type="theorem" number={4} title="DML guarantee (Chernozhukov et al. 2018)">
+Under SUTVA, consistency, ignorability, positivity, and the rate condition $\|\hat\eta^{(-k)} - \eta_0\|_{L^2(P)} = o_P(n^{-1/4})$ for each fold $k$, the DML estimator is asymptotically normal:
+
+$$
+\sqrt n\,(\hat\tau_{\text{DML}} - \tau) \;\xrightarrow{d}\; \mathcal{N}(0, V^*),
+$$
+
+where $V^* = \mathbb{E}[\psi_{\text{AIPW}}(W; \tau, \eta_0)^2]$ is the Hahn (1998) semiparametric efficiency bound.
+</TheoremBlock>
+
+The $o_P(n^{-1/4})$ rate is satisfied by lasso (restricted-eigenvalue + sparsity), random forests (Athey–Wager honest splitting), neural networks (Farrell, Liang, Misra 2021), and series methods. The lasso rate is covered in detail on [high-dimensional regression](/topics/high-dimensional-regression).
+
+<DMLComparison client:visible />
+
+## §9 Instrumental variables
+
+§§4–8 assume ignorability. When an unobserved $U$ affects both $D$ and $Y$, those estimators are biased and no test on $(X, D, Y)$ alone reveals it. Two responses: bound the magnitude via sensitivity analysis (§12), or find an *instrument* $Z$ that allows point identification despite the unmeasured confounding.
+
+**Exclusion and relevance.** An instrument $Z$ satisfies (a) **Independence:** $Z \perp\!\!\!\perp (Y(0), Y(1), D(0), D(1))$ — typically by design (randomized $Z$); (b) **Exclusion restriction:** $Y(d, z) = Y(d)$ — $Z$ affects $Y$ only through $D$; (c) **Relevance:** $\operatorname{Cov}(Z, D) \neq 0$ — $Z$ moves the treatment, testable from data. When all three hold, the **Wald estimator** $\hat\tau_{\text{Wald}} = (\bar Y_{Z=1} - \bar Y_{Z=0})/(\bar D_{Z=1} - \bar D_{Z=0})$ identifies a causal effect: under homogeneous effects, $\tau$ directly; under heterogeneity with monotonicity, the LATE. Wald generalizes to **two-stage least squares** (2SLS) for multi-valued $Z$ or with controls $X$.
+
+<TheoremBlock type="theorem" number={5} title="LATE under monotonicity (Imbens & Angrist 1994)">
+Add (d) **Monotonicity:** $\Pr(D(1) \geq D(0)) = 1$ — no *defiers*. Then
+
+$$
+\hat\tau_{\text{Wald}} \xrightarrow{p} \tau_{\text{LATE}} = \mathbb{E}[Y(1) - Y(0) \mid \text{complier}].
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The population partitions into four principal strata by $(D(0), D(1))$: *never-takers* $(0, 0)$, *always-takers* $(1, 1)$, *compliers* $(0, 1)$, *defiers* $(1, 0)$ — the last empty by monotonicity. Compute the numerator and denominator of the Wald ratio in turn.
+
+*Numerator.* By independence + exclusion, $\mathbb{E}[Y \mid Z = 1] - \mathbb{E}[Y \mid Z = 0] = \mathbb{E}[Y(D(1)) - Y(D(0))]$. Partition by stratum and apply consistency:
+
+- Never-takers: $D(0) = D(1) = 0$, so $Y(D(1)) - Y(D(0)) = 0$. Contributes 0.
+- Always-takers: $D(0) = D(1) = 1$, so $Y(D(1)) - Y(D(0)) = 0$. Contributes 0.
+- Compliers: $D(0) = 0$, $D(1) = 1$, so $Y(D(1)) - Y(D(0)) = Y(1) - Y(0)$. Contributes $(Y(1) - Y(0)) \cdot \Pr(\text{complier})$ on average.
+- Defiers: empty by monotonicity.
+
+So $\mathbb{E}[Y(D(1)) - Y(D(0))] = \mathbb{E}[Y(1) - Y(0) \mid \text{complier}] \cdot \Pr(\text{complier})$.
+
+*Denominator.* $\mathbb{E}[D \mid Z = 1] - \mathbb{E}[D \mid Z = 0] = \mathbb{E}[D(1) - D(0)]$. Stratum contributions: never-takers 0, always-takers 0, compliers $+1$, defiers excluded. So $\mathbb{E}[D(1) - D(0)] = \Pr(\text{complier})$.
+
+*Ratio.* The complier probability cancels:
+
+$$
+\hat\tau_{\text{Wald}} \;\xrightarrow{p}\; \frac{\mathbb{E}[Y(1) - Y(0) \mid \text{complier}] \cdot \Pr(\text{complier})}{\Pr(\text{complier})} \;=\; \tau_{\text{LATE}}.
+$$
+</TheoremBlock>
+
+LATE ≠ ATE in general: different instruments select different complier populations and yield different LATE estimates. Without additional assumptions (e.g., homogeneous effects), the ATE is not IV-identified.
+
+**Weak-IV pathologies.** When $\operatorname{Cov}(Z, D)$ is small, the denominator approaches zero, the ratio variance explodes, the finite-sample distribution becomes Cauchy-like, and standard Wald CIs lose coverage. The **first-stage F-statistic** diagnoses: Staiger–Stock (1997) and Stock–Yogo (2005) give the rule-of-thumb $F > 10$; Andrews, Stock, and Sun (2019) tighten to $F > 23.1$ for nominal 5% Wald. Weak-IV-robust alternatives — the Anderson–Rubin test, CLR refinements (Moreira 2003) — invert the null into reduced-form tests that preserve size when $F$ is small. Conley, Hansen, and Rossi (2012) extends the toolkit to sensitivity for partial exclusion-restriction violations.
+
+<IVStrengthExplorer client:visible />
+
+## §10 Front-door identification
+
+When unobserved confounders prevent back-door adjustment and no instrument is available, the **front-door criterion** (Pearl 1995) provides identification via a *mediator* $M$ on the $D \to Y$ pathway.
+
+Conditions: (a) all $D \to Y$ paths go through $M$ — no direct $D \to Y$ effect; (b) $D \to M$ is unconfounded — no back-door from $D$ to $M$; (c) the back-door from $M$ to $Y$ is blocked by $D$. The canonical example is smoking → tar → cancer with unobserved genetic confounder.
+
+**The front-door criterion.** Under (a)–(c), Pearl's do-calculus gives
+
+$$
+\Pr(Y = y \mid \operatorname{do}(D = d)) = \sum_m \Pr(M = m \mid D = d) \sum_{d'} \Pr(Y = y \mid D = d', M = m)\,\Pr(D = d').
+$$
+
+For binary $D$ with continuous $Y$ and $M$, the ATE is
+
+$$
+\tau = \int g(m)\bigl[p(m \mid D = 1) - p(m \mid D = 0)\bigr]\, dm, \qquad g(m) = \sum_{d'} \mathbb{E}[Y \mid M = m, D = d']\,\Pr(D = d').
+$$
+
+The notebook implements this via a single OLS fit of $Y$ on $(M, D, M \cdot D)$, computes $\hat g(M_i)$ for each unit, and takes a difference of arm-means; the result tracks the oracle estimator (which knows $U$) to within Monte Carlo noise while the naive contrast is biased upward by the confounding through $U$.
+
+<Figure
+  src="/images/topics/causal-inference-methods/10_frontdoor.png"
+  alt="DAG schematic of the front-door criterion (U → D → M → Y, with an unobserved U → Y arrow) and the resulting Monte Carlo distributions of naive, front-door, and oracle estimators on the worked DGP."
+  caption="§10 front-door DGP: U unobserved, D | U, M | D, Y = β_M M + δ_U U + ε with true τ = γ · β_M = 0.8. The front-door estimator and the oracle (which knows U) both center at 0.8 ± MC noise; the naive contrast is biased upward to ≈ 2.03."
+/>
+
+**Generalizations.** Front-door and back-door are two criteria within Pearl's **do-calculus**, the complete identification framework. Shpitser–Pearl (2006) gives a completeness theorem: an effect is identifiable iff do-calculus derives its expression. For longitudinal time-varying treatment with time-varying confounding, Robins's **g-methods** generalize the back-door criterion — the g-formula, marginal structural models, structural nested models. Hernán & Robins (2020) is the standard reference.
+
+## §11 Heterogeneous treatment effects
+
+§§4–10 targeted scalar estimands. **CATE** $\tau(x) = \mathbb{E}[Y(1) - Y(0) \mid X = x]$ is the function-valued target. Under ignorability and positivity, $\tau(x) = \mu_1(x) - \mu_0(x)$. CATE is the substrate for individualized decisions.
+
+**Meta-learners.** Künzel et al. (2019) taxonomy:
+
+- **S-learner.** Single $\hat\mu(x, d)$; CATE = $\hat\mu(x, 1) - \hat\mu(x, 0)$. Biased toward zero when regularization shrinks the $D$ coefficient.
+- **T-learner.** Two regressions $\hat\mu_0$, $\hat\mu_1$ separately. Inefficient under arm imbalance but unbiased toward zero.
+- **X-learner** (Künzel et al. 2019). Imputed pseudo-effects combined via propensity weights — better at extrapolating across imbalanced arms.
+- **R-learner** (Nie & Wager 2021). Partial out $\hat m(x) = \mathbb{E}[Y \mid X]$ and $\hat e(x) = \mathbb{E}[D \mid X]$; minimize the Robinson residual loss. Neyman-orthogonal at the population level.
+- **DR-learner** (Kennedy 2020). Cross-fit AIPW pseudo-outcomes $\tilde Y_i = \psi_{\text{AIPW}}(W_i; \hat\eta^{(-k)})$ — by construction $\mathbb{E}[\tilde Y \mid X = x] = \tau(x)$ — then regress $\tilde Y$ on $X$. Inherits the doubly-robust property pointwise. **Modern default.**
+
+**Causal forests.** Wager & Athey (2018), Athey, Tibshirani, and Wager (2019) adapt random forests to CATE with (i) a treatment-effect splitting criterion (maximize within-leaf treatment-effect variance) and (ii) **honest splitting** — fit the tree on one half, estimate within-leaf effects on the other. Honesty enables pointwise asymptotic normality $(\hat\tau(x) - \tau(x))/\hat\sigma(x) \xrightarrow{d} \mathcal{N}(0, 1)$ via the infinitesimal jackknife.
+
+<CATEHeterogeneityHeatmap client:visible />
+
+**Why CATE matters.** The optimal treatment rule $\pi^*(x) = \mathbb{1}\{\tau(x) > c\}$ depends on the CATE function pointwise. Policy value $V(\pi) = \mathbb{E}[Y(\pi(X))]$ quantifies expected outcome under the rule. Policy learning (Kitagawa & Tetenov 2018; Athey & Wager 2021), heterogeneity tests (Athey & Imbens 2016; Chernozhukov et al. 2018), and subgroup analysis via generalized random forests are all built on CATE estimates.
+
+## §12 Sensitivity analysis
+
+**The unmeasured-confounding problem.** The bias of any back-door-adjusted estimator under unobserved $U$ scales as $\mathbb{E}_X[(\mathbb{E}[U \mid X, D=1] - \mathbb{E}[U \mid X, D=0]) \cdot \gamma_U]$, where $\gamma_U$ is the partial effect of $U$ on $Y$. Either piece zero ⇒ zero bias. Sensitivity analysis asks: *how large* would the unobserved piece need to be in order to nullify the observed effect?
+
+**Rosenbaum bounds.** Parameterize the maximum within-matched-pair odds-ratio gap an unobserved $U$ can induce by $\Gamma \geq 1$. The **tipping-point $\Gamma$** is the smallest value at which the worst-case p-value crosses 0.05. Published medical studies typically report tipping points in $[1.2, 3.0]$. Rosenbaum (1987, 2002) is the comprehensive reference.
+
+**The E-value (and Cinelli–Hazlett robustness value).** For an observed risk ratio $\text{RR} > 1$, VanderWeele and Ding (2017) define
+
+$$
+\text{E-value} = \text{RR} + \sqrt{\text{RR} \cdot (\text{RR} - 1)}.
+$$
+
+For $\text{RR} \leq 1$, replace by $1/\text{RR}$. Interpretation: the minimum confounding strength (RR scale, with both treatment and outcome) needed to nullify the effect. For continuous outcomes, approximate via $\text{RR} \approx \exp(0.91 \, d)$ for standardized effect $d$. Computable at point and at CI bound; the latter is more conservative. VanderWeele–Ding benchmarks: 1.5 modest, 3 moderate, 5+ strong.
+
+For a linear regression $Y = \tau D + X\gamma + \delta Z + \varepsilon$ with unobserved $Z$, the **Cinelli–Hazlett (2020) Robustness Value** is
+
+$$
+RV_q = \tfrac{1}{2}\!\left(\sqrt{f_q^4 + 4 f_q^2} - f_q^2\right), \qquad f_q = \frac{q \cdot |\hat t|}{\sqrt{df}},
+$$
+
+where $\hat t = \hat\beta_D / \widehat{\text{SE}}$. $RV_q$ is the value at which $R^2_{Y \sim Z \mid D, X} = R^2_{D \sim Z \mid X} = RV_q$ produces bias $= q \cdot \hat\beta_D$. The conservative $RV_{q, \alpha}$ pushes the CI to include zero. **Both diagnostics report on different scales and should be reported together** — the E-value lives on the risk-ratio scale, the RV lives on the partial-$R^2$ scale.
+
+<SensitivityToUnmeasuredConfounding client:visible />
+
+**Practical reporting.** Three recommendations (VanderWeele & Ding 2017; Cinelli & Hazlett 2020): (1) always report some sensitivity diagnostic for observational studies — the E-value is the cheapest; (2) pair point estimates with CI-based sensitivity on multiple scales (E-value and RV); (3) calibrate against domain benchmarks. The caveat: sensitivity analysis quantifies robustness to *unmeasured* confounding, not to misspecification among observed covariates — the §6 doubly-robust property addresses the latter.
+
+## §13 Worked example: end-to-end on the Robinson DGP
+
+The full pipeline threads §§4–8 estimators through one estimation routine. The DGP is the canonical Robinson DGP from §1.4: $X \sim \mathcal{N}(0, I_{10})$, $e(X) = \sigma(1.5(0.5 X_1 + \Phi(X_3) - 0.3 X_4 - 0.5))$, $D \mid X \sim \text{Bernoulli}(e(X))$, $Y = \tau D + \sin(X_1) + 0.5 X_2^2 + \varepsilon$, $\tau = 1$.
+
+Nuisance fits are lasso CV (logistic with L1 penalty for the propensity, lasso CV per arm for the outcome) and a kernel-smoother RF proxy (the in-browser substitute for the notebook's full RandomForestRegressor). The forest plot shows IPW (Hájek), OR (g-comp), AIPW, DML-lasso, and DML-RF-proxy point estimates with 95% Wald CIs; the lower panel overlays the Monte Carlo distributions across $B$ replicates.
+
+<CausalEstimatorForestPlot client:visible />
+
+<TheoremBlock type="remark" title="Cross-check against doubleml">
+The Python notebook includes an optional cross-check against the `doubleml` package on a single sample. Hand-rolled DML-lasso returns $\hat\tau = +0.9893$ with $\widehat{\text{SE}} = 0.0637$; `doubleml.DoubleMLPLR` returns $\hat\tau = +0.9939$ with $\widehat{\text{SE}} = 0.0592$. The two agree to within Monte Carlo noise, as expected — the hand-rolled implementation gives us full control over the cross-fitting harness and the score evaluation, while `doubleml` is the reference for production work.
+</TheoremBlock>
+
+**Coverage table.** Across $B = 100$ replicates at $n = 1000$ on the canonical Robinson DGP, the notebook reports the following: IPW (Hájek) achieves 0.97 coverage with mean SE 0.10; AIPW achieves 0.89 with mean SE 0.07; DML-lasso achieves 0.95 with mean SE 0.10; DML-RF achieves 0.91 with mean SE 0.07. OR achieves 0.07 coverage because the naive plug-in SE ignores first-stage fitting noise — under-coverage of OR is expected and the §6 AIPW-based variance is the right alternative.
+
+**Sensitivity diagnostics on the AIPW estimate.** On the single-sample AIPW point estimate at $n = 2000$ with $\hat\tau = +0.97$, $\widehat{\text{SE}} = 0.051$: E-value (point) = 2.96, E-value (CI lower) = 2.74, $RV_{q=1} = 0.343$, $RV_{q=1, \alpha=0.05} = 0.314$. All four diagnostics agree that nullifying this effect would require an unmeasured confounder roughly as strong as a moderate epidemiological exposure-outcome pair (RR ≈ 3 on the risk-ratio scale, or partial $R^2$ of about 0.34 on both the treatment and the outcome residualized on observed covariates).
+
+## §14 Connections and limits
+
+**Rubin vs Pearl.** Two traditions — potential outcomes (Neyman, Rubin) and DAGs (Wright, Pearl). For binary-treatment ATE, they give equivalent identification claims and estimators; they differ in what they make easy to express. The Rubin tradition makes unit-level claims and randomization-based design natural; the Pearl tradition makes structural claims and do-calculus natural. Modern applied work mixes both. The framework chosen for this topic is the potential-outcomes one because it gives the cleanest setup for the §§4–8 estimator zoo; the §10 front-door section pivots to the DAG framework because that is where it lives most naturally.
+
+**Longitudinal extensions.** Time-varying treatment and time-varying confounding break the static back-door criterion: a covariate measured *after* an earlier treatment can be both a confounder for later treatment and a mediator for the earlier one. Robins's **g-methods** generalize: the longitudinal g-formula, marginal structural models with longitudinal IPW, structural nested models with longitudinal OR. Hernán & Robins (2020) is the standard reference.
+
+**What causal inference cannot do.** (a) The no-unmeasured-confounders ceiling: no procedure recovers $\tau$ from observational data alone when ignorability fails — sensitivity analysis (§12) bounds the magnitude of unobserved confounding required to overturn a finding but cannot identify $\tau$ itself. (b) Effects of non-manipulable "treatments" (race, gender, age) require careful specification of the manipulation regime — Holland (1986)'s "no causation without manipulation" formulation is one stance; modern mediation analysis (VanderWeele 2015) is another. (c) Extrapolation beyond observed treatment support requires parametric assumptions outside the framework — IPW, OR, AIPW are silent on what happens for $X$ values with $e(X) \in \{0, 1\}$ on the support boundary.
+
+**Forward pointers.** *Mediation analysis* (VanderWeele 2015) extends the potential-outcomes framework to decompose total effects into direct and indirect components. *Dynamic treatment regimes* (Murphy 2003; Chakraborty & Moodie 2013) extend longitudinally and connect to offline reinforcement learning (Levine et al. 2020) and off-policy evaluation (Thomas & Brunskill 2016). *Causal discovery* (PC, FCI, NOTEARS — Zheng et al. 2018) tries to learn the DAG from data when it is not known a priori. *Online causal inference and bandits* (Athey et al. 2022; Hadad et al. 2021) extend the framework to adaptive data collection.
+
+The §§3–8 framework is a building block. Future estimators built on top of sequence models, learned policies, and adaptive data will inherit the AIPW score, the doubly-robust property, Neyman orthogonality, and cross-fitting as substrate — the same way every modern model-selection rule inherits training-error-plus-capacity-penalty from [structural risk minimization](/topics/structural-risk-minimization) and every modern generalization bound inherits empirical-process / uniform-convergence machinery from <ExternalLink href="https://formalstatistics.com/topics/empirical-processes" site="formalstatistics" topic="Empirical Processes" />.
