@@ -26,7 +26,6 @@ import {
 
 const HEIGHT = 360;
 const N = 600;
-const SM_BREAKPOINT = 640;
 
 type Nuisance = 'oracle' | 'lasso' | 'kernel';
 
@@ -36,7 +35,6 @@ export default function DMLComparison() {
   const [crossFit, setCrossFit] = useState(true);
   const [bDisplay, setBDisplay] = useState(20);
   const [B, setB] = useState(20);
-  const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
 
   const { taus, meanTau, sdTau } = useMemo(() => {
     const fitter = nuisance === 'oracle' ? oracleNuisanceFitter

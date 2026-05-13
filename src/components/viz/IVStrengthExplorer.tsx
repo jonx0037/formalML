@@ -19,13 +19,11 @@ import {
 const HEIGHT = 360;
 const B_REP = 200;
 const N = 500;
-const SM_BREAKPOINT = 640;
 
 export default function IVStrengthExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [piDisplay, setPiDisplay] = useState(0.5);
   const [pi, setPi] = useState(0.5);
-  const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
 
   const { taus, medianF, iqr } = useMemo(() => {
     const taus = new Float64Array(B_REP);
@@ -37,13 +35,12 @@ export default function IVStrengthExplorer() {
       taus[b] = isFinite(r.tau) ? Math.max(-3, Math.min(5, r.tau)) : 0;
       Fs[b] = isFinite(r.firstStageF) ? r.firstStageF : 0;
     }
-    const sortedT = Array.from(taus).sort((a, b) => a - b);
-    const sortedF = Array.from(Fs).sort((a, b) => a - b);
-    const medT = sortedT[Math.floor(B_REP / 2)];
+    const sortedT = taus.slice().sort();
+    const sortedF = Fs.slice().sort();
     const medF = sortedF[Math.floor(B_REP / 2)];
     const q1 = sortedT[Math.floor(B_REP / 4)];
     const q3 = sortedT[Math.floor((3 * B_REP) / 4)];
-    return { taus, medianF: medF, iqr: q3 - q1, medianTau: medT };
+    return { taus, medianF: medF, iqr: q3 - q1 };
   }, [pi]);
 
   const svgRef = useD3<SVGSVGElement>(

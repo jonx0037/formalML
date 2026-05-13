@@ -42,14 +42,13 @@ export default function SensitivityToUnmeasuredConfounding() {
   const [alphaSig, setAlphaSig] = useState(0.05);
   const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
 
-  const { biases, ses, ePoint, eCi, rvQ, rvQAlpha, tippingIdx, baselineRes, sdY } = useMemo(() => {
+  const { biases, ses, ePoint, eCi, rvQ, rvQAlpha, tippingIdx } = useMemo(() => {
     const biases = new Float64Array(STRENGTHS.length);
     const ses = new Float64Array(STRENGTHS.length);
     let baseline: { tauHat: number; se: number; sdY: number } | null = null;
     for (let k = 0; k < STRENGTHS.length; k++) {
       const us = STRENGTHS[k];
       const taus: number[] = [];
-      let sdYAccum = 0;
       for (let b = 0; b < B_REP; b++) {
         const rng = mulberry32(20260512 + b * 53 + Math.round(us * 1000));
         const s = robinsonDGP(N, 10, 1.0, rng, { unobservedConfounderStrength: us });
@@ -70,16 +69,17 @@ export default function SensitivityToUnmeasuredConfounding() {
         if (k === 0 && b === 0) {
           baseline = { tauHat: res.tau, se: res.se, sdY: stddev(Y) };
         }
-        sdYAccum += stddev(Y);
       }
       const m = taus.reduce((a, c) => a + c, 0) / taus.length;
       let v = 0;
       for (const t of taus) v += (t - m) ** 2;
       biases[k] = m - 1;
-      ses[k] = Math.sqrt(v / Math.max(taus.length - 1, 1)) / Math.sqrt(taus.length);
+      ses[k] = Math.sqrt(v / Math.max(taus.length - 1, 1));
     }
     if (!baseline) baseline = { tauHat: 1, se: 0.05, sdY: 1.6 };
-    const tip = biases.findIndex((b, i) => (1 + b) - 1.96 * baseline!.se <= 0);
+    // Tipping point: smallest U-strength where the lower edge of the bias 95% band
+    // crosses zero (using the per-strength MC SE we plot in the band).
+    const tip = biases.findIndex((b, i) => (1 + b) - 1.96 * ses[i] <= 0);
     const tippingIdx = tip >= 0 ? tip : -1;
     const ev = eValueContinuous(baseline.tauHat, baseline.se, baseline.sdY);
     const rv = cinelliHazlettRV(baseline.tauHat, baseline.se, N - 5, { q: 1, alpha: alphaSig });
@@ -87,7 +87,7 @@ export default function SensitivityToUnmeasuredConfounding() {
       biases, ses,
       ePoint: ev.ePoint, eCi: ev.eCi,
       rvQ: rv.rvQ, rvQAlpha: rv.rvQAlpha,
-      tippingIdx, baselineRes: baseline, sdY: baseline.sdY,
+      tippingIdx,
     };
   }, [alphaSig]);
 
@@ -113,7 +113,13 @@ export default function SensitivityToUnmeasuredConfounding() {
         .style('stroke', '#3a6e3a').style('stroke-width', 1.5);
       g.append('line').attr('x1', 0).attr('x2', W).attr('y1', yScale(0)).attr('y2', yScale(0))
         .style('stroke', '#000').style('stroke-width', 0.8).style('stroke-dasharray', '4 4');
-      // Bias points + 95% band.
+      // Bias points + 95% MC band (mean ± 1.96·SE at each strength).
+      const bandArea = d3.area<number>()
+        .x((_, i) => xScale(STRENGTHS[i]))
+        .y0((_, i) => yScale(1 + biases[i] - 1.96 * ses[i]))
+        .y1((_, i) => yScale(1 + biases[i] + 1.96 * ses[i]));
+      g.append('path').datum(Array.from(biases)).attr('d', bandArea)
+        .style('fill', '#1f4e79').style('opacity', 0.15);
       const line = d3.line<number>().x((_, i) => xScale(STRENGTHS[i])).y((b) => yScale(1 + b));
       g.append('path').datum(Array.from(biases)).attr('d', line)
         .style('stroke', '#1f4e79').style('stroke-width', 2).style('fill', 'none');
@@ -127,9 +133,9 @@ export default function SensitivityToUnmeasuredConfounding() {
       }
       g.append('text').attr('x', W / 2).attr('y', H + 28).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text)').style('font-size', '11px').text('Unmeasured-confounder strength');
-      g.append('text').attr('x', 4).attr('y', 12).style('fill', 'var(--color-text-secondary)').style('font-size', '10px').text('(A) AIPW point estimate vs U strength');
+      g.append('text').attr('x', 4).attr('y', 12).style('fill', 'var(--color-text-secondary)').style('font-size', '10px').text('(A) AIPW estimate vs U strength (mean ± 1.96·MC SE)');
     },
-    [containerWidth, biases, tippingIdx, isMobile],
+    [containerWidth, biases, ses, tippingIdx, isMobile],
   );
 
   const eValueRef = useD3<SVGSVGElement>(

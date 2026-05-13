@@ -82,46 +82,56 @@ export default function OutcomeRegressionVsIPW() {
     return { orTaus, ipwTaus };
   }, [outCorrect, propCorrect]);
 
-  const drawPanel = (which: 'or' | 'ipw', color: string, taus: Float64Array, label: string) =>
-    useD3<SVGSVGElement>(
-      (svg) => {
-        const w = containerWidth || 720;
-        const panelW = isMobile ? w : w / 2 - 8;
-        const margin = { top: 20, right: 14, bottom: 36, left: 48 };
-        const W = panelW - margin.left - margin.right;
-        const H = HEIGHT - margin.top - margin.bottom;
-        svg.selectAll('*').remove();
-        if (W <= 0) return;
-        svg.attr('viewBox', `0 0 ${panelW} ${HEIGHT}`);
-        const g = svg.append('g').attr('transform', `translate(${margin.left}, ${margin.top})`);
-        const tauArr = Array.from(taus);
-        const lo = Math.min(0.5, d3.min(tauArr)!);
-        const hi = Math.max(1.7, d3.max(tauArr)!);
-        const xScale = d3.scaleLinear().domain([lo, hi]).range([0, W]).nice();
-        const bins = d3.bin().domain(xScale.domain() as [number, number]).thresholds(28)(tauArr);
-        const yScale = d3.scaleLinear().domain([0, d3.max(bins, (d) => d.length)! * 1.1 + 1]).range([H, 0]).nice();
-        g.append('g').attr('transform', `translate(0, ${H})`).call(d3.axisBottom(xScale).ticks(5));
-        g.append('g').call(d3.axisLeft(yScale).ticks(4));
-        g.selectAll('rect.bar').data(bins).join('rect').attr('class', 'bar')
-          .attr('x', (d) => xScale(d.x0!) + 1).attr('y', (d) => yScale(d.length))
-          .attr('width', (d) => Math.max(xScale(d.x1!) - xScale(d.x0!) - 1, 0))
-          .attr('height', (d) => H - yScale(d.length))
-          .style('fill', color).style('opacity', 0.7);
-        g.append('line').attr('x1', xScale(1)).attr('x2', xScale(1))
-          .attr('y1', 0).attr('y2', H).style('stroke', '#3a6e3a').style('stroke-width', 2);
-        const m = d3.mean(tauArr)!;
-        g.append('line').attr('x1', xScale(m)).attr('x2', xScale(m))
-          .attr('y1', 0).attr('y2', H).style('stroke', color).style('stroke-width', 1.5)
-          .style('stroke-dasharray', '4 4');
-        g.append('text').attr('x', W / 2).attr('y', H + 28).attr('text-anchor', 'middle')
-          .style('fill', 'var(--color-text)').style('font-size', '11px')
-          .text(`${label} τ̂ (mean = ${m.toFixed(3)})`);
-      },
-      [containerWidth, taus, color, label, isMobile],
-    );
+  // Render helper as a plain (non-hook) function. Each `useD3` is called
+  // unconditionally at the component's top level below — preserving the Rules
+  // of Hooks ordering across re-renders.
+  const renderHistogram = (
+    svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+    taus: Float64Array,
+    color: string,
+    label: string,
+  ) => {
+    const w = containerWidth || 720;
+    const panelW = isMobile ? w : w / 2 - 8;
+    const margin = { top: 20, right: 14, bottom: 36, left: 48 };
+    const W = panelW - margin.left - margin.right;
+    const H = HEIGHT - margin.top - margin.bottom;
+    svg.selectAll('*').remove();
+    if (W <= 0) return;
+    svg.attr('viewBox', `0 0 ${panelW} ${HEIGHT}`);
+    const g = svg.append('g').attr('transform', `translate(${margin.left}, ${margin.top})`);
+    const tauArr = Array.from(taus);
+    const lo = Math.min(0.5, d3.min(tauArr)!);
+    const hi = Math.max(1.7, d3.max(tauArr)!);
+    const xScale = d3.scaleLinear().domain([lo, hi]).range([0, W]).nice();
+    const bins = d3.bin().domain(xScale.domain() as [number, number]).thresholds(28)(tauArr);
+    const yScale = d3.scaleLinear().domain([0, d3.max(bins, (d) => d.length)! * 1.1 + 1]).range([H, 0]).nice();
+    g.append('g').attr('transform', `translate(0, ${H})`).call(d3.axisBottom(xScale).ticks(5));
+    g.append('g').call(d3.axisLeft(yScale).ticks(4));
+    g.selectAll('rect.bar').data(bins).join('rect').attr('class', 'bar')
+      .attr('x', (d) => xScale(d.x0!) + 1).attr('y', (d) => yScale(d.length))
+      .attr('width', (d) => Math.max(xScale(d.x1!) - xScale(d.x0!) - 1, 0))
+      .attr('height', (d) => H - yScale(d.length))
+      .style('fill', color).style('opacity', 0.7);
+    g.append('line').attr('x1', xScale(1)).attr('x2', xScale(1))
+      .attr('y1', 0).attr('y2', H).style('stroke', '#3a6e3a').style('stroke-width', 2);
+    const m = d3.mean(tauArr)!;
+    g.append('line').attr('x1', xScale(m)).attr('x2', xScale(m))
+      .attr('y1', 0).attr('y2', H).style('stroke', color).style('stroke-width', 1.5)
+      .style('stroke-dasharray', '4 4');
+    g.append('text').attr('x', W / 2).attr('y', H + 28).attr('text-anchor', 'middle')
+      .style('fill', 'var(--color-text)').style('font-size', '11px')
+      .text(`${label} τ̂ (mean = ${m.toFixed(3)})`);
+  };
 
-  const orRef = drawPanel('or', '#7b3c10', orTaus, 'OR');
-  const ipwRef = drawPanel('ipw', '#1f4e79', ipwTaus, 'IPW');
+  const orRef = useD3<SVGSVGElement>(
+    (svg) => renderHistogram(svg, orTaus, '#7b3c10', 'OR'),
+    [containerWidth, orTaus, isMobile],
+  );
+  const ipwRef = useD3<SVGSVGElement>(
+    (svg) => renderHistogram(svg, ipwTaus, '#1f4e79', 'IPW'),
+    [containerWidth, ipwTaus, isMobile],
+  );
 
   return (
     <div ref={containerRef} style={{ marginBlock: '1.25rem' }}>

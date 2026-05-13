@@ -401,37 +401,45 @@ export function logisticFit(
   const pa = p + 1;
   const Xa = new Float64Array(n * pa);
   for (let i = 0; i < n; i++) {
-    Xa[i * pa + 0] = 1;
-    for (let j = 0; j < p; j++) Xa[i * pa + j + 1] = X[i * p + j];
+    const baseSrc = i * p;
+    const baseDst = i * pa;
+    Xa[baseDst] = 1;
+    for (let j = 0; j < p; j++) Xa[baseDst + j + 1] = X[baseSrc + j];
   }
   const beta = new Float64Array(pa);
+  // Hoist scratch buffers out of the Newton loop; reuse with .fill(0) each iter.
+  const pi = new Float64Array(n);
+  const w = new Float64Array(n);
+  const g = new Float64Array(pa);
+  const H = new Float64Array(pa * pa);
   for (let iter = 0; iter < maxIter; iter++) {
+    g.fill(0);
+    H.fill(0);
     // Compute predictions and weights.
-    const pi = new Float64Array(n);
-    const w = new Float64Array(n);
     for (let i = 0; i < n; i++) {
+      const base = i * pa;
       let z = 0;
-      for (let j = 0; j < pa; j++) z += Xa[i * pa + j] * beta[j];
+      for (let j = 0; j < pa; j++) z += Xa[base + j] * beta[j];
       const pij = sigmoid(z);
       pi[i] = pij;
       w[i] = Math.max(pij * (1 - pij), 1e-6);
     }
     // Gradient g = X^T (D - pi) - ridge * beta.
-    const g = new Float64Array(pa);
     for (let i = 0; i < n; i++) {
+      const base = i * pa;
       const r = D[i] - pi[i];
-      for (let j = 0; j < pa; j++) g[j] += Xa[i * pa + j] * r;
+      for (let j = 0; j < pa; j++) g[j] += Xa[base + j] * r;
     }
     for (let j = 0; j < pa; j++) g[j] -= ridge * beta[j];
-    // Hessian-ish: X^T W X + ridge*I.
-    const H = new Float64Array(pa * pa);
+    // Hessian-ish: X^T W X + ridge*I (upper triangle only).
     for (let i = 0; i < n; i++) {
       const wi = w[i];
       const base = i * pa;
       for (let j = 0; j < pa; j++) {
-        const xij = Xa[base + j];
+        const wiXij = wi * Xa[base + j];
+        const rowJ = j * pa;
         for (let k = j; k < pa; k++) {
-          H[j * pa + k] += wi * xij * Xa[base + k];
+          H[rowJ + k] += wiXij * Xa[base + k];
         }
       }
     }
@@ -586,20 +594,24 @@ export function lassoFit(
   const maxIter = options.maxIter ?? 800;
   const tol = options.tol ?? 1e-6;
   const { Xc, yc, xMean, yMean, xScale } = centerXy(X, y, n, p);
-  // Power iteration for largest eigenvalue of X^T X / n.
-  let v = new Float64Array(p).fill(1 / Math.sqrt(p));
+  // Power iteration for largest eigenvalue of X^T X / n. Hoist scratch buffers
+  // out of the iteration; reuse in place each step.
+  const v = new Float64Array(p).fill(1 / Math.sqrt(p));
+  const Xv = new Float64Array(n);
+  const nv = new Float64Array(p);
   let L = 1;
   for (let it = 0; it < 30; it++) {
-    const Xv = new Float64Array(n);
     for (let i = 0; i < n; i++) {
+      const base = i * p;
       let s = 0;
-      for (let j = 0; j < p; j++) s += Xc[i * p + j] * v[j];
+      for (let j = 0; j < p; j++) s += Xc[base + j] * v[j];
       Xv[i] = s;
     }
-    const nv = new Float64Array(p);
+    nv.fill(0);
     for (let i = 0; i < n; i++) {
+      const base = i * p;
       const xi = Xv[i] / n;
-      for (let j = 0; j < p; j++) nv[j] += Xc[i * p + j] * xi;
+      for (let j = 0; j < p; j++) nv[j] += Xc[base + j] * xi;
     }
     let norm = 0;
     for (let j = 0; j < p; j++) norm += nv[j] * nv[j];
@@ -609,20 +621,23 @@ export function lassoFit(
     for (let j = 0; j < p; j++) v[j] = nv[j] / norm;
   }
   const step = 1 / Math.max(L, 1e-6);
-  // ISTA.
+  // ISTA. Hoist Xb and g; reuse in place each iteration.
   const beta = new Float64Array(p);
+  const Xb = new Float64Array(n);
+  const g = new Float64Array(p);
   for (let it = 0; it < maxIter; it++) {
     // Gradient = X^T(Xβ - y) / n.
-    const Xb = new Float64Array(n);
     for (let i = 0; i < n; i++) {
+      const base = i * p;
       let s = 0;
-      for (let j = 0; j < p; j++) s += Xc[i * p + j] * beta[j];
+      for (let j = 0; j < p; j++) s += Xc[base + j] * beta[j];
       Xb[i] = s - yc[i];
     }
-    const g = new Float64Array(p);
+    g.fill(0);
     for (let i = 0; i < n; i++) {
+      const base = i * p;
       const ri = Xb[i] / n;
-      for (let j = 0; j < p; j++) g[j] += Xc[i * p + j] * ri;
+      for (let j = 0; j < p; j++) g[j] += Xc[base + j] * ri;
     }
     let maxDelta = 0;
     for (let j = 0; j < p; j++) {
@@ -1535,20 +1550,19 @@ export function rosenbaumSignTestUpperBound(
   // Pr(Binomial(n, p) >= nPlus). Normal approximation for large nNonZero;
   // exact tail for small.
   if (nNonZero < 200) {
-    let cdf = 0;
-    let logC = 0;
-    // Compute log( C(n,k) p^k (1-p)^{n-k} ) iteratively.
+    // P(X >= nPlus) = sum_{k=nPlus}^n C(n,k) p^k q^{n-k}.
+    // Compute log C(n, nPlus) once, then update via the identity
+    // C(n, k+1) = C(n, k) * (n - k) / (k + 1) — overall O(n) rather than O(n^2).
     const p = pUpper;
     const lp = Math.log(p);
     const lq = Math.log(1 - p);
-    // P(X >= nPlus) = sum_{k=nPlus}^n C(n,k) p^k q^{n-k}.
+    let logBin = 0;
+    for (let i = 1; i <= nPlus; i++) logBin += Math.log(nNonZero - i + 1) - Math.log(i);
+    let cdf = 0;
     for (let k = nPlus; k <= nNonZero; k++) {
-      let logPk = lp * k + lq * (nNonZero - k);
-      // log C(n,k).
-      let logBin = 0;
-      for (let i = 1; i <= k; i++) logBin += Math.log(nNonZero - i + 1) - Math.log(i);
-      logPk += logBin;
+      const logPk = lp * k + lq * (nNonZero - k) + logBin;
       cdf += Math.exp(logPk);
+      if (k < nNonZero) logBin += Math.log(nNonZero - k) - Math.log(k + 1);
     }
     return Math.min(cdf, 1);
   }

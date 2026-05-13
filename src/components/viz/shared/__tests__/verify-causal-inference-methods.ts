@@ -290,9 +290,13 @@ header('§6 AIPW doubly-robust (4 nuisance specs, n = 2000)');
   within('§6 AIPW correct/correct', aipw_CC.tau, 0.8, 1.15, 'should recover τ');
   within('§6 AIPW correct prop/misspec out', aipw_CM.tau, 0.8, 1.15, 'should recover τ');
   within('§6 AIPW misspec prop/correct out', aipw_MC.tau, 0.8, 1.15, 'should recover τ');
-  // The misspec/misspec cell may show meaningful bias.
-  ok('§6 AIPW MM has larger gap than MC', Math.abs(aipw_MM.tau - 1) >= 0,
-    `MM=${aipw_MM.tau.toFixed(3)} MC=${aipw_MC.tau.toFixed(3)}`);
+  // The misspec/misspec cell may show meaningful bias; the doubly-robust property
+  // says correct/* and */correct cells should be tighter to τ than misspec/misspec.
+  // Compare error magnitudes: MM error should not be tighter than MC by more than MC noise.
+  const mcErr = Math.abs(aipw_MC.tau - 1);
+  const mmErr = Math.abs(aipw_MM.tau - 1);
+  ok('§6 AIPW MM not tighter than MC by more than 0.05', mmErr >= mcErr - 0.05,
+    `MM err=${mmErr.toFixed(3)} MC err=${mcErr.toFixed(3)}`);
 }
 
 // -----------------------------------------------------------------------------
@@ -358,7 +362,7 @@ header('§7 TMLE logistic submodel preserves [0, 1]');
   const sample = robinsonDGP(2000, 10, 1.0, rng);
   const { X, D, Y, n, p } = sample;
   const Ymed = (function () {
-    const s = Array.from(Y).sort((a, b) => a - b);
+    const s = Y.slice().sort();
     return s[Math.floor(s.length / 2)];
   })();
   const Yb = new Float64Array(n);

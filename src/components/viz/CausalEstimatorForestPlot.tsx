@@ -19,7 +19,6 @@ import {
 const HEIGHT_FOREST = 240;
 const HEIGHT_MC = 320;
 const N = 1500;
-const SM_BREAKPOINT = 760;
 
 const NAMES = ['IPW (Hájek)', 'OR (g-comp)', 'AIPW', 'DML-lasso', 'DML-RF-proxy'] as const;
 const COLORS = ['#c0504d', '#7b3c10', '#3a6e3a', '#1f4e79', '#2e7baa'];
@@ -28,7 +27,6 @@ export default function CausalEstimatorForestPlot() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [bDisplay, setBDisplay] = useState(40);
   const [B, setB] = useState(40);
-  const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
 
   const single = useMemo(() => {
     const rng = mulberry32(20260512 + 137);

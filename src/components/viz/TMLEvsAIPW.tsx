@@ -4,7 +4,6 @@ import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   aipwEstimate,
-  aipwScore,
   correctOutcomeFeatures,
   correctPropensityFeatures,
   linearFit,
@@ -27,12 +26,10 @@ import {
 const HEIGHT = 360;
 const B_REP = 150;
 const N = 500;
-const SM_BREAKPOINT = 640;
 
 export default function TMLEvsAIPW() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [outCorrect, setOutCorrect] = useState(false);
-  const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
 
   const { aipwTaus, tmleTaus, aipwAugMean, tmleAugMean } = useMemo(() => {
     const a = new Float64Array(B_REP);
