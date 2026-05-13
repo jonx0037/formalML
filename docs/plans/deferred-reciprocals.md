@@ -313,31 +313,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The MSE decomposition Bias² + Variance is the formal version of the ML bias-variance tradeoff. Regularization, model selection, and ensemble methods all navigate this tradeoff._
 
-## When `formalml/causal-inference` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/confidence-intervals-and-duality** declares `formalmlConnections` → `causal-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Instrumental-variables regression, doubly-robust estimation, and difference-in-differences all report confidence intervals on the average treatment effect. The Wald CI is most common; sandwich vari…_
-- **formalStatistics/hypothesis-testing** declares `formalmlConnections` → `causal-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Randomized experiments use t-tests and z-tests for average treatment effects; falsification and placebo tests are hypothesis tests for identification assumptions. The score test reappears as a spec…_
-
-## When `formalml/causal-inference-methods` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/empirical-processes** declares `formalmlConnections` → `causal-inference-methods` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Targeted maximum likelihood, augmented inverse-propensity weighting, and efficient-influence-function methods all rest on the functional delta method (§32.7) applied to nuisance-parameter empirical…_
-- **formalStatistics/generalized-linear-models** declares `formalmlConnections` → `causal-inference-methods` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Inverse-probability-weighted estimators, doubly-robust estimators, and TMLE all use GLMs as the propensity / outcome model components. §22.10 Rem 27 catalog-points; the methodology lives at formalml._
-- **formalStatistics/linear-regression** declares `formalmlConnections` → `causal-inference-methods` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Instrumental variables, difference-in-differences, regression discontinuity — all live in the linear-model framework where OLS + identifying restrictions give unbiased causal estimates. §21.10 Rem …_
-
 ## When `formalml/clustering` ships
 
 Add the reciprocal pointer back to:
