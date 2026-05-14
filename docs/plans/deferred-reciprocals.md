@@ -377,14 +377,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Johnson–Lindenstrauss lemma proves that random projections from ℝᵈ to ℝᵏ with k = O(ε⁻² log n) approximately preserve pairwise distances among n points. The proof uses sub-Gaussian concentratio…_
 
-## When `formalml/double-descent` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/regularization-and-penalized-estimation** declares `formalmlConnections` → `double-descent` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Modern overparameterized regimes (neural networks, random-features models) violate Topic 23's $p < n$ assumption. The double-descent phenomenon — risk curve as a function of model complexity has a …_
-
 ## When `formalml/embedding-spaces` ships
 
 Add the reciprocal pointer back to:
