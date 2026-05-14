@@ -26,9 +26,14 @@ import {
 const HEIGHT = 460;
 const P_GRID = Array.from({ length: 41 }, (_, i) => Math.max(1, Math.round((i / 40) * 200)));
 
-function logSlider(value: number, lo: number, hi: number): number {
-  const t = (value - 0) / 1;
+// Map slider value t ∈ [0, 1] → λ ∈ [lo, hi] on log scale.
+function logSliderToLambda(t: number, lo: number, hi: number): number {
   return Math.exp(Math.log(lo) + t * (Math.log(hi) - Math.log(lo)));
+}
+
+// Inverse of logSliderToLambda: map λ → t ∈ [0, 1].
+function lambdaToSliderT(lambda: number, lo: number, hi: number): number {
+  return (Math.log(lambda) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
 }
 
 export default function EmpiricalDoubleDescentExplorer() {
@@ -210,10 +215,10 @@ export default function EmpiricalDoubleDescentExplorer() {
             ridge overlay (λ = <strong>{lambdaDisplay.toFixed(3)}</strong>)
           </span>
           <input type="range" min={0} max={1} step={0.02}
-            value={lambdaDisplay > 0 ? Math.log10(lambdaDisplay) / 1 + 1 : 0}
+            value={lambdaDisplay > 0 ? lambdaToSliderT(lambdaDisplay, 0.01, 10) : 0}
             onChange={(e) => {
               const t = parseFloat(e.target.value);
-              setLambdaDisplay(t === 0 ? 0 : logSlider(t, 0.01, 10));
+              setLambdaDisplay(t === 0 ? 0 : logSliderToLambda(t, 0.01, 10));
             }}
             disabled={!showRidge} aria-label="Ridge penalty lambda, log scale" />
         </label>

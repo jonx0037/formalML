@@ -81,8 +81,10 @@ export default function EffectiveDimensionExplorer() {
     for (const name of FEATURE_NAMES) {
       const X = buildDesign(name, n, p, 2024 + name.length * 11);
       const svd = thinSVD(X, n, p);
-      const sortedDesc = Array.from(svd.S).slice().sort((a, b) => b - a);
-      result.push({ name, S: svd.S, sortedDesc: new Float64Array(sortedDesc) });
+      // Float64Array.sort() defaults to numeric (unlike Array.sort), so .slice().sort()
+      // is the fast in-place ascending sort. Reverse it for descending.
+      const sortedDesc = svd.S.slice().sort().reverse();
+      result.push({ name, S: svd.S, sortedDesc });
     }
     return result;
   }, [nCommitted, pCommitted]);

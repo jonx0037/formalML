@@ -233,11 +233,12 @@ export function thinSVD(X: Float64Array, n: number, p: number): ThinSVD {
         // leave U[:, k] = 0; this column is in the null-direction (rank-deficient)
         continue;
       }
+      const baseVt = k * p;
       // Xvk = X · Vt[k, :]^T
       for (let i = 0; i < n; i++) {
         let s = 0;
         const base = i * p;
-        for (let j = 0; j < p; j++) s += X[base + j] * Vt[k * p + j];
+        for (let j = 0; j < p; j++) s += X[base + j] * Vt[baseVt + j];
         Xvk[i] = s;
       }
       const inv = 1 / S[k];
@@ -264,11 +265,17 @@ export function thinSVD(X: Float64Array, n: number, p: number): ThinSVD {
     for (let k = 0; k < n; k++) {
       if (S[k] <= sTol) continue;
       const inv = 1 / S[k];
-      // row k of Vt = inv * U[:, k]^T · X
-      for (let j = 0; j < p; j++) {
-        let s = 0;
-        for (let i = 0; i < n; i++) s += U[i * n + k] * X[i * p + j];
-        Vt[k * p + j] = inv * s;
+      const baseVt = k * p;
+      // row k of Vt = inv * U[:, k]^T · X. Swap (j, i) loop order so X is read
+      // row-major and the U column-walk hoists out of the inner loop — same
+      // arithmetic, but n × p mults move from O(np) row-index recomputations
+      // to a single multiply per i.
+      for (let i = 0; i < n; i++) {
+        const uik = U[i * n + k] * inv;
+        const baseX = i * p;
+        for (let j = 0; j < p; j++) {
+          Vt[baseVt + j] += uik * X[baseX + j];
+        }
       }
     }
     return { U, S, Vt, n, p, r: n };
@@ -289,25 +296,30 @@ export function betaFromSVD(svd: ThinSVD, y: Float64Array, rcond?: number): Floa
   let sMax = 0;
   for (let k = 0; k < r; k++) if (S[k] > sMax) sMax = S[k];
   const sTol = rcondEff * sMax;
-  // c_k = (1/s_k) · (U[:, k]^T y), zeroed below tol
+  // c_k = (1/s_k) · (U[:, k]^T y), zeroed below tol. Swap (k, i) loops so U is
+  // walked row-major rather than column-major.
   const c = new Float64Array(r);
   const Ucols = n; // U has shape (n, n) for wide case, (n, p) for tall — column index k < r maps via column-stride
   const Ustride = n >= p ? p : n; // U row-major width
-  for (let k = 0; k < r; k++) {
-    if (S[k] <= sTol) {
-      c[k] = 0;
-      continue;
+  for (let i = 0; i < Ucols; i++) {
+    const base = i * Ustride;
+    const yi = y[i];
+    for (let k = 0; k < r; k++) {
+      c[k] += U[base + k] * yi;
     }
-    let s = 0;
-    for (let i = 0; i < Ucols; i++) s += U[i * Ustride + k] * y[i];
-    c[k] = s / S[k];
   }
-  // β = V c = Vt^T c, length p
+  for (let k = 0; k < r; k++) {
+    c[k] = S[k] > sTol ? c[k] / S[k] : 0;
+  }
+  // β = V c = Vt^T c, length p. Outer loop over k hoists `k * p`, inner loop
+  // walks Vt row-major and accumulates into β.
   const beta = new Float64Array(p);
-  for (let j = 0; j < p; j++) {
-    let s = 0;
-    for (let k = 0; k < r; k++) s += Vt[k * p + j] * c[k];
-    beta[j] = s;
+  for (let k = 0; k < r; k++) {
+    const base = k * p;
+    const ck = c[k];
+    for (let j = 0; j < p; j++) {
+      beta[j] += Vt[base + j] * ck;
+    }
   }
   return beta;
 }
@@ -328,18 +340,28 @@ export function betaRidgeFromSVD(svd: ThinSVD, y: Float64Array, lambda: number):
   const { U, S, Vt, n, p, r } = svd;
   const Ucols = n;
   const Ustride = n >= p ? p : n;
+  // Walk U row-major: same arithmetic, much better cache behavior than the
+  // column-walk per k.
   const c = new Float64Array(r);
-  for (let k = 0; k < r; k++) {
-    let s = 0;
-    for (let i = 0; i < Ucols; i++) s += U[i * Ustride + k] * y[i];
-    const sk = S[k];
-    c[k] = (sk * s) / (sk * sk + lambda);
+  for (let i = 0; i < Ucols; i++) {
+    const base = i * Ustride;
+    const yi = y[i];
+    for (let k = 0; k < r; k++) {
+      c[k] += U[base + k] * yi;
+    }
   }
+  for (let k = 0; k < r; k++) {
+    const sk = S[k];
+    c[k] = (sk * c[k]) / (sk * sk + lambda);
+  }
+  // β = Vt^T c — same row-major walk as betaFromSVD.
   const beta = new Float64Array(p);
-  for (let j = 0; j < p; j++) {
-    let s = 0;
-    for (let k = 0; k < r; k++) s += Vt[k * p + j] * c[k];
-    beta[j] = s;
+  for (let k = 0; k < r; k++) {
+    const base = k * p;
+    const ck = c[k];
+    for (let j = 0; j < p; j++) {
+      beta[j] += Vt[base + j] * ck;
+    }
   }
   return beta;
 }
@@ -619,11 +641,14 @@ export function gdTrajectory(opts: GdTrajectoryOptions): GdTrajectory {
   for (let k = 0; k < r; k++) cStar[k] = S[k] > sTol ? uy[k] / S[k] : 0;
 
   // Pre-build β̂† in ambient space for test-risk dist evaluation.
+  // β̂† = Σ_k cStar[k] · v_k = Vt^T · cStar. Walk Vt row-major.
   const betaDagger = new Float64Array(p);
-  for (let j = 0; j < p; j++) {
-    let s = 0;
-    for (let k = 0; k < r; k++) s += svd.Vt[k * p + j] * cStar[k];
-    betaDagger[j] = s;
+  for (let k = 0; k < r; k++) {
+    const base = k * p;
+    const ck = cStar[k];
+    for (let j = 0; j < p; j++) {
+      betaDagger[j] += svd.Vt[base + j] * ck;
+    }
   }
 
   const T = iters.length;
@@ -635,6 +660,21 @@ export function gdTrajectory(opts: GdTrajectoryOptions): GdTrajectory {
   const c_t = new Float64Array(r);
   const beta_t = new Float64Array(p);
 
+  // Precompute (1 − η s_k²) for each k — the decay base is constant across ti.
+  const decayBases = new Float64Array(r);
+  for (let k = 0; k < r; k++) decayBases[k] = 1 - eta * S[k] * S[k];
+
+  // Tall-case (n > p) orthogonal residual component is constant across ti:
+  // it contributes ‖y‖² − ‖U^T y‖² to the residual norm at every iteration.
+  let orthogonalResidual = 0;
+  if (n > p) {
+    let yNorm2 = 0;
+    for (let i = 0; i < n; i++) yNorm2 += y[i] * y[i];
+    let uy2 = 0;
+    for (let k = 0; k < r; k++) uy2 += uy[k] * uy[k];
+    orthogonalResidual = yNorm2 - uy2;
+  }
+
   for (let ti = 0; ti < T; ti++) {
     const t = iters[ti];
     // c_k(t) = (1 − (1 − η s_k²)^t) · cStar_k  for active modes
@@ -643,7 +683,7 @@ export function gdTrajectory(opts: GdTrajectoryOptions): GdTrajectory {
         c_t[k] = 0;
         continue;
       }
-      const decay = Math.pow(1 - eta * S[k] * S[k], t);
+      const decay = Math.pow(decayBases[k], t);
       c_t[k] = (1 - decay) * cStar[k];
     }
     // norm² of β_t = Σ_k c_t[k]² (rows of V are orthonormal in ambient space).
@@ -659,29 +699,22 @@ export function gdTrajectory(opts: GdTrajectoryOptions): GdTrajectory {
     distToMinNorm[ti] = Math.sqrt(dnorm);
     // Train loss = (1/2) ‖X β_t − y‖². In the SVD basis: residual in U-coordinates =
     //   r_k = (1 − (1 − η s_k²)^t) · uy[k] − uy[k] = − (1 − η s_k²)^t · uy[k], for k ≤ r.
-    // Plus the orthogonal-to-col(U) component of y, which is unchanged. For the wide
-    // case (n < p) col(U) = ℝⁿ so the orthogonal part is zero. We compute the residual
-    // norm² as (1 − decay − 1)² u^T y = decay² · uy²:
-    let trl = 0;
+    // Plus the orthogonal-to-col(U) component of y (only nonzero for tall n > p):
+    // hoisted into `orthogonalResidual` above.
+    let trl = orthogonalResidual;
     for (let k = 0; k < r; k++) {
-      const decay = Math.pow(1 - eta * S[k] * S[k], t);
+      const decay = Math.pow(decayBases[k], t);
       trl += decay * decay * uy[k] * uy[k];
     }
-    // Plus orthogonal component of y (only matters when n > p, i.e. tall case):
-    if (n > p) {
-      // ‖y‖² − ‖U^T y‖²
-      let yNorm2 = 0;
-      for (let i = 0; i < n; i++) yNorm2 += y[i] * y[i];
-      let uy2 = 0;
-      for (let k = 0; k < r; k++) uy2 += uy[k] * uy[k];
-      trl += yNorm2 - uy2;
-    }
     trainLoss[ti] = 0.5 * trl;
-    // Build β_t in ambient coordinates for test-risk evaluation (one matvec per grid point).
-    for (let j = 0; j < p; j++) {
-      let s = 0;
-      for (let k = 0; k < r; k++) s += svd.Vt[k * p + j] * c_t[k];
-      beta_t[j] = s;
+    // Build β_t = Vt^T · c_t in ambient coordinates (row-major walk over Vt).
+    beta_t.fill(0);
+    for (let k = 0; k < r; k++) {
+      const base = k * p;
+      const ctk = c_t[k];
+      for (let j = 0; j < p; j++) {
+        beta_t[j] += svd.Vt[base + j] * ctk;
+      }
     }
     // Test risk = ‖β_t − β*‖² (well-specified setup; isotropic Gaussian test point).
     let tr = 0;
@@ -900,10 +933,11 @@ export function classicalBiasVariance(opts: ClassicalBVOptions): ClassicalBVResu
       const dim = d + 1;
       const V = legendreVandermonde(X, dim);
       const coefs = betaMinNorm(V, Y, n, dim);
+      const base = d * M;
       for (let m = 0; m < M; m++) {
         const f = legendreEval(coefs, testGrid[m]);
-        fSum[d * M + m] += f;
-        fSumSq[d * M + m] += f * f;
+        fSum[base + m] += f;
+        fSumSq[base + m] += f * f;
       }
     }
   }
@@ -913,9 +947,10 @@ export function classicalBiasVariance(opts: ClassicalBVOptions): ClassicalBVResu
   for (let d = 0; d < D; d++) {
     let b2 = 0;
     let v = 0;
+    const base = d * M;
     for (let m = 0; m < M; m++) {
-      const meanF = fSum[d * M + m] / B;
-      const varF = fSumSq[d * M + m] / B - meanF * meanF;
+      const meanF = fSum[base + m] / B;
+      const varF = fSumSq[base + m] / B - meanF * meanF;
       const diff = meanF - truth[m];
       b2 += diff * diff;
       v += varF;

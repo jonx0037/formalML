@@ -446,9 +446,12 @@ console.log('\n--- §11 eigenvalue spectra (Cell [067]) ---');
     `κ=${kappaRelu.toFixed(1)} (notebook 1190)`,
   );
 
-  // Legendre polynomial features on uniform X ∈ [-1, 1]
+  // Legendre polynomial features on uniform X ∈ [-1, 1]. Use the seeded rng so
+  // this test stays deterministic — Math.random() can produce a rare clustering
+  // that perturbs the Legendre condition number enough to flake the ordering
+  // assertion below.
   const Xleg = new Float64Array(n);
-  for (let i = 0; i < n; i++) Xleg[i] = 2 * Math.random() - 1; // non-seeded OK for κ ordering
+  for (let i = 0; i < n; i++) Xleg[i] = 2 * rng() - 1;
   const Vleg = legendreVandermonde(Xleg, p);
   const Sleg = thinSVD(Vleg, n, p).S;
   const kappaLeg = conditionNumber(Sleg);

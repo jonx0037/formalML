@@ -106,13 +106,16 @@ export default function RandomFeaturesExplorer() {
     const gauss = gaussianRng(rng);
     const betaStar = sampleSphereBetaStar(d, 1, gauss);
     const acts = showAll ? ACTIVATION_NAMES : [selectedAct];
-    return acts.map((actName) => ({
-      name: actName,
-      data: pGrid.map((p, i) => ({
-        p,
-        mean: sweepActivation(actName, d, n, pMax, sigma, betaStar, 4, 7919 + (actName.length * 13), pGrid)[i],
-      })),
-    }));
+    return acts.map((actName) => {
+      // Compute the entire sweep once per activation; map indexes into the result.
+      // Previously this lived inside pGrid.map and reran B replicates × |pGrid| times
+      // per activation, yielding 93 sweeps at default settings.
+      const result = sweepActivation(actName, d, n, pMax, sigma, betaStar, 4, 7919 + actName.length * 13, pGrid);
+      return {
+        name: actName,
+        data: pGrid.map((p, i) => ({ p, mean: result[i] })),
+      };
+    });
   }, [dCommitted, nCommitted, sigmaCommitted, showAll, selectedAct]);
 
   const svgRef = useD3<SVGSVGElement>(

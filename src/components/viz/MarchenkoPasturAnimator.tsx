@@ -89,13 +89,19 @@ export default function MarchenkoPasturAnimator() {
       const xMax = Math.max(lamPlus + 0.5, 6);
       const xScale = d3.scaleLinear().domain([0, xMax]).range([0, W]);
 
-      // Histogram of empirical eigenvalues over the same range
+      // Histogram of empirical eigenvalues over the same range.
+      // For γ > 1, the sample contains only the n nonzero eigenvalues of XXᵀ/n
+      // (the dual matrix), so a histogram normalized by sample size would
+      // integrate to 1 — but the MP bulk density only integrates to 1/γ in
+      // that regime (the remaining 1 - 1/γ mass is the atom at zero). Scale
+      // the histogram densities by 1/γ in the γ > 1 case so the empirical
+      // bars overlay the analytic bulk consistently.
       const nBins = 60;
       const bins = d3.bin<number, number>().domain([0, xMax]).thresholds(nBins)(empirical);
       const binW = xMax / nBins;
-      // Density: count / (total * binWidth)
       const total = empirical.length || 1;
-      const densities = bins.map((b) => b.length / (total * binW));
+      const bulkMass = gamma > 1 ? 1 / gamma : 1;
+      const densities = bins.map((b) => (b.length / (total * binW)) * bulkMass);
       const yMax = Math.max(d3.max(densities) ?? 1, d3.max(analytic, (d) => d.f) ?? 1) * 1.15;
       const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]);
 
@@ -113,9 +119,9 @@ export default function MarchenkoPasturAnimator() {
       // Histogram bars
       g.selectAll('rect.bin').data(bins).enter().append('rect')
         .attr('x', (d) => xScale(d.x0!))
-        .attr('y', (d) => yScale(d.length / (total * binW)))
+        .attr('y', (d, i) => yScale(densities[i]))
         .attr('width', (d) => Math.max(0, xScale(d.x1!) - xScale(d.x0!) - 1))
-        .attr('height', (d) => H - yScale(d.length / (total * binW)))
+        .attr('height', (d, i) => H - yScale(densities[i]))
         .style('fill', 'var(--color-accent)').attr('opacity', 0.35);
 
       // MP analytic curve
@@ -162,7 +168,7 @@ export default function MarchenkoPasturAnimator() {
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 180 }}>
           <span>n: <strong>{nDisplay}</strong></span>
-          <input type="range" min={50} max={1500} step={50} value={nDisplay}
+          <input type="range" min={50} max={400} step={25} value={nDisplay}
             onChange={(e) => setNDisplay(parseInt(e.target.value, 10))}
             onMouseUp={() => setNCommitted(nDisplay)} onTouchEnd={() => setNCommitted(nDisplay)}
             onKeyUp={() => setNCommitted(nDisplay)} aria-label="Sample size n" />
