@@ -125,7 +125,6 @@ export const tracks = [
     planned: [
       'uncertainty-quantification',
       'semiparametric-inference',
-      'double-descent',
     ],
     calculusDependent: false,
   },
