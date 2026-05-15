@@ -8,6 +8,7 @@ import {
   coverage,
   ensemblePredict,
   fTrue,
+  interpAleatoricCenters,
   linspace,
   meanWidth,
   mulberry32,
@@ -15,7 +16,8 @@ import {
   sigmaTrue,
   splitConformalConstant,
   splitConformalLocallyWeighted,
-  type MlpCoefs,
+  toMlpCoefs,
+  type PayloadMember,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -34,26 +36,9 @@ const X_GRID = linspace(-3.2, 3.2, 200);
 type EnsemblePayload = {
   X: number[];
   y: number[];
-  members: { coefs: number[][][]; intercepts: number[][] }[];
+  members: PayloadMember[];
   aleatoric: { centers: number[]; vals: number[] };
 };
-
-function interpAleatoric(payload: EnsemblePayload, X: number[]): number[] {
-  const { centers, vals } = payload.aleatoric;
-  return X.map((x) => {
-    if (x <= centers[0]) return vals[0];
-    if (x >= centers[centers.length - 1]) return vals[centers.length - 1];
-    let lo = 0;
-    let hi = centers.length - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (centers[mid] <= x) lo = mid;
-      else hi = mid;
-    }
-    const t = (x - centers[lo]) / (centers[hi] - centers[lo]);
-    return vals[lo] + t * (vals[hi] - vals[lo]);
-  });
-}
 
 export default function ConformalUQCalibrator() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -86,8 +71,10 @@ export default function ConformalUQCalibrator() {
     const Xcal = idx.slice(100, 150).map((i) => payload.X[i]);
     const yCal = idx.slice(100, 150).map((i) => payload.y[i]);
     const evalSet = sampleHetero(2000, -3, 3, rng);
-    const aleGrid = interpAleatoric(payload, X_GRID);
-    const aleEval = interpAleatoric(payload, evalSet.X);
+    const aleGrid = interpAleatoricCenters(
+      payload.aleatoric.centers, payload.aleatoric.vals, X_GRID);
+    const aleEval = interpAleatoricCenters(
+      payload.aleatoric.centers, payload.aleatoric.vals, evalSet.X);
 
     let muFn: (X: number[]) => number[];
     let sigmaFn: (X: number[]) => number[];
@@ -103,12 +90,12 @@ export default function ConformalUQCalibrator() {
       muGrid = predGrid.fMean;
       sigmaGrid = predGrid.totalVar.map(Math.sqrt);
     } else {
-      const members = payload.members.slice(0, 20) as unknown as MlpCoefs[];
-      members.forEach((m) => { m.activation = 'tanh'; });
+      const members = payload.members.slice(0, 20).map((m) => toMlpCoefs(m));
       muFn = (XX) => ensemblePredict(XX, members).mean;
       sigmaFn = (XX) => {
         const pred = ensemblePredict(XX, members);
-        const ale = interpAleatoric(payload, XX);
+        const ale = interpAleatoricCenters(
+          payload.aleatoric.centers, payload.aleatoric.vals, XX);
         return pred.variance.map((v, i) => Math.sqrt(v + ale[i]));
       };
       const predGrid = ensemblePredict(X_GRID, members);

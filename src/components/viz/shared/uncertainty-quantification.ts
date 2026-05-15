@@ -674,7 +674,11 @@ export function predictIsotonic(fit: IsotonicFit, xQuery: number[]): number[] {
       if (xKnots[mid] <= x) lo = mid;
       else hi = mid;
     }
-    const t = (x - xKnots[lo]) / (xKnots[hi] - xKnots[lo]);
+    const denom = xKnots[hi] - xKnots[lo];
+    // Guard against duplicate xKnots (consecutive calibration probabilities can tie
+    // after PAV pools blocks). Returning yKnots[lo] keeps the function well-defined.
+    if (denom === 0) return yKnots[lo];
+    const t = (x - xKnots[lo]) / denom;
     return yKnots[lo] + t * (yKnots[hi] - yKnots[lo]);
   });
 }
@@ -844,6 +848,51 @@ export type AleatoricInterp = {
   binCenters: number[];
   binVals: number[];
 };
+
+/** Linear interpolation against (centers, vals) with clipping at the endpoints.
+ *  Used by §7/§9/§11 viz components that read precomputed aleatoric bins from
+ *  the served JSON payload rather than fitting `aleatoricFromResiduals` at
+ *  every render. Kept as a top-level helper so it isn't duplicated per viz. */
+export function interpAleatoricCenters(
+  centers: number[],
+  vals: number[],
+  X: number[],
+): number[] {
+  if (centers.length === 0) return X.map(() => 0);
+  if (centers.length === 1) return X.map(() => vals[0]);
+  return X.map((x) => {
+    if (x <= centers[0]) return vals[0];
+    if (x >= centers[centers.length - 1]) return vals[centers.length - 1];
+    let lo = 0;
+    let hi = centers.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (centers[mid] <= x) lo = mid;
+      else hi = mid;
+    }
+    const denom = centers[hi] - centers[lo];
+    if (denom === 0) return vals[lo];
+    const t = (x - centers[lo]) / denom;
+    return vals[lo] + t * (vals[hi] - vals[lo]);
+  });
+}
+
+/** Shape of a single ensemble member as it appears in the precomputed JSON
+ *  payload at /sample-data/uncertainty-quantification/ensemble.json. */
+export type PayloadMember = {
+  coefs: number[][][];
+  intercepts: number[][];
+  seed?: number;
+};
+
+/** Convert a JSON-loaded member into a fresh `MlpCoefs` object — the served
+ *  payload doesn't carry an `activation` field, and mutating one onto the
+ *  payload-derived object would write to React state. Always returns a new
+ *  object so callers can pass it to `mlpForwardNumpy` / `ensemblePredict`. */
+export function toMlpCoefs(member: PayloadMember,
+  activation: 'tanh' | 'relu' = 'tanh'): MlpCoefs {
+  return { coefs: member.coefs, intercepts: member.intercepts, activation };
+}
 
 export function aleatoricFromResiduals(
   Xtrain: number[],

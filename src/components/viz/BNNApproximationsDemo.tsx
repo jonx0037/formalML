@@ -3,16 +3,17 @@ import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  aleatoricFromResiduals,
   bayesPolyPosterior,
   bayesPolyPredict,
   ensemblePredict,
   fTrue,
+  interpAleatoricCenters,
   linspace,
   mcDropoutPredict,
   mulberry32,
   sigmaTrue,
-  type MlpCoefs,
+  toMlpCoefs,
+  type PayloadMember,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -32,30 +33,9 @@ const X_GRID = linspace(-3.2, 3.2, 200);
 type EnsemblePayload = {
   X: number[];
   y: number[];
-  members: { coefs: number[][][]; intercepts: number[][] }[];
+  members: PayloadMember[];
   aleatoric: { centers: number[]; vals: number[] };
 };
-
-function toMlpCoefs(m: EnsemblePayload['members'][number]): MlpCoefs {
-  return { coefs: m.coefs, intercepts: m.intercepts, activation: 'tanh' };
-}
-
-function interpAleatoric(payload: EnsemblePayload, X: number[]): number[] {
-  const { centers, vals } = payload.aleatoric;
-  return X.map((x) => {
-    if (x <= centers[0]) return vals[0];
-    if (x >= centers[centers.length - 1]) return vals[centers.length - 1];
-    let lo = 0;
-    let hi = centers.length - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (centers[mid] <= x) lo = mid;
-      else hi = mid;
-    }
-    const t = (x - centers[lo]) / (centers[hi] - centers[lo]);
-    return vals[lo] + t * (vals[hi] - vals[lo]);
-  });
-}
 
 export default function BNNApproximationsDemo() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -77,7 +57,8 @@ export default function BNNApproximationsDemo() {
 
   const result = useMemo(() => {
     if (!payload) return null;
-    const aleatoricVar = interpAleatoric(payload, X_GRID);
+    const aleatoricVar = interpAleatoricCenters(
+      payload.aleatoric.centers, payload.aleatoric.vals, X_GRID);
 
     if (method === 'laplace') {
       const post = bayesPolyPosterior(payload.X, payload.y, DEGREE,
@@ -101,7 +82,7 @@ export default function BNNApproximationsDemo() {
     }
 
     // Deep ensemble.
-    const members = payload.members.slice(0, mCommitted).map(toMlpCoefs);
+    const members = payload.members.slice(0, mCommitted).map((m) => toMlpCoefs(m));
     const pred = ensemblePredict(X_GRID, members);
     const epiSd = pred.variance.map(Math.sqrt);
     const totalSd = pred.variance.map((v, i) => Math.sqrt(v + aleatoricVar[i]));

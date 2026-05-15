@@ -6,8 +6,10 @@ import {
   ensembleMixtureDensity,
   ensemblePredict,
   fTrue,
+  interpAleatoricCenters,
   linspace,
-  type MlpCoefs,
+  toMlpCoefs,
+  type PayloadMember,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -26,26 +28,9 @@ const Y_GRID = linspace(-3.5, 3.5, 400);
 type EnsemblePayload = {
   X: number[];
   y: number[];
-  members: { coefs: number[][][]; intercepts: number[][] }[];
+  members: PayloadMember[];
   aleatoric: { centers: number[]; vals: number[] };
 };
-
-function interpAleatoric(payload: EnsemblePayload, X: number[]): number[] {
-  const { centers, vals } = payload.aleatoric;
-  return X.map((x) => {
-    if (x <= centers[0]) return vals[0];
-    if (x >= centers[centers.length - 1]) return vals[centers.length - 1];
-    let lo = 0;
-    let hi = centers.length - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (centers[mid] <= x) lo = mid;
-      else hi = mid;
-    }
-    const t = (x - centers[lo]) / (centers[hi] - centers[lo]);
-    return vals[lo] + t * (vals[hi] - vals[lo]);
-  });
-}
 
 export default function DeepEnsembleSizeExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -65,11 +50,11 @@ export default function DeepEnsembleSizeExplorer() {
 
   const result = useMemo(() => {
     if (!payload) return null;
-    const members = payload.members.slice(0, mCommitted) as unknown as MlpCoefs[];
-    members.forEach((m) => { m.activation = 'tanh'; });
+    const members = payload.members.slice(0, mCommitted).map((m) => toMlpCoefs(m));
     const pred = ensemblePredict([xStar], members);
     const muMembers = pred.members.map((row) => row[0]);
-    const aleVar = interpAleatoric(payload, [xStar])[0];
+    const aleVar = interpAleatoricCenters(
+      payload.aleatoric.centers, payload.aleatoric.vals, [xStar])[0];
     const aleSd = Math.sqrt(aleVar);
     const density = ensembleMixtureDensity(Y_GRID, muMembers, aleSd);
     const epsVar = pred.variance[0];

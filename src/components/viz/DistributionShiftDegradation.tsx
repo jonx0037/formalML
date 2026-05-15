@@ -9,12 +9,14 @@ import {
   ensemblePredict,
   fTrue,
   gaussianFrom,
+  interpAleatoricCenters,
   linspace,
   mulberry32,
   sampleHetero,
   sigmaTrue,
   splitConformalLocallyWeighted,
-  type MlpCoefs,
+  toMlpCoefs,
+  type PayloadMember,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -34,26 +36,9 @@ const SHIFT_GRID = linspace(0, 2, 11);
 type EnsemblePayload = {
   X: number[];
   y: number[];
-  members: { coefs: number[][][]; intercepts: number[][] }[];
+  members: PayloadMember[];
   aleatoric: { centers: number[]; vals: number[] };
 };
-
-function interpAleatoric(payload: EnsemblePayload, X: number[]): number[] {
-  const { centers, vals } = payload.aleatoric;
-  return X.map((x) => {
-    if (x <= centers[0]) return vals[0];
-    if (x >= centers[centers.length - 1]) return vals[centers.length - 1];
-    let lo = 0;
-    let hi = centers.length - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (centers[mid] <= x) lo = mid;
-      else hi = mid;
-    }
-    const t = (x - centers[lo]) / (centers[hi] - centers[lo]);
-    return vals[lo] + t * (vals[hi] - vals[lo]);
-  });
-}
 
 function shiftedSample(s: number, n: number, rng: () => number) {
   const g = gaussianFrom(rng);
@@ -96,8 +81,7 @@ export default function DistributionShiftDegradation() {
     const yCal = idx.slice(100, 150).map((i) => payload.y[i]);
     // Refit Laplace on all of payload.X.
     const post = bayesPolyPosterior(payload.X, payload.y, DEGREE, payload.X.map(sigmaTrue));
-    const members = payload.members.slice(0, 20) as unknown as MlpCoefs[];
-    members.forEach((m) => { m.activation = 'tanh'; });
+    const members = payload.members.slice(0, 20).map((m) => toMlpCoefs(m));
 
     const laplaceMu = (X: number[]) => bayesPolyPredict(X, post, X.map(sigmaTrue)).fMean;
     const laplaceSd = (X: number[]) =>
@@ -105,7 +89,8 @@ export default function DistributionShiftDegradation() {
     const ensembleMu = (X: number[]) => ensemblePredict(X, members).mean;
     const ensembleSd = (X: number[]) => {
       const pred = ensemblePredict(X, members);
-      const ale = interpAleatoric(payload, X);
+      const ale = interpAleatoricCenters(
+        payload.aleatoric.centers, payload.aleatoric.vals, X);
       return pred.variance.map((v, i) => Math.sqrt(v + ale[i]));
     };
 

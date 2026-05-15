@@ -4,9 +4,10 @@ import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   ece,
+  fitIsotonic,
   fitTemperature,
-  isotonicRecal,
   mulberry32,
+  predictIsotonic,
   reliabilityBins,
   temperatureScaleProb,
 } from './shared/uncertainty-quantification';
@@ -41,29 +42,44 @@ export default function TemperatureScalingDemo() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const [tDisplay, setTDisplay] = useState(1.0);
 
-  const data = useMemo(() => {
+  // Split-once memo: build train/test, fit T* and isotonic on the calibration
+  // (train) split, compute the per-T-invariant test outputs. The T slider only
+  // recomputes the per-T probabilities + their ECE in the second memo below.
+  const split = useMemo(() => {
     const rng = mulberry32(20260514 + 50);
     const train = buildOverconfident(500, rng);
     const test = buildOverconfident(500, rng);
     const tStar = fitTemperature(train.logits, train.y);
-    // Apply T (slider) and T* and isotonic.
-    const pRaw = test.logits.map((z) => 1 / (1 + Math.exp(-z)));
-    const pTUser = temperatureScaleProb(test.logits, tDisplay);
+    const pRawTrain = train.logits.map((z) => 1 / (1 + Math.exp(-z)));
+    const pRawTest = test.logits.map((z) => 1 / (1 + Math.exp(-z)));
+    // Fit isotonic on the calibration (train) probabilities + labels, then
+    // predict on the held-out test probabilities. Avoids the in-sample-leak
+    // pattern flagged by code review on the first ship.
+    const isoFit = fitIsotonic(pRawTrain, train.y);
+    const pIso = predictIsotonic(isoFit, pRawTest);
     const pTStar = temperatureScaleProb(test.logits, tStar);
-    const pIso = isotonicRecal(pRaw, test.y, pRaw);
     return {
-      y: test.y,
-      pRaw,
-      pTUser,
+      yTest: test.y,
+      logitsTest: test.logits,
+      pRaw: pRawTest,
       pTStar,
       pIso,
       tStar,
-      eceRaw: ece(test.y, pRaw),
-      eceTUser: ece(test.y, pTUser),
+      eceRaw: ece(test.y, pRawTest),
       eceTStar: ece(test.y, pTStar),
       eceIso: ece(test.y, pIso),
     };
-  }, [tDisplay]);
+  }, []);
+
+  // Per-T outputs — recomputed on slider change but the fits above are not.
+  const data = useMemo(() => {
+    const pTUser = temperatureScaleProb(split.logitsTest, tDisplay);
+    return {
+      ...split,
+      pTUser,
+      eceTUser: ece(split.yTest, pTUser),
+    };
+  }, [split, tDisplay]);
 
   const svgRef = useD3<SVGSVGElement>(
     (svg) => {
@@ -85,7 +101,7 @@ export default function TemperatureScalingDemo() {
 
       const drawCurve = (probs: number[], color: string, label: string,
                          dash: string = '') => {
-        const bins = reliabilityBins(data.y, probs, 10);
+        const bins = reliabilityBins(data.yTest, probs, 10);
         const valid: { c: number; a: number; w: number }[] = [];
         for (let b = 0; b < 10; b++) {
           if (!Number.isNaN(bins.binConf[b]) && bins.binW[b] > 0) {

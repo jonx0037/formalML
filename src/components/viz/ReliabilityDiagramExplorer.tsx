@@ -6,9 +6,10 @@ import {
   ece,
   eceEqFreq,
   equalFreqBins,
-  isotonicRecal,
+  fitIsotonic,
   mce,
   mulberry32,
+  predictIsotonic,
   reliabilityBins,
   sharpness,
 } from './shared/uncertainty-quantification';
@@ -55,18 +56,31 @@ export default function ReliabilityDiagramExplorer() {
 
   const stats = useMemo(() => {
     const rng = mulberry32(20260514);
-    const { yTrue, pHat } = buildClassifier(2000, tauCommitted, rng);
+    // Draw twice: a held-out calibration sample for fitting isotonic, and a
+    // held-out evaluation sample for measuring ECE/MCE/sharpness. Without the
+    // split, isotonic-recalibrated ECE is in-sample and overly optimistic.
+    const cal = buildClassifier(2000, tauCommitted, rng);
+    const evalSample = buildClassifier(2000, tauCommitted, rng);
+    const yTrue = evalSample.yTrue;
+    const pHat = evalSample.pHat;
     const eceVal = (eqFreq ? eceEqFreq : ece)(yTrue, pHat, kCommitted);
     const mceVal = mce(yTrue, pHat, kCommitted);
     const shVal = sharpness(pHat);
     const bins = eqFreq
       ? equalFreqBins(yTrue, pHat, kCommitted)
       : reliabilityBins(yTrue, pHat, kCommitted);
-    const recal = showRecalibrated ? isotonicRecal(pHat, yTrue, pHat) : null;
-    const eceRecal = recal ? (eqFreq ? eceEqFreq : ece)(yTrue, recal, kCommitted) : null;
-    const binsRecal = recal
-      ? (eqFreq ? equalFreqBins(yTrue, recal, kCommitted) : reliabilityBins(yTrue, recal, kCommitted))
-      : null;
+    // Fit isotonic on (pHat_cal, y_cal); evaluate on the held-out pHat.
+    let recal: number[] | null = null;
+    let eceRecal: number | null = null;
+    let binsRecal: ReturnType<typeof reliabilityBins> | null = null;
+    if (showRecalibrated) {
+      const isoFit = fitIsotonic(cal.pHat, cal.yTrue);
+      recal = predictIsotonic(isoFit, pHat);
+      eceRecal = (eqFreq ? eceEqFreq : ece)(yTrue, recal, kCommitted);
+      binsRecal = eqFreq
+        ? equalFreqBins(yTrue, recal, kCommitted)
+        : reliabilityBins(yTrue, recal, kCommitted);
+    }
     return { yTrue, pHat, eceVal, mceVal, shVal, bins, recal, eceRecal, binsRecal };
   }, [tauCommitted, kCommitted, eqFreq, showRecalibrated]);
 
