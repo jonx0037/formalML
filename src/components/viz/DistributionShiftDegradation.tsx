@@ -16,7 +16,7 @@ import {
   sigmaTrue,
   splitConformalLocallyWeighted,
   toMlpCoefs,
-  type PayloadMember,
+  type EnsemblePayloadShape,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -33,12 +33,7 @@ const DEGREE = 7;
 const ALPHA = 0.10;
 const SHIFT_GRID = linspace(0, 2, 11);
 
-type EnsemblePayload = {
-  X: number[];
-  y: number[];
-  members: PayloadMember[];
-  aleatoric: { centers: number[]; vals: number[] };
-};
+type EnsemblePayload = EnsemblePayloadShape;
 
 function shiftedSample(s: number, n: number, rng: () => number) {
   const g = gaussianFrom(rng);
@@ -81,7 +76,8 @@ export default function DistributionShiftDegradation() {
     const yCal = idx.slice(100, 150).map((i) => payload.y[i]);
     // Refit Laplace on all of payload.X.
     const post = bayesPolyPosterior(payload.X, payload.y, DEGREE, payload.X.map(sigmaTrue));
-    const members = payload.members.slice(0, 20).map((m) => toMlpCoefs(m));
+    const members = payload.members.slice(0, 20)
+      .map((m) => toMlpCoefs(m, payload.activation));
 
     const laplaceMu = (X: number[]) => bayesPolyPredict(X, post, X.map(sigmaTrue)).fMean;
     const laplaceSd = (X: number[]) =>

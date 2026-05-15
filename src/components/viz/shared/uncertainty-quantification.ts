@@ -878,19 +878,39 @@ export function interpAleatoricCenters(
 }
 
 /** Shape of a single ensemble member as it appears in the precomputed JSON
- *  payload at /sample-data/uncertainty-quantification/ensemble.json. */
+ *  payload at /sample-data/uncertainty-quantification/ensemble.json. Members
+ *  carry the network weights; the *activation* function is a per-payload
+ *  property (see `EnsemblePayloadShape`) since every member of a given ensemble
+ *  was trained with the same activation in `precompute_ensemble.py`. */
 export type PayloadMember = {
   coefs: number[][][];
   intercepts: number[][];
   seed?: number;
 };
 
-/** Convert a JSON-loaded member into a fresh `MlpCoefs` object — the served
- *  payload doesn't carry an `activation` field, and mutating one onto the
- *  payload-derived object would write to React state. Always returns a new
- *  object so callers can pass it to `mlpForwardNumpy` / `ensemblePredict`. */
+/** Envelope shape of the precomputed ensemble.json payload. Mirrors the
+ *  Python `precompute_ensemble.py` writer one-for-one so the viz components
+ *  can read every field from the data layer rather than re-hardcoding it. */
+export type EnsemblePayloadShape = {
+  seed: number;
+  n_running: number;
+  hidden: number[];
+  activation: 'tanh' | 'relu';
+  M: number;
+  X: number[];
+  y: number[];
+  members: PayloadMember[];
+  aleatoric: { centers: number[]; vals: number[] };
+};
+
+/** Convert a JSON-loaded member into a fresh `MlpCoefs` object using the
+ *  payload-level activation. Always returns a new object (no mutation of the
+ *  React-state payload). Required activation argument — callers should pass
+ *  `payload.activation`; the hardcoded fallback that used to live here was
+ *  presentation-layer business logic and has been removed in favor of reading
+ *  the precompute script's source-of-truth setting from the JSON envelope. */
 export function toMlpCoefs(member: PayloadMember,
-  activation: 'tanh' | 'relu' = 'tanh'): MlpCoefs {
+  activation: 'tanh' | 'relu'): MlpCoefs {
   return { coefs: member.coefs, intercepts: member.intercepts, activation };
 }
 

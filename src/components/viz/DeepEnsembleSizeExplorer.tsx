@@ -9,7 +9,7 @@ import {
   interpAleatoricCenters,
   linspace,
   toMlpCoefs,
-  type PayloadMember,
+  type EnsemblePayloadShape,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -25,12 +25,7 @@ import {
 const HEIGHT = 440;
 const Y_GRID = linspace(-3.5, 3.5, 400);
 
-type EnsemblePayload = {
-  X: number[];
-  y: number[];
-  members: PayloadMember[];
-  aleatoric: { centers: number[]; vals: number[] };
-};
+type EnsemblePayload = EnsemblePayloadShape;
 
 export default function DeepEnsembleSizeExplorer() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -50,7 +45,8 @@ export default function DeepEnsembleSizeExplorer() {
 
   const result = useMemo(() => {
     if (!payload) return null;
-    const members = payload.members.slice(0, mCommitted).map((m) => toMlpCoefs(m));
+    const members = payload.members.slice(0, mCommitted)
+      .map((m) => toMlpCoefs(m, payload.activation));
     const pred = ensemblePredict([xStar], members);
     const muMembers = pred.members.map((row) => row[0]);
     const aleVar = interpAleatoricCenters(

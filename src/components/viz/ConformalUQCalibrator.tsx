@@ -17,7 +17,7 @@ import {
   splitConformalConstant,
   splitConformalLocallyWeighted,
   toMlpCoefs,
-  type PayloadMember,
+  type EnsemblePayloadShape,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -33,12 +33,7 @@ const HEIGHT = 460;
 const DEGREE = 7;
 const X_GRID = linspace(-3.2, 3.2, 200);
 
-type EnsemblePayload = {
-  X: number[];
-  y: number[];
-  members: PayloadMember[];
-  aleatoric: { centers: number[]; vals: number[] };
-};
+type EnsemblePayload = EnsemblePayloadShape;
 
 export default function ConformalUQCalibrator() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -90,7 +85,8 @@ export default function ConformalUQCalibrator() {
       muGrid = predGrid.fMean;
       sigmaGrid = predGrid.totalVar.map(Math.sqrt);
     } else {
-      const members = payload.members.slice(0, 20).map((m) => toMlpCoefs(m));
+      const members = payload.members.slice(0, 20)
+        .map((m) => toMlpCoefs(m, payload.activation));
       muFn = (XX) => ensemblePredict(XX, members).mean;
       sigmaFn = (XX) => {
         const pred = ensemblePredict(XX, members);

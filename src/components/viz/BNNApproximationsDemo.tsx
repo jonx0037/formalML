@@ -13,7 +13,7 @@ import {
   mulberry32,
   sigmaTrue,
   toMlpCoefs,
-  type PayloadMember,
+  type EnsemblePayloadShape,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -30,12 +30,7 @@ const HEIGHT = 460;
 const DEGREE = 7;
 const X_GRID = linspace(-3.2, 3.2, 200);
 
-type EnsemblePayload = {
-  X: number[];
-  y: number[];
-  members: PayloadMember[];
-  aleatoric: { centers: number[]; vals: number[] };
-};
+type EnsemblePayload = EnsemblePayloadShape;
 
 export default function BNNApproximationsDemo() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
@@ -72,7 +67,7 @@ export default function BNNApproximationsDemo() {
     }
 
     if (method === 'mcdropout') {
-      const mlp = toMlpCoefs(payload.members[0]);
+      const mlp = toMlpCoefs(payload.members[0], payload.activation);
       const rng = mulberry32(20260514);
       const T = 100;
       const pred = mcDropoutPredict(X_GRID, mlp, pDropCommitted, T, rng);
@@ -82,7 +77,8 @@ export default function BNNApproximationsDemo() {
     }
 
     // Deep ensemble.
-    const members = payload.members.slice(0, mCommitted).map((m) => toMlpCoefs(m));
+    const members = payload.members.slice(0, mCommitted)
+      .map((m) => toMlpCoefs(m, payload.activation));
     const pred = ensemblePredict(X_GRID, members);
     const epiSd = pred.variance.map(Math.sqrt);
     const totalSd = pred.variance.map((v, i) => Math.sqrt(v + aleatoricVar[i]));
