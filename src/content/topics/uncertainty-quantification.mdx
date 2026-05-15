@@ -1,0 +1,990 @@
+---
+title: "Uncertainty Quantification"
+subtitle: "Cross-paradigm methodology for diagnosing whether claimed uncertainty matches empirical uncertainty"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "bayesian-neural-networks"
+  - "conformal-prediction"
+  - "prediction-intervals"
+  - "double-descent"
+  - "mixed-effects"
+formalstatisticsPrereqs:
+  - topic: "bootstrap"
+    site: "formalstatistics"
+    relationship: "Theorem 3 of §31.3 (resampling consistency for the variance of a parameter estimator) is the load-bearing analytic result that turns the empirical variance of bagged predictions at any fixed test point into a consistent estimator of epistemic uncertainty. §6 of this topic leans on it as the formal justification for the bagging-as-UQ argument; without that result, the bootstrap-as-UQ story is only heuristic."
+formalcalculusPrereqs: []
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "uncertainty-quantification"
+  - "calibration"
+  - "aleatoric-epistemic-decomposition"
+  - "proper-scoring-rules"
+  - "predictive-intervals"
+  - "bootstrap-uq"
+  - "bayesian-uq"
+  - "conformal-uq"
+  - "deep-ensembles"
+  - "distribution-shift"
+  - "temperature-scaling"
+  - "decision-theoretic-uq"
+  - "learning-theory"
+domain: "learning-theory"
+videoId: null
+notebookPath: "notebooks/uncertainty-quantification/01_uncertainty_quantification.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/uncertainty-quantification.mdx"
+datePublished: 2026-05-15
+estimatedReadTime: 65
+abstract: "Modern machine learning models routinely report softmax probabilities, posterior-predictive variances, and prediction intervals. Just as routinely, those numbers misrepresent the model's actual uncertainty. This topic is the cross-paradigm methodology for diagnosing that mismatch and, where possible, repairing it. §1 opens with a 92%-accurate classifier whose 90%-confidence bin has 70% empirical accuracy. §2 develops the law-of-total-variance split into aleatoric and epistemic components that organizes every UQ construction that follows. §§3–4 build the calibration apparatus: reliability diagrams, expected calibration error, sharpness, proper scoring rules, the Murphy decomposition. §§5–9 tour the four construction paradigms — Bayesian posterior-predictive, frequentist plug-in, bootstrap, conformal, deep ensembles — side-by-side on a shared heteroscedastic toy. §10 cross-discharges with double-descent: what does predictive uncertainty do as p/n crosses the interpolation threshold? §11 measures degradation under distribution shift and frames OOD detection as a related-but-distinct diagnostic. §12 operationalizes UQ outputs into Bayes-optimal decisions, selective prediction with abstention, and cost-sensitive thresholding. §13 collects the implementation-hygiene appendix on temperature scaling and numerical stability. §14 situates the methodology in the broader curriculum and accounts honestly for what no UQ procedure can fix."
+connections:
+  - topic: "bayesian-neural-networks"
+    relationship: "§7's NumPy approximations to the posterior-predictive distribution — Laplace, MC-dropout, deep ensembles — are NumPy analogs of the PyTorch-flavored constructions developed in detail in bayesian-neural-networks. The construction details there; the cross-paradigm comparison here."
+  - topic: "conformal-prediction"
+    relationship: "§5 and §8 both invoke the marginal-coverage theorem (Theorem 1 of conformal-prediction §3) as the foundational guarantee. §8 develops conformal as a coverage-repair finishing layer that can be wrapped around any UQ method's outputs to recover finite-sample distribution-free marginal coverage."
+  - topic: "prediction-intervals"
+    relationship: "§5 cites the prediction-intervals taxonomy for the four PI-construction families (Bayesian PP, frequentist plug-in, conformal, quantile regression). The umbrella topic supplies the construction details; this topic supplies the cross-paradigm calibration and diagnostic comparison."
+  - topic: "double-descent"
+    relationship: "§10 reuses the Hastie–Montanari–Rosset–Tibshirani 2022 risk-curve setup from double-descent §6.2 as the underlay for the UQ-shadow simulations. Where double-descent answers what test risk does at the interpolation threshold, §10 here answers what posterior-predictive variance and conformal half-width do at the same threshold."
+  - topic: "mixed-effects"
+    relationship: "§14.2 makes the connection explicit: random effects in mixed-effects models are precisely the epistemic uncertainty about each group's parameters, and the within-group / between-group variance decomposition is a structured form of the §2 aleatoric/epistemic split."
+  - topic: "semiparametric-inference"
+    relationship: "§14.1 connects to semiparametric-inference for the efficient-influence-function machinery that gives asymptotically optimal estimators of variance/uncertainty parameters and the corresponding semiparametric efficiency bound. The EIF framework is also the standard route for valid UQ on plug-in estimators with ML-based nuisance functions."
+references:
+  - type: "paper"
+    title: "Verification of forecasts expressed in terms of probability"
+    authors: "Brier"
+    year: 1950
+    url: "https://doi.org/10.1175/1520-0493(1950)078<0001:VOFEIT>2.0.CO;2"
+    note: "The original Brier score paper. §4.1 takes the squared-error form directly from this paper."
+  - type: "paper"
+    title: "A new vector partition of the probability score"
+    authors: "Murphy"
+    year: 1973
+    url: "https://doi.org/10.1175/1520-0450(1973)012<0595:ANVPOT>2.0.CO;2"
+    note: "Source of the BS = REL − RES + UNC decomposition that §4.3 develops with full proof."
+  - type: "paper"
+    title: "The well-calibrated Bayesian"
+    authors: "Dawid"
+    year: 1982
+    url: "https://doi.org/10.1080/01621459.1982.10477856"
+    note: "The definition of perfect calibration adopted in §3.1."
+  - type: "paper"
+    title: "Strictly proper scoring rules, prediction, and estimation"
+    authors: "Gneiting & Raftery"
+    year: 2007
+    url: "https://doi.org/10.1198/016214506000001437"
+    note: "Canonical survey of strict properness; the framework §4.2 specializes to Brier and log-loss."
+  - type: "paper"
+    title: "Decomposition of the continuous ranked probability score for ensemble prediction systems"
+    authors: "Hersbach"
+    year: 2000
+    url: "https://doi.org/10.1175/1520-0434(2000)015<0559:DOTCRP>2.0.CO;2"
+    note: "Closed-form Gaussian CRPS used in §4.1; the trapezoidal quadrature in the verify suite reproduces this analytic form."
+  - type: "paper"
+    title: "Reliability, sufficiency, and the decomposition of proper scores"
+    authors: "Bröcker"
+    year: 2009
+    url: "https://doi.org/10.1002/qj.456"
+    note: "Generalizes the §4.3 Murphy decomposition to arbitrary proper scoring rules."
+  - type: "paper"
+    title: "Predicting good probabilities with supervised learning"
+    authors: "Niculescu-Mizil & Caruana"
+    year: 2005
+    url: "https://doi.org/10.1145/1102351.1102430"
+    note: "Pre-deep-learning calibration audit; established Platt vs isotonic as the canonical recalibration baseline cited in §13.2."
+  - type: "paper"
+    title: "On calibration of modern neural networks"
+    authors: "Guo, Pleiss, Sun & Weinberger"
+    year: 2017
+    url: "https://proceedings.mlr.press/v70/guo17a.html"
+    note: "The §1 teaser pattern (high capacity + low regularization + training to zero loss ⇒ overconfidence) is exactly the Guo 2017 finding; §13.2 temperature-scaling fix follows their recipe."
+  - type: "paper"
+    title: "Mitigating bias in calibration error estimation"
+    authors: "Roelofs, Cain, Shlens & Mozer"
+    year: 2022
+    url: "https://proceedings.mlr.press/v151/roelofs22a.html"
+    note: "Adaptive binning for ECE estimation; cited in §13.1 as a tighter alternative to fixed-K binning."
+  - type: "paper"
+    title: "What uncertainties do we need in Bayesian deep learning for computer vision?"
+    authors: "Kendall & Gal"
+    year: 2017
+    url: "https://proceedings.neurips.cc/paper_files/paper/2017/hash/2650d6089a6d640c5e85b2b88265dc2b-Abstract.html"
+    note: "The deep-learning canonical reference for the aleatoric/epistemic split developed in §2 (in a non-Bayesian-polynomial setting)."
+  - type: "paper"
+    title: "Dropout as a Bayesian approximation: Representing model uncertainty in deep learning"
+    authors: "Gal & Ghahramani"
+    year: 2016
+    url: "https://proceedings.mlr.press/v48/gal16.html"
+    note: "The variational interpretation of test-time dropout that §7.3 references — caveated, since our NumPy implementation is the mechanism only, not the full Bayesian variant."
+  - type: "paper"
+    title: "Simple and scalable predictive uncertainty estimation using deep ensembles"
+    authors: "Lakshminarayanan, Pritzel & Blundell"
+    year: 2017
+    url: "https://proceedings.neurips.cc/paper_files/paper/2017/hash/9ef2ed4b7fd2c810847ffa5fa85bce38-Abstract.html"
+    note: "The §7.4 / §9 deep-ensemble construction. Empirical superiority claims on calibration follow this paper."
+  - type: "paper"
+    title: "Can you trust your model's uncertainty? Evaluating predictive uncertainty under dataset shift"
+    authors: "Ovadia, Fertig, Ren, Nado, Sculley, Nowozin, Dillon, Lakshminarayanan & Snoek"
+    year: 2019
+    url: "https://proceedings.neurips.cc/paper_files/paper/2019/hash/8558cb408c1d76621371888657d2eb1d-Abstract.html"
+    note: "The benchmark study underwriting §11.2's claim that deep ensembles degrade most gracefully under shift among the §7 methods."
+  - type: "paper"
+    title: "A practical Bayesian framework for backpropagation networks"
+    authors: "MacKay"
+    year: 1992
+    url: "https://doi.org/10.1162/neco.1992.4.3.448"
+    note: "The original Laplace approximation for neural-network posteriors — §7.2's exact-on-linear-Gaussian claim specializes the MacKay framework."
+  - type: "book"
+    title: "Algorithmic Learning in a Random World"
+    authors: "Vovk, Gammerman & Shafer"
+    year: 2005
+    url: "https://doi.org/10.1007/b106715"
+    note: "Canonical text for the conformal procedure cited as background in §5 and §8."
+  - type: "paper"
+    title: "Distribution-free predictive inference for regression"
+    authors: "Lei, G'Sell, Rinaldo, Tibshirani & Wasserman"
+    year: 2018
+    url: "https://doi.org/10.1080/01621459.2017.1307116"
+    note: "Locally-weighted conformal nonconformity scores — the §8.3 construction follows this paper."
+  - type: "paper"
+    title: "Conditional validity of inductive conformal predictors"
+    authors: "Vovk"
+    year: 2012
+    url: "https://proceedings.mlr.press/v25/vovk12.html"
+    note: "Cited in §5.3 and §8.4 as the source of the conditional-coverage-impossibility result."
+  - type: "paper"
+    title: "The limits of distribution-free conditional predictive inference"
+    authors: "Foygel Barber, Candès, Ramdas & Tibshirani"
+    year: 2021
+    url: "https://doi.org/10.1093/imaiai/iaaa017"
+    note: "Refines Vovk 2012; §5.3 and §8.4's discussion of what distribution-free guarantees do and don't give."
+  - type: "paper"
+    title: "Conformalized quantile regression"
+    authors: "Romano, Patterson & Candès"
+    year: 2019
+    url: "https://proceedings.neurips.cc/paper_files/paper/2019/hash/5103c3584b063c431bd1268e9b5e76fb-Abstract.html"
+    note: "Quantile-regression-flavored conformal procedure cited in §5 and §8.3."
+  - type: "paper"
+    title: "Conformal prediction under covariate shift"
+    authors: "Tibshirani, Foygel Barber, Candès & Ramdas"
+    year: 2019
+    url: "https://proceedings.neurips.cc/paper_files/paper/2019/hash/8fb21ee7a2207526da55a679f0332de2-Abstract.html"
+    note: "Weighted-conformal under known covariate shift — §11.5's positive result citation."
+  - type: "paper"
+    title: "Bootstrap methods: Another look at the jackknife"
+    authors: "Efron"
+    year: 1979
+    url: "https://doi.org/10.1214/aos/1176344552"
+    note: "Original bootstrap paper; §6 builds on the resampling principle introduced here."
+  - type: "paper"
+    title: "The Bayesian bootstrap"
+    authors: "Rubin"
+    year: 1981
+    url: "https://doi.org/10.1214/aos/1176345338"
+    note: "The asymptotic Bayesian-bootstrap equivalence cited in the §6.4 remark."
+  - type: "paper"
+    title: "Bagging predictors"
+    authors: "Breiman"
+    year: 1996
+    url: "https://doi.org/10.1007/BF00058655"
+    note: "Bootstrap aggregation as variance reduction — the construction §6.1 reads as bagging-as-UQ."
+  - type: "paper"
+    title: "Surprises in high-dimensional ridgeless least squares interpolation"
+    authors: "Hastie, Montanari, Rosset & Tibshirani"
+    year: 2022
+    url: "https://doi.org/10.1214/21-AOS2133"
+    note: "§10 reuses the canonical isotropic-Gaussian-features setup from this paper to study the UQ shadows of the test-risk spike."
+  - type: "paper"
+    title: "Reconciling modern machine-learning practice and the classical bias-variance trade-off"
+    authors: "Belkin, Hsu, Ma & Mandal"
+    year: 2019
+    url: "https://doi.org/10.1073/pnas.1903070116"
+    note: "The double-descent founding paper. §10 cites for the picture being inherited by UQ."
+  - type: "paper"
+    title: "On the foundations of noise-free selective classification"
+    authors: "El-Yaniv & Wiener"
+    year: 2010
+    url: "https://jmlr.org/papers/v11/el-yaniv10a.html"
+    note: "Selective prediction with abstention — §12.2 formalizes the rejection-threshold construction."
+  - type: "paper"
+    title: "Selective classification for deep neural networks"
+    authors: "Geifman & El-Yaniv"
+    year: 2017
+    url: "https://proceedings.neurips.cc/paper_files/paper/2017/hash/4a8423d5e91fda00bb7e46540e2b0cf1-Abstract.html"
+    note: "Deep-learning instantiation of El-Yaniv & Wiener 2010 — §12.3 risk-coverage curve follows their setup."
+  - type: "book"
+    title: "Statistical Decision Theory and Bayesian Analysis"
+    authors: "Berger"
+    year: 1985
+    url: "https://doi.org/10.1007/978-1-4757-4286-2"
+    note: "Canonical Bayesian decision-theory reference for §12.1's Bayes-optimal point predictor results."
+  - type: "book"
+    title: "The Bayesian Choice"
+    authors: "Robert"
+    year: 2007
+    url: "https://doi.org/10.1007/0-387-71599-1"
+    note: "Modern Bayesian-decision-theory companion to Berger 1985; §12.1 also references."
+  - type: "book"
+    title: "Machine Learning: A Probabilistic Perspective"
+    authors: "Murphy"
+    year: 2012
+    url: "https://mitpress.mit.edu/9780262018029/machine-learning/"
+    note: "Standard ML textbook; §7.2 references for the Laplace approximation exposition."
+  - type: "book"
+    title: "Asymptotic Statistics"
+    authors: "van der Vaart"
+    year: 1998
+    url: "https://doi.org/10.1017/CBO9780511802256"
+    note: "Standard reference for the semiparametric-efficiency machinery that §14.1 points to."
+  - type: "book"
+    title: "Semiparametric Theory and Missing Data"
+    authors: "Tsiatis"
+    year: 2006
+    url: "https://doi.org/10.1007/0-387-37345-4"
+    note: "Companion reference for §14.1; efficient influence functions in the missing-data and counterfactual framework."
+  - type: "paper"
+    title: "Double/debiased machine learning for treatment and structural parameters"
+    authors: "Chernozhukov, Chetverikov, Demirer, Duflo, Hansen, Newey & Robins"
+    year: 2018
+    url: "https://doi.org/10.1111/ectj.12097"
+    note: "Double machine learning framework that §14.1 cites for valid UQ on plug-in estimators with ML nuisance functions."
+  - type: "paper"
+    title: "Adjusting the outputs of a classifier to new a priori probabilities"
+    authors: "Saerens, Latinne & Decaestecker"
+    year: 2002
+    url: "https://doi.org/10.1162/089976602753284446"
+    note: "Label-shift adjustment under known new prior — referenced briefly in §11.1's shift-type taxonomy."
+  - type: "paper"
+    title: "A review of uncertainty quantification in deep learning: Techniques, applications and challenges"
+    authors: "Abdar et al."
+    year: 2021
+    url: "https://doi.org/10.1016/j.inffus.2021.05.008"
+    note: "Comprehensive survey; useful entry point to the deep-learning UQ literature beyond what this topic covers."
+  - type: "paper"
+    title: "A survey of uncertainty in deep neural networks"
+    authors: "Gawlikowski et al."
+    year: 2023
+    url: "https://doi.org/10.1007/s10462-023-10562-9"
+    note: "More recent survey complementing Abdar et al. 2021; §14.4 references for the open-research frontier."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import AleatoricEpistemicDecomposer from '../../components/viz/AleatoricEpistemicDecomposer.tsx';
+import ReliabilityDiagramExplorer from '../../components/viz/ReliabilityDiagramExplorer.tsx';
+import ProperScoringRulesComparator from '../../components/viz/ProperScoringRulesComparator.tsx';
+import PredictiveIntervalParadigms from '../../components/viz/PredictiveIntervalParadigms.tsx';
+import BootstrapUQDemo from '../../components/viz/BootstrapUQDemo.tsx';
+import BNNApproximationsDemo from '../../components/viz/BNNApproximationsDemo.tsx';
+import ConformalUQCalibrator from '../../components/viz/ConformalUQCalibrator.tsx';
+import DeepEnsembleSizeExplorer from '../../components/viz/DeepEnsembleSizeExplorer.tsx';
+import OverparamRegimeUQ from '../../components/viz/OverparamRegimeUQ.tsx';
+import DistributionShiftDegradation from '../../components/viz/DistributionShiftDegradation.tsx';
+import TemperatureScalingDemo from '../../components/viz/TemperatureScalingDemo.tsx';
+
+## Motivation: why claimed uncertainty often fails to match empirical uncertainty
+
+### The overconfident-classifier teaser
+
+Before any definitions: a small numerical experiment that motivates everything else. We fit a small MLP classifier on `make_moons` — a classic 2-D binary-classification dataset where the two classes form interleaved crescents — and look at two things. The decision surface tells us the classifier is accurate: about 92% on a held-out test set. The reliability diagram tells us the classifier is *mis-calibrated*: in the bins where the model reports "I'm 90% confident," the empirical accuracy is closer to 70%.
+
+The reliability diagram is the canonical visual diagnostic for this kind of failure, and we'll define it formally in §3. For now, the picture is what matters: every orange segment is a gap between what the model claimed and what the test data delivered. Average those gaps weighted by how often each bin is used and we get the *expected calibration error* — about 0.06 here, on a scale where 0 is perfectly calibrated and 0.5 is maximally wrong.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_01_overconfident_classifier.png"
+  alt="Two-panel figure. Left panel: decision surface of a polynomial-MLP classifier on make_moons, colored by predicted probability, with training points overlaid. Right panel: reliability diagram with empirical accuracy plotted against mean predicted probability per bin, with orange vertical segments marking the calibration gap in each bin. Annotation: test accuracy 0.92, ECE 0.06."
+  caption="Figure 1 — The classifier achieves 92% test accuracy but its claimed confidence systematically exceeds its empirical accuracy in the high-confidence bins. ECE ≈ 0.06."
+/>
+
+Two things to notice. First, neither test accuracy nor training loss told us anything was wrong; both are aggregate quantities that average over confidence levels. Calibration is a *conditional* property — it's about model performance *given* its own claimed confidence — and conditional properties are invisible to aggregate metrics. Second, "fix the model" is not the only response. A simple post-hoc transformation (temperature scaling, §13) can absorb most of the miscalibration without retraining or changing the model's accuracy at all.
+
+### What "uncertainty quantification" actually answers — and what it does not
+
+The teaser frames three questions that the rest of this topic answers. The first is **calibration evaluation**: does the model's claimed uncertainty match its empirical uncertainty? That's the reliability-diagram question, formalized in §3 with the expected calibration error and friends, and refined in §4 with proper scoring rules that fold accuracy and calibration into single numbers with clean decomposition theorems.
+
+The second is the **aleatoric–epistemic decomposition**: of the variance the model reports, how much is irreducible noise in the data-generating process, and how much reflects parameter uncertainty that more training data would shrink? This is the law-of-total-variance split, the subject of §2, and it organizes how we think about every UQ construction that follows.
+
+The third is the **construction question**: how do we obtain a predictive distribution in the first place? §5–§9 tour the four standard paradigms — Bayesian (via posterior-predictive), frequentist (via plug-in or bootstrap), conformal (via distribution-free coverage), and ensemble-based (via variance across independently trained models). We don't re-derive these constructions; the construction details live in dedicated topics. What we do here is compare what each paradigm guarantees, what it doesn't, and how they behave on the same data.
+
+Some things UQ is *not* equipped to do. It doesn't fix model misspecification — if the assumed model class can't represent the truth, no amount of careful uncertainty bookkeeping will save you, and §2.5 makes this concrete. It doesn't quantify uncertainty *about* uncertainty in any principled way. And it doesn't survive arbitrary distribution shift; §11 documents the degradation curves and catalogs which guarantees do and don't carry over.
+
+### Scope discipline: methodology vs procedure vs umbrella
+
+[Conformal prediction](/topics/conformal-prediction) is a specific *procedure* for constructing prediction sets with finite-sample marginal-coverage guarantees, requiring only exchangeability of the data. The split-conformal algorithm, its theorem and proof, the nonconformity-score machinery — that's all derived on the conformal-prediction topic page. Here, when we discuss conformal UQ in §8, we treat conformal as a *finishing layer* that can be applied to outputs from any other paradigm to repair coverage post hoc.
+
+**Prediction intervals** *(coming soon)* is the *umbrella* topic over the four PI-construction families: Bayesian posterior-predictive, frequentist plug-in, conformal, and quantile regression. Its job is the side-by-side taxonomy and the coverage-versus-efficiency comparison across families. We'll cite that taxonomy in §5 rather than re-deriving it.
+
+Uncertainty quantification — this topic — is the *methodology* layer. Its job is the cross-paradigm synthesis: the aleatoric/epistemic decomposition, the calibration-evaluation apparatus, the diagnostic toolkit for asking whether a given estimator's claimed uncertainty matches its empirical uncertainty, and the degradation analyses under distribution shift and in the over-parameterized regime.
+
+### Roadmap
+
+§2 introduces the variance split that organizes everything else. §3 and §4 give us the apparatus for asking whether claimed uncertainty matches empirical uncertainty. §5–§9 tour the four construction paradigms. §10–§11 examine UQ in regimes where standard reasoning gets weird. §12 puts UQ to work. §13 is the implementation appendix; §14 closes the synthesis.
+
+## Aleatoric vs epistemic decomposition
+
+Predictive variance has two flavors. *Aleatoric* (from Latin *alea*, "dice") is irreducible noise — even with infinite training data, $Y$ would still vary at any fixed input. *Epistemic* (from Greek *episteme*, "knowledge") is parameter uncertainty — different parameter settings give different predictions, and the spread is what we don't know about the model.
+
+The split matters because the two flavors respond to different interventions. Aleatoric is what it is; more data doesn't shrink it. Epistemic shrinks with more data, better features, or constrained model classes.
+
+### Two contrasting regression scenarios
+
+Two synthetic problems with different aleatoric/epistemic mixes. Scenario A: dense training ($n = 500$) with homoscedastic noise — predictive band almost entirely aleatoric. Scenario B: sparse training in $[-3, -1] \cup [1, 3]$ with heteroscedastic noise — predictive band balloons in the gap (epistemic) and grows toward edges (heteroscedastic aleatoric).
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_02_aleatoric_epistemic_contrast.png"
+  alt="Two-panel side-by-side figure. Left panel: a dense uniform training set of 500 points with homoscedastic noise; the predictive band is narrow and uniform across x — aleatoric dominates. Right panel: a sparse training set with a gap in [-1, 1] and heteroscedastic noise; the predictive band balloons in the gap and grows toward the edges — epistemic dominates inside the gap."
+  caption="Figure 2 — Scenario A: aleatoric dominates a dense homoscedastic regime. Scenario B: epistemic dominates the gap in a sparse heteroscedastic regime. The model is Bayesian polynomial regression with known noise variance in both cases."
+/>
+
+The model is Bayesian polynomial regression with known noise variance and Gaussian prior on coefficients. Closed-form posterior in both cases; details in §2.2.
+
+### Law of total variance: the conditioning step, fully expanded
+
+<TheoremBlock type="theorem" number={1} title="Law of Total Variance">
+Let $Y$ and $\boldsymbol{\theta}$ be random variables on a common probability space with $\mathbb{E}[Y^2] < \infty$. Then
+$$
+\operatorname{Var}(Y) \;=\;
+\underbrace{\mathbb{E}\!\big[\operatorname{Var}(Y \mid \boldsymbol{\theta})\big]}_{\text{aleatoric}}
+\;+\;
+\underbrace{\operatorname{Var}\!\big(\mathbb{E}[Y \mid \boldsymbol{\theta}]\big)}_{\text{epistemic}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We work from $\operatorname{Var}(Y) = \mathbb{E}[Y^2] - (\mathbb{E}[Y])^2$.
+
+*Step 1.* By the tower property, $\mathbb{E}[Y^2] = \mathbb{E}[\mathbb{E}[Y^2 \mid \boldsymbol{\theta}]]$.
+
+*Step 2.* The conditional second moment: $\mathbb{E}[Y^2 \mid \boldsymbol{\theta}] = \operatorname{Var}(Y \mid \boldsymbol{\theta}) + (\mathbb{E}[Y \mid \boldsymbol{\theta}])^2$.
+
+*Step 3.* Substituting Step 2 into Step 1: $\mathbb{E}[Y^2] = \mathbb{E}[\operatorname{Var}(Y \mid \boldsymbol{\theta})] + \mathbb{E}[(\mathbb{E}[Y \mid \boldsymbol{\theta}])^2]$.
+
+*Step 4.* Tower on first moment: $\mathbb{E}[Y] = \mathbb{E}[\mathbb{E}[Y \mid \boldsymbol{\theta}]]$, so $(\mathbb{E}[Y])^2 = (\mathbb{E}[\mathbb{E}[Y \mid \boldsymbol{\theta}]])^2$. Also, by definition, $\operatorname{Var}(\mathbb{E}[Y \mid \boldsymbol{\theta}]) = \mathbb{E}[(\mathbb{E}[Y \mid \boldsymbol{\theta}])^2] - (\mathbb{E}[\mathbb{E}[Y \mid \boldsymbol{\theta}]])^2$.
+
+*Step 5.* Subtract Step 4 from Step 3:
+$$
+\operatorname{Var}(Y) \;=\; \mathbb{E}[\operatorname{Var}(Y \mid \boldsymbol{\theta})] \;+\; \operatorname{Var}(\mathbb{E}[Y \mid \boldsymbol{\theta}]).
+$$
+</TheoremBlock>
+
+For the UQ specialization, $Y = Y_*$ is the response at a test input $\mathbf{x}_*$, and $\boldsymbol{\theta}$ has posterior $p(\boldsymbol{\theta} \mid \mathcal{D})$. The first term — average within-model variance — is aleatoric. The second — variance of the conditional mean across posterior samples — is epistemic.
+
+<AleatoricEpistemicDecomposer client:visible />
+
+### Aleatoric uncertainty: what more data cannot remove
+
+<TheoremBlock type="definition" number={1} title="Aleatoric uncertainty">
+$\sigma^2_{\mathrm{ale}}(\mathbf{x}_*) \;=\; \mathbb{E}_{\boldsymbol{\theta}\mid\mathcal{D}}\!\left[\operatorname{Var}(Y \mid \mathbf{x}_*, \boldsymbol{\theta})\right]$.
+</TheoremBlock>
+
+The first LTV term — average noise around the conditional mean, averaged over the posterior. In a well-specified model this does *not* shrink as $n \to \infty$ — it's a property of the data-generating process, not of the estimator. On the running heteroscedastic toy of this section, $\sigma^2_{\mathrm{ale}}(x) = (0.1 + 0.5|x|)^2$, growing quadratically at the edges.
+
+### Epistemic uncertainty: what more data does remove
+
+<TheoremBlock type="definition" number={2} title="Epistemic uncertainty">
+$\sigma^2_{\mathrm{epi}}(\mathbf{x}_*) \;=\; \operatorname{Var}_{\boldsymbol{\theta}\mid\mathcal{D}}\!\left[\mathbb{E}(Y \mid \mathbf{x}_*, \boldsymbol{\theta})\right]$.
+</TheoremBlock>
+
+The second LTV term — spread of the conditional mean across posterior parameter samples. In a well-specified parametric model with regular likelihood, Bernstein–von Mises gives $\sigma^2_{\mathrm{epi}}(\mathbf{x}_*) \asymp 1/n$ at each fixed test point. This is exactly what more data buys you.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_02_decomposition.png"
+  alt="Three-panel figure on the running heteroscedastic toy. Panel (a): posterior mean and total ±2σ band over training data. Panel (b): three curves — aleatoric σ²(x), epistemic σ²(x), and total = ale + epi — with the total curve coinciding with the sum. Panel (c): 25 posterior-sample mean functions plotted faintly, showing the spread that the epistemic variance summarizes."
+  caption="Figure 3 — Decomposition of the running heteroscedastic toy's posterior predictive variance into aleatoric and epistemic components. The third panel shows the posterior-sample functions whose variance gives the epistemic curve."
+/>
+
+### Identifiability and the limits under misspecification
+
+The split is clean only when the model class can represent the truth. Under misspecification, the reported "aleatoric" absorbs misspecification bias that should ideally appear as model uncertainty — but the model has no mechanism to recognize its own inadequacy.
+
+Concretely: fit a *linear* (degree-1) model to $Y = \sin(X) + \mathrm{noise}$. As $n \to \infty$:
+
+- Epistemic vanishes as expected: the OLS coefficients concentrate at their population values.
+- "Aleatoric" $\hat\sigma$ stabilizes at a value larger than the true noise level, because the residuals reflect *both* the actual noise *and* the misspecification bias $|\sin(x) - \beta^*_{\mathrm{OLS}} x|$.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_02_misspecification.png"
+  alt="Three-panel figure. Panel (a): a linear fit to a sinusoid at n = 30 with predictive band wide and partly tracking the truth. Panel (b): the same linear fit at n = 3000 — band narrows but is still flat, misses the sinusoid in the middle. Panel (c): the misspecification bias |f_true(x) - f_lin(x)| plotted alongside the true σ(x) (small) and the reported σ̂ (large) — the reported aleatoric absorbs the bias."
+  caption="Figure 4 — A linear model fit to a sinusoid. As n grows, epistemic vanishes (the OLS coefficients concentrate), but reported aleatoric stabilizes well above the true noise level — it has absorbed the misspecification bias. The model has no language for its own inadequacy."
+/>
+
+<TheoremBlock type="remark" title="Implication for the rest of this topic">
+A misspecified model with lots of data tells you it is *confident* (small epistemic) and that the *world is noisy* (large aleatoric). It cannot tell you it is *confidently wrong*. Every aleatoric/epistemic claim in §7 and §9 inherits this caveat — the split is clean only under correct specification.
+</TheoremBlock>
+
+## Calibration
+
+The §1 teaser showed a classifier whose stated probabilities don't match its empirical accuracy. This section gives us the machinery to make that observation precise: when do we say a probabilistic predictor is calibrated, how do we test it, and what does a single-number summary of miscalibration actually capture?
+
+### Perfect, approximate, and conditional calibration
+
+<TheoremBlock type="definition" number={3} title="Perfect calibration (Dawid 1982)">
+A predictor $\hat p$ is *perfectly calibrated* if $\Pr(Y = 1 \mid \hat p(\mathbf{X}) = p) = p$ for almost every $p \in [0, 1]$. Among inputs where the model says "I'm 70% confident," the empirical proportion of positives is 70%.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={4} title="Approximate (bin-based) calibration">
+Given a partition $\{B_1, \ldots, B_K\}$ of $[0, 1]$, a predictor $\hat p$ is *approximately calibrated* on this partition if for each $k$, $\mathbb{E}[Y \mid \hat p(\mathbf{X}) \in B_k] = \mathbb{E}[\hat p(\mathbf{X}) \mid \hat p(\mathbf{X}) \in B_k]$. This is what we estimate from data.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={5} title="Conditional calibration">
+$\Pr(Y = 1 \mid \mathbf{X} = \mathbf{x}) = \hat p(\mathbf{x})$ for almost every $\mathbf{x}$. The strongest of the three. No finite data-driven procedure can verify it — we'd need infinite data at every individual $\mathbf{x}$.
+</TheoremBlock>
+
+### Reliability diagrams as the visual diagnostic
+
+Partition $[0, 1]$ into $K$ bins; for each bin compute mean predicted probability $\mathrm{conf}(B_k)$ and empirical positive rate $\mathrm{acc}(B_k)$; plot the second against the first. Diagonal $y = x$ is perfect calibration. Two binning rules: equal-width (fixed-width intervals) and equal-frequency (equal-count quantile bins) — the latter is more robust when the classifier saturates many of its predictions near 0 or 1.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_03_reliability_eq_width_vs_eq_freq.png"
+  alt="Two-panel figure on the §1 classifier. Both panels show a reliability diagram with the perfect-calibration diagonal, empirical-accuracy curve, orange gap segments per bin, and bin-population histogram bars. Left panel: K = 10 equal-width bins, ECE ≈ 0.06. Right panel: K = 10 equal-frequency bins, ECE comparable but the top decile collapses to a single point because the classifier saturates."
+  caption="Figure 5 — Equal-width vs equal-frequency reliability diagrams on the §1 classifier. The two binning rules expose overconfidence in different places: equal-width spreads bin populations unevenly, equal-frequency packs the saturated tail into a single decile."
+/>
+
+### Expected and maximum calibration error
+
+<TheoremBlock type="definition" number={6} title="Expected calibration error">
+$$
+\mathrm{ECE} \;=\; \sum_{k=1}^K \frac{|B_k|}{n}\,\big|\mathrm{acc}(B_k) - \mathrm{conf}(B_k)\big|.
+$$
+Count-weighted mean absolute calibration gap. Biased toward zero with too few bins (local miscalibration averages away); biased upward with too many bins relative to sample size (per-bin empirical accuracy noisy).
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={7} title="Maximum calibration error">
+$\mathrm{MCE} \;=\; \max_k \big|\mathrm{acc}(B_k) - \mathrm{conf}(B_k)\big|$. Worst-bin gap. Used when *bounding* miscalibration matters more than averaging it — for example, when a single confident-wrong region is itself a deployment risk.
+</TheoremBlock>
+
+The standard $K = 10$ for $n \ge 1000$ is the heuristic compromise; §13.1 covers the bin-count sensitivity directly.
+
+### The sharpness-vs-calibration trade-off
+
+A *constant predictor* $\hat p_0(\mathbf{x}) \equiv \bar y$ is perfectly calibrated trivially (one bin, ECE = 0) but useless — zero sharpness. The principled goal is *calibrated and sharp*: forecasts match empirical frequencies (calibration) *and* are as concentrated as possible away from the marginal base rate (sharpness). One sharpness summary: $\mathrm{Var}_{\mathbf{X}}[\hat p(\mathbf{X})]$.
+
+<ReliabilityDiagramExplorer client:visible />
+
+### Binning artifacts and the continuous-target generalization
+
+ECE estimates depend on bin count $K$ and binning rule. Too few bins under-detect; too many over-estimate. A bootstrap confidence band on ECE-vs-$K$ shows the dependence directly.
+
+For continuous targets, calibration generalizes via the **probability integral transform**: if $\hat F(y \mid \mathbf{x})$ is the predictive CDF, the PIT values $U_i = \hat F(Y_i \mid \mathbf{x}_i)$ should be uniform on $[0, 1]$ under calibration. A U-shaped PIT histogram indicates over-confidence; a hump-shape indicates under-confidence.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_03_sharpness_calibration_binning_pit.png"
+  alt="Four-panel figure on calibration diagnostics. Panel (a): three reliability curves overlaid — constant, raw poly-LogReg, isotonic-recalibrated. Panel (b): joint sharpness-vs-ECE scatter for those three predictors. Panel (c): ECE vs bin count K with bootstrap standard error band. Panel (d): PIT histogram on the §2 toy showing near-uniformity."
+  caption="Figure 6 — The calibration apparatus on a single page: reliability overlay (a), the sharpness-vs-calibration trade-off (b), ECE sensitivity to bin count K with bootstrap SE band (c), and the continuous-target PIT histogram (d)."
+/>
+
+## Proper scoring rules
+
+The §3 calibration diagnostics are visual and interpretive. What we want is a single scalar function whose expected value is minimized exactly when the prediction matches the true conditional distribution. This is a *strictly proper scoring rule*.
+
+### Brier, log-loss, CRPS
+
+<TheoremBlock type="definition" number={8} title="Brier score">
+$\mathrm{BS}(p, y) \;=\; (p - y)^2$. Bounded in $[0, 1]$; perfect predictor achieves 0; worst case 1.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={9} title="Log-loss">
+$\mathrm{LL}(p, y) \;=\; -\!\big[y \log p + (1-y)\log(1-p)\big]$. Unbounded above — sensitive to confident-wrong predictions in a way Brier is not.
+</TheoremBlock>
+
+<TheoremBlock type="definition" number={10} title="Continuous Ranked Probability Score">
+$$
+\mathrm{CRPS}(F, y) \;=\; \int_{-\infty}^{\infty} \big(F(t) - \mathbb{1}\{y \le t\}\big)^2 \, dt.
+$$
+Squared $L^2$ distance between the forecast CDF and the empirical CDF of a single observation. Reduces to Brier for binary $F$; admits a closed form for Gaussian predictive distributions (Hersbach 2000).
+</TheoremBlock>
+
+### Strict properness: the finite-outcome direct calculation
+
+<TheoremBlock type="theorem" number={2} title="Strict properness of Brier and log-loss">
+For $Y \in \{0, 1\}$ with $\Pr(Y = 1) = q$, both $\mathbb{E}_{Y \sim q}[\mathrm{BS}(p, Y)]$ and $\mathbb{E}_{Y \sim q}[\mathrm{LL}(p, Y)]$ are uniquely minimized at $p = q$, with minimum values $q(1-q)$ and $H(q)$ respectively.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+*Brier.* Expand $\mathbb{E}[(p - Y)^2] = q(p - 1)^2 + (1 - q)p^2$. Distribute and collect terms in $p$: $p^2 - 2pq + q$. Complete the square:
+$$
+\mathbb{E}_{Y \sim q}[\mathrm{BS}(p, Y)] \;=\; (p - q)^2 + q(1 - q).
+$$
+The expression is strictly convex in $p$ with unique minimum at $p = q$, value $q(1-q)$.
+
+*Log-loss.* $\mathbb{E}_{Y \sim q}[\mathrm{LL}(p, Y)] = -q\log p - (1-q)\log(1-p)$. Differentiating with respect to $p$:
+$$
+\frac{d}{dp}\,\mathbb{E}[\mathrm{LL}] \;=\; -\frac{q}{p} + \frac{1-q}{1-p} \;=\; 0
+\quad \Longleftrightarrow \quad p = q.
+$$
+The second derivative $q/p^2 + (1-q)/(1-p)^2$ is strictly positive for $p \in (0, 1)$ — strictly convex, unique minimum. At $p = q$ the value is $H(q) = -q\log q - (1-q)\log(1-q)$, the binary entropy.
+</TheoremBlock>
+
+A useful identity falls out of the log-loss case: $\mathbb{E}_{Y \sim q}[\mathrm{LL}(p, Y)] = H(q) + D_{\mathrm{KL}}(q \,\|\, p)$. Minimizing log-loss in $p$ is minimizing the KL divergence from the truth.
+
+For CRPS, the argument is analogous: for $Y \sim G$, $\mathbb{E}[\mathrm{CRPS}(F, Y)] - \mathbb{E}[\mathrm{CRPS}(G, Y)] = \int (F(t) - G(t))^2 \, dt \ge 0$, with equality iff $F = G$ almost everywhere. Strictly proper.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_04_strict_properness.png"
+  alt="Two-panel figure. Left panel: expected Brier score over a grid of forecasts p ∈ [0, 1] for q = 0.30, showing a smooth convex curve with minimum at p = q = 0.30 of value q(1-q) = 0.21. Right panel: expected log-loss over the same grid, showing a similar convex curve with minimum at p = q = 0.30 of value H(q) ≈ 0.61."
+  caption="Figure 7 — Numerical verification of Theorem 2 at q = 0.30. Both expected losses are uniquely minimized at p = q; the closed-form minimum values q(1-q) and H(q) are annotated."
+/>
+
+### Murphy 1973: the reliability + resolution + uncertainty decomposition
+
+<TheoremBlock type="theorem" number={3} title="Murphy decomposition">
+Partition forecasts into bins $\{B_k\}_{k=1}^K$ with within-bin constant forecast $p_k = \mathrm{conf}(B_k)$. Let $\bar y_k = \mathrm{acc}(B_k)$ and $\bar y$ the marginal positive rate. Then
+$$
+\mathrm{BS} \;=\; \underbrace{\sum_{k=1}^K \frac{|B_k|}{n}(p_k - \bar y_k)^2}_{\mathrm{REL}} \;-\; \underbrace{\sum_{k=1}^K \frac{|B_k|}{n}(\bar y_k - \bar y)^2}_{\mathrm{RES}} \;+\; \underbrace{\bar y(1 - \bar y)}_{\mathrm{UNC}}.
+$$
+All three components are non-negative.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Within bin $B_k$, expand $\sum_{i \in B_k}(p_k - y_i)^2$:
+$$
+\sum_{i \in B_k}(p_k - y_i)^2
+\;=\; |B_k|\,p_k^2 \;-\; 2 p_k |B_k|\,\bar y_k \;+\; \sum_{i \in B_k} y_i^2.
+$$
+Use $y_i^2 = y_i$ (since $y_i \in \{0, 1\}$), so $\sum_{i \in B_k} y_i^2 = |B_k|\,\bar y_k$. Collect:
+$$
+\sum_{i \in B_k}(p_k - y_i)^2
+\;=\; |B_k|\big[(p_k - \bar y_k)^2 + \bar y_k(1 - \bar y_k)\big].
+$$
+Sum over bins and divide by $n$:
+$$
+n \cdot \mathrm{BS} \;=\; \sum_k |B_k| (p_k - \bar y_k)^2 \;+\; \sum_k |B_k| \,\bar y_k(1 - \bar y_k).
+$$
+The within-between variance identity gives $\sum_k |B_k|\,\bar y_k(1 - \bar y_k) = n \bar y(1 - \bar y) - \sum_k |B_k| (\bar y_k - \bar y)^2$. Substitute and divide by $n$:
+$$
+\mathrm{BS} \;=\; \sum_k \tfrac{|B_k|}{n}(p_k - \bar y_k)^2 \;-\; \sum_k \tfrac{|B_k|}{n}(\bar y_k - \bar y)^2 \;+\; \bar y(1 - \bar y).
+$$
+The three terms are REL, $-$RES, and UNC.
+</TheoremBlock>
+
+REL is the squared calibration gap, zero for a calibrated predictor. RES measures how well the bins separate outcomes — higher is more informative. UNC is the marginal Bernoulli variance, fixed by the data. Lower BS comes from either lower REL or higher RES.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_04_murphy_decomposition.png"
+  alt="Stacked-bar chart comparing three predictors — raw poly-LogReg, isotonic-recalibrated poly-LogReg, and a constant base-rate predictor — with each bar showing the UNC + (-RES) + REL contributions to the Brier score. Black diamonds mark the total BS. Isotonic recalibration reduces REL substantially while preserving RES."
+  caption="Figure 8 — Murphy decomposition across three predictors on the §1 classifier. Recalibration moves REL toward zero without harming RES. The black diamonds verify BS = REL − RES + UNC pointwise."
+/>
+
+<ProperScoringRulesComparator client:visible />
+
+### Practical evaluation: which rule answers which question
+
+**Brier** is bounded — it won't blow up on confident-wrong predictions. Reach for it when comparing across predictors with very different calibration profiles, or when the Murphy decomposition is the actual goal.
+
+**Log-loss** is unbounded above and severely penalizes confident-wrong predictions. Reach for it when "no surprises" is the goal, when you have many predictions so outliers won't dominate, or when the predictor will be used for downstream maximum-likelihood (log-loss is cross-entropy).
+
+**CRPS** is the right thing for continuous targets. Closed form for Gaussian predictives (Hersbach 2000); trapezoidal quadrature for general ones, agreeing to $10^{-3}$ in the verify suite.
+
+**The Murphy decomposition** is a diagnostic: when Brier is high, REL says it's a calibration problem; $-$RES says it's a resolution problem; UNC tells you the irreducible floor.
+
+## Predictive intervals across paradigms
+
+Four standard PI families: Bayesian posterior-predictive, frequentist plug-in, conformal, quantile regression. This section is the cross-family comparison — same data, same target coverage, what each delivers. Construction details live in the dedicated [conformal-prediction](/topics/conformal-prediction) topic and the **prediction-intervals** *(coming soon)* umbrella.
+
+### Umbrella view
+
+- **Bayesian PP**: posterior + likelihood → posterior-predictive distribution → quantile-based PI. Correct under prior + likelihood specification; input-adaptive width by construction.
+- **Frequentist plug-in**: point estimator + parametric quantile. Constant-width band for a homoscedastic-Gaussian plug-in. The heaviest in assumptions and the cheapest to compute.
+- **Split conformal**: train fold + calibration residuals + inflated quantile. Constant-width band with absolute-residual nonconformity. Distribution-free finite-sample marginal coverage.
+- **Quantile regression**: directly learn conditional quantile functions via pinball-loss minimization. Adaptive-shape band; requires model class flexibility.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_05_paradigm_overlay.png"
+  alt="Four-panel small-multiples on the §2 heteroscedastic toy at α = 0.10, shared y-axis. Each panel shows training data, true f(x), point prediction, and predictive interval for one of: Bayesian PP, frequentist plug-in, split conformal, quantile regression. Bayesian and quantile bands narrow at the center and widen at the edges; conformal is constant-width; plug-in is also constant-width but narrower (misspecified)."
+  caption="Figure 9 — Four PI paradigms on the same heteroscedastic toy at α = 0.10. Bayesian PP and quantile regression have adaptive width; split conformal has constant width but a finite-sample distribution-free coverage guarantee; plug-in is the cheapest but inherits the homoscedastic-noise mis-spec."
+/>
+
+### Coverage vs efficiency: the no-free-lunch comparison
+
+Every paradigm trades off coverage and efficiency (PI width). Each method makes a different trade — distribution-free vs adaptive-width vs parametric.
+
+### Marginal vs conditional coverage
+
+**Marginal coverage**: $\Pr_{X, Y}(Y \in \mathrm{PI}(X)) \ge 1 - \alpha$ — averaged over inputs.
+
+**Conditional coverage**: $\Pr_Y(Y \in \mathrm{PI}(x) \mid X = x) \ge 1 - \alpha$ for almost every $x$ — pointwise.
+
+Marginal is distribution-free achievable (split conformal). Conditional is *not* distribution-free achievable (Vovk 2012, Foygel Barber et al. 2021). The per-decile-coverage figure isolates this.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_05_coverage_vs_conditional.png"
+  alt="Two-panel figure. Left panel: scatter of (mean PI width, marginal coverage) for the four paradigms, with target coverage at 0.90 marked. Bayesian and quantile regression hit target with smaller width than conformal. Right panel: per-x-decile coverage for the four paradigms — Bayesian and quantile regression are close to flat at 0.90 across deciles; conformal has visible spread (marginal but not conditional)."
+  caption="Figure 10 — Coverage-vs-efficiency Pareto (left) and per-decile conditional coverage (right). Conformal achieves the target marginally but spreads across deciles; Bayesian PP under correct spec is flatter."
+/>
+
+<PredictiveIntervalParadigms client:visible />
+
+### When to reach for which
+
+- **Distribution-free coverage** → split conformal (and the §8 finishing layer).
+- **Input-adaptive under correct specification** → Bayesian PP (§7 NumPy approximations).
+- **Heteroscedastic noise + flexible model class** → quantile regression.
+- **Cheap parametric baseline** → plug-in.
+
+The single most useful UQ result is the conformal finishing-layer wrap around any other paradigm — distribution-free marginal coverage with adaptive width. That's §8.
+
+## Bootstrap-based UQ
+
+Bagging — bootstrap-aggregating — was introduced as variance reduction for unstable point predictors (Breiman 1996). The same machinery produces predictive uncertainty.
+
+### Bagged predictive distributions: the bagging-as-UQ argument
+
+Given training data $\mathcal{D}$ and learner $\hat\mu(\cdot; \mathcal{D})$. For $B$ rounds, draw bootstrap resample $\mathcal{D}^*_b$; fit $\hat\mu_b$. At test point $\mathbf{x}_*$:
+$$
+\bar\mu(\mathbf{x}_*) \;=\; \tfrac{1}{B}\sum_b \hat\mu_b(\mathbf{x}_*),
+\qquad
+\hat\sigma^2_{\mathrm{bag}}(\mathbf{x}_*) \;=\; \tfrac{1}{B-1}\sum_b \big(\hat\mu_b(\mathbf{x}_*) - \bar\mu(\mathbf{x}_*)\big)^2.
+$$
+The bootstrap principle says the sampling distribution under resampling approximates the sampling distribution under the data-generating process. So $\hat\sigma^2_{\mathrm{bag}}$ estimates $\mathrm{Var}_{\mathcal{D}}[\hat\mu(\mathbf{x}_*; \mathcal{D})]$ — the §2 epistemic variance. The formal statement is Theorem 3 of formalStatistics §31.3 (resampling consistency). Bagging gives epistemic only; aleatoric must be supplied separately.
+
+### Three bootstrap variants
+
+- **Pairs (nonparametric)**: resample $(\mathbf{x}_i, y_i)$ jointly. No noise-structure assumption.
+- **Residual**: fit once, resample residuals from the empirical pool. Assumes exchangeable residuals — wrong under heteroscedasticity.
+- **Wild**: $y_i^* = \hat\mu(\mathbf{x}_i) + w_i \hat\varepsilon_i$ with Rademacher $w_i \in \{-1, +1\}$. Preserves local noise magnitude — right for heteroscedastic regression.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_06_three_variants.png"
+  alt="Three small-multiples on the §2 heteroscedastic toy at B = 200, each showing the bagged predictive band for one bootstrap variant (pairs, residual, wild) compared to the analytic ±2σ epistemic curve from §2.3. Pairs and wild bootstraps track the heteroscedastic edge growth; residual bootstrap underestimates the edges because it assumes exchangeable residuals."
+  caption="Figure 11 — Three bootstrap variants on the running heteroscedastic toy. Wild bootstrap tracks the analytic §2.3 epistemic curve most closely; residual bootstrap underestimates at the edges because exchangeable-residual assumption fails."
+/>
+
+<BootstrapUQDemo client:visible />
+
+### Coverage in finite samples
+
+Three failure modes: Monte Carlo noise from finite $B$; downward bias from bootstrap sample sharing $\approx 63\%$ training data; residual-bootstrap fails under heteroscedasticity. Bootstrap UQ is consistent, cheap, and almost-always-applicable — but finite-sample coverage is approximate. For a finite-sample guarantee, wrap conformal around it (§8).
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_06_coverage_and_vs_bayes.png"
+  alt="Two-panel figure. Left panel: marginal coverage of bagged PIs at α = 0.10 vs B ∈ {5, 10, 25, 50, 100, 200, 500} for the three bootstrap variants, with the Bayesian PP coverage as horizontal reference. Right panel: the wild bootstrap predictive band overlaid against the Bayesian PP band on the §2 toy — close agreement."
+  caption="Figure 12 — Left: coverage stabilizes by B ≈ 100 for pairs and wild; residual bootstrap undercovers throughout. Right: on the §2 toy under correct polynomial specification, wild bootstrap and Bayesian PP agree closely — the Rubin 1981 Bayesian-bootstrap equivalence."
+/>
+
+### Comparison with the Bayesian posterior-predictive
+
+<TheoremBlock type="remark" title="Bayesian-bootstrap equivalence">
+On the §2 toy with the same polynomial basis, the wild-bootstrap predictive band closely matches the §2.3 Bayesian PP band — a special case of the Rubin (1981) Bayesian-bootstrap asymptotic equivalence. The differences are practical: Bayesian incorporates prior shrinkage and has a closed form but requires a likelihood specification; bootstrap is non-parametric in the noise structure and applicable when no closed form exists, at the cost of $B$ resamples.
+</TheoremBlock>
+
+## Bayesian UQ in NumPy
+
+Three approximations to the posterior-predictive distribution on the §2 toy, all implemented in pure NumPy in the companion notebook: Laplace (exact for linear-in-θ), MC-dropout via re-implemented forward pass, deep ensembles.
+
+### Posterior-predictive distribution as the natural UQ object
+
+$$
+p(y_* \mid \mathbf{x}_*, \mathcal{D}) \;=\; \int p(y_* \mid \mathbf{x}_*, \boldsymbol{\theta})\, p(\boldsymbol{\theta} \mid \mathcal{D})\, d\boldsymbol{\theta}.
+$$
+Decomposes via §2 LTV. Intractable for nonlinear models; every §7 method is a different approximation.
+
+### Laplace approximation
+
+$$
+p(\boldsymbol{\theta} \mid \mathcal{D}) \;\approx\; \mathcal{N}\!\left(\hat{\boldsymbol{\theta}}_{\mathrm{MAP}},\; \mathbf{H}^{-1}\right),
+\qquad \mathbf{H} = -\nabla^2 \log p(\boldsymbol{\theta} \mid \mathcal{D})\,\Big|_{\hat{\boldsymbol{\theta}}_{\mathrm{MAP}}}.
+$$
+Local Gaussian fit at the MAP — misses multimodality.
+
+<TheoremBlock type="remark" title="Laplace is exact for linear-in-θ Gaussian models">
+For a linear-in-θ model with Gaussian likelihood and Gaussian prior, the log posterior is exactly quadratic in $\boldsymbol{\theta}$, so the Laplace approximation reproduces the posterior bit-for-bit. The §2.3 closed-form `bayesPolyPosterior` *is* the Laplace approximation in this setting; the TS port verifies this to numerical precision.
+</TheoremBlock>
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_07_laplace.png"
+  alt="Two-panel figure. Left panel: §2 toy with Laplace posterior mean and ±2σ epistemic band. Right panel: 25 sample mean functions drawn from the Laplace approximation, showing the spread that determines the epistemic variance."
+  caption="Figure 13 — Laplace approximation on the running toy. Posterior mean and ±2σ band on the left; 25 posterior-sample mean functions on the right. Closed-form for this linear-in-θ model."
+/>
+
+### MC-dropout via re-implemented forward pass
+
+Gal & Ghahramani (2016): leave dropout active at test time, average $T$ stochastic forward passes. The full Bayesian interpretation requires *training* with dropout for the variational argument; our test-time-only implementation is a NumPy demonstration of the mechanism, not the full Bayesian variant.
+
+Implementation: train an `MLPRegressor` without dropout, extract the public `coefs_` and `intercepts_`, run NumPy forward passes with Bernoulli masks at hidden activations:
+$$
+\mathbf{h}^{(\ell+1)} \;=\; (1 - p)^{-1}\,\mathbf{m}^{(\ell)} \odot \phi\!\big(\mathbf{h}^{(\ell)} \mathbf{W}^{(\ell)} + \mathbf{b}^{(\ell)}\big).
+$$
+Inverted-dropout scaling $(1-p)^{-1}$ preserves expected activation magnitude.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_07_mc_dropout.png"
+  alt="Three small-multiples showing the MC-dropout predictive band on the §2 toy at dropout rates p ∈ {0.1, 0.3, 0.5}, T = 200 stochastic forward passes per panel. The epistemic band grows with the dropout rate."
+  caption="Figure 14 — MC-dropout via NumPy forward pass at three dropout rates. The epistemic variance scales roughly linearly with the dropout rate — a hand-set hyperparameter, not a learned quantity."
+/>
+
+### Deep ensembles
+
+Fit $M$ independent MLPs with different initializations (Lakshminarayanan, Pritzel & Blundell 2017). At a test point, take the empirical mean and variance across the $M$ predictions. Deep ensembles capture multi-modal posterior structure via genuinely independent fits — Laplace and MC-dropout cannot.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_07_deep_ensemble.png"
+  alt="Two-panel figure on the §2 toy. Left panel: an M = 20 deep ensemble with per-member predictions overlaid and the ±2σ ensemble band drawn. Right panel: epistemic-band width vs ensemble size M ∈ {2, 5, 10, 20}, showing the band narrowing and stabilizing as M grows."
+  caption="Figure 15 — Deep ensemble of M = 20 MLPs on the running toy. The epistemic band stabilizes by M ≈ 20 on this clean problem (Ovadia 2019 finds gains up to M = 100 under distribution shift)."
+/>
+
+<BNNApproximationsDemo client:visible />
+
+### What each approximation captures — and what it doesn't
+
+**Laplace.** Exact when the posterior is Gaussian. Misses multimodality otherwise.
+
+**MC-dropout.** Captures some epistemic variance via test-time masks, but the variance is controlled by the hand-set dropout rate $p$ — there's no mechanism for the model to discover how uncertain it should be.
+
+**Deep ensembles.** Multi-modal via independent fits. Empirically the most reliable on benchmarks (Lakshminarayanan 2017, Ovadia 2019).
+
+**Recommended default.** Deep ensembles + conformal finishing layer (§8) — the combination delivers calibrated input-adaptive PIs with a distribution-free marginal-coverage guarantee.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_07_three_way.png"
+  alt="Three-way overlay of Laplace, MC-dropout, and deep-ensemble predictive bands on the §2 toy at α = 0.10, with annotation table for coverage, mean width, and compute cost per method."
+  caption="Figure 16 — Three Bayesian UQ approximations side-by-side at α = 0.10. The bands look similar visually; the operational differences are in compute cost (Laplace instant, MC-dropout ~1s, ensemble ~4s) and what they can or can't capture about the posterior."
+/>
+
+## Conformal UQ
+
+Position conformal as a *coverage-repair finishing layer* applied post hoc to outputs of any other UQ paradigm to recover finite-sample distribution-free marginal coverage. The procedure derivation lives in [conformal-prediction](/topics/conformal-prediction); this section shows what *using* conformal as a finishing layer looks like on the §7 methods.
+
+### Distribution-free coverage as a UQ tool
+
+Split conformal recipe: train predictor on a training fold; compute nonconformity scores $S_i$ on a calibration fold; take the inflated quantile $\hat q$. Marginal coverage $\Pr(Y_* \in \mathrm{PI}(\mathbf{x}_*)) \ge 1 - \alpha$ under exchangeability — independent of the base predictor.
+
+### Conformalizing any UQ output: post-hoc coverage repair
+
+The nonconformity score is *any* function of $(\mathbf{x}, y)$. For the §7 methods, take the mean prediction $\hat\mu$, calibration absolute residuals, and the inflated quantile $\hat q$. The PI is $\hat\mu \pm \hat q$ with marginal coverage at target *regardless* of the underlying method's specification.
+
+### Adaptivity via locally-weighted nonconformity scores
+
+The vanilla nonconformity score gives a constant-width band. A normalized score
+$$
+S_i \;=\; \frac{|Y_i - \hat\mu(\mathbf{X}_i)|}{\hat\sigma(\mathbf{X}_i)}
+$$
+gives the PI $\hat\mu(\mathbf{x}_*) \pm \hat q \cdot \hat\sigma(\mathbf{x}_*)$ — adaptive width via the base predictor's $\hat\sigma$, same marginal-coverage guarantee. The exchangeability of $(X_i, Y_i)$ implies the exchangeability of $S_i$, so the conformal theorem still applies. (Lei et al. 2018; Romano, Patterson & Candès 2019.)
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_08_pre_post_locally_weighted.png"
+  alt="Two-panel figure. Left panel: vanilla constant-width conformal vs locally-weighted conformal on the deep ensemble, with training data and true function. Locally-weighted band tracks heteroscedastic noise growth at the edges. Right panel: per-x-decile coverage for the two variants — locally-weighted has lower per-decile spread (tighter conditional coverage)."
+  caption="Figure 17 — Locally-weighted conformal on a deep-ensemble base predictor. The band is heteroscedastic-aware; per-decile coverage is more uniform than the vanilla constant-width variant."
+/>
+
+<ConformalUQCalibrator client:visible />
+
+### What conformal cannot give
+
+Conditional coverage is *impossible* distribution-free (Vovk 2012, Foygel Barber et al. 2021). Individual probability calibration is meaningless distribution-free — conformal returns a set, not a probability. The right composition is: good UQ supplies $\hat\sigma(\mathbf{x})$, locally-weighted conformal wraps for a distribution-free marginal-coverage guarantee with adaptive width.
+
+## Deep-ensemble UQ
+
+Deeper look at the framework introduced in §7.4.
+
+### Variance-across-members estimator: derivation and intuition
+
+$$
+\hat\sigma^2_{\mathrm{ens}}(\mathbf{x}_*) \;=\; \frac{1}{M - 1}\sum_{m=1}^M \big(\hat\mu_m(\mathbf{x}_*) - \bar\mu(\mathbf{x}_*)\big)^2.
+$$
+Treating each member as a posterior sample, this estimates the §2 epistemic variance. Aleatoric is supplied separately (e.g., via the §6 residual smoother). By LTV the total predictive variance is $\hat\sigma^2_{\mathrm{ens}} + \hat\sigma^2_\epsilon$.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_09_lt_var_decomposition.png"
+  alt="Three-panel figure. Panel (a): per-member predictions at three diagnostic test points x* ∈ {-2.5, 0, 2.5}, with the ensemble mean marked as a star. Panel (b): ensemble epistemic variance vs analytic §2.3 epistemic curve — close agreement. Panel (c): full LTV decomposition into aleatoric, epistemic, and total curves on the running toy."
+  caption="Figure 18 — Variance-across-members on the running toy. Panel (a) shows the spread that gives the epistemic variance; panel (b) compares to the analytic Bayesian-polynomial epistemic curve; panel (c) is the full LTV decomposition."
+/>
+
+### Why ensembles outperform single-model UQ
+
+Four reasons: (1) multi-modal posterior coverage — different initializations land in different local minima; (2) robustness to bad init; (3) empirical dominance on calibration (Lakshminarayanan 2017) and on distribution shift (Ovadia 2019); (4) trivial parallelism. The counter is the $M \times$ compute cost.
+
+### Ensemble-size–quality Pareto and compute budgets
+
+The standard error of the variance estimator scales $1/\sqrt{M - 1}$. Calibration metrics plateau by $M = 20$ on the clean §2 toy. Recommended $M \in [10, 20]$ for clean problems; Ovadia (2019) found gains up to $M = 100$ on harder benchmarks under shift.
+
+<DeepEnsembleSizeExplorer client:visible />
+
+### Mixture-of-Gaussians readout for full predictive distributions
+
+The full predictive distribution from a deep ensemble is the mixture
+$$
+p(y \mid \mathbf{x}_*) \;=\; \frac{1}{M}\sum_{m=1}^M \mathcal{N}\!\big(y;\; \hat\mu_m(\mathbf{x}_*),\, \hat\sigma_\epsilon^2(\mathbf{x}_*)\big).
+$$
+The mixture mean is the ensemble mean. The mixture variance is $\hat\sigma_\epsilon^2 + \hat\sigma^2_{\mathrm{ens}}$ by LTV. This readout supplies the inputs for CRPS evaluation, PIT histograms, and §12 decision-theoretic UQ on the full predictive distribution rather than a Gaussian summary.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_09_mixture_density.png"
+  alt="Three small-multiples showing the Gaussian-mixture predictive density at three diagnostic test points. Component Gaussians are plotted faintly; the bold mixture density is the average. Vertical lines mark the ensemble mean and the true function value."
+  caption="Figure 19 — Mixture-of-Gaussians readout at three test points. The mixture mean coincides with the ensemble mean; the mixture variance equals σ²_ale + σ²_ens (LTV)."
+/>
+
+## UQ in the over-parameterized regime
+
+Where [double-descent](/topics/double-descent) answers "what does *test risk* do as $p/n$ crosses the interpolation threshold?", §10 answers "what does *predictive uncertainty* do?" Two UQ shadows of the risk spike: Bayesian PP variance and conformal half-width.
+
+### Posterior-predictive variance through the interpolation threshold
+
+For the linear-Gaussian model with ridge, the posterior covariance is $\boldsymbol{\Sigma}_\beta = \sigma^2(\mathbf{X}^\top \mathbf{X} + \lambda \mathbf{I})^{-1}$, and the posterior-predictive variance at $\mathbf{x}_*$ is $\sigma^2 + \mathbf{x}_*^\top \boldsymbol{\Sigma}_\beta \mathbf{x}_*$. The matrix $(\mathbf{X}^\top \mathbf{X} + \lambda \mathbf{I})^{-1}$ blows up when $\mathbf{X}^\top \mathbf{X}$ becomes nearly singular — exactly at $p \approx n$. The spike in PP variance is the same algebraic phenomenon as the test-risk spike.
+
+### Conformal coverage at $p/n \to 1$: the spike's UQ shadow
+
+The marginal-coverage theorem from `conformal-prediction` holds *regardless* of predictor quality: coverage stays at $1 - \alpha$ across the entire sweep. The conformal half-width $\hat q$ inflates at the threshold (residuals are large) and descends past it — same shape as the PP variance. **Conformal coverage is theorem-protected; conformal width follows the predictor.**
+
+### Reuse of the double-descent Hastie-form risk curve as underlay
+
+Numerically replicate the Hastie–Montanari–Rosset–Tibshirani 2022 spike-plus-second-descent risk curve; overlay the UQ counterparts. Test risk, PP variance, and conformal half-width are all algebraically linked through the same matrix $\mathbf{X}^\top \mathbf{X} + \lambda \mathbf{I}$.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_10_uq_shadows.png"
+  alt="Four-panel figure with shared x-axis p/n on log scale. Panel (a): test MSE on log y-axis showing the canonical double-descent spike near p/n = 1. Panel (b): mean posterior-predictive variance, same shape as risk. Panel (c): conformal half-width q̂ — same spike shape. Panel (d): marginal conformal coverage — flat at the target 0.90 across the entire sweep."
+  caption="Figure 20 — UQ shadows of double descent. Test risk (a), PP variance (b), and conformal half-width (c) all spike at p/n ≈ 1; conformal marginal coverage (d) stays flat at the target. Coverage is theorem-protected; width follows predictor quality."
+/>
+
+<OverparamRegimeUQ client:visible />
+
+### What UQ does at peak risk — and after
+
+Three observations. First, peak risk is peak uncertainty in-distribution and well-specified — the model is genuinely confused near the threshold. Second, the over-parameterized regime is not uniformly bad: the second descent in PP variance and conformal width mirrors the second descent in risk. Third, the conformal coverage guarantee survives the spike — which is the cleanest illustration of the §8.4 closing observation. Bridge to §11: out-of-distribution behavior is a different problem entirely.
+
+## Evaluating UQ at distribution shift
+
+Honest UQ failure-mode evaluation under shift. No UQ method delivers a finite-sample distribution-free guarantee under arbitrary shift. Some methods degrade more gracefully than others.
+
+### Three shift types
+
+**Covariate shift**: $p(\mathbf{x})$ changes, $p(y \mid \mathbf{x})$ unchanged. Example: deploying a model trained on one demographic to another.
+
+**Label shift**: $p(y)$ changes, $p(\mathbf{x} \mid y)$ unchanged. Example: deploying a disease-prevalence-aware classifier in a new population.
+
+**Concept shift**: $p(y \mid \mathbf{x})$ itself changes. Example: a fraud detector when fraudsters adapt their patterns.
+
+### Coverage degradation curves
+
+A sweep of covariate-shift magnitude $s \in [0, 2]$ on the §2 toy shows all three §7 methods degrading. Deep ensembles degrade most gracefully (Ovadia 2019); Laplace degrades fastest because the closed form doesn't know about shift; conformal degrades roughly as fast as the underlying predictor — exchangeability is violated, so the conformal theorem doesn't apply.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_11_coverage_degradation.png"
+  alt="Line plot of marginal coverage at α = 0.10 vs covariate-shift magnitude s ∈ [0, 2] for three methods: Laplace, deep ensemble, locally-weighted conformal on the ensemble. All three start near the 0.90 target and decline; deep ensemble degrades most gracefully."
+  caption="Figure 21 — Coverage degradation under covariate shift on the §2 toy. Three methods, three rates of decay. Deep ensembles are the most graceful (matching Ovadia 2019)."
+/>
+
+### Calibration degradation: reliability before and after
+
+On the §1 classifier, shifting the test moons in the $x_1$ direction degrades calibration monotonically. ECE at $s = 0$ is around 0.05; at $s = 1.5$ it is several times that. The reliability diagrams show systematic over-confidence growing under shift — calibration monitoring is a viable deployment health check.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_11_calibration_degradation.png"
+  alt="Four-panel reliability sequence on the §1 classifier at four covariate-shift levels s ∈ {0, 0.5, 1.0, 1.5}. Each panel shows the perfect-calibration diagonal, the empirical-accuracy curve, and orange gap segments. The gaps grow systematically as s increases — the classifier becomes increasingly overconfident."
+  caption="Figure 22 — Calibration degradation on the §1 classifier under covariate shift. ECE grows monotonically; the classifier's confidence increases relative to its accuracy."
+/>
+
+### The open-set problem and out-of-distribution detection
+
+Different from coverage degradation: an input-only test asking "is this OOD?" rather than "does my PI cover the outcome?". The deep-ensemble epistemic variance turns out to be a strong OOD score on the §2 toy — AUROC well above 0.85 separating in-distribution from far-OOD inputs. Related but complementary diagnostic.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_11_ood_detection.png"
+  alt="Two-panel OOD detection figure. Left panel: histograms of ensemble epistemic variance for in-distribution and out-of-distribution inputs — clear separation on a log x-axis. Right panel: ROC curve for OOD detection via variance score, with AUROC labeled."
+  caption="Figure 23 — OOD detection via deep-ensemble epistemic variance on the running toy. ID and far-OOD inputs separate cleanly (AUROC ≥ 0.85)."
+/>
+
+<DistributionShiftDegradation client:visible />
+
+### What distribution-free guarantees don't survive shift
+
+Vanilla split conformal needs exchangeability; under shift, exchangeability is violated and the marginal-coverage guarantee fails. Weighted conformal (Tibshirani, Foygel Barber, Candès & Ramdas 2019) recovers the guarantee under *known* covariate shift via density-ratio weighting — the catch is that the density ratio is rarely known in practice. Bayesian PP has no formal guarantee and degrades under bad specification. Deep ensembles degrade most gracefully empirically but have no formal guarantee. Concept shift admits no general fix: detection + retraining is the only response.
+
+## Decision-theoretic UQ
+
+Operationalizing UQ outputs. Three operational stories — Bayes-optimal point prediction under a loss; selective prediction with abstention; cost-sensitive thresholding under miscalibration.
+
+### Expected loss minimization under the predicted distribution
+
+The Bayes-optimal point predictor at $\mathbf{x}_*$ under loss $L$ is
+$$
+\hat y^*(\mathbf{x}_*) \;=\; \arg\min_{\hat y} \mathbb{E}_{Y \sim \hat p(\cdot \mid \mathbf{x}_*)}[L(Y, \hat y)].
+$$
+Three canonical loss / point-prediction pairs: squared loss → mean; absolute loss → median; pinball loss at $\tau$ → $\tau$-quantile. What to report depends on what's downstream. Reporting the median when the deployed loss is squared error is wrong; reporting the mean when the deployed loss is pinball is also wrong.
+
+### Selective prediction with abstention: the rejection threshold
+
+Abstain when confidence falls below a threshold (El-Yaniv & Wiener 2010, Geifman & El-Yaniv 2017). For regression, threshold on predictive variance; for classification, on max-probability. The rejected fraction is the abstention rate; the rest is the *selective* prediction.
+
+### Coverage–accuracy trade-off and the precision-at-coverage curve
+
+Sweep the abstention threshold to trace the (coverage, accuracy) curve. Three operating points typically matter: no abstention (the baseline accuracy), the high-precision regime (small coverage, near-perfect accuracy), and the Pareto frontier between. The area under the selective-risk curve (AURC) is a single-number summary.
+
+### Cost-sensitive decisions when calibration is imperfect
+
+The Bayes-optimal threshold for a binary decision under asymmetric costs $c_{FP}, c_{FN}$ is
+$$
+\hat p^* \;=\; \frac{c_{FP}}{c_{FP} + c_{FN}}.
+$$
+This assumes calibrated probabilities. Under miscalibration, applying the formula gives a sub-optimal threshold. Isotonic recalibration (or temperature scaling, §13.2) delivers meaningful cost savings on the §1 classifier under asymmetric cost regimes — 10–20% on the demo.
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_12_decision_theoretic.png"
+  alt="Three-panel decision-theoretic figure. Panel (a): the ensemble mixture density at x* = 1.5 with the Bayes-optimal predictors under squared, absolute, and pinball-τ=0.05 losses marked. Panel (b): risk-coverage curve on the §1 classifier with the baseline accuracy and a 0.80-coverage operating point. Panel (c): cost-sensitive expected cost vs threshold for the raw and isotonic-recalibrated classifiers under c_FN = 5, with the Bayes-optimal threshold marked."
+  caption="Figure 24 — Three operational stories. Bayes-optimal point prediction (a), selective prediction with abstention (b), cost-sensitive thresholding (c). Recalibration matters most under asymmetric costs — the gap between raw and isotonic on the right panel."
+/>
+
+## Computational notes
+
+Implementation-hygiene appendix.
+
+### Efficient ECE estimation and binning choices
+
+Rule of thumb: at least 30 samples per bin to avoid empirical-accuracy noise dominating the calibration signal. Bootstrap percentile confidence intervals on the ECE estimate are cheap and informative. Adaptive binning (Roelofs et al. 2022) is a tighter alternative to fixed-$K$ binning. For continuous targets, PIT-based KS or Cramér–von Mises distances generalize bin-based ECE.
+
+### Temperature scaling and isotonic regression for cheap recalibration
+
+Fit a single scalar $T > 0$ on a calibration set: $T^* = \arg\min_T -\sum_i \big[y_i \log\sigma(z_i / T) + (1 - y_i)\log(1 - \sigma(z_i / T))\big]$.
+
+<TheoremBlock type="remark" title="Temperature scaling preserves accuracy">
+For any $T > 0$, the softmax (or sigmoid) is monotone in each logit, so $\arg\max_k p_k^T = \arg\max_k z_k$. Accuracy is unchanged by temperature scaling — only the concentration of confidence around the argmax shifts. $T > 1$ smooths overconfidence; $T < 1$ sharpens underconfidence. Temperature is a one-parameter recalibrator; isotonic regression is non-parametric and more flexible. The practical default is to try temperature scaling first.
+</TheoremBlock>
+
+<TemperatureScalingDemo client:visible />
+
+<Figure
+  src="/images/topics/uncertainty-quantification/fig_13_temperature_scaling.png"
+  alt="Three-panel reliability comparison on the §1 classifier. Panel (a): raw classifier with visible overconfidence in the high-probability bins. Panel (b): the same classifier after temperature scaling at the fitted T*. Panel (c): the same classifier after isotonic recalibration. Both recalibrators move the empirical-accuracy curve closer to the diagonal."
+  caption="Figure 25 — Reliability before and after recalibration on the §1 classifier. Temperature scaling (panel b) and isotonic regression (panel c) both reduce the ECE meaningfully while preserving the classifier's argmax predictions."
+/>
+
+### Ensemble-size and MC-replicate budgets
+
+Deep ensembles: $M = 10$ for a prototype, $M = 20$ for production, $M = 50+$ when distribution shift matters. MC-dropout: $T = 100$ for ≈5% MC error, $T = 500$ for ≈2%. Verification sample sizes: $B \ge 20$ replicates for the §10 sweep, $n \ge 200$ for the §11 AUROC.
+
+### Numerical stability at extreme probabilities
+
+Log-loss: clip predictions to $[10^{-12}, 1 - 10^{-12}]$ before taking logarithms. Mixture NLL: compute with the log-sum-exp trick (`logsumexpAxis0` in the shared TS module) to avoid underflow at small mixture-component densities. CRPS: prefer the Hersbach (2000) closed form for Gaussian forecasts; reserve trapezoidal quadrature for non-Gaussian cases or as a numerical sanity check.
+
+### Reproducibility checklist
+
+Single topic-wide RNG seed; explicit `random_state` for every sklearn call; inline `assert` statements on the headline diagnostics in every code cell; save figures before showing them so re-runs don't lose images; report single-number metrics inline next to the asserts; re-run on a fresh kernel before committing to verify the topic is end-to-end reproducible.
+
+## Connections and limits
+
+### Semiparametric inference: efficient influence functions for variance components
+
+The **semiparametric-inference** *(coming soon)* topic develops efficient influence functions (EIFs) for asymptotically optimal estimators of any functional. Two connections to UQ. First, the EIF for a variance/uncertainty parameter yields the asymptotically optimal estimator with semiparametric efficiency bound (van der Vaart 1998). Second, EIF-based standard errors give valid UQ for plug-in estimators with ML-estimated nuisance functions — the **double machine learning** framework (Chernozhukov et al. 2018). The connection is direct: every UQ method here that uses a flexible nuisance estimator (the §7 MLP, the §10 ridge) is a candidate for EIF correction.
+
+### Mixed-effects models: random effects as one form of epistemic UQ
+
+In a [mixed-effects](/topics/mixed-effects) model $y_{ij} = \beta_0 + \beta_1 \mathbf{x}_{ij} + \alpha_i + \varepsilon_{ij}$, the random effect $\alpha_i$ is *exactly* epistemic uncertainty about group $i$'s parameters. Within-group variance is aleatoric; between-group variance is epistemic. Mixed-effects gives a structured parametric form of the §2 decomposition — identifiable from data when the group structure is known.
+
+### Information theory: entropy as a one-number UQ summary
+
+The §4.2 derivation showed $\mathbb{E}[\mathrm{LL}(p, Y)] = H(q) + D_{\mathrm{KL}}(q \,\|\, p)$: log-loss is KL plus entropy. The sharpness-calibration trade-off has an information-theoretic reading as mutual-information maximization subject to a calibration constraint. Predictive entropy generalizes the §11.4 variance-based OOD score to non-Gaussian predictives.
+
+### Honest limits — model misspecification, arbitrary shift, the Pareto frontier
+
+- **Model misspecification** (§2.5). No UQ method can detect or fix structural misspecification on its own.
+- **Distribution shift** (§11.5). No procedure delivers distribution-free coverage under arbitrary shift.
+- **Conditional coverage impossibility** (§5.3, §8.4). No procedure achieves finite-sample distribution-free conditional coverage.
+- **Sharpness-calibration Pareto** (§3.4). Perfect joint achievement requires perfectly-predictable data.
+- **Identifiability under misspecification**. The aleatoric/epistemic split is honest only under correct specification.
+- **Open research.** UQ for LLMs, UQ under concept shift, UQ in distillation/quantization, UQ in active learning. Recent literature is starting to address these but no consensus framework has emerged.
+
+Every UQ practitioner reaches a residual *zone of judgment* where the formal apparatus runs out. Knowing where that zone begins is what distinguishes a competent UQ practice from a careless one.
+
+### Discharged forward-pointer
+
+The bagging-as-UQ argument in §6.1 leans on Theorem 3 of formalStatistics §31.3 (resampling consistency for the variance of a parameter estimator). The reciprocal frontmatter entry on this topic discharges the deferred-reciprocity entry that has been logged on formalstatistics' side since the bootstrap topic shipped. The other connections to formalML topics — [bayesian-neural-networks](/topics/bayesian-neural-networks) (§7), [conformal-prediction](/topics/conformal-prediction) (§5, §8), **prediction-intervals** *(coming soon)* (§5), [double-descent](/topics/double-descent) (§10), [mixed-effects](/topics/mixed-effects) (§14.2), and **semiparametric-inference** *(coming soon)* (§14.1) — are formalML-internal and listed in the topic's connections array.
