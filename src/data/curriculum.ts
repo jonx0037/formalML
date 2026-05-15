@@ -123,7 +123,6 @@ export const tracks = [
     description:
       'Generalization theory, semiparametric efficiency, causal inference, and uncertainty quantification \u2014 methodology that cuts across model families.',
     planned: [
-      'uncertainty-quantification',
       'semiparametric-inference',
     ],
     calculusDependent: false,
