@@ -65,8 +65,9 @@ export default function KDESurfaceWithModes() {
     const x = d3.scaleLinear().domain(dataset.xDomain).range([0, innerW]);
     const y = d3.scaleLinear().domain(dataset.yDomain).range([innerH, 0]);
 
-    // Flatten values for d3.contours which expects row-major number[].
-    const flat = new Array<number>(GRID_N * GRID_N);
+    // Flatten values for d3.contours. Float64Array minimizes GC pressure
+    // versus a plain Array<number>; cast satisfies d3.contours' typing.
+    const flat = new Float64Array(GRID_N * GRID_N);
     let maxV = 0;
     for (let r = 0; r < GRID_N; r++) {
       for (let c = 0; c < GRID_N; c++) {
@@ -76,7 +77,7 @@ export default function KDESurfaceWithModes() {
     }
     const thresholds = d3.range(1, CONTOUR_COUNT + 1).map((i) => (i / (CONTOUR_COUNT + 1)) * maxV);
     const contoursGen = d3.contours().size([GRID_N, GRID_N]).thresholds(thresholds);
-    const polys = contoursGen(flat);
+    const polys = contoursGen(flat as unknown as number[]);
     const colorScale = d3.scaleSequential(d3.interpolateViridis).domain([0, maxV]);
 
     // Path projection from grid coords [0, GRID_N] to data coords then to pixels.

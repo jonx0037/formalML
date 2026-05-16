@@ -114,16 +114,16 @@ export default function MeanShiftTrajectoryAnimator() {
     const x = d3.scaleLinear().domain(dataset.xDomain).range([0, innerW]);
     const y = d3.scaleLinear().domain(dataset.yDomain).range([innerH, 0]);
 
-    // Faint KDE backdrop.
+    // Faint KDE backdrop. Float64Array buffer minimizes GC pressure.
     let maxV = 0;
-    const flat = new Array<number>(GRID_N * GRID_N);
+    const flat = new Float64Array(GRID_N * GRID_N);
     for (let r = 0; r < GRID_N; r++) for (let c = 0; c < GRID_N; c++) {
       flat[r * GRID_N + c] = kde.values[r][c];
       if (kde.values[r][c] > maxV) maxV = kde.values[r][c];
     }
     const thresholds = d3.range(1, CONTOUR_COUNT + 1).map((i) => (i / (CONTOUR_COUNT + 1)) * maxV);
     const contoursGen = d3.contours().size([GRID_N, GRID_N]).thresholds(thresholds);
-    const polys = contoursGen(flat);
+    const polys = contoursGen(flat as unknown as number[]);
     const xProj = (gx: number) => x(dataset.xDomain[0] + ((dataset.xDomain[1] - dataset.xDomain[0]) * gx) / (GRID_N - 1));
     const yProj = (gy: number) => y(dataset.yDomain[0] + ((dataset.yDomain[1] - dataset.yDomain[0]) * gy) / (GRID_N - 1));
     const proj = d3.geoTransform({

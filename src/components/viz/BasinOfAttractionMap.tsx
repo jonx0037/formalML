@@ -29,11 +29,13 @@ function basinPng(labels: number[][], modes: Pt[]): string {
   const ny = labels.length;
   const nx = labels[0]?.length ?? 0;
   if (!nx || !ny) return '';
-  // OffscreenCanvas if available; else regular canvas.
-  const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(nx, ny) : document.createElement('canvas');
-  (canvas as HTMLCanvasElement).width = nx;
-  (canvas as HTMLCanvasElement).height = ny;
-  const ctx = canvas.getContext('2d')! as CanvasRenderingContext2D;
+  // Component is client:only="react", so document is always defined here.
+  // OffscreenCanvas doesn't support synchronous toDataURL, so we stick with
+  // a regular canvas.
+  const canvas = document.createElement('canvas');
+  canvas.width = nx;
+  canvas.height = ny;
+  const ctx = canvas.getContext('2d')!;
   const img = ctx.createImageData(nx, ny);
   const colors = modes.map((_, i) => hexToRgb(CLUSTER_COLORS[i % CLUSTER_COLORS.length]));
   for (let r = 0; r < ny; r++) {
@@ -50,8 +52,7 @@ function basinPng(labels: number[][], modes: Pt[]): string {
     }
   }
   ctx.putImageData(img, 0, 0);
-  if (canvas instanceof HTMLCanvasElement) return canvas.toDataURL();
-  return ''; // OffscreenCanvas path: would need convertToBlob + URL.createObjectURL
+  return canvas.toDataURL();
 }
 
 export default function BasinOfAttractionMap() {

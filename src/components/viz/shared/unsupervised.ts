@@ -190,6 +190,12 @@ export function meanShift(
   // Per-query active flag — stop iterating once a query has converged.
   const active = new Array<boolean>(m).fill(true);
 
+  // Scratch buffers hoisted out of both the t- and q-loops. With m up to ~6400
+  // for an 80×80 basin grid and maxIter up to 300, per-iteration allocation
+  // would burn ~2M Float64Array(n) allocations per call.
+  const num = new Float64Array(d);
+  const negHalfNorm = kernel === 'gaussian' ? new Float64Array(n) : null;
+
   for (let t = 0; t < maxIter; t++) {
     let anyActive = false;
     let maxStepSquared = 0;
@@ -205,12 +211,11 @@ export function meanShift(
 
       // Compute weights and weighted-mean accumulator in one pass.
       let wSum = 0;
-      const num = new Array<number>(d).fill(0);
+      num.fill(0);
 
-      if (kernel === 'gaussian') {
+      if (kernel === 'gaussian' && negHalfNorm) {
         // Pass 1: compute squared distances and track max for log-domain shift.
         let maxNeg = -Infinity;
-        const negHalfNorm = new Float64Array(n);
         for (let i = 0; i < n; i++) {
           let s2 = 0;
           for (let j = 0; j < d; j++) {
