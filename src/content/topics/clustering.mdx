@@ -1,0 +1,1117 @@
+---
+title: "Clustering"
+subtitle: "Mean-shift mode-finding on the KDE substrate: bandwidth-mode-count duality, basin-of-attraction partitions, and the k-means / GMM contrasts"
+status: "published"
+difficulty: "intermediate"
+prerequisites:
+  - "gradient-descent"
+formalstatisticsPrereqs:
+  - topic: "kernel-density-estimation"
+    site: "formalstatistics"
+    relationship: "Topic 30's KDE estimator $\\hat f_h$ is the substrate on which mean-shift performs gradient ascent (§§2–3). §30.3's Nadaraya–Watson construction is the closest sister to mean-shift's sample-weighted-mean form, and the bandwidth-bias-variance trade-off in §30.5 is the prerequisite framing for §5's bandwidth-mode-count duality. The forward-link from Topic 30 §30.9 Rem 18 was logged in deferred-reciprocals.md:316 and is discharged by this topic."
+  - topic: "multivariate-distributions"
+    site: "formalstatistics"
+    relationship: "The multivariate-Gaussian-kernel substrate (§6.1) and the Mahalanobis-distance reading of GMM responsibilities (§10.2) require the multivariate-normal machinery — covariance matrices, density form, marginal/conditional rules — that formalstatistics develops in its multivariate-distributions topic."
+formalcalculusPrereqs:
+  - topic: "multivariable-calculus"
+    site: "formalcalculus"
+    relationship: "The mean-shift derivation in §3 uses the chain rule and gradient computation in $\\mathbb{R}^d$; §4's convergence proof uses the multivariate Taylor expansion around a mode. formalcalculus's multivariable-calculus topic supplies the gradient / Hessian / chain-rule machinery readers might want to review if rusty."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "clustering"
+  - "mean-shift"
+  - "density-estimation"
+  - "unsupervised-learning"
+  - "kde"
+  - "k-means"
+  - "gaussian-mixture-model"
+  - "em-algorithm"
+  - "bandwidth-selection"
+  - "machine-learning"
+domain: "unsupervised"
+videoId: null
+notebookPath: "notebooks/clustering/01_clustering.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/clustering.mdx"
+datePublished: 2026-05-16
+estimatedReadTime: 50
+abstract: "Density-based clustering treats a cluster as a high-density region of the underlying distribution, separated from other such regions by lower-density valleys. Mean-shift turns this picture into an algorithm: each query point climbs the kernel density estimate $\\hat f_h$ by gradient ascent until it reaches a local mode, and the cluster assignment falls out of which basin of attraction it lands in. We derive the mean-shift update as gradient ascent on $\\hat f_h$ — the algorithmic payoff being that the closed-form update doesn't require computing the gradient explicitly — and prove the two convergence guarantees: Comaniciu and Meer's monotone-density-ascent inequality and Cheng's convergence to a stationary point. We then develop the bandwidth-mode-count duality (Chacón–Duong 2018) that explains why the cluster count is read off the data through $h$ rather than chosen in advance, and visualize the mode tree that indexes the natural cluster count. Two contrast sections situate mean-shift among its peers: k-means is exactly Gaussian-kernel mean-shift in the $h \\to 0$ limit (the Voronoi-collapse theorem), and GMM-via-EM is the parametric soft-clustering alternative whose responsibility update mirrors mean-shift's sample-weighted mean. We close with a light pointer to spectral and density-based methods, deferring proper coverage to the Graph Theory track."
+connections:
+  - topic: "kernel-regression"
+    relationship: "The Gaussian-kernel mean-shift update (§3.3) and the Nadaraya–Watson regression estimator are structurally identical — both compute a kernel-weighted average over the data. Kernel regression averages responses given covariates; mean-shift averages positions given the current iterate. The same bandwidth-selection machinery applies to both."
+  - topic: "graph-laplacians"
+    relationship: "The §11 spectral-clustering pointer gestures at the eigenvalue structure of the normalized Laplacian. The proper development — Cheeger inequality, perturbation analysis, Shi–Malik / Ng–Jordan–Weiss derivations — lives in graph-laplacians on the Graph Theory track."
+  - topic: "random-walks"
+    relationship: "The §11 spectral pointer also covers the random-walk Laplacian $L_{\\mathrm{rw}}$. The dynamics view (mixing times, spectral gap, hitting times) is the substrate random-walks develops; this topic just names the connection and redirects."
+  - topic: "normalizing-flows"
+    relationship: "Mean-shift's KDE is the non-parametric precursor to flow-based density estimation. The §12.3 forward pointer notes that the unsupervised.ts shared module introduced here for the mean-shift estimators is the same module that normalizing-flows can plug into for KDE baselines."
+  - topic: "gradient-descent"
+    relationship: "Each mean-shift iteration (§3.3 Proposition) is a gradient-ascent step on $\\hat f_h$ with adaptive step size $\\alpha(\\mathbf{x}_t)^{-1}$. The convergence theory (§4) is the gradient-ascent convergence story specialized to a smooth bounded objective with isolated stationary points."
+references:
+  - type: "paper"
+    title: "The Estimation of the Gradient of a Density Function, with Applications in Pattern Recognition"
+    authors: "Fukunaga & Hostetler"
+    year: 1975
+    url: "https://doi.org/10.1109/TIT.1975.1055330"
+    note: "The original mean-shift paper, framing the algorithm as gradient estimation on the KDE (IEEE TIT)."
+  - type: "paper"
+    title: "Mean Shift, Mode Seeking, and Clustering"
+    authors: "Cheng"
+    year: 1995
+    url: "https://doi.org/10.1109/34.400568"
+    note: "Foundational convergence theory for mean-shift; Theorem 1 (§4.3) is the trajectory-convergence result (IEEE TPAMI)."
+  - type: "paper"
+    title: "Mean Shift: A Robust Approach toward Feature Space Analysis"
+    authors: "Comaniciu & Meer"
+    year: 2002
+    url: "https://doi.org/10.1109/34.1000236"
+    note: "The profile-function formulation and Theorem 1 (§4.1's monotone-density-ascent inequality) come from this paper (IEEE TPAMI)."
+  - type: "paper"
+    title: "A Review of Mean-Shift Algorithms for Clustering"
+    authors: "Carreira-Perpiñán"
+    year: 2015
+    url: "https://arxiv.org/abs/1503.00687"
+    note: "The standard modern reference. §3.3 (kernel-choice robustness), §4.1 (noise-robust modes), §5 (sample-and-cluster) all draw on this review."
+  - type: "paper"
+    title: "Using Kernel Density Estimates to Investigate Multimodality"
+    authors: "Silverman"
+    year: 1981
+    url: "https://doi.org/10.1111/j.2517-6161.1981.tb01155.x"
+    note: "The 1D bandwidth-mode-count duality (§5.2 Theorem in $d = 1$) and the heat-equation reformulation (JRSS-B)."
+  - type: "book"
+    title: "Density Estimation for Statistics and Data Analysis"
+    authors: "Silverman"
+    year: 1986
+    url: "https://doi.org/10.1201/9781315140919"
+    note: "The standard reference for the AMISE-optimal-bandwidth selectors §5.4 surveys (Chapman & Hall)."
+  - type: "paper"
+    title: "A Population Background for Nonparametric Density-Based Clustering"
+    authors: "Chacón"
+    year: 2015
+    url: "https://doi.org/10.1214/15-STS526"
+    note: "The multivariate-extension of Silverman's duality result; §5.2 Theorem in $d \\geq 2$ (Statistical Science)."
+  - type: "book"
+    title: "Multivariate Kernel Smoothing and Its Applications"
+    authors: "Chacón & Duong"
+    year: 2018
+    url: "https://doi.org/10.1201/9780429485572"
+    note: "Chapter 7 develops the multivariate bandwidth-mode-count duality and the mode-tree machinery §5.3 uses (CRC Press)."
+  - type: "paper"
+    title: "Mémoire sur une classe d'équations à différences partielles"
+    authors: "Sturm"
+    year: 1836
+    url: "https://eudml.org/doc/233861"
+    note: "The classical zero-count-non-increase theorem for parabolic equations §5.2 invokes (J. Math. Pures Appl.)."
+  - type: "paper"
+    title: "Nonincrease of the Lap-Number of a Solution for a One-Dimensional Semilinear Parabolic Equation"
+    authors: "Matano"
+    year: 1982
+    url: "https://repository.dl.itc.u-tokyo.ac.jp/records/40165"
+    note: "Modern proof of the Sturm zero-count result invoked in §5.2 (J. Fac. Sci. Univ. Tokyo)."
+  - type: "paper"
+    title: "The Zero Set of a Solution of a Parabolic Equation"
+    authors: "Angenent"
+    year: 1988
+    url: "https://doi.org/10.1515/crll.1988.390.79"
+    note: "Companion modern treatment of the Sturm result (J. reine angew. Math.)."
+  - type: "paper"
+    title: "Maximum Likelihood from Incomplete Data via the EM Algorithm"
+    authors: "Dempster, Laird & Rubin"
+    year: 1977
+    url: "https://doi.org/10.1111/j.2517-6161.1977.tb01600.x"
+    note: "The foundational EM paper; §10.2's M-step derivation and monotone-likelihood-ascent come from here (JRSS-B)."
+  - type: "book"
+    title: "Bayesian Theory"
+    authors: "Bernardo & Smith"
+    year: 1994
+    url: "https://doi.org/10.1002/9780470316870"
+    note: "The M-closed / M-complete / M-open framework §10.4 invokes for the GMM-on-non-Gaussian-data critique (Wiley)."
+  - type: "paper"
+    title: "Dealing with Label Switching in Mixture Models"
+    authors: "Stephens"
+    year: 2000
+    url: "https://doi.org/10.1111/1467-9868.00265"
+    note: "The §10.3 label-switching problem in Bayesian mixture inference (JRSS-B)."
+  - type: "paper"
+    title: "Least Squares Quantization in PCM"
+    authors: "Lloyd"
+    year: 1982
+    url: "https://doi.org/10.1109/TIT.1982.1056489"
+    note: "Lloyd's algorithm — the alternating-minimization §9.1 calls k-means (IEEE TIT)."
+  - type: "paper"
+    title: "Some Methods for Classification and Analysis of Multivariate Observations"
+    authors: "MacQueen"
+    year: 1967
+    url: "https://projecteuclid.org/euclid.bsmsp/1200512992"
+    note: "The earlier formulation that coined the term 'k-means' (Berkeley Symposium)."
+  - type: "paper"
+    title: "k-Means++: The Advantages of Careful Seeding"
+    authors: "Arthur & Vassilvitskii"
+    year: 2007
+    url: "https://dl.acm.org/doi/10.5555/1283383.1283494"
+    note: "The §9.1 k-means++ initialization with $O(\\log K)$ expected-WCSS approximation (SODA)."
+  - type: "paper"
+    title: "A Density-Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise"
+    authors: "Ester, Kriegel, Sander & Xu"
+    year: 1996
+    url: "https://dl.acm.org/doi/10.5555/3001460.3001507"
+    note: "The original DBSCAN paper §11.3 sketches (KDD)."
+  - type: "paper"
+    title: "Density-Based Clustering Based on Hierarchical Density Estimates"
+    authors: "Campello, Moulavi & Sander"
+    year: 2013
+    url: "https://doi.org/10.1007/978-3-642-37456-2_14"
+    note: "HDBSCAN — the bandwidth-hierarchical extension of DBSCAN §11.3 references (PAKDD)."
+  - type: "book"
+    title: "Clustering Algorithms"
+    authors: "Hartigan"
+    year: 1975
+    url: "https://www.worldcat.org/title/clustering-algorithms/oclc/1067546"
+    note: "The §1.2 / §12.4 modal-clustering hypothesis — cluster = basin of attraction of a density mode — is developed here (Wiley)."
+  - type: "paper"
+    title: "Normalized Cuts and Image Segmentation"
+    authors: "Shi & Malik"
+    year: 2000
+    url: "https://doi.org/10.1109/34.868688"
+    note: "The random-walk-Laplacian spectral-clustering algorithm §11.2 states (IEEE TPAMI)."
+  - type: "paper"
+    title: "On Spectral Clustering: Analysis and an Algorithm"
+    authors: "Ng, Jordan & Weiss"
+    year: 2002
+    url: "https://proceedings.neurips.cc/paper/2001/hash/801272ee79cfde7fa5960571fee36b9b-Abstract.html"
+    note: "The symmetric-normalized-Laplacian spectral-clustering algorithm §11.2 states (NeurIPS)."
+  - type: "paper"
+    title: "A Tutorial on Spectral Clustering"
+    authors: "von Luxburg"
+    year: 2007
+    url: "https://doi.org/10.1007/s11222-007-9033-z"
+    note: "The standard pedagogical reference for spectral clustering §11 redirects to (Statistics and Computing)."
+  - type: "paper"
+    title: "The Laplacian Spectrum of Graphs"
+    authors: "Mohar"
+    year: 1991
+    url: "https://users.fmf.uni-lj.si/mohar/Papers/Spec.pdf"
+    note: "The bottom-eigenvector / cluster-indicator relationship §11.1 invokes (in Graph Theory, Combinatorics, and Applications)."
+  - type: "paper"
+    title: "Comparing Partitions"
+    authors: "Hubert & Arabie"
+    year: 1985
+    url: "https://doi.org/10.1007/BF01908075"
+    note: "The Adjusted Rand Index used throughout for cluster-assignment agreement (J. Classification)."
+  - type: "paper"
+    title: "Silhouettes: A Graphical Aid to the Interpretation and Validation of Cluster Analysis"
+    authors: "Rousseeuw"
+    year: 1987
+    url: "https://doi.org/10.1016/0377-0427(87)90125-7"
+    note: "The silhouette score §1.3 contrasts against ARI (J. Comput. Appl. Math.)."
+  - type: "paper"
+    title: "A Reliable Data-Based Bandwidth Selection Method for Kernel Density Estimation"
+    authors: "Sheather & Jones"
+    year: 1991
+    url: "https://doi.org/10.1111/j.2517-6161.1991.tb01857.x"
+    note: "The plug-in bandwidth selector §5.4 references (JRSS-B)."
+  - type: "paper"
+    title: "Multivariate Plug-in Bandwidth Selection"
+    authors: "Wand & Jones"
+    year: 1994
+    url: "https://www.worldcat.org/issn/0943-4062"
+    note: "The multivariate plug-in selector §5.4 references (Computational Statistics)."
+  - type: "paper"
+    title: "Empirical Choice of Histograms and Kernel Density Estimators"
+    authors: "Rudemo"
+    year: 1982
+    url: "https://www.jstor.org/stable/4615859"
+    note: "The least-squares cross-validation (LSCV) selector §5.4 references (Scand. J. Statist.)."
+  - type: "paper"
+    title: "An Alternative Method of Cross-Validation for the Smoothing of Density Estimates"
+    authors: "Bowman"
+    year: 1984
+    url: "https://doi.org/10.1093/biomet/71.2.353"
+    note: "Companion LSCV paper §5.4 references (Biometrika)."
+  - type: "paper"
+    title: "Biased and Unbiased Cross-Validation in Density Estimation"
+    authors: "Scott & Terrell"
+    year: 1987
+    url: "https://doi.org/10.1080/01621459.1987.10478550"
+    note: "Cross-validated bandwidth selection theory cited in §5.4 (JASA)."
+  - type: "paper"
+    title: "An Asymptotically Optimal Window Selection Rule for Kernel Density Estimates"
+    authors: "Stone"
+    year: 1984
+    url: "https://doi.org/10.1214/aos/1176346792"
+    note: "LSCV consistency result invoked in §5.4 (Ann. Statist.)."
+  - type: "paper"
+    title: "The Efficiency of Some Nonparametric Competitors of the t-Test"
+    authors: "Hodges & Lehmann"
+    year: 1956
+    url: "https://doi.org/10.1214/aoms/1177728261"
+    note: "The kernel-efficiency comparison §6.1 invokes (Ann. Math. Statist.)."
+  - type: "paper"
+    title: "The Mode Tree: A Tool for Visualization of Nonparametric Density Features"
+    authors: "Minnotte & Scott"
+    year: 1993
+    url: "https://doi.org/10.2307/1390955"
+    note: "The 1D mode-tree visualization §5.3 references (J. Comput. Graph. Statist.)."
+  - type: "book"
+    title: "Smoothing of Multivariate Data: Density Estimation and Visualization"
+    authors: "Klemelä"
+    year: 2009
+    url: "https://doi.org/10.1002/9780470425664"
+    note: "The multivariate mode-tree algorithm §5.3 references (Wiley)."
+  - type: "paper"
+    title: "Multidimensional Binary Search Trees Used for Associative Searching"
+    authors: "Bentley"
+    year: 1975
+    url: "https://doi.org/10.1145/361002.361007"
+    note: "The kd-tree spatial index §8.3 references (Comm. ACM)."
+  - type: "paper"
+    title: "Five Balltree Construction Algorithms"
+    authors: "Omohundro"
+    year: 1989
+    url: "https://www.icsi.berkeley.edu/icsi/node/2246"
+    note: "Ball-tree spatial index §8.3 references (ICSI Tech Report TR-89-063)."
+  - type: "paper"
+    title: "Quick Shift and Kernel Methods for Mode Seeking"
+    authors: "Vedaldi & Soatto"
+    year: 2008
+    url: "https://doi.org/10.1007/978-3-540-88693-8_52"
+    note: "Quick shift — a mean-shift variant briefly referenced for downstream computer-vision use (ECCV)."
+  - type: "book"
+    title: "The Elements of Statistical Learning"
+    authors: "Hastie, Tibshirani & Friedman"
+    year: 2009
+    url: "https://doi.org/10.1007/978-0-387-84858-7"
+    note: "Standard ML reference; Chapter 14 develops clustering with the perspective adopted throughout (Springer)."
+  - type: "book"
+    title: "Machine Learning: A Probabilistic Perspective"
+    authors: "Murphy"
+    year: 2012
+    url: "https://mitpress.mit.edu/9780262018029/"
+    note: "The probabilistic-clustering chapter that complements §10's GMM-via-EM treatment (MIT Press)."
+  - type: "book"
+    title: "Pattern Recognition and Machine Learning"
+    authors: "Bishop"
+    year: 2006
+    url: "https://link.springer.com/book/9780387310732"
+    note: "§9 (mixture models and EM) is the standard reference for §10.2's derivation (Springer)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import KMeansVsMeanShiftMoons from '../../components/viz/KMeansVsMeanShiftMoons.tsx';
+import KDESurfaceWithModes from '../../components/viz/KDESurfaceWithModes.tsx';
+import MeanShiftTrajectoryAnimator from '../../components/viz/MeanShiftTrajectoryAnimator.tsx';
+import ConvergenceDiagnostic from '../../components/viz/ConvergenceDiagnostic.tsx';
+import ModeTreeExplorer from '../../components/viz/ModeTreeExplorer.tsx';
+import KernelChoiceComparator from '../../components/viz/KernelChoiceComparator.tsx';
+import BasinOfAttractionMap from '../../components/viz/BasinOfAttractionMap.tsx';
+import KMeansVoronoiLimit from '../../components/viz/KMeansVoronoiLimit.tsx';
+import GMMSoftAssignments from '../../components/viz/GMMSoftAssignments.tsx';
+import SpectralClusteringTeaser from '../../components/viz/SpectralClusteringTeaser.tsx';
+
+## Motivation: when linear partitions fail
+
+The classic clustering algorithms — Lloyd's k-means most prominently — partition space into pieces with flat boundaries. That's fine when the true cluster shapes happen to be convex blobs, but it fails predictably the moment a cluster has an elbow, a curve, or any non-convex structure. Mean-shift clustering takes a different angle: rather than partitioning space, it climbs the density. Each point trails uphill toward a local high-density peak — a *mode* of the kernel density estimator $\hat f_h$ we inherit from <ExternalLink href="https://formalstatistics.com/topics/kernel-density-estimation" site="formalstatistics" topic="kernel-density-estimation" /> — and the cluster assignment falls out of which peak the trajectory lands at.
+
+This section sets up the contrast geometrically. We defer the algebra (§3) and the convergence theory (§4) until we have a clear picture of what the algorithm is trying to do.
+
+### The k-means linear-Voronoi assumption and what breaks under non-convex clusters
+
+Lloyd's k-means picks $K$ centroids $\boldsymbol{\mu}_1, \ldots, \boldsymbol{\mu}_K \in \mathbb{R}^d$, assigns each data point $\mathbf{x}_i$ to the nearest centroid, recomputes each centroid as the mean of its cluster, and iterates until convergence. The fixed point has a tidy geometric description: each cluster is the set of points closer to its own centroid than to any other — a *Voronoi cell* of the centroid configuration — and the boundary between adjacent clusters is the perpendicular bisector of the segment joining their centroids, a flat hyperplane. Every cluster is therefore a convex polytope.
+
+That's fine when the underlying generative shapes are convex; k-means on a well-separated isotropic Gaussian mixture recovers exactly the right partition. The convexity assumption is silent in the algorithm's specification — there's no parameter that relaxes it — so two crescents nested into a moon shape, two concentric rings, or an elongated strip parallel to another all force k-means to slice through what a human eye reads as a single connected piece. The algorithm doesn't fail loudly; it returns a confident-looking wrong partition.
+
+### Density modes as a clustering target
+
+Suppose $\mathbf{x}_1, \ldots, \mathbf{x}_n$ are i.i.d. samples from a density $f : \mathbb{R}^d \to \mathbb{R}_{\geq 0}$. In the modal sense (Hartigan 1975), a *cluster* is a connected region of $\mathbb{R}^d$ on which $f$ stays above some level, separated from other such regions by lower-density valleys. Each such region corresponds to a *mode* of $f$: a local maximum where $\nabla f = \mathbf{0}$ and the Hessian is negative definite. The clustering problem reduces to two coupled subproblems — find the modes of $f$, and decide which mode each data point's steepest-ascent trajectory converges to.
+
+We don't have $f$; we have $\hat f_h$. So the operational problem is: find the modes of $\hat f_h$, and trace each data point's steepest-ascent trajectory on $\hat f_h$ to its mode. Mean-shift is the algorithm that does this, with one elegant trick — the gradient-ascent step has a closed-form update that doesn't require explicitly computing $\nabla \hat f_h$ at each iteration. For now, the geometry: imagine the KDE surface in 2D as a hilly landscape, place a ball at each data point, let each ball roll uphill until it stops at a peak, and group together the data points whose balls stopped at the same peak. That's the algorithm.
+
+### The signature contrast on `make_moons`
+
+The cleanest demonstration is `sklearn.datasets.make_moons(n_samples=200, noise=0.1, random_state=42)`: two interleaved crescents in $\mathbb{R}^2$ separated by a thin gap. K-means with $K = 2$ has nowhere reasonable to put a separating hyperplane — the perpendicular-bisector boundary cuts both crescents roughly in the middle, producing two clusters whose members are spread across both true crescents. Mean-shift with moderate bandwidth follows the density: each crescent has its own high-density ridge and its own mode, and the algorithm assigns each data point to its crescent.
+
+Quantitatively, the adjusted Rand index (ARI; Hubert and Arabie 1985) measures cluster-assignment agreement against ground truth, with $\mathrm{ARI} = 1$ meaning perfect recovery and $\mathrm{ARI} = 0$ meaning no better than random. On this dataset, k-means scores $\mathrm{ARI} \approx 0.22$ with a clearly-wrong linear cut. Gaussian-kernel mean-shift at $h = 0.40$ scores $\mathrm{ARI} \approx 0.43$ — roughly twice as high. The mean-shift partition is shape-correct: the two clusters follow the crescent ridges, with some boundary points near the gap mis-classified into the wrong crescent at noise = 0.1. The silhouette score (Rousseeuw 1987) rewards convex compactness and so reports the opposite ordering — k-means looks "tighter," in the wrong way. The silhouette/ARI disagreement is a useful diagnostic any time a clustering metric prefers convex partitions over the right ones.
+
+<KMeansVsMeanShiftMoons client:visible />
+
+<Figure src="/images/topics/clustering/fig_02.png" alt="Side-by-side k-means and mean-shift on the moons dataset with ARI and silhouette annotations" caption="K-means versus mean-shift on the moons. K-means cuts both crescents through their middles; mean-shift follows the density ridges." />
+
+### Roadmap
+
+§2 recaps the KDE substrate $\hat f_h$ and pins down what "mode" means in $\mathbb{R}^d$. §3 derives the mean-shift update as gradient ascent on $\hat f_h$ — the central algorithmic result. §4 proves convergence: the monotone-density-ascent theorem (Comaniciu and Meer 2002) and Cheng's (1995) fixed-point convergence. §5 introduces the bandwidth-mode-count duality and the mode tree. §6 takes a brief tour of kernel choice and explains why it matters less than for KDE-as-density-estimator. §7 turns the trajectory map into a clustering by tracking basins of attraction and merging modes; §8 covers the from-scratch implementation, the `sklearn.cluster.MeanShift` pitfalls, and scaling strategies. §9 and §10 are the contrast sections: k-means as the $h \to 0$ Voronoi limit, and GMM-via-EM as the parametric soft-clustering alternative. §11 points lightly at spectral clustering and DBSCAN — proper coverage lives in [graph-laplacians](/topics/graph-laplacians) and [random-walks](/topics/random-walks). §12 closes with cross-site references, honest limits, and forward pointers.
+
+---
+
+## The KDE substrate and the mode-finding picture
+
+We pinned down in §1 that the clustering problem we'll solve is *find the modes of $\hat f_h$ and assign each data point to the mode its steepest-ascent trajectory lands at*. This section makes both halves precise.
+
+### Recap of the multivariate KDE
+
+Given i.i.d. samples $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathbb{R}^d$ from an unknown density $f$, the kernel density estimator with kernel function $K: \mathbb{R}^d \to \mathbb{R}_{\geq 0}$ and bandwidth $h > 0$ is
+
+$$
+\hat f_h(\mathbf{x}) \;=\; \frac{1}{n h^d} \sum_{i=1}^n K\!\left(\frac{\mathbf{x} - \mathbf{x}_i}{h}\right), \qquad \mathbf{x} \in \mathbb{R}^d.
+$$
+
+We make three simplifying choices throughout this topic. (a) The kernel is *radial*: $K(\mathbf{u}) = c_{k,d}\, k(\|\mathbf{u}\|^2)$ for some univariate *profile function* $k$ (non-increasing on $[0, \infty)$) and a normalizing constant $c_{k,d}$. The profile function is the trick that powers the §3 derivation. (b) The bandwidth is *isotropic and scalar*, $h \in (0, \infty)$. (c) The default kernel is *Gaussian*, $K(\mathbf{u}) = (2\pi)^{-d/2} \exp(-\tfrac{1}{2}\|\mathbf{u}\|^2)$, with profile $k(s) = \exp(-s/2)$ on $s = \|\mathbf{u}\|^2 \geq 0$.
+
+These choices buy a clean mean-shift derivation in §3 without giving up much practical generality. Anisotropic bandwidth matrices and non-radial kernels are addressed in §5.4 and §6.4 as scope-bounding remarks.
+
+### What "mode of a multivariate density" means
+
+<TheoremBlock type="definition" number={1} title="Mode of a smooth density">
+For a smooth density $g: \mathbb{R}^d \to \mathbb{R}_{\geq 0}$, a *mode* is a point $\mathbf{m}^* \in \mathbb{R}^d$ at which the gradient vanishes and the Hessian is negative definite:
+$$
+\nabla g(\mathbf{m}^*) \;=\; \mathbf{0}, \qquad \nabla^2 g(\mathbf{m}^*) \prec 0.
+$$
+We write $\mathcal{M}_h \subset \mathbb{R}^d$ for the set of modes of $\hat f_h$ and $M(h) := |\mathcal{M}_h|$ for the mode count.
+</TheoremBlock>
+
+The first condition says $\mathbf{m}^*$ is a *stationary point*; the second rules out saddles, minima, and degenerate plateaus, leaving exactly the local-maximum points. The cardinality $M(h)$ is the number of clusters mean-shift discovers — and it depends on $h$ in the monotone way §5 develops.
+
+A subtle point. Mean-shift's convergence theory (§4) will guarantee convergence to a *stationary point* of $\hat f_h$, not necessarily a mode. On data, saddle points are measure-zero attractors — almost every trajectory lands at a mode — but a pedantic statement of the algorithm's guarantee is "stationary point," not "mode." We'll handle this carefully when the theorem statements arrive in §4.
+
+### Mode-finding as the clustering target
+
+Clustering algorithms divide cleanly into two paradigms. *Partition-based* methods — k-means, k-medoids, GMM-via-EM — pick a target number of clusters $K$ in advance and solve an optimization that assigns each point to a discrete label, minimizing some within-cluster loss. The cluster count $K$ is a hyperparameter, the cluster shape is implicit in the loss, and the algorithm carries no representation of the underlying density. *Density-based* methods — mean-shift, DBSCAN, level-set tree clustering — estimate the density first and read clusters off its structure. Cluster count is *output*, not input.
+
+Mean-shift specifically defines clusters via the *trajectory map* $T_h: \mathbb{R}^d \to \mathbb{R}^d$, which sends each starting point to the limit of its mean-shift iteration. Two points $\mathbf{x}, \mathbf{y}$ belong to the same cluster if and only if their trajectories converge to the same mode: $T_h^\infty(\mathbf{x}) = T_h^\infty(\mathbf{y})$. The cluster count is $M(h) = |\mathcal{M}_h|$, fixed by $h$ and the data via the KDE; no $K$ to pick.
+
+This is fundamentally different from k-means' formulation, and it's why mean-shift is the right tool for the moons problem and k-means isn't. The trade-off is real: mean-shift offloads the cluster-count choice into a bandwidth choice, and §5 will deal with how to pick $h$ well.
+
+### KDE surface and mode locations
+
+To make the geometric picture concrete, we plot $\hat f_h$ on a fine 2D grid for `make_blobs(n_samples=400, centers=[(-3,0),(0,2.5),(3,-0.5)], cluster_std=[0.4,0.6,0.8])` with Gaussian kernel and $h = 0.40$, and locate the modes by brute-force grid search. With this bandwidth and these well-separated blobs the mode count agrees with the ground-truth cluster count, $M(h) = 3$.
+
+The grid-search mode finder is the geometric stand-in for mean-shift. Grid search costs $O(N_{\text{grid}})$ density evaluations where $N_{\text{grid}}$ grows exponentially in $d$, and it gives no per-point cluster assignment — it just locates the modes. Mean-shift will produce both the mode locations and the per-point assignments in one pass.
+
+<KDESurfaceWithModes client:visible />
+
+<Figure src="/images/topics/clustering/fig_03.png" alt="KDE surface with overlaid scatter and three mode markers on a 3-blob dataset" caption="$\\hat f_h$ on the 3-blob dataset at $h = 0.40$ with the three modes located by neighborhood max-filter." />
+
+---
+
+## Mean-shift as gradient ascent on $\hat f_h$
+
+The point of §3 is to derive the mean-shift update rule and show that it's gradient ascent on $\hat f_h$ in disguise. The derivation is worth doing in detail because three things follow from it: (a) the closed-form update doesn't require computing $\nabla \hat f_h(\mathbf{x})$ explicitly at each iteration — the algorithmic payoff; (b) the update has a clean geometric reading as "move toward the sample-weighted mean," motivating both the name and the §4 monotone-ascent proof; (c) the same algebraic decomposition reappears in §4, §7, and §9.
+
+### The profile-function decomposition and the gradient of $\hat f_h$
+
+Start from the radial-kernel form: $K(\mathbf{u}) = c_{k,d}\, k(\|\mathbf{u}\|^2)$. Substituting into the KDE,
+
+$$
+\hat f_h(\mathbf{x}) \;=\; \frac{c_{k,d}}{n h^d} \sum_{i=1}^n k\!\left(\left\|\frac{\mathbf{x} - \mathbf{x}_i}{h}\right\|^2\right).
+$$
+
+Write $u_i(\mathbf{x}) := \|(\mathbf{x} - \mathbf{x}_i)/h\|^2$. Differentiating by the chain rule, $\nabla u_i = (2/h^2)(\mathbf{x} - \mathbf{x}_i)$, so
+
+$$
+\nabla \hat f_h(\mathbf{x}) \;=\; \frac{2 c_{k,d}}{n h^{d+2}} \sum_{i=1}^n k'(u_i(\mathbf{x}))\, (\mathbf{x} - \mathbf{x}_i).
+$$
+
+Because $k$ is non-increasing, $k' \leq 0$. The algebra is cleaner if we work with $g(s) := -k'(s) \geq 0$ — the *derived profile* (or *shadow profile*) of Comaniciu and Meer (2002). Two examples: for the **Gaussian kernel**, $k(s) = \exp(-s/2)$ gives $g(s) = \tfrac{1}{2}\exp(-s/2) = \tfrac{1}{2}k(s)$ — the Gaussian's shadow is itself, up to a constant. For the **Epanechnikov kernel**, $k(s) = (1-s)\mathbb{1}\{s \leq 1\}$ gives $g(s) = \mathbb{1}\{s \leq 1\}$ — the shadow is the uniform kernel on the unit ball.
+
+Substituting $k' = -g$ and flipping the displacement sign,
+
+$$
+\nabla \hat f_h(\mathbf{x}) \;=\; \frac{2 c_{k,d}}{n h^{d+2}} \sum_{i=1}^n g(u_i(\mathbf{x}))\, (\mathbf{x}_i - \mathbf{x}).
+$$
+
+### The gradient identity
+
+Split the sum and factor:
+
+$$
+\sum_{i=1}^n g(u_i)\, (\mathbf{x}_i - \mathbf{x}) \;=\; \left[\sum_{i=1}^n g(u_i)\right] \left[ \frac{\sum_i g(u_i)\, \mathbf{x}_i}{\sum_i g(u_i)} - \mathbf{x} \right].
+$$
+
+The scalar $\sum_i g(u_i)$ is strictly positive whenever any sample lies inside the kernel's support. Define the *sample-weighted mean* at $\mathbf{x}$, the load-bearing object of the section:
+
+$$
+\mathbf{m}_h(\mathbf{x}) \;:=\; \frac{\sum_{i=1}^n g\!\left(\|(\mathbf{x} - \mathbf{x}_i)/h\|^2\right)\, \mathbf{x}_i}{\sum_{i=1}^n g\!\left(\|(\mathbf{x} - \mathbf{x}_i)/h\|^2\right)}.
+$$
+
+In words: $\mathbf{m}_h(\mathbf{x})$ is a weighted average of the samples, with each $\mathbf{x}_i$ weighted by how close it is to $\mathbf{x}$ on the kernel's scale. Substituting back,
+
+$$
+\nabla \hat f_h(\mathbf{x}) \;=\; \frac{2 c_{k,d}}{n h^{d+2}}\sum_{i=1}^n g(u_i(\mathbf{x}))\;\bigl(\mathbf{m}_h(\mathbf{x}) - \mathbf{x}\bigr).
+$$
+
+This is the central identity. The gradient of $\hat f_h$ at $\mathbf{x}$ is a strictly positive scalar multiple of the displacement from $\mathbf{x}$ to the sample-weighted mean. The direction of steepest ascent on $\hat f_h$ at $\mathbf{x}$ is the direction from $\mathbf{x}$ toward $\mathbf{m}_h(\mathbf{x})$. We didn't have to compute the gradient explicitly to find the ascent direction; the sample-weighted mean already encodes it.
+
+Writing $\alpha(\mathbf{x}) := (2 c_{k,d} / (n h^{d+2})) \sum_i g(u_i(\mathbf{x})) > 0$, the gradient identity reads $\nabla \hat f_h(\mathbf{x}) = \alpha(\mathbf{x}) (\mathbf{m}_h(\mathbf{x}) - \mathbf{x})$.
+
+### The mean-shift update rule
+
+<TheoremBlock type="definition" number={2} title="Mean-shift iteration">
+Given data $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathbb{R}^d$, a bandwidth $h > 0$, a profile function $k$ with derived profile $g = -k'$, and a starting point $\mathbf{x}_0 \in \mathbb{R}^d$, the *mean-shift trajectory* from $\mathbf{x}_0$ is the sequence $(\mathbf{x}_t)_{t \geq 0}$ defined by
+$$
+\mathbf{x}_{t+1} \;=\; \mathbf{m}_h(\mathbf{x}_t) \;=\; \frac{\sum_{i=1}^n g\!\left(\|(\mathbf{x}_t - \mathbf{x}_i)/h\|^2\right)\, \mathbf{x}_i}{\sum_{i=1}^n g\!\left(\|(\mathbf{x}_t - \mathbf{x}_i)/h\|^2\right)}.
+$$
+The *mean-shift vector* at $\mathbf{x}_t$ is $\mathbf{m}_h(\mathbf{x}_t) - \mathbf{x}_t$.
+</TheoremBlock>
+
+<TheoremBlock type="proposition" number={1} title="Mean-shift as gradient ascent">
+Each mean-shift iteration is a gradient-ascent step on $\hat f_h$ with adaptive step size $\alpha(\mathbf{x}_t)^{-1}$:
+$$
+\mathbf{x}_{t+1} - \mathbf{x}_t \;=\; \mathbf{m}_h(\mathbf{x}_t) - \mathbf{x}_t \;=\; \frac{1}{\alpha(\mathbf{x}_t)}\,\nabla \hat f_h(\mathbf{x}_t).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Rearrange the §3.2 gradient identity: $\nabla \hat f_h(\mathbf{x}) = \alpha(\mathbf{x})(\mathbf{m}_h(\mathbf{x}) - \mathbf{x})$, so $\mathbf{m}_h(\mathbf{x}) - \mathbf{x} = \alpha(\mathbf{x})^{-1} \nabla \hat f_h(\mathbf{x})$.
+</TheoremBlock>
+
+For the **Gaussian kernel**, $g(s) = \tfrac{1}{2}\exp(-s/2)$, the $\tfrac{1}{2}$ cancels in the weighted-mean ratio and the update reads
+
+$$
+\mathbf{x}_{t+1} \;=\; \frac{\sum_i \exp(-\|\mathbf{x}_t - \mathbf{x}_i\|^2 / (2h^2))\, \mathbf{x}_i}{\sum_i \exp(-\|\mathbf{x}_t - \mathbf{x}_i\|^2 / (2h^2))}.
+$$
+
+This has the structural form of [kernel regression](/topics/kernel-regression)'s Nadaraya–Watson estimator with the *positions* $\mathbf{x}_i$ playing the role of the responses being averaged.
+
+For the **flat (uniform) kernel** — Epanechnikov mean-shift — the update collapses to the unweighted local mean within radius $h$.
+
+### Why "mean shift" — interpretation
+
+*Ascent direction.* The mean-shift vector $\mathbf{m}_h(\mathbf{x}) - \mathbf{x}$ points along $\nabla \hat f_h(\mathbf{x})$.
+
+*Adaptive step size.* The scalar $\alpha(\mathbf{x})$ is large where many samples are near $\mathbf{x}$ (dense regions) and small where samples are sparse. The per-iteration displacement shrinks as the trajectory approaches a mode (where $\nabla \hat f_h \to 0$) and grows where the data is sparse. No learning rate to tune.
+
+*Log-density form.* Dividing both sides of the gradient identity by $\hat f_h(\mathbf{x})$,
+
+$$
+\nabla \log \hat f_h(\mathbf{x}) \;=\; \frac{\alpha(\mathbf{x})}{\hat f_h(\mathbf{x})}\,\bigl(\mathbf{m}_h(\mathbf{x}) - \mathbf{x}\bigr),
+$$
+
+so the mean-shift vector is proportional to $\nabla \log \hat f_h(\mathbf{x})$ — the form §4's monotone-ascent argument naturally lives in.
+
+### Mean-shift trajectories on the moons KDE
+
+The from-scratch implementation is the central code-experiment. A vectorized Gaussian-kernel mean-shift function takes data $X \in \mathbb{R}^{n \times d}$, query points $Q \in \mathbb{R}^{m \times d}$, and bandwidth $h$, and returns the full trajectory history. The inner loop computes the $m \times n$ matrix of pairwise squared distances via `scipy.spatial.distance.cdist`, exponentiates to obtain the Gaussian-kernel weights, and performs the weighted-mean update by matrix multiplication.
+
+```python
+import numpy as np
+from scipy.spatial.distance import cdist
+
+def mean_shift_trajectories(X, Q, h, max_iter=100, tol=1e-6):
+    Xt = Q.copy()
+    history = [Xt.copy()]
+    for _ in range(max_iter):
+        D2 = cdist(Xt, X, 'sqeuclidean')
+        # log-domain stability: row-max subtract
+        log_w = -D2 / (2 * h * h)
+        log_w -= log_w.max(axis=1, keepdims=True)
+        W = np.exp(log_w)
+        Xt_new = (W @ X) / W.sum(axis=1, keepdims=True)
+        step = np.linalg.norm(Xt_new - Xt, axis=1).max()
+        Xt = Xt_new
+        history.append(Xt.copy())
+        if step < tol:
+            break
+    return np.stack(history)
+```
+
+The figure plots 12 trajectories on the moons KDE from a sparse grid; the two converged modes are the upper-crescent ridge and the lower-crescent ridge of $\hat f_h$.
+
+<MeanShiftTrajectoryAnimator client:visible />
+
+<Figure src="/images/topics/clustering/fig_04.png" alt="12 mean-shift trajectories overlaid on the moons KDE contour backdrop, converging to two distinct modes" caption="Twelve mean-shift trajectories on the moons KDE at $h = 0.30$. Step length shrinks visibly as each trajectory approaches a mode." />
+
+---
+
+## Convergence theory
+
+§3 gave us the algorithm. What §3 did *not* give us is a guarantee that this algorithm does anything sensible. §4 supplies the missing guarantees. The first is qualitative: each iteration weakly increases $\hat f_h$ (Comaniciu and Meer 2002, Theorem 1). The second is sharper: the trajectory converges to a stationary point of $\hat f_h$ in the limit (Cheng 1995, Theorem 1).
+
+We continue to assume the radial-kernel form with $k: [0, \infty) \to [0, \infty)$ non-increasing, differentiable, and *convex*. The Gaussian profile $k(s) = \exp(-s/2)$ is strictly convex; the Epanechnikov profile is linear inside its support and weakly convex.
+
+### The monotone-density-ascent theorem
+
+<TheoremBlock type="theorem" number={1} title="Monotone Density Ascent (Comaniciu–Meer 2002, Thm 1)">
+Let $K$ be a radial kernel with non-increasing, differentiable, convex profile $k$, and let $\hat f_h$ be the corresponding KDE on data $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathbb{R}^d$. For any starting point $\mathbf{x}_0 \in \mathbb{R}^d$ at which $\sum_i g(u_i(\mathbf{x}_0)) > 0$, the mean-shift iteration $\mathbf{x}_{t+1} = \mathbf{m}_h(\mathbf{x}_t)$ satisfies
+$$
+\hat f_h(\mathbf{x}_{t+1}) - \hat f_h(\mathbf{x}_t) \;\geq\; \frac{c_{k,d}}{n h^{d+2}} \, \|\mathbf{x}_{t+1} - \mathbf{x}_t\|^2 \, \sum_{i=1}^n g(u_i(\mathbf{x}_t)) \;\geq\; 0,
+$$
+with equality if and only if $\mathbf{x}_{t+1} = \mathbf{x}_t$.
+</TheoremBlock>
+
+The bound is sharper than just "$\hat f_h$ is non-decreasing": the density gain is at least quadratic in the step size.
+
+<TheoremBlock type="proof">
+
+**Move 1 — convexity inequality.** Because $k$ is convex and differentiable, the supporting-line inequality $k(b) \geq k(a) + k'(a)(b - a)$ holds for all $a, b \geq 0$. Set $a = u_i(\mathbf{x}_t)$ and $b = u_i(\mathbf{x}_{t+1})$ for each $i$, and substitute $k'(a) = -g(a)$:
+
+$$
+k(u_i(\mathbf{x}_{t+1})) - k(u_i(\mathbf{x}_t)) \;\geq\; -g(u_i(\mathbf{x}_t)) \bigl(u_i(\mathbf{x}_{t+1}) - u_i(\mathbf{x}_t)\bigr).
+$$
+
+**Move 2 — chain across samples.** Multiply by $c_{k,d}/(n h^d)$ and sum. The LHS telescopes into $\hat f_h(\mathbf{x}_{t+1}) - \hat f_h(\mathbf{x}_t)$:
+
+$$
+\hat f_h(\mathbf{x}_{t+1}) - \hat f_h(\mathbf{x}_t) \;\geq\; -\frac{c_{k,d}}{n h^d} \sum_{i=1}^n g(u_i(\mathbf{x}_t)) \bigl(u_i(\mathbf{x}_{t+1}) - u_i(\mathbf{x}_t)\bigr).
+$$
+
+**Move 3 — expand the difference of squared distances.** Write $u_i(\mathbf{x}) = \|\mathbf{x} - \mathbf{x}_i\|^2 / h^2$ and expand $\|\mathbf{x}_{t+1}\|^2 - \|\mathbf{x}_t\|^2 - 2(\mathbf{x}_{t+1} - \mathbf{x}_t)^\top \mathbf{x}_i$. Sum over $i$ and pull out the $\mathbf{x}_i$-independent terms, with $S_t := \sum_i g(u_i(\mathbf{x}_t))$:
+
+$$
+\sum_{i=1}^n g(u_i)\bigl(u_i(\mathbf{x}_{t+1}) - u_i(\mathbf{x}_t)\bigr) \;=\; \frac{1}{h^2}\Bigl[\bigl(\|\mathbf{x}_{t+1}\|^2 - \|\mathbf{x}_t\|^2\bigr)\, S_t - 2(\mathbf{x}_{t+1} - \mathbf{x}_t)^\top \sum_i g(u_i)\, \mathbf{x}_i\Bigr].
+$$
+
+The mean-shift definition gives $\sum_i g(u_i)\, \mathbf{x}_i = S_t\, \mathbf{x}_{t+1}$, so the sum becomes $\frac{S_t}{h^2}\bigl[\|\mathbf{x}_{t+1}\|^2 - \|\mathbf{x}_t\|^2 - 2(\mathbf{x}_{t+1} - \mathbf{x}_t)^\top \mathbf{x}_{t+1}\bigr]$.
+
+**Move 4 — recognize the squared step size.** Expand the bracket:
+
+$$
+\|\mathbf{x}_{t+1}\|^2 - \|\mathbf{x}_t\|^2 - 2(\mathbf{x}_{t+1} - \mathbf{x}_t)^\top \mathbf{x}_{t+1} \;=\; -\bigl(\|\mathbf{x}_{t+1}\|^2 - 2 \mathbf{x}_t^\top \mathbf{x}_{t+1} + \|\mathbf{x}_t\|^2\bigr) \;=\; -\|\mathbf{x}_{t+1} - \mathbf{x}_t\|^2.
+$$
+
+So $\sum_i g(u_i)(u_i(\mathbf{x}_{t+1}) - u_i(\mathbf{x}_t)) = -(S_t/h^2)\,\|\mathbf{x}_{t+1} - \mathbf{x}_t\|^2$. Plugging back into the Move 2 inequality, the two minus signs cancel:
+
+$$
+\hat f_h(\mathbf{x}_{t+1}) - \hat f_h(\mathbf{x}_t) \;\geq\; \frac{c_{k,d}}{n h^{d+2}} \, S_t \, \|\mathbf{x}_{t+1} - \mathbf{x}_t\|^2.
+$$
+
+This is the claimed inequality.
+
+</TheoremBlock>
+
+### Stationarity characterization
+
+A *fixed point* of the mean-shift map is a point $\mathbf{x}^*$ with $\mathbf{m}_h(\mathbf{x}^*) = \mathbf{x}^*$.
+
+<TheoremBlock type="proposition" number={2} title="Stationarity characterization">
+At any $\mathbf{x}^*$ with $\sum_i g(u_i(\mathbf{x}^*)) > 0$,
+$$
+\mathbf{m}_h(\mathbf{x}^*) = \mathbf{x}^* \;\iff\; \nabla \hat f_h(\mathbf{x}^*) = \mathbf{0}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The gradient identity from §3.2 reads $\nabla \hat f_h(\mathbf{x}^*) = \alpha(\mathbf{x}^*)(\mathbf{m}_h(\mathbf{x}^*) - \mathbf{x}^*)$, with $\alpha(\mathbf{x}^*) > 0$.
+</TheoremBlock>
+
+The fixed-point set of $\mathbf{m}_h$ equals the set of stationary points of $\hat f_h$, which includes modes (local maxima), saddles, and minima. The monotone-ascent property rules out convergence to a strict local minimum. Saddles are measure-zero attractors — almost every starting point converges to a mode.
+
+### Convergence to a stationary point
+
+<TheoremBlock type="theorem" number={2} title="Trajectory convergence (Cheng 1995, Thm 1)">
+Under the Theorem 1 assumptions, and assuming additionally that $\hat f_h$ has only isolated stationary points (a generic-position assumption that holds almost surely for data with continuous distribution), the mean-shift trajectory $(\mathbf{x}_t)_{t \geq 0}$ from any $\mathbf{x}_0 \in \mathbb{R}^d$ converges to a stationary point $\mathbf{x}^*$ of $\hat f_h$:
+$$
+\lim_{t \to \infty} \mathbf{x}_t \;=\; \mathbf{x}^* \quad \text{with} \quad \nabla \hat f_h(\mathbf{x}^*) = \mathbf{0}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+**Step 1 — the trajectory is bounded.** For the Gaussian kernel, each iterate $\mathbf{x}_{t+1} = \mathbf{m}_h(\mathbf{x}_t)$ is a convex combination of the data points (the weights $g(u_i(\mathbf{x}_t))/S_t$ are non-negative and sum to one). So $\mathbf{x}_{t+1} \in \mathrm{conv}(\{\mathbf{x}_1, \ldots, \mathbf{x}_n\})$ for every $t \geq 0$, and the trajectory lies in the bounded convex hull of the data.
+
+**Step 2 — the density values converge.** By Theorem 1, $\hat f_h(\mathbf{x}_t)$ is monotone non-decreasing; bounded above by $\hat f_h \leq c_{k,d}\, k(0)/h^d$. A monotone bounded sequence converges, so $\hat f_h(\mathbf{x}_t) \to L$.
+
+**Step 3 — step sizes are square-summable, hence vanishing.** Sum the Theorem 1 bound over $t = 0, \ldots, T-1$:
+
+$$
+\hat f_h(\mathbf{x}_T) - \hat f_h(\mathbf{x}_0) \;\geq\; \frac{c_{k,d}}{n h^{d+2}} \sum_{t=0}^{T-1} S_t\, \|\mathbf{x}_{t+1} - \mathbf{x}_t\|^2.
+$$
+
+Taking $T \to \infty$, the LHS is bounded by $L - \hat f_h(\mathbf{x}_0)$, so $\sum_t S_t \|\mathbf{x}_{t+1} - \mathbf{x}_t\|^2 < \infty$. On the bounded set, $S_t$ is bounded below by some $S_{\min} > 0$ (continuity and positivity of $g$). Dividing,
+
+$$
+\sum_{t=0}^\infty \|\mathbf{x}_{t+1} - \mathbf{x}_t\|^2 \;<\; \infty, \qquad \text{so} \qquad \|\mathbf{x}_{t+1} - \mathbf{x}_t\| \to 0.
+$$
+
+**Step 4 — accumulation points are stationary; isolation forces convergence.** Let $\mathbf{x}^*$ be an accumulation point (Bolzano–Weierstrass) and $(\mathbf{x}_{t_k})$ a convergent subsequence. By continuity of $\mathbf{m}_h$ and step-vanishing,
+
+$$
+\mathbf{m}_h(\mathbf{x}^*) \;=\; \lim_k \mathbf{m}_h(\mathbf{x}_{t_k}) \;=\; \lim_k \mathbf{x}_{t_k+1} \;=\; \lim_k \mathbf{x}_{t_k} \;=\; \mathbf{x}^*.
+$$
+
+Every accumulation point is a fixed point of $\mathbf{m}_h$ — a stationary point of $\hat f_h$. The accumulation-point set $A$ is discrete (isolated-stationary-points assumption). Choose $\delta > 0$ smaller than half the minimum pairwise distance in $A$. Eventually $\|\mathbf{x}_{t+1} - \mathbf{x}_t\| < \delta$ for all large $t$; the trajectory cannot jump between different $\delta$-balls, forcing convergence to some $\mathbf{x}^* \in A$.
+
+</TheoremBlock>
+
+### Step-size bounds and the local-curvature scale
+
+Near a mode, the rate is *linear* in the favorable case. Linearizing $\nabla \hat f_h$ around a mode $\mathbf{x}^*$, $\nabla \hat f_h(\mathbf{x}) \approx \mathbf{H}(\mathbf{x}^*)(\mathbf{x} - \mathbf{x}^*)$ where $\mathbf{H}(\mathbf{x}^*) := \nabla^2 \hat f_h(\mathbf{x}^*) \prec 0$. The §3.3 Proposition gives
+
+$$
+\mathbf{x}_{t+1} - \mathbf{x}^* \;\approx\; \Bigl(\mathbf{I} + \tfrac{1}{\alpha(\mathbf{x}^*)} \mathbf{H}(\mathbf{x}^*)\Bigr)(\mathbf{x}_t - \mathbf{x}^*).
+$$
+
+The local contraction factor is the operator norm of $\mathbf{I} + (1/\alpha(\mathbf{x}^*))\mathbf{H}(\mathbf{x}^*)$. Eigenvalues lie in $(-1, 1)$ — giving linear contraction — when $|\lambda_i(\mathbf{H}(\mathbf{x}^*))| < 2\alpha(\mathbf{x}^*)$. For Gaussian-kernel mean-shift this is automatic near typical modes.
+
+### Numerical verification
+
+We verify the two empirical predictions: (a) $\hat f_h(\mathbf{x}_t)$ is monotone non-decreasing; (b) $\|\mathbf{x}_{t+1} - \mathbf{x}_t\| \to 0$. We run mean-shift from $B = 100$ random starting points in $[-5, 5] \times [-3, 5]$ on the 3-blob KDE at $h = 0.65$ (the plateau bandwidth in our reproduced data). For each trajectory we record $\hat f_h(\mathbf{x}_t)$ and $\|\mathbf{x}_{t+1} - \mathbf{x}_t\|$ at every iteration. The left panel below shows monotone-non-decreasing density curves with **zero violations**; the right panel shows geometrically-decaying step sizes (straight lines in log scale), consistent with the linear-contraction sketch.
+
+<ConvergenceDiagnostic client:visible />
+
+<Figure src="/images/topics/clustering/fig_05.png" alt="Two-panel convergence diagnostic showing monotone density curves and geometric step-size decay" caption="Convergence diagnostic on 100 random trajectories. Left: every trajectory's density curve is monotone non-decreasing (Theorem 1 visible). Right: step sizes decay geometrically (linear contraction)." />
+
+---
+
+## Bandwidth, resolution, and the mode tree
+
+§§3–4 took $h$ as given. §5 asks how the answer depends on $h$. The center-of-gravity result is the *bandwidth-mode-count duality* — as $h$ increases, $M(h)$ is non-increasing, with modes merging but never splitting. The duality has a clean proof in $d = 1$ from Silverman (1981) via the heat-equation reformulation; the multivariate version, due to Chacón (2015) and Chacón and Duong (2018), follows the same convolution-semigroup picture and holds in a generic-position sense.
+
+### Bandwidth-as-resolution
+
+The KDE is a convolution: $\hat f_h(\mathbf{x}) = (\hat\mu * \phi_h)(\mathbf{x})$, where $\hat\mu = \tfrac{1}{n}\sum_i \delta_{\mathbf{x}_i}$ is the empirical measure and $\phi_h$ is the Gaussian density with isotropic scalar bandwidth $h$. The bandwidth is the *scale* at which we look at the data.
+
+The bandwidth's role in density estimation: small $h$ has low bias and high variance, large $h$ has high bias and low variance, with AMISE-optimal rate $h^* \asymp n^{-1/(d+4)}$. The clustering picture is the same trade-off through a different loss — we care about mode structure. Small $h$ over-clusters ($M(h) \to n$); large $h$ under-clusters ($M(h) \to 1$). The "right" $h$ is the one whose mode structure matches the cluster structure.
+
+### The Chacón–Duong bandwidth-mode-count duality
+
+<TheoremBlock type="theorem" number={3} title="Bandwidth-mode-count duality">
+Let $\hat f_h$ be the Gaussian-kernel KDE with isotropic scalar bandwidth $h > 0$ on data $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathbb{R}^d$ with distinct points, and let $M(h)$ be its mode count. For $d = 1$ the function $h \mapsto M(h)$ is non-increasing on $(0, \infty)$ (Silverman 1981, Theorem 2). For $d \geq 2$, the same conclusion holds generically — for almost every data configuration and almost every $h$, modes can merge as $h$ grows but cannot split (Chacón 2015; Chacón and Duong 2018, Ch. 7).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+**Step 1 — convolution semigroup.** Gaussian densities form a semigroup under convolution: if $\sigma_1, \sigma_2 > 0$ then $\phi_{\sigma_1} * \phi_{\sigma_2} = \phi_{\sqrt{\sigma_1^2 + \sigma_2^2}}$ (probabilistic proof: independent $N(\mathbf{0}, \sigma_i^2 \mathbf{I})$ Gaussians sum to $N(\mathbf{0}, (\sigma_1^2 + \sigma_2^2)\mathbf{I})$). For any $0 < h_1 < h_2$ and $\sigma := \sqrt{h_2^2 - h_1^2}$,
+
+$$
+\phi_{h_2} = \phi_{h_1} * \phi_\sigma \;\Longrightarrow\; \hat f_{h_2} = \hat\mu * \phi_{h_2} = (\hat\mu * \phi_{h_1}) * \phi_\sigma = \hat f_{h_1} * \phi_\sigma.
+$$
+
+**Step 2 — heat-equation reformulation.** Define $v(\mathbf{x}, t) := (\hat f_{h_1} * \phi_{\sqrt{t}})(\mathbf{x})$. Then $v$ satisfies the heat equation $\partial_t v = \tfrac{1}{2}\Delta v$ with $v(\mathbf{x}, 0) = \hat f_{h_1}(\mathbf{x})$. Setting $t = h_2^2 - h_1^2$ identifies $v(\mathbf{x}, t) = \hat f_{\sqrt{h_1^2 + t}}(\mathbf{x})$.
+
+**Step 3 — critical-point monotonicity in $d = 1$.** Apply the heat operator to $\partial_x v$, which also solves the heat equation. Sturm's lacunary theorem (Sturm 1836; modern proofs in Matano 1982 and Angenent 1988) says: *if $w(x, t)$ solves the 1D heat equation and $w(\cdot, 0)$ has finitely many zeros, then $w(\cdot, t)$ has finitely many zeros for all $t > 0$ and the count is non-increasing in $t$.* The zeros of $\partial_x v(\cdot, t)$ are the stationary points of $v(\cdot, t)$, so the stationary-point count of $\hat f_h$ is non-increasing in $h$.
+
+Modes are strict local maxima — a subset of stationary points. In 1D with $\hat f_h \to 0$ at $\pm \infty$, stationary points alternate max–min–max–... starting and ending with a max. Stationary points disappear only in min–max pairs at degenerate critical points, each annihilation removing one min and one max. The mode count is exactly half the stationary-point count (plus a half) and is non-increasing.
+
+**Step 4 — multivariate generalization.** In $d \geq 2$, Chacón (2015) and Chacón and Duong (2018, Ch. 7) carry out the Morse-theoretic analysis: generically (Sard's theorem), all critical points of $\hat f_h$ are non-degenerate, and as $h$ grows, critical points disappear only in max–saddle or min–saddle annihilations. Pathological data configurations exist in $d \geq 2$ where the strong statement fails on a measure-zero set of bandwidths; they don't occur for data sampled from a continuous distribution.
+
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+Known counterexamples in $d \geq 2$ are tuned configurations where two well-separated modes briefly coalesce at one bandwidth, then re-separate as a third mode pinches off at a slightly larger bandwidth. Measure-zero in data-space; Carreira-Perpiñán (2015, §3.2) discusses the literature. The numerical experiment in §5.5 will show small blips in $M(h)$ on the moons that are a finite-precision shadow of this caveat — they should not be smoothed away.
+</TheoremBlock>
+
+### The mode tree
+
+The bandwidth-indexed family $\{\mathcal{M}_h\}$ traces a *mode tree* — a dendrogram whose leaves are fine-scale modes at small $h$ and whose internal nodes are merge events, with root at large $h$ where $M(h) = 1$. A flat region of the tree (long horizontal segment with no merges) corresponds to a stable bandwidth range over which the cluster assignment doesn't change. The cluster count at this flat region is the *natural* cluster count — the scree-criterion principle of §5.4.
+
+Mode-tree algorithms: Minnotte and Scott (1993) introduced the 1D version; Klemelä (2009) carries the multivariate version.
+
+### Selectors in practice
+
+Four selectors are in use.
+
+**Silverman's rule of thumb.**
+
+$$
+h_S \;=\; \hat\sigma \left(\frac{4}{(d+2)\, n}\right)^{1/(d+4)},
+$$
+
+with $\hat\sigma$ a marginal-spread estimate. Cheap, often within a factor of two of optimal, easy to nudge upward to find the plateau.
+
+**Plug-in selectors** (Sheather–Jones 1991; Wand and Jones 1994 for $d \geq 2$) estimate AMISE-optimal $h$ from the data. Excellent for density estimation; tend to under-smooth for clustering.
+
+**LSCV** (Rudemo 1982; Bowman 1984; Scott and Terrell 1987): minimize $J(h) = \int \hat f_h^2 - (2/n)\sum_i \hat f_{h, -i}(\mathbf{x}_i)$. Consistent (Stone 1984), high-variance.
+
+**Scree criterion on the mode tree** (Carreira-Perpiñán 2015, §4.1). Compute $M(h)$ on a log-spaced grid, identify the longest plateau; the cluster count at the plateau is the natural cluster count.
+
+For clustering, the workflow: start with Silverman's $h_S$, sweep around it, find the plateau, report the cluster assignment at the plateau midpoint.
+
+### Numerical experiment: $M(h)$ on the moons and 4-blob datasets
+
+We sweep $h$ across 50 log-spaced values in $[0.05, 2.0]$ on the moons ($n = 200$, ground-truth $K = 2$) and a varied-std 4-blob ($n = 400$, ground-truth $K = 4$). At each $h$, run from-scratch mean-shift starting at every data point, count distinct converged modes. The 4-blob curve is cleanly monotone with a wide $M = 4$ plateau; the moons curve descends monotonically with a narrow $M = 2$ plateau followed by small blips back up before collapsing to $M = 1$ — the multivariate-Silverman caveat from the Theorem 3 remark made empirically visible. The blips are not failures of the duality; they make the moons a cautionary example for naive scree-criterion bandwidth selection.
+
+<ModeTreeExplorer client:visible />
+
+<Figure src="/images/topics/clustering/fig_06.png" alt="Two-panel figure showing M(h) step curve with shaded plateaus and a linked scatter at the selected bandwidth" caption="$M(h)$ sweep with the M=2 plateau highlighted. Below the plateau, the moons over-cluster; above it, both crescents collapse into one." />
+
+---
+
+## Kernel-function choice
+
+The §3.2 derivation went through for any radial kernel with non-increasing differentiable convex profile, so the mean-shift algorithm and its convergence theory are unchanged across kernels. What changes is the weighting function $g = -k'$ in the sample-weighted mean, and as a result the local curvature of $\hat f_h$ near each mode. The cluster assignment in the plateau regime is remarkably robust to those local changes.
+
+### The standard zoo
+
+| Kernel | Profile $k(s)$ | Shadow $g(s)$ | Support |
+|---|---|---|---|
+| Gaussian | $e^{-s/2}$ | $\tfrac{1}{2} e^{-s/2}$ | $[0, \infty)$ |
+| Epanechnikov | $(1-s)\,\mathbb{1}\{s \leq 1\}$ | $\mathbb{1}\{s \leq 1\}$ | $[0, 1]$ |
+| Biweight (quartic) | $(1-s)^2\,\mathbb{1}\{s \leq 1\}$ | $2(1-s)\,\mathbb{1}\{s \leq 1\}$ | $[0, 1]$ |
+| Triweight | $(1-s)^3\,\mathbb{1}\{s \leq 1\}$ | $3(1-s)^2\,\mathbb{1}\{s \leq 1\}$ | $[0, 1]$ |
+| Uniform (box) | $\mathbb{1}\{s \leq 1\}$ | $\delta(s - 1)$ | $[0, 1]$ |
+
+The uniform kernel's profile is discontinuous; "uniform-kernel mean-shift" is shorthand for *Epanechnikov-shadow mean-shift* (Cheng 1995, §3) — both use $g(s) = \mathbb{1}\{s \leq 1\}$.
+
+By Hodges and Lehmann's (1956) efficiency comparison, kernel efficiencies fall in a tight band — Gaussian 95%, biweight 99%, triweight 99%, uniform 93% — smaller than a 5% bandwidth perturbation.
+
+### Flat-kernel mean-shift
+
+Epanechnikov shadow $g(s) = \mathbb{1}\{s \leq 1\}$ gives
+
+$$
+\mathbf{x}_{t+1} \;=\; \frac{1}{|\mathcal{N}_h(\mathbf{x}_t)|}\sum_{\mathbf{x}_i \in \mathcal{N}_h(\mathbf{x}_t)} \mathbf{x}_i, \qquad \mathcal{N}_h(\mathbf{x}_t) := \{\mathbf{x}_i : \|\mathbf{x}_t - \mathbf{x}_i\| \leq h\}.
+$$
+
+Replace $\mathbf{x}_t$ by the arithmetic mean of data points within radius $h$. Most computationally tractable variant; the version most users carry in their head. Two practical wrinkles: *empty neighborhood* (stop the trajectory; locally expand $h$; or seed inside the convex hull) and *boundary non-smoothness* of $\hat f_h$ (the $C^0$ Epanechnikov gives jump discontinuities in $\nabla \hat f_h$ at distance exactly $h$ from each sample — measure-zero, harmless for mean-shift).
+
+### Why kernel choice rarely moves the cluster assignment
+
+The basin-of-attraction structure is determined by the topology of $\hat f_h$. At bandwidth in the §5 plateau, $\hat f_h$ is locally smoothed enough that the global mode structure is robust to kernel-shape changes. The cluster assignment is invariant up to label permutation across kernel choice.
+
+Two reasons. *Smoothing-stable mode count*: §5.2's duality holds for any convex-profile radial kernel; the plateau corresponds to a bandwidth range with stable mode count regardless of small perturbations including kernel shape. *Basin-boundary stability*: basin boundaries are determined by saddle-ridge structure, stable under the same perturbations. Carreira-Perpiñán (2015, §3.3): *"The choice of kernel function has very little effect on the clusters produced by mean-shift, given a sensible bandwidth choice."*
+
+In sharp contrast to KDE-as-density-estimator, where kernel sensitivity at the AMISE-optimal level is real (capped at ~5% by Hodges–Lehmann efficiency). For *cluster assignments*, sensitivity is essentially zero in the plateau regime.
+
+<KernelChoiceComparator client:visible />
+
+<Figure src="/images/topics/clustering/fig_07.png" alt="Four side-by-side scatter panels showing mean-shift cluster assignments with Gaussian, Epanechnikov, biweight, and triweight kernels" caption="Four kernels at the same plateau bandwidth on the moons. Cluster assignments are nearly identical; ARI versus Gaussian is at most 0.04 different." />
+
+### When kernel choice does matter
+
+*Heavy-tailed data, far from the bulk.* Gaussian's exponentially decaying tails give distant points non-zero weight; compact-support kernels give zero. Can shift mode locations near data extremes by amounts crossing cluster boundaries.
+
+*Computational cost.* Gaussian needs all $n$ data points per query — $O(n)$ per iteration. Compact-support kernels accelerate to $O(\log n + k)$ via kd-tree / ball-tree (§8.3). For large $n$, order-of-magnitude difference.
+
+*Smoothness of $\hat f_h$.* Gaussian $C^\infty$; Epanechnikov $C^0$; biweight $C^1$; triweight $C^2$. For mean-shift itself it doesn't matter; for downstream applications using $\hat f_h$ beyond cluster assignment (Hessian estimation, level-set trees), pick a smooth profile.
+
+**Recommendation:** Gaussian by default; switch to Epanechnikov if computational cost forces it.
+
+---
+
+## From trajectories to clusters
+
+§3.5 showed individual trajectories converging. §5.5 used trajectory endpoints as cluster proxies. §7 makes both moves formal.
+
+### The trajectory map and basin-of-attraction clustering
+
+<TheoremBlock type="definition" number={3} title="Trajectory map and basin">
+The *trajectory map* is
+$$
+T_h: \mathbb{R}^d \to \mathcal{M}_h, \qquad T_h(\mathbf{x}) := \lim_{t \to \infty} \mathbf{x}_t \;\;\text{where}\;\; \mathbf{x}_0 = \mathbf{x}.
+$$
+The *basin of attraction* of mode $\mathbf{m}^*$ is $B(\mathbf{m}^*) := T_h^{-1}(\mathbf{m}^*)$. The basins partition $\mathbb{R}^d$ (almost everywhere); the partition is the basin-of-attraction clustering induced by $\hat f_h$.
+</TheoremBlock>
+
+Two data points are in the same cluster iff their trajectories converge to the same mode. The map $T_h$ defines a *spatial* clustering — every point in $\mathbb{R}^d$ has a cluster label, not just the data points. Any new $\mathbf{x}_{\text{new}}$ is classified by running a fresh trajectory.
+
+Basin boundaries are the $(d-1)$-dimensional saddle ridges of $\hat f_h$.
+
+### Mode merging with tolerance
+
+In finite precision, two trajectories that should converge to the same mode land at endpoints separated by a small distance. The mode-extraction step needs a *merging tolerance* $\delta$.
+
+Greedy-union rule (used throughout): walk through endpoints, attach each to an existing mode if within $\delta$, else create a new mode. Heuristics for $\delta$: $\delta \approx 10 \cdot \text{tol}$ (safety margin) or $\delta \approx 0.1 \cdot h$ (well below inter-mode separation). The from-scratch implementation uses $\delta = 10^{-3}$.
+
+The mode-merging tolerance is a *numerical* parameter, not a clustering hyperparameter; cluster assignment is invariant to $\delta$ over a wide range.
+
+### Blurring mean-shift
+
+Cheng (1995, §4) introduces a variant where data points themselves move at each iteration:
+
+$$
+\mathbf{x}_i^{(t+1)} \;=\; \frac{\sum_j g\bigl(\|(\mathbf{x}_i^{(t)} - \mathbf{x}_j^{(t)})/h\|^2\bigr)\, \mathbf{x}_j^{(t)}}{\sum_j g\bigl(\|(\mathbf{x}_i^{(t)} - \mathbf{x}_j^{(t)})/h\|^2\bigr)}.
+$$
+
+The KDE is rebuilt at each iteration. Converges much faster — data collapses to modes in geometric time — but Cheng (1995, Theorem 2) shows long-time blurring collapses to a single point regardless of $h$. The practical algorithm runs only a small number of iterations.
+
+Standard (non-blurring) mean-shift is the default: respects the mode-tree structure and the §4 convergence theory.
+
+### Initialization
+
+**Sample-as-queries** — initialize at the data points. Standard for clustering data points.
+
+**Grid-as-queries** — initialize on a regular grid covering the data extent. Produces the basin-of-attraction map for $\mathbb{R}^d$ (not just the data).
+
+**Adaptive initialization** — only at "promising" locations (high-$\hat f_h$ regions, coarse-pass modes). For $n \leq 10^4$ in 2D, savings are modest; for very large $n$ in higher $d$, substantial.
+
+### The basin-of-attraction map on the moons
+
+80 × 80 = 6400 trajectories from a grid over the moons range, Gaussian kernel at $h = 0.40$, deduped at tolerance $10^{-3}$. Endpoints aligned to data-trajectory modes for consistent label coloring between basin map and scatter. The basin boundary appears as a smooth curve threading between the two crescents, far from either's bulk.
+
+<BasinOfAttractionMap client:only="react" />
+
+<Figure src="/images/topics/clustering/fig_08.png" alt="Filled raster of basin labels on the moons with the saddle-ridge boundary visible as a smooth curve" caption="Basin-of-attraction map at 80×80 grid resolution. Every point in $\\mathbb{R}^2$ has a cluster label — clustering is a spatial property of $\\hat f_h$." />
+
+---
+
+## Practical mean-shift
+
+§§3–7 covered the algorithm and theory. §8 is about what happens when you actually want to run mean-shift on real data.
+
+### Design choices in the from-scratch implementation
+
+The `mean_shift_trajectories` function from §3.5 makes four design choices.
+
+*Vectorized pairwise distance.* `scipy.spatial.distance.cdist` for the $m \times n$ squared-distance matrix per iteration — $O(m n)$ in compiled C. Memory $8 m n$ bytes (float64), fine for $m, n \leq 10^4$. At larger scale, batch queries in chunks of $\sim 10^3$.
+
+*Log-domain stability.* Per-row max-subtract before exponentiating the Gaussian-kernel weights — the subtracted constant cancels in the weighted-mean ratio. Same trick as softmax.
+
+*Vectorized convergence.* Stop when the maximum per-query step falls below `tol`. Per-query stopping is more efficient but harder to vectorize.
+
+*Full trajectory history returned.* $(T+1, m, d)$ array — more memory than necessary if you only need final positions, but needed for diagnostic plots and basin visualizations. At our scale ($T \leq 100$, $m d \leq 10^4$) it's $\leq 10$ MB.
+
+A production implementation would tighten all four. The notebook implementation is optimized for pedagogical clarity, not throughput.
+
+### `sklearn.cluster.MeanShift` pitfalls
+
+Three quirks worth knowing.
+
+*The `estimate_bandwidth` default.* `MeanShift()` with `bandwidth=None` calls `estimate_bandwidth(X)` internally, which is $O(n^2)$ in time and memory. For $n = 10^4$: $10^8$ distance computations, ~800 MB intermediate memory. For $n = 10^5$: $10^{10}$ computations, 80 GB. **Always pass an explicit `bandwidth=h`** chosen via §5.4's selectors.
+
+*The internal kernel is flat, not Gaussian.* Uses Epanechnikov-shadow update (unweighted mean inside bandwidth ball). Not user-selectable. §6.3 already showed kernel-invariance in the plateau regime; this is rarely a correctness issue but is the source of rare ARI < 1.0 disagreement on boundary points.
+
+*Orphan points get label `-1`.* Trajectories not reaching a mode within `max_iter` (default 300) iterations are labeled `-1`. Rare at reasonable bandwidth, common at adversarial small $h$.
+
+`bin_seeding=True` initializes only at coarse-grid bin centers — substantial speedup for large data.
+
+### Scaling: kd-tree and ball-tree neighbor queries
+
+For compact-support kernels, only $\mathcal{N}_h(\mathbf{x})$ contributes to $\mathbf{m}_h(\mathbf{x})$. Brute force is $O(n)$ per query; kd-tree (Bentley 1975) or ball-tree (Omohundro 1989) is $O(\log n + k)$ where $k$ is the average neighborhood size. Build time $O(n \log n)$.
+
+At $n = 10^5$ in $\mathbb{R}^2$ with Epanechnikov: brute force $10^{10}$ distance computations per iteration; kd-tree $1.7 \times 10^6$ neighbor lookups. Three orders of magnitude per iteration.
+
+For Gaussian, truncate: ignore $\|\mathbf{x} - \mathbf{x}_i\| > c \cdot h$ for $c \in [3, 4]$ (captures 99.7% of Gaussian mass). Truncated Gaussian admits the same kd-tree acceleration.
+
+`scipy.spatial.cKDTree` and `sklearn.neighbors.BallTree` provide tree implementations. Kd-tree for $d \leq 3$; ball-tree for $d \geq 6$; benchmark in between.
+
+### The sample-and-cluster pattern
+
+For $n \gg 10^4$, the *sample-and-cluster* pattern (Carreira-Perpiñán 2015, §6.2) trades small approximation error for order-of-magnitude speedup:
+
+1. Sample $m \ll n$ seed points.
+2. Run mean-shift trajectories from seeds; dedupe to mode set.
+3. Assign remaining data via nearest-mode kd-tree query.
+
+Total cost $O(m T \log m) + O(n \log m)$. With $m = \sqrt{n}$, dominant term $O(n \log n)$.
+
+Approximation error from sub-sampling: low-density modes may be missed. Harmless for typical clustering; mitigated by stratified sampling for anomaly localization.
+
+### Sanity check: from-scratch vs sklearn
+
+Run both implementations on the moons, 3-blob, and 4-blob at plateau bandwidths, with the from-scratch in flat-kernel mode for like-for-like comparison against sklearn's internal Epanechnikov shadow. Expect mode counts to agree dataset-by-dataset and ARIs in $[0.95, 1.00]$ — small disagreement on boundary points is normal.
+
+<Figure src="/images/topics/clustering/fig_09.png" alt="Three side-by-side scatter panels comparing from-scratch and sklearn mean-shift assignments on three datasets" caption="From-scratch flat-kernel mean-shift versus sklearn.cluster.MeanShift. Mode counts agree exactly; ARI ≥ 0.97 across the three datasets." />
+
+---
+
+## k-means as the $h \to 0$ Voronoi limit
+
+K-means and mean-shift cluster the same data with different parameters and produce different partitions on anything non-Gaussian. §9 makes the relationship precise. Gaussian-kernel mean-shift in the $h \to 0$ limit collapses onto Lloyd's hard nearest-mean assignment.
+
+### Lloyd's algorithm and the Voronoi-partition fixed point
+
+Lloyd's algorithm (Lloyd 1982; MacQueen 1967 historical antecedent) picks $K$ centroids (typically via k-means++ seeding, Arthur and Vassilvitskii 2007), then alternates:
+
+1. **Assignment.** $c(\mathbf{x}_i) = \arg\min_k \|\mathbf{x}_i - \boldsymbol{\mu}_k\|$.
+2. **Update.** $\boldsymbol{\mu}_k \leftarrow (1/|S_k|) \sum_{i \in S_k} \mathbf{x}_i$.
+
+The fixed point locally minimizes the WCSS $J = \sum_k \sum_{i \in S_k} \|\mathbf{x}_i - \boldsymbol{\mu}_k\|^2$. Local convergence; k-means++ providing $O(\log K)$ expected-WCSS approximation.
+
+At a fixed point, $\mathbf{x}_i$ belongs to cluster $k$ iff $\mathbf{x}_i \in V(\boldsymbol{\mu}_k)$ — the *Voronoi cell* of $\boldsymbol{\mu}_k$. Each cell is a convex polytope; cell boundaries are perpendicular bisectors of centroid pairs.
+
+### What each method assumes
+
+*K-means.* Cluster count $K$ fixed in advance; cluster shape implicitly convex (Voronoi polytope); no density representation. WCSS objective is, up to constants, the NLL of an isotropic Gaussian mixture with equal variances and equal mixing weights (Bishop 2006, §9.1). Works exactly on well-separated isotropic Gaussians. Fails confidently on non-convex / non-isotropic / unequal-spread clusters.
+
+*Mean-shift.* Cluster count $M(h)$ emerges from $h$; cluster shape is the basin of attraction of $\hat f_h$; density-based. Handles any data with well-defined density modes. Trades $K$ hyperparameter for $h$ hyperparameter.
+
+K-means optimizes WCSS; mean-shift optimizes $\hat f_h$. The silhouette/ARI disagreement on the moons (§1.3) reflects this — silhouette rewards convex compactness (the k-means objective), ARI rewards getting the right partition.
+
+### The $h \to 0$ collapse theorem
+
+<TheoremBlock type="theorem" number={4} title="Gaussian-kernel mean-shift collapse to nearest sample">
+Let $\hat f_h$ be the Gaussian-kernel KDE on data $\mathbf{x}_1, \ldots, \mathbf{x}_n \in \mathbb{R}^d$ with distinct points. Fix $\mathbf{x} \in \mathbb{R}^d$ with a unique nearest sample $\mathbf{x}_{i^*}$ — i.e., $d_{i^*}^2 < d_i^2$ for all $i \neq i^*$, where $d_i := \|\mathbf{x} - \mathbf{x}_i\|$. Then
+$$
+\lim_{h \to 0^+} \mathbf{m}_h(\mathbf{x}) \;=\; \mathbf{x}_{i^*}, \qquad \text{with}\qquad \|\mathbf{m}_h(\mathbf{x}) - \mathbf{x}_{i^*}\| \;\leq\; D \cdot (n-1)\, \exp\!\left(-\frac{\Delta^2(\mathbf{x})}{2 h^2}\right),
+$$
+where $D = \max_i \|\mathbf{x}_i - \mathbf{x}_{i^*}\|$ and $\Delta^2(\mathbf{x}) := \min_{i \neq i^*}(d_i^2 - d_{i^*}^2) > 0$.
+</TheoremBlock>
+
+The convergence rate is exponentially fast in $1/h^2$.
+
+<TheoremBlock type="proof">
+Factor out $w_{i^*}$ from numerator and denominator of $\mathbf{m}_h(\mathbf{x}) = \sum_i w_i \mathbf{x}_i / \sum_i w_i$ with $w_i = \exp(-d_i^2/(2h^2))$. With $r_i := w_i / w_{i^*}$, for $i \neq i^*$,
+
+$$
+r_i \;=\; \exp\!\left(-\frac{d_i^2 - d_{i^*}^2}{2 h^2}\right) \;\leq\; \exp\!\left(-\frac{\Delta^2(\mathbf{x})}{2 h^2}\right) \;=:\; \varepsilon(h),
+$$
+
+with $r_{i^*} = 1$. Compute:
+
+$$
+\mathbf{m}_h(\mathbf{x}) - \mathbf{x}_{i^*} \;=\; \frac{\sum_{i \neq i^*} r_i\, (\mathbf{x}_i - \mathbf{x}_{i^*})}{1 + \sum_{i \neq i^*} r_i}.
+$$
+
+Take the Euclidean norm; apply the triangle inequality with $\|\mathbf{x}_i - \mathbf{x}_{i^*}\| \leq D$ and the bound $\sum r_i / (1 + \sum r_i) \leq \sum r_i$ (denominator $\geq 1$):
+
+$$
+\|\mathbf{m}_h(\mathbf{x}) - \mathbf{x}_{i^*}\| \;\leq\; D \sum_{i \neq i^*} r_i \;\leq\; D (n-1) \varepsilon(h).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={1} title="Basin = Voronoi cell at $h = 0$">
+For any $\mathbf{x}$ with a unique nearest sample $\mathbf{x}_{i^*}$, $\lim_{h \to 0^+} T_h(\mathbf{x}) = \mathbf{x}_{i^*}$, and the basin partition $\{B(\mathbf{x}_i)\}_{i=1}^n$ converges to the Voronoi diagram of the data, $\{V(\mathbf{x}_i)\}_{i=1}^n$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Theorem 4 shows $\mathbf{m}_h(\mathbf{x}) \to \mathbf{x}_{i^*}$ in one iteration. The next iteration starts arbitrarily close to $\mathbf{x}_{i^*}$, at which the nearest sample is $\mathbf{x}_{i^*}$ itself (distance 0), so the trajectory stays put. $T_h(\mathbf{x}) \to \mathbf{x}_{i^*}$; the preimage converges to the Voronoi cell.
+</TheoremBlock>
+
+<TheoremBlock type="remark">
+The corollary makes the "$K = n$" equivalence precise: mean-shift in the $h \to 0$ limit produces the Voronoi diagram of the data — the partition k-means with $K = n$ frozen-data centroids would produce. For $K < n$ k-means, equivalence is approximate and conditional: in the $M(h) = K$ plateau on isotropic-Gaussian-mixture data, both algorithms recover the same partition. The equivalence breaks on non-isotropic or non-Gaussian data — on the moons no $h$ value matches k-means at any $K$.
+</TheoremBlock>
+
+### Numerical experiment: ARI(mean-shift, k-means) on the 3-blob
+
+Run k-means with $K = 3$ as reference. Sweep $h$ across the $M(h) = 3$ plateau and below; at each $h$ compute mean-shift labels and ARIs against k-means and against ground truth. ARI(mean-shift, k-means) ≈ 1.0 across the plateau; ARI drops below the plateau when $M(h) > 3$. The basin-mosaic at decreasing $h$ shows boundaries first straightening (within the plateau's lower edge) then fragmenting (below the plateau).
+
+<KMeansVoronoiLimit client:only="react" />
+
+<Figure src="/images/topics/clustering/fig_10.png" alt="Row of mean-shift basin panels at decreasing bandwidth next to a k-means Voronoi panel" caption="Mean-shift basins at three decreasing bandwidths alongside the k-means Voronoi partition. In the plateau, ARI(mean-shift, k-means) hits 0.99." />
+
+---
+
+## GMM-via-EM and soft assignment
+
+§9 contrasted against k-means — the simplest hard-partition baseline. §10 contrasts against the probabilistic hard-partition baseline: Gaussian mixture models fit by expectation-maximization (Dempster, Laird, and Rubin 1977).
+
+### The Gaussian mixture model and its likelihood
+
+$$
+p(\mathbf{x} \mid \boldsymbol{\theta}) \;=\; \sum_{k=1}^K \pi_k \, \mathcal{N}(\mathbf{x} \mid \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k),
+$$
+
+with $\pi_k \geq 0$ summing to 1, component means $\boldsymbol{\mu}_k \in \mathbb{R}^d$, covariances $\boldsymbol{\Sigma}_k \in \mathbb{R}^{d \times d}$ positive definite. Latent-variable form: $z_i \sim \mathrm{Cat}(\boldsymbol{\pi})$, $\mathbf{x}_i \mid z_i = k \sim \mathcal{N}(\boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)$.
+
+Log-likelihood:
+
+$$
+\ell(\boldsymbol{\theta}) \;=\; \sum_{i=1}^n \log \sum_{k=1}^K \pi_k\, \mathcal{N}(\mathbf{x}_i \mid \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k).
+$$
+
+Log-sum-over-components has no closed-form maximum.
+
+### EM for GMMs: responsibilities as soft assignments
+
+**E-step.** Compute posterior responsibilities:
+
+$$
+\gamma_{ik}^{(t)} \;:=\; \frac{\pi_k^{(t)}\, \mathcal{N}(\mathbf{x}_i \mid \boldsymbol{\mu}_k^{(t)}, \boldsymbol{\Sigma}_k^{(t)})}{\sum_l \pi_l^{(t)}\, \mathcal{N}(\mathbf{x}_i \mid \boldsymbol{\mu}_l^{(t)}, \boldsymbol{\Sigma}_l^{(t)})}.
+$$
+
+$\gamma_{ik} \in [0, 1]$ is the soft assignment; $\sum_k \gamma_{ik} = 1$.
+
+**M-step.** With $N_k = \sum_i \gamma_{ik}^{(t)}$:
+
+$$
+\pi_k^{(t+1)} = \frac{N_k}{n}, \quad
+\boldsymbol{\mu}_k^{(t+1)} = \frac{1}{N_k} \sum_i \gamma_{ik}^{(t)}\, \mathbf{x}_i, \quad
+\boldsymbol{\Sigma}_k^{(t+1)} = \frac{1}{N_k} \sum_i \gamma_{ik}^{(t)}\, (\mathbf{x}_i - \boldsymbol{\mu}_k^{(t+1)})(\mathbf{x}_i - \boldsymbol{\mu}_k^{(t+1)})^\top.
+$$
+
+Weighted single-Gaussian MLEs. See Bishop (2006, §9.2.2) for the full derivation.
+
+<TheoremBlock type="theorem" number={5} title="EM monotone-likelihood ascent (Dempster–Laird–Rubin 1977, Thm 1)">
+At each EM iteration the log-likelihood $\ell(\boldsymbol{\theta}^{(t)})$ is monotone non-decreasing; the algorithm converges to a local maximum of $\ell$ (under regularity conditions on the latent-variable model).
+</TheoremBlock>
+
+The structural connection to mean-shift: GMM-EM's M-step $\boldsymbol{\mu}_k = (\sum_i \gamma_{ik} \mathbf{x}_i)/(\sum_i \gamma_{ik})$ is the §3.3 mean-shift update form with responsibilities as kernel weights. Differences: parametric vs fixed-bandwidth weighting; $K$ centroids vs $n$ query points; soft per-component vs hard per-mode. The $h \to 0$ Gaussian-mean-shift → k-means limit (§9.3) and the $\boldsymbol{\Sigma}_k = \sigma^2 \mathbf{I}, \sigma \to 0$ GMM-EM → k-means limit both converge on k-means.
+
+### Identifiability, label-switching, and what "the" cluster labels mean
+
+Permuting component labels leaves the density unchanged. The likelihood has $K!$ equivalent global maxima differing only in component naming.
+
+Consequences: EM with random initialization converges to permuted optima; Bayesian inference suffers label-switching (Stephens 2000); cluster-quality metrics must be permutation-invariant (ARI does it, raw accuracy doesn't).
+
+The label-switching issue affects names, not partition. Two GMM fits agreeing on which samples cluster together but disagreeing on naming are operationally the same fit.
+
+A separate identifiability concern: GMM likelihood is unbounded above. Setting $\boldsymbol{\mu}_k = \mathbf{x}_i$ and $\boldsymbol{\Sigma}_k \to 0$ sends $\ell \to \infty$. `sklearn.mixture.GaussianMixture` regularizes via `reg_covar` (default $10^{-6}$).
+
+### The M-open critique
+
+GMM produces correct cluster assignments when data is genuinely a Gaussian mixture. When it isn't, assignments are systematically biased: GMM fits ellipsoidal components to non-ellipsoidal cluster structure.
+
+Bernardo and Smith (1994) framework: M-closed = true model is in our class; M-complete = known true model is intractable; M-open = true model is outside our class.
+
+For clustering, GMM is M-open whenever cluster shapes aren't ellipsoidal — most real data. Moons aren't Gaussian. Concentric rings aren't. Image segmentation, text embedding, biological data — none are Gaussian in any literal sense.
+
+The critique cuts in two directions. *Against GMM*: when true clusters are non-Gaussian, biased assignments. *Against mean-shift*: non-parametric in $\hat f_h$ but commits to "cluster = basin of attraction of kernel-smoothed empirical density." Less restrictive than ellipsoidal Gaussian, but not assumption-free.
+
+**Practical takeaway.** Approximately-Gaussian clusters with arbitrary covariance shape: GMM-EM. Non-Gaussian or unknown-shape clusters: mean-shift. On real data, "run both and compare."
+
+### GMM responsibilities vs mean-shift basins
+
+3-blob (where GMM is correct): GMM-EM recovers components; responsibilities sharp inside blobs, soft at boundaries; mean-shift hard MAP agrees up to label permutation; ARI $\approx 1.0$ on both.
+
+Moons (both partially M-open): GMM-EM with $K = 2$ fits two ellipsoids that span across the crescent gap, ARI $\approx 0.46$. Mean-shift at the plateau bandwidth finds the right cluster count and shape but mis-classifies boundary points, ARI $\approx 0.43$. Both algorithms beat k-means' ARI $\approx 0.22$ from §1.3 but neither recovers the moons perfectly at noise = 0.1 — the crescents are intrinsically hard at this noise level.
+
+<GMMSoftAssignments client:visible />
+
+<Figure src="/images/topics/clustering/fig_11.png" alt="2x2 grid showing GMM soft responsibilities and mean-shift hard basins on the 3-blob and moons datasets" caption="GMM responsibilities (left column, RGB blend) vs mean-shift basins (right column). On 3-blob, both agree. On moons, both improve over k-means but neither recovers the crescents perfectly." />
+
+---
+
+## Pointers: spectral and density-based clustering
+
+§§9–10 covered partition-based contrasts. §11 covers two methods that don't fit cleanly into either partition-based or mode-based — spectral clustering and DBSCAN. Light pointer; proper coverage of spectral clustering is in [graph-laplacians](/topics/graph-laplacians) and [random-walks](/topics/random-walks).
+
+### Affinity graphs and the Laplacian
+
+Spectral clustering builds an affinity graph: vertices are samples, edge weights $W_{ij}$ encode pairwise similarity. Standard constructions: Gaussian similarity $W_{ij} = \exp(-\|\mathbf{x}_i - \mathbf{x}_j\|^2 / (2\sigma^2))$; $k$-NN graph; $\epsilon$-graph. $k$-NN is most common: sparse, robust to $\sigma$, density-adaptive.
+
+Graph Laplacian: $L := D - W$, $D = \mathrm{diag}(\sum_j W_{ij})$. Normalized variants: $L_{\mathrm{sym}} := D^{-1/2} L D^{-1/2}$ (Ng–Jordan–Weiss); $L_{\mathrm{rw}} := D^{-1} L$ (Shi–Malik). Eigenvectors corresponding to smallest eigenvalues encode cluster structure: for an ideal $K$-component disconnected graph the bottom $K$ eigenvectors are component indicators; for almost-disconnected graphs they approximately encode the clusters (Mohar 1991; von Luxburg 2007).
+
+### Shi–Malik and Ng–Jordan–Weiss
+
+**Shi and Malik (2000).** Bottom eigenvectors of $L_{\mathrm{rw}}$; for $K = 2$, partition by sign of second-smallest eigenvector; for $K > 2$, recursive bipartitioning or k-means on bottom $K$ eigenvectors. Motivated by the normalized cut objective.
+
+**Ng, Jordan, and Weiss (2002).** Bottom $K$ eigenvectors of $L_{\mathrm{sym}}$ as $V \in \mathbb{R}^{n \times K}$. Row-normalize: $Y_{ij} = V_{ij}/\sqrt{\sum_l V_{il}^2}$. Run k-means on rows of $Y$. Geometric interpretation: row-normalized embedding lies on the unit sphere in $\mathbb{R}^K$, where cluster structure is spherical.
+
+For the variational characterization, Cheeger inequality, perturbation analysis, random-walk dual — consult [graph-laplacians](/topics/graph-laplacians) and [random-walks](/topics/random-walks). von Luxburg (2007) is the standard intro.
+
+### DBSCAN
+
+Density-Based Spatial Clustering of Applications with Noise (Ester, Kriegel, Sander, and Xu 1996). Two hyperparameters: $\epsilon$ (neighborhood radius) and $\text{MinPts}$. Point types: *core* ($|\mathcal{N}_\epsilon(\mathbf{x}_i)| \geq \text{MinPts}$), *border* (in a core's neighborhood, not itself core), *noise* (neither). Clusters are connected components of density-reachability between core points; noise gets label $-1$.
+
+DBSCAN vs mean-shift: both density-based, but DBSCAN uses hard threshold ($\epsilon$, MinPts) while mean-shift uses KDE smoothing. DBSCAN handles noise via $-1$; mean-shift assigns every point. DBSCAN has 2 hyperparameters, mean-shift 1. HDBSCAN (Campello, Moulavi, Sander 2013) replaces fixed $\epsilon$ with a hierarchy.
+
+For uniform-density clusters, DBSCAN excels. For varied-density data, it struggles — single $\epsilon$ can't resolve both tight and diffuse clusters; mean-shift's bandwidth adapts via KDE smoothing.
+
+### Numerical demonstration on `make_circles`
+
+`make_circles(n_samples=200, factor=0.5, noise=0.05)`: outer ring radius 1.0, inner ring radius 0.5. KDE density is concentrated on ring-shaped *ridges*, not point modes — mean-shift trajectories converge to points along the ridges, basin partition fragments. Spectral and DBSCAN both succeed by exploiting connected-component structure on the affinity graph.
+
+Four panels: mean-shift fails (ARI $\approx 0$); spectral $K = 2$ with $k = 10$-NN affinity succeeds (ARI $\approx 1$); DBSCAN $\epsilon = 0.20$ MinPts $= 5$ succeeds (ARI $\approx 1$); spectral embedding showing linear separability of the two rings.
+
+<SpectralClusteringTeaser client:visible />
+
+<Figure src="/images/topics/clustering/fig_12.png" alt="Four-panel comparison on the concentric-circles dataset: mean-shift fragments, spectral and DBSCAN succeed, spectral embedding shows linear separability" caption="Mean-shift fails on circles (no point modes for ring-shaped density). Spectral and DBSCAN succeed via connected-component structure. The bottom-eigenvector embedding makes the success geometrically concrete." />
+
+---
+
+## Connections, limits, and forward pointers
+
+### Within-formalML siblings
+
+[Kernel regression](/topics/kernel-regression) (Supervised Learning, intermediate). Covariate-conditional KDE counterpart. The NW estimator is structurally identical to Gaussian-kernel mean-shift update; kernel regression averages responses, mean-shift averages positions; same machinery.
+
+[Graph Laplacians](/topics/graph-laplacians) (Graph Theory, advanced). Proper home for spectral clustering — eigenvalue spectrum, Cheeger inequality, perturbation analysis. §11 gestures; `graph-laplacians` develops.
+
+[Random walks](/topics/random-walks) (Graph Theory, intermediate). Dual Laplacian view: $L_{\mathrm{rw}}$ generates a random walk; mixing times encoded by spectral eigenvalues.
+
+[Normalizing flows](/topics/normalizing-flows) (Unsupervised, advanced). Continuous-density estimation via invertible neural transformations. Mean-shift's KDE is the non-parametric precursor to flow-based estimators.
+
+### Forward pointers
+
+**Density-ratio estimation** *(coming soon)*. KLIEP, LSIF, uLSIF — density-ratio estimators that plug KDE substrates into $r(\mathbf{x}) = p_{\text{num}}/p_{\text{den}}$. The `unsupervised.ts` exports `meanShift` and `modeFinder` are direct dependencies. Closes the T3 Unsupervised track.
+
+### Honest limits
+
+**Curse of dimensionality on $h$.** AMISE-optimal $h^* \asymp n^{-1/(d+4)}$ grows with $d$, but the bandwidth-ball volume grows much faster — $|B(\mathbf{x}, h)| \propto h^d$. In $d = 10$ with $n = 10^3$, the typical neighborhood at $h^*$ contains essentially zero samples. Mean-shift becomes infeasible above $d \approx 10$ without dimensionality reduction (PCA, autoencoder, t-SNE / UMAP) as preprocessing.
+
+**Mode-vs-cluster distinction.** Mean-shift converges to stationary points; the modal-clustering hypothesis (Hartigan 1975) asserts cluster = basin of attraction of a density mode. Three failure modes: well-separated clusters that don't produce distinct density modes (concentric rings); spurious modes from noise; genuinely ambiguous cluster structure where no algorithm agrees.
+
+**No cluster-count guarantees under noise.** Under additive noise, KDE develops spurious local maxima counting toward $M(h)$. The bandwidth-mode-count duality is preserved (still monotone) but the plateau may shift or disappear. Carreira-Perpiñán (2015, §3.3) discusses noise-robust mode estimation; practical fix is to combine moderate bandwidth with a low-density-prune step dropping modes with insufficient basin mass.
+
+**Take-home.** Mean-shift is the right tool for *cluster discovery via density modes* on *moderate-dimensional, moderately-noised* data with *moderately-distinct cluster shapes*. Outside that regime, k-means, GMM, spectral, DBSCAN are alternatives — on hard data, ensembles often do better than any single one.
