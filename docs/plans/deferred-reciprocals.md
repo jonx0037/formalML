@@ -165,6 +165,9 @@ Add the reciprocal pointer back to:
 - **formalStatistics/bayesian-foundations-and-prior-selection** declares `formalcalculusPrereqs` → `multivariable-calculus` (prereqs)
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§25.8 Proof 3 (BvM sketch) Taylor-expands the log-posterior in a neighborhood of $\hat\theta_{\text{MLE}}$; the leading Gaussian term is extracted via standard Taylor-with-remainder. The Laplace ap…_
+- **formalML/clustering** declares `formalcalculusPrereqs` → `multivariable-calculus` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The mean-shift derivation in §3 uses the chain rule and gradient computation in $\mathbb{R}^d$; §4's convergence proof uses the multivariate Taylor expansion around a mode. formalcalculus's multiva…_
 - **formalStatistics/generalized-linear-models** declares `formalcalculusPrereqs` → `multivariable-calculus` (prereqs)
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The score $\nabla_{\boldsymbol\beta}\ell$ and Hessian $\nabla^2_{\boldsymbol\beta}\ell$ are vector- and matrix-valued partial derivatives over $\boldsymbol\beta \in \mathbb{R}^{p+1}$. §22.3 Proofs …_
@@ -312,14 +315,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/point-estimation** declares `formalmlConnections` → `bias-variance-tradeoff` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The MSE decomposition Bias² + Variance is the formal version of the ML bias-variance tradeoff. Regularization, model selection, and ensemble methods all navigate this tradeoff._
-
-## When `formalml/clustering` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/kernel-density-estimation** declares `formalmlConnections` → `clustering` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Mean-shift clustering uses gradient ascent on $\hat f_h$ to find local modes — the KDE's stationary points *are* the cluster centers. §30.9 Rem 18 pointer; forthcoming on formalml._
 
 ## When `formalml/cross-entropy-loss` ships
 
