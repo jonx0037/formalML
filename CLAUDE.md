@@ -39,7 +39,7 @@ The 32 ML Methodology topics discharge forward-pointers from formalstatistics.co
 
 ```bash
 pnpm dev                                            # Dev server at localhost:4321
-pnpm build                                          # Production build (runs pagefind). Built-in NODE_OPTIONS=--max-old-space-size=10240 (the default 4GB OOMs at the current ~52-topic scale; at 7168 it OOM'd on Vercel after kernel-regression shipped — 10GB is the post-kernel-regression baseline). The Vercel build machine has 60GB; raise further if a future topic pushes past 10GB.
+pnpm build                                          # Production build (runs pagefind). Built-in NODE_OPTIONS=--max-old-space-size=16384 (the default 4GB OOMs at the current ~60-topic scale; 7168 OOM'd on Vercel after kernel-regression shipped; 10240 OOM'd on Vercel after semiparametric-inference shipped — 16GB is the post-semiparametric baseline). The Vercel build machine has 60GB; raise further if a future topic pushes past 16GB.
 pnpm preview                                        # Preview production build
 pnpm verify:nonparametric-ml                        # Numerical regression tests for src/components/viz/shared/nonparametric-ml.ts vs notebook printed outputs
 pnpm verify:<topic>                                 # Per-topic numerical-regression suite. New topics: write src/components/viz/shared/__tests__/verify-<slug>.ts (standalone, process.exit(0/1)), register a matching verify:<slug> script in package.json. Tolerances reflect notebook printed outputs; brief tabulated values may differ if the notebook seed changed during scoping.
@@ -50,6 +50,7 @@ pnpm exec tsc --noEmit --project tsconfig.json      # Ad-hoc TypeScript check. `
 cd notebooks/<topic-slug> && .venv/bin/python <script>.py                                  # Run a notebook-local Python script (no project-wide venv)
 cd notebooks/<topic-slug> && nohup .venv/bin/python <script>.py </dev/null >out.log 2>err.log &   # Detached for long PyMC/BART precomputes (~6–15 min); </dev/null avoids stdin blocking
 cd notebooks/<topic-slug> && uv pip install <pkg>                                          # Add a package to the notebook venv. uv-managed venvs lack pip directly — `python -m pip install` returns "No module named pip".
+cd notebooks/<topic-slug> && uv venv && uv pip install <pkgs>                              # Fresh venv when shipping a new topic. Each topic owns its venv (no shared project venv).
 ```
 
 **Bash cwd persists across tool calls.** A `cd notebooks/<slug>` from earlier in the session silently breaks later relative-path operations (e.g., `git add path/from/repo-root` runs from the notebook dir and fails with "pathspec did not match"). Use absolute paths or `cd "$(git rev-parse --show-toplevel)"` at the top of any compound staging command in long sessions.
@@ -106,6 +107,8 @@ Each topic in `src/content/topics/` is an MDX file with YAML frontmatter that in
 **TheoremBlock supported `type` values:** `definition | theorem | lemma | proposition | corollary | proof | remark | example | algorithm` (the last added in PR #76). Adding new types is an additive edit to the `config` table in `src/components/ui/TheoremBlock.astro`; missing types render a runtime "Cannot read properties of undefined (reading 'numbered')" 500 with no MDX line number — easy to misdiagnose.
 
 **Math display gotcha:** `$$\begin{aligned}` glued onto one line breaks rendering — MDX parses `{aligned}` as a JSX expression and strips `\begin{aligned}` before remark-math forwards to KaTeX. Always put `$$` on its own line before `\begin{aligned}` and after `\end{aligned}`. See `conformal-prediction.mdx` for the working pattern.
+
+**KaTeX `\hat\boldsymbol{...}` gotcha:** Use `\hat{\boldsymbol{\theta}}` with explicit braces — `\hat\boldsymbol{\theta}` is parsed as `\hat` (no body) applied to `\boldsymbol`, then `{\theta}` becomes the `\boldsymbol` argument and KaTeX errors with "Unexpected end of input in a macro argument". MathJax (notebooks) renders both forms; KaTeX (MDX) only the braced form. Build still exits 0 since KaTeX is non-strict — catch via `pnpm dev` page render and grep for `katex-error`.
 
 **Equation labels:** put end labels inside the `$$...$$` block rather than using `\tag{...}` (which has KaTeX-rendering edge cases). For numbered equations the convention is `\quad\quad (X.Y)` — see `probabilistic-programming.mdx` and `mixed-effects.mdx` (numeric labels). For symbolic anchor labels (e.g., a `(†)` reference target), `\qquad (\dagger)` is used — see `gaussian-processes.mdx`. Many topics don't number equations at all (e.g., `variational-inference.mdx`).
 
@@ -167,6 +170,10 @@ The cross-site infrastructure is documented in detail in [docs/plans/cross-site-
 - `gpPredict(XTrain, yTrain, XTest, kernelFn, sigmaN, jitter?)` from `gaussian-processes.ts` — `kernelFn: (X1, X2) => number[][]` is a function (not an options object). Result has `mean`, `cov`, `sd`, `L` — no `variance` field; use `sd[i]^2 + sigmaN^2` for predictive variance.
 
 **Sample-data dual-location:** when a viz fetches precomputed JSON at runtime (e.g., `fetch('/sample-data/<slug>/pareto_k_n100.json')` — concrete filename, not a glob; `fetch` won't resolve `*.json`), the file must live in **both** `src/data/sampleData/<slug>/` (tracked, target of the precompute script) **and** `public/sample-data/<slug>/` (Astro serves only `public/`). Copy after every regen. Long-term this should be automated — either as a `postbuild` step in the precompute script (`shutil.copytree(..., dirs_exist_ok=True)`) or as a `pnpm sync:sample-data` package script — but the manual copy is the documented current state until that lands.
+
+**JSON-payload viz: read config from payload, never mutate.** `payload.members.slice(0, N).forEach((m) => { m.activation = 'tanh' })` mutates React state — `.slice` is a shallow array copy, the objects are still references. Code review (Copilot + Gemini both flag this every time) wants `.map((m) => helper(m, payload.activation))` with a shared helper that returns fresh objects. Also: read `activation`, `hidden`, `M` from the payload envelope itself rather than hardcoding in the viz — the precompute script is the data-layer source of truth. UQ topic's `EnsemblePayloadShape` (in `shared/uncertainty-quantification.ts`) is the reference pattern.
+
+**Recalibration viz: never fit-and-evaluate on the same sample.** `isotonicRecal(p, y, p)` or `fitTemperature(z, y)` then `temperatureScaleProb(z, T*)` on the same `(z, y)` produces in-sample-perfect ECE that misrepresents real recalibration quality. Code review flags this every time. Always draw a held-out calibration sample for the fit and a separate eval sample for the metric.
 
 **Asset commit checklist:** before `git commit` on a topic shipment, run `git ls-files public/images/topics/<slug>/ public/sample-data/<slug>/ src/data/sampleData/<slug>/` and confirm the listings match what's on disk. Disk-resident-but-untracked figures and JSON ship as 404s on Vercel even when the local dev server serves them fine — the Astro build doesn't fail on missing referenced assets, so `pnpm build` won't catch it. PR #76 shipped 12 untracked assets through the first round of review for exactly this reason.
 
@@ -265,6 +272,7 @@ Reference-notebook selection rule for the Chat template: pick same-track sibling
 - Prefer named exports
 - D3 selections scoped to component refs — no global DOM manipulation
 - **TypedArray sort: no comparator needed.** `Float64Array.prototype.sort()` (and the other typed-array sorts) default to numeric, unlike `Array.prototype.sort` which is lexicographic. Use `arr.slice().sort()` over `Array.from(arr).sort((a, b) => a - b)` — avoids the typed-to-plain-array round trip and the JS-comparator overhead. **Anti-pattern to grep for: `Array.from(...).sort((a, b) => a - b)`** — that's the exact form code review will flag.
+- **`.map(helper)` vs `.map((m) => helper(m))` with optional second args.** TS rejects `.map(helper)` when `helper: (m, x?: 'a' | 'b')` because `.map`'s callback receives `(value, index, array)` and `number` doesn't satisfy the optional `x?: 'a' | 'b'`. Use the explicit arrow form whenever the helper takes more than one parameter, even if the rest are optional.
 
 ### Code-example language policy
 
@@ -279,6 +287,7 @@ All other topics stay in the NumPy/SciPy default. Notebook cells must run CPU-on
 
 - Run `git stash -u` / `--include-untracked`. Untracked files in this repo are user-owned working state (notebooks, briefs, drafts, `.venv/`) — sweeping them into stashes loses them invisibly. To branch off main, `git checkout main && git checkout -b <new-branch>` directly; the working tree follows.
 - Touch any untracked file without per-instance authorization — no `rm`/`mv`/overwrite/`git add`. Reading is fine.
+- `git add notebooks/<slug>/` — only `precompute_*.py` is tracked under notebook dirs; .ipynb, .html, generated figures, and .venv/ are user-owned working state. Stage `notebooks/<slug>/precompute_*.py` explicitly (pattern consistent across vc-dimension, double-descent, uncertainty-quantification).
 - Use npm or generate package-lock.json
 - Commit .vscode/, .DS_Store, or firebase-debug.log
 - Create draft files outside src/content/topics/ — drafts live as unpublished MDX
