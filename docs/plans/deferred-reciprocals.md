@@ -721,14 +721,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Score matching minimizes ∫||∇ log p_θ - ∇ log p_data||² dx, an L² norm of gradient differences. Well-definedness requires ∇ log p ∈ L²._
 
-## When `formalml/semiparametric-inference` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/empirical-processes** declares `formalmlConnections` → `semiparametric-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _M-estimator asymptotics — the modern nonparametric-plus-parametric-component framework — is built on local empirical-process theory (local Donsker, local bracketing), which §32.10 Rem 22 defers._
-
 ## When `formalml/sequential-monte-carlo` ships
 
 Add the reciprocal pointer back to:
