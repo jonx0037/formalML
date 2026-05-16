@@ -751,14 +751,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PAC-Bayes and VC-dimension generalization bounds are uniform-concentration statements whose proofs mirror the indicator-function comparison of Proof 1 (Neyman-Pearson). The 'MP test = LR test' dual…_
 
-## When `formalml/uncertainty-quantification` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bootstrap** declares `formalmlConnections` → `uncertainty-quantification` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§31.3's Theorem 3 underwrites bootstrapped model uncertainty: bag multiple bootstrap replicates of the training set, refit the model on each, and use the distribution of test-time predictions as a …_
-
 ## When `formalml/wasserstein-distances` ships
 
 Add the reciprocal pointer back to:
