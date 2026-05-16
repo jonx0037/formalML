@@ -115,18 +115,23 @@ export default function TangentSpaceProjector() {
       svg.append('circle').attr('cx', ox).attr('cy', oy).attr('r', 3.5)
         .style('fill', 'var(--color-text)');
 
-      // Helper to draw a vector arrow from origin.
+      // Helper to draw a vector arrow from origin. `keyId` must be a unique
+      // ASCII identifier (label text contains non-ASCII chars like 'Λη' that
+      // sanitize to an empty string and would collide if used directly as the
+      // marker id).
+      let arrowSeq = 0;
       const drawArrow = (
         tip: Vec3,
         color: string,
         labelText: string,
+        keyId: string,
         labelOffsetX = 0,
         labelOffsetY = 0,
         strokeWidth = 2,
         dasharray: string | null = null,
       ) => {
         const [tx, ty] = proj(tip);
-        const arrowId = `arrow-${labelText.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const arrowId = `arrow-${keyId}-${arrowSeq++}`;
         svg.append('defs').append('marker')
           .attr('id', arrowId)
           .attr('viewBox', '0 -4 8 8')
@@ -158,15 +163,15 @@ export default function TangentSpaceProjector() {
       // Nuisance direction Λ_η (red).
       const dirN = dec.nuisanceDir;
       const tipN: Vec3 = [dirN[0] * 0.9, dirN[1] * 0.9, dirN[2] * 0.9];
-      drawArrow(tipN, paletteSemi.ambient, 'Λη', 6, -4);
+      drawArrow(tipN, paletteSemi.ambient, 'Λη', 'nuisance', 6, -4);
 
       // Orthogonal complement Λ_η⊥ (green).
       const dirP = dec.orthogonalDir;
       const tipP: Vec3 = [dirP[0] * 0.9, dirP[1] * 0.9, dirP[2] * 0.9];
-      drawArrow(tipP, paletteSemi.orthogonal, 'Λη⊥', 8, -4);
+      drawArrow(tipP, paletteSemi.orthogonal, 'Λη⊥', 'orthogonal', 8, -4);
 
       // Ambient vector v (blue).
-      drawArrow(vector, paletteSemi.tangent, 'v', 8, -4, 2.5);
+      drawArrow(vector, paletteSemi.tangent, 'v', 'ambient', 8, -4, 2.5);
 
       // Decomposition projections (dashed parallelogram).
       const cN = dec.coordNuisance;

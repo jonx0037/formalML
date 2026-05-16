@@ -6,7 +6,6 @@ import {
   completeCaseMean,
   ipwMean,
   marEfficiencyBound,
-  mean,
   mulberry32,
   oneStepMar,
   paletteSemi,

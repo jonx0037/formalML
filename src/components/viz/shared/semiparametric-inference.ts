@@ -1107,12 +1107,17 @@ export function makeOracleRobinsonNuisanceFitter(
       const k = key(Xte, i);
       const idx = map.get(k);
       if (idx == null) {
-        gPred[i] = 0;
-        mPred[i] = 0;
-      } else {
-        gPred[i] = gOracle[idx];
-        mPred[i] = mOracle[idx];
+        // Fail fast: a lookup miss means the cross-fit X subset doesn't
+        // come from the master X passed at construction time. Returning 0
+        // would silently corrupt every downstream estimate / SE.
+        throw new Error(
+          `makeOracleRobinsonNuisanceFitter: X row ${i} in the test fold ` +
+          `was not present in the master sample. Most likely the cross-fit ` +
+          `caller mixed samples from different sampleRobinson draws.`,
+        );
       }
+      gPred[i] = gOracle[idx];
+      mPred[i] = mOracle[idx];
     }
     return { gPred, mPred };
   };
@@ -1228,11 +1233,13 @@ export function sandwichSeEif(phi: Float64Array): number {
 }
 
 /**
- * Multiplier bootstrap SE using centered Mammen-type two-point weights.
- *   W_i ∈ {(1 − √5)/2, (1 + √5)/2} with probability (5 + √5)/10 and
- *   (5 − √5)/10 respectively (matching E[W]=1, E[W²]=2).
- *   Each bootstrap pseudo-estimate is ψ̂*_b = ψ̂ + (1/n) Σ (W_i − 1)(φ_i − φ̄),
- *   so the bootstrap variance equals the sandwich variance (asymptotically).
+ * Multiplier bootstrap SE using two-point Mammen weights.
+ *   W_i ∈ {(1 − √5)/2, (1 + √5)/2} with probabilities (5 + √5)/10 and
+ *   (5 − √5)/10 respectively. These weights satisfy E[W] = 0 and Var(W) = 1,
+ *   so they act directly as the perturbation around the centered influence
+ *   function. Each bootstrap pseudo-estimate is
+ *     ψ̂*_b = ψ̂ + (1/n) Σ W_i (φ_i − φ̄),
+ *   and Var(ψ̂*_b) = (1/n²) Σ (φ_i − φ̄)² = sandwich variance asymptotically.
  *   Returns the SD across B bootstrap replicates.
  */
 export function multiplierBootstrapSe(
@@ -1253,7 +1260,8 @@ export function multiplierBootstrapSe(
     let s = 0;
     for (let i = 0; i < n; i++) {
       const W = rng() < pPlus ? wPlus : wMinus;
-      s += (W - 1) * centered[i];
+      // E[W] = 0, Var(W) = 1 — use W directly (no `W − 1` shift needed).
+      s += W * centered[i];
     }
     draws[b] = s / n;
   }

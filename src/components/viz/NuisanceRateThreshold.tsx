@@ -7,7 +7,6 @@ import {
   gaussianRng,
   mulberry32,
   paletteSemi,
-  ROBINSON_NOISE_SD,
   ROBINSON_THETA_0,
   sampleRobinson,
   type RobinsonNuisanceFitter,
@@ -49,7 +48,16 @@ function noisyOracleFitter(
     const mPred = new Float64Array(nte);
     for (let i = 0; i < nte; i++) {
       const k = key(Xte, i);
-      const idx = map.get(k) ?? 0;
+      const idx = map.get(k);
+      if (idx == null) {
+        // Fail fast: silent fallback to row 0 would skew the bias/coverage
+        // curves and quietly mislead the rate-condition demonstration.
+        throw new Error(
+          `noisyOracleFitter: X row ${i} in the test fold was not in the ` +
+          `master sample. Cross-fit folds and the oracle X must come from ` +
+          `the same sampleRobinson draw.`,
+        );
+      }
       gPred[i] = gOracle[idx] + noiseSd * gauss();
       mPred[i] = mOracle[idx] + noiseSd * gauss();
     }

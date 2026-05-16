@@ -10,14 +10,19 @@ import {
 } from './shared/semiparametric-inference';
 
 // =============================================================================
-// AIPWvsIPWvsPlugin — §9.1
-// ATE under unconfoundedness, n=600. Three estimator histograms per panel:
-//   - naive diff-in-means
-//   - AIPW (truth-substituted oracle)
-//   - cross-fit DML (poly-degree-2)
-// 2×2 grid: optional misspecifications of μ̂ and π̂ (m̂-correct on/off,
-// π̂-correct on/off). For brevity, the current implementation uses oracle
-// nuisances on/off uniformly — the cell labels reflect the misspec status.
+// AIPWvsIPWvsPlugin — §9.1 (ATE under unconfoundedness, n=600)
+//
+// Three side-by-side histograms across MC replications:
+//   - "naive diff-in-means": Ȳ_{D=1} − Ȳ_{D=0} (confounded — biased)
+//   - "AIPW (oracle)": truth-substituted AIPW (efficient at the BKRW bound)
+//   - "cross-fit DML": K=5 cross-fit AIPW with polynomial-degree-2 nuisance
+//
+// The brief originally specified a 2×2 (m̂ × π̂) grid of misspecifications;
+// that pattern is now realized by the §13.3 MisspecificationStressTest viz.
+// This panel focuses on the naive-vs-oracle-AIPW-vs-DML comparison that §9.1
+// of the topic motivates. The plug-in OR estimator and standalone IPW would
+// land between naive and AIPW; they're omitted here to keep the visual at
+// three panels (consistent with the static fallback figure).
 // =============================================================================
 
 const HEIGHT_PANEL = 200;

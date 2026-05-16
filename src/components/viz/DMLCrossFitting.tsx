@@ -11,7 +11,6 @@ import {
   ROBINSON_THETA_0,
   sampleRobinson,
   stddev,
-  thetaMlCrossFit,
 } from './shared/semiparametric-inference';
 
 // =============================================================================
