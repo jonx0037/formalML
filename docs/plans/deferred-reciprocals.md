@@ -340,14 +340,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§31.9's bias correction is the standard debiasing technique for cross-validated risk estimates — CV risk underestimates test risk by an amount that the bootstrap-bias estimator quantifies._
 
-## When `formalml/density-ratio-estimation` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/kernel-density-estimation** declares `formalmlConnections` → `density-ratio-estimation` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Sugiyama–Suzuki–Kanamori 2012 two-sample density-ratio estimation, the foundation of covariate-shift correction. §30.10 Rem 22 pointer; forthcoming on formalml._
-
 ## When `formalml/differential-privacy` ships
 
 Add the reciprocal pointer back to:
