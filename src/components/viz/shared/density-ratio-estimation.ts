@@ -724,9 +724,15 @@ export function kliepKFoldCV(
 // LOO-CV (asymptotic form per §6.3 Corollary): single B^{-1} per (σ, λ).
 // -----------------------------------------------------------------------------
 
-/** In-place Cholesky factor A = L L^T for a symmetric PD matrix (row-major). Returns L lower-triangular (zeros above diagonal). */
-export function choleskyInPlace(A: Float64Array, n: number): Float64Array {
-  const L = new Float64Array(n * n);
+/**
+ * Cholesky factor A = L L^T for a symmetric PD matrix (row-major). Returns L
+ * lower-triangular (zeros above diagonal). If `out` is provided, writes into
+ * it (zeroing first); otherwise allocates a fresh buffer. Hoist `out` across
+ * iterations to avoid per-call GC pressure inside Newton / grid-search loops.
+ */
+export function choleskyInPlace(A: Float64Array, n: number, out?: Float64Array): Float64Array {
+  const L = out ?? new Float64Array(n * n);
+  if (out) L.fill(0);
   for (let i = 0; i < n; i++) {
     for (let j = 0; j <= i; j++) {
       let s = A[i * n + j];
@@ -742,9 +748,18 @@ export function choleskyInPlace(A: Float64Array, n: number): Float64Array {
   return L;
 }
 
-/** Solve L y = b (lower-triangular, row-major). */
-export function solveLowerTriangularRM(L: Float64Array, b: ArrayLike<number>, n: number): Float64Array {
-  const y = new Float64Array(n);
+/**
+ * Solve L y = b (lower-triangular, row-major). If `out` is provided, writes
+ * into it; otherwise allocates a fresh buffer. The y vector is fully
+ * overwritten so the caller doesn't need to zero it.
+ */
+export function solveLowerTriangularRM(
+  L: Float64Array,
+  b: ArrayLike<number>,
+  n: number,
+  out?: Float64Array,
+): Float64Array {
+  const y = out ?? new Float64Array(n);
   for (let i = 0; i < n; i++) {
     let s = b[i];
     for (let k = 0; k < i; k++) s -= L[i * n + k] * y[k];
@@ -753,9 +768,14 @@ export function solveLowerTriangularRM(L: Float64Array, b: ArrayLike<number>, n:
   return y;
 }
 
-/** Solve L^T x = y (L lower-triangular, row-major). */
-export function solveUpperTriangularRMT(L: Float64Array, y: ArrayLike<number>, n: number): Float64Array {
-  const x = new Float64Array(n);
+/** Solve L^T x = y (L lower-triangular, row-major). Optional `out` buffer. */
+export function solveUpperTriangularRMT(
+  L: Float64Array,
+  y: ArrayLike<number>,
+  n: number,
+  out?: Float64Array,
+): Float64Array {
+  const x = out ?? new Float64Array(n);
   for (let i = n - 1; i >= 0; i--) {
     let s = y[i];
     for (let k = i + 1; k < n; k++) s -= L[k * n + i] * x[k];
@@ -764,10 +784,23 @@ export function solveUpperTriangularRMT(L: Float64Array, y: ArrayLike<number>, n
   return x;
 }
 
-/** Solve (L L^T) x = b via forward+back substitution. */
-function choleskySolve(L: Float64Array, b: ArrayLike<number>, n: number): Float64Array {
-  const y = solveLowerTriangularRM(L, b, n);
-  return solveUpperTriangularRMT(L, y, n);
+/**
+ * Solve (L L^T) x = b via forward+back substitution.
+ *
+ * `scratchY` and `out` are optional pre-allocated length-n buffers; passing
+ * them across hot-loop calls (e.g. inside ulsifLOOCVScore) avoids the
+ * `n_p + n_q` per-iteration allocations that Gemini flagged. Both buffers
+ * are fully overwritten so the caller need not zero them.
+ */
+function choleskySolve(
+  L: Float64Array,
+  b: ArrayLike<number>,
+  n: number,
+  scratchY?: Float64Array,
+  out?: Float64Array,
+): Float64Array {
+  const y = solveLowerTriangularRM(L, b, n, scratchY);
+  return solveUpperTriangularRMT(L, y, n, out);
 }
 
 /** Compute H = Ψ_q^T Ψ_q / n_q and h = Ψ_p^T 1 / n_p. */
@@ -834,6 +867,10 @@ export function ulsifFit(
  * Analytic LOO-CV score per §6.3 asymptotic Corollary.
  * SC_LOO = (1/(2 n_q)) Σ (r̂^LOO,q_i)² - (1/n_p) Σ r̂^LOO,p_j.
  * Uses the single cached B^{-1} = (L L^T)^{-1}; no second matrix inverse.
+ *
+ * Hot-path scratch buffers (vScratch, scratchY, BinvV) are hoisted outside
+ * the n_q + n_p loop and reused across all Cholesky back-solves, avoiding the
+ * thousands of per-call Float64Array allocations Gemini flagged.
  */
 export function ulsifLOOCVScore(fit: ULSIFFitResult, xP: ArrayLike<number>, xQ: ArrayLike<number>): ULSIFLOOResult {
   const { alpha, centers, sigma, cholB } = fit;
@@ -843,15 +880,19 @@ export function ulsifLOOCVScore(fit: ULSIFFitResult, xP: ArrayLike<number>, xQ: 
   const PsiP = gaussianBasisDesign(xP, centers, sigma);
   const PsiQ = gaussianBasisDesign(xQ, centers, sigma);
 
+  // Hoist scratch buffers — reused across all (n_q + n_p) Cholesky back-solves.
+  const vScratch = new Float64Array(b);
+  const scratchY = new Float64Array(b);
+  const BinvV = new Float64Array(b);
+
   // For each q-sample: compute h_i = ψ_q^{(i)T} B^{-1} ψ_q^{(i)}, r_i = ψ_q^{(i)T} α
   const rLOOQ = new Float64Array(nQ);
-  const vScratch = new Float64Array(b);
   for (let i = 0; i < nQ; i++) {
     const rowBase = i * b;
     for (let l = 0; l < b; l++) vScratch[l] = PsiQ[rowBase + l];
-    const Binv_v = choleskySolve(cholB, vScratch, b);
+    choleskySolve(cholB, vScratch, b, scratchY, BinvV);
     let h_i = 0;
-    for (let l = 0; l < b; l++) h_i += vScratch[l] * Binv_v[l];
+    for (let l = 0; l < b; l++) h_i += vScratch[l] * BinvV[l];
     let r_i = 0;
     for (let l = 0; l < b; l++) r_i += vScratch[l] * alpha[l];
     const denom = 1 - h_i / nQ;
@@ -863,11 +904,11 @@ export function ulsifLOOCVScore(fit: ULSIFFitResult, xP: ArrayLike<number>, xQ: 
   for (let j = 0; j < nP; j++) {
     const rowBase = j * b;
     for (let l = 0; l < b; l++) vScratch[l] = PsiP[rowBase + l];
-    const Binv_v = choleskySolve(cholB, vScratch, b);
+    choleskySolve(cholB, vScratch, b, scratchY, BinvV);
     let s_j = 0;
     for (let l = 0; l < b; l++) s_j += vScratch[l] * alpha[l];
     let d_j = 0;
-    for (let l = 0; l < b; l++) d_j += vScratch[l] * Binv_v[l];
+    for (let l = 0; l < b; l++) d_j += vScratch[l] * BinvV[l];
     rLOOP[j] = s_j - d_j / nP;
   }
 
@@ -1280,6 +1321,10 @@ export function mmdPermutationTest(
   const permStats = new Float64Array(B);
   const idx = new Int32Array(N);
   for (let i = 0; i < N; i++) idx[i] = i;
+  // Hoist Xp/Yp out of the B-permutation loop — reused each iteration to avoid
+  // 2B per-iteration Float64Array allocations during the permutation test.
+  const Xp = new Float64Array(n);
+  const Yp = new Float64Array(m);
   for (let b = 0; b < B; b++) {
     // Fisher-Yates shuffle
     for (let i = N - 1; i > 0; i--) {
@@ -1288,8 +1333,6 @@ export function mmdPermutationTest(
       idx[i] = idx[j];
       idx[j] = tmp;
     }
-    const Xp = new Float64Array(n);
-    const Yp = new Float64Array(m);
     for (let i = 0; i < n; i++) Xp[i] = pooled[idx[i]];
     for (let i = 0; i < m; i++) Yp[i] = pooled[idx[n + i]];
     permStats[b] = mmdUStatistic(Xp, Yp, sigmaK);
@@ -1298,8 +1341,10 @@ export function mmdPermutationTest(
   let geCount = 0;
   for (let b = 0; b < B; b++) if (permStats[b] >= observed) geCount++;
   const pValue = (1 + geCount) / (B + 1);
-  // 95th percentile of permStats
-  const sortedPerm = Array.from(permStats).sort((a, b) => a - b);
+  // 95th percentile of permStats — TypedArray .sort() defaults to numeric, so
+  // slice().sort() avoids the typed-to-plain round-trip and the JS comparator
+  // overhead Gemini flagged.
+  const sortedPerm = permStats.slice().sort();
   const q95Idx = Math.floor(0.95 * B);
   return { observed, permStats, pValue, quantile95: sortedPerm[q95Idx] ?? observed };
 }
