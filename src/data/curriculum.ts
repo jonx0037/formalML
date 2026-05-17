@@ -90,7 +90,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'Density estimation, dimensionality reduction, clustering, and generative modeling from a statistical perspective \u2014 mean-shift, density-ratio estimation, normalizing flows.',
-    planned: ['density-ratio-estimation'],
+    planned: [],
     calculusDependent: false,
   },
   {
