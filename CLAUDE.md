@@ -59,6 +59,8 @@ cd notebooks/<topic-slug> && uv venv && uv pip install <pkgs>                   
 
 Run `pnpm dev` and visually verify any `src/content/topics/*.mdx` change at `http://localhost:4321/topics/<slug>/` before committing. KaTeX is configured non-strict, so math parse errors render as inline `<span class="katex-error">` rather than failing the build — `pnpm build` exits 0 with broken math. Build success is necessary but not sufficient verification. During Claude Code sessions, `.claude/hooks/preview-before-commit.sh` is wired as a `PreToolUse:Bash` hook in `.claude/settings.json` and blocks Claude-triggered `git commit` on staged topic MDX unless an `astro dev` process is running. This is Claude-side enforcement only — direct human `git commit` from a terminal is not gated, so the policy still relies on developer discipline outside Claude sessions.
 
+**`preview_eval` navigation race.** When verifying via the Claude Preview MCP, putting `window.location.href = '...'` inside a `preview_eval` causes "Inspected target navigated or closed" — the eval session dies on the navigation. Pattern: navigate in one `preview_eval` call, then run state checks (`document.querySelectorAll('.katex-error').length`, `astro-island` count, etc.) in a *subsequent* call after a short delay. Standard sanity-check expression after navigation: `({ url: window.location.href, ready: document.readyState, katexErrors: document.querySelectorAll('.katex-error').length, vizIslands: document.querySelectorAll('astro-island').length })`.
+
 ## Project Structure
 
 ```
@@ -124,6 +126,7 @@ Topic-shipment briefs sometimes specify patterns that don't match the codebase. 
 - **Astro/React versions.** PCA and SG-MCMC briefs both said "Astro 5 / React 18". Actual: Astro 6 / React 19 (per `package.json`).
 - **`prerequisites:` is formalML-only.** Sister-site prereqs (anything from formalcalculus / formalstatistics) belong in `formalcalculusPrereqs` / `formalstatisticsPrereqs` only. Briefs sometimes mix sister-site slugs (e.g., `empirical-processes`) into the top-level `prerequisites:` array — content-collection schema rejects them as missing topics. Move to the right object array.
 - **`domain:` is the layer-specific key, not a generic label.** Briefs occasionally write `domain: methodology` for T6 topics; the codebase key is `learning-theory` (see `curriculum.ts` track definition). The five ML Methodology layer keys: `supervised-learning`, `unsupervised`, `nonparametric-ml`, `bayesian-ml`, `learning-theory`. Briefs that name the layer in prose pick a different key than the codebase uses.
+- **Viz component name collisions.** Briefs sometimes specify a `<ComponentName>.tsx` that another topic already owns (the §3 RMHMC brief called for `FisherMetricExplorer.tsx`; the `information-geometry` topic owned that name). Run `grep -rl "^export default function <ComponentName>" src/components/viz/` (substituting the actual brief-proposed name for `<ComponentName>`) before creating the file. On collision, rename to a topic-prefixed or topic-descriptive variant (e.g. `BananaMetricGeodesicExplorer.tsx`) and note the deviation in the PR description.
 
 ### Cross-site references
 
@@ -140,6 +143,8 @@ formalML is the third site in the triad: **formalcalculus → formalstatistics �
 Each entry is an object with `topic` (slug, no extension), `site` (`formalcalculus` \| `formalstatistics`), and `relationship` (≥40 chars of explanatory prose). Reciprocal entries on the target side are required — when target topic doesn't exist yet, the audit logs it in [docs/plans/deferred-reciprocals.md](docs/plans/deferred-reciprocals.md) for retrieval at ship time.
 
 **Audit self-heals on topic ship.** When a previously-deferred forward-pointer's target topic ships (e.g., a formalstatistics topic declares `formalmlConnections: structural-risk-minimization` while SRM is still planned), the entry sits under "When `formalml/<slug>` ships" in `deferred-reciprocals.md`. Shipping that target topic + re-running `pnpm audit:cross-site` consumes the entry automatically — no manual sweep of the sister-site MDX. The reciprocal direction (formalML → sister) is what needs the next sister-site deploy to discharge.
+
+**Audit-regen staging scope on a topic PR.** `scripts/audit-cross-site-links.mjs` iterates `Object.keys(REPOS)` and writes `docs/plans/audit-output/<site>-references.json` for ALL THREE sites (formalcalculus, formalstatistics, formalml) *unconditionally* on every run — the sister-side JSONs are populated when `$FORMAL_CALCULUS_PATH` / `$FORMAL_STATISTICS_PATH` (or the default `../formalCalculus` / `../formalStatistics` relative paths) resolve to a real checkout, and serialized as `[]` otherwise. For a formalml topic PR, stage `formalml-references.json` + `cross-site-audit-report.md` + `deferred-reciprocals.md` always; for the sister JSONs, `git diff docs/plans/audit-output/formal{calculus,statistics}-references.json` and stage only if the diff reflects a real sister-side content change (new edges, retitled relationships). If the diff is whitespace-only, ordering noise, or — worst case — `[]` because you don't have the sister checkouts mounted, DO NOT stage; reset them. Also: not every topic ship discharges an existing deferred entry — if the sister side hasn't yet declared its `formalmlConnections`/`formalmlPrereqs` reciprocally, the audit instead SURFACES a new missing reciprocal (RMHMC PR #95 hit this). The commit title becomes "surface new missing reciprocal" rather than "discharge sister-site reciprocal queue".
 
 For inline body references to sister-site topics, use `<ExternalLink href="..." site="..." topic="..." />` from `src/components/ui/ExternalLink.astro` (already in place). It renders e.g. "formalStatistics: Kernel Density Estimation" with the right styling. For planned-but-not-yet-published *internal* formalML topics, use plain text: `**Variational Inference** *(coming soon)*`.
 
@@ -273,6 +278,8 @@ Reference-notebook selection rule for the Chat template: pick same-track sibling
 - D3 selections scoped to component refs — no global DOM manipulation
 - **TypedArray sort: no comparator needed.** `Float64Array.prototype.sort()` (and the other typed-array sorts) default to numeric, unlike `Array.prototype.sort` which is lexicographic. Use `arr.slice().sort()` over `Array.from(arr).sort((a, b) => a - b)` — avoids the typed-to-plain-array round trip and the JS-comparator overhead. **Anti-pattern to grep for: `Array.from(...).sort((a, b) => a - b)`** — that's the exact form code review will flag.
 - **`.map(helper)` vs `.map((m) => helper(m))` with optional second args.** TS rejects `.map(helper)` when `helper: (m, x?: 'a' | 'b')` because `.map`'s callback receives `(value, index, array)` and `number` doesn't satisfy the optional `x?: 'a' | 'b'`. Use the explicit arrow form whenever the helper takes more than one parameter, even if the rest are optional.
+- **React 19 / TS 5.9 viz quirks.** Three errors that bite every new viz component: (1) `JSX.Element` return-type annotation errors with `TS2503: Cannot find namespace 'JSX'`; omit the return type or use `React.JSX.Element`. (2) `.style('stroke-dasharray', null)` errors as `TS2769: No overload matches`; pass `'none'` to clear a dash array (or omit the call entirely). (3) D3's `d3.geoTransform({ point(...) })` callback's `this` is typed as `any` by `@types/d3-geo`, so direct `this.stream.point(...)` works in some configs but errors in stricter ones. Two patterns the codebase uses interchangeably: a `this:` parameter annotation — `point(this: { stream: { point: (x: number, y: number) => void } }, x, y)` (concise; new topics) — or an inline cast — `(this as unknown as { stream: d3.GeoStream }).stream.point(sx, sy)` (`KDESurfaceWithModes.tsx:88` is the reference). Both produce no TS errors; pick whichever fits the surrounding viz file's style.
+- **Verify-script top-level return.** `tsx` runs the file as an ES module, so `return` at top level (even inside a `{ block }`) fails with "Top-level return cannot be used inside an ECMAScript module". Wrap test bodies that need early-exit on convergence failures or trajectory divergence in an IIFE `(() => { ... return; ... })()`. The final `process.exit(fail === 0 ? 0 : 1)` at file scope is fine.
 
 ### Code-example language policy
 
@@ -282,6 +289,14 @@ PyTorch / JAX allowed only for these seven planned topics (per strategic plannin
 `normalizing-flows`, `bayesian-neural-networks`, `meta-learning`, `stochastic-gradient-mcmc`, `variational-inference`, `density-ratio-estimation` (neural DRE section only), `probabilistic-programming` (Stan / PyMC / NumPyro is the subject matter).
 
 All other topics stay in the NumPy/SciPy default. Notebook cells must run CPU-only in under 60 seconds on a 2020-era laptop — no GPU requirements.
+
+### PR review-reply mechanics
+
+When responding to inline PR review comments (Gemini, Copilot, or human), the gh CLI flow is:
+
+- **Post a reply** under an existing inline thread via the dedicated replies endpoint: `gh api -X POST /repos/<owner>/<repo>/pulls/<N>/comments/<comment_id>/replies -f body="..."`. Note: `-f` (lowercase) for the string `body`. The alternate `/comments -F in_reply_to=<comment_id>` form works in practice but the `/replies` endpoint is GitHub's documented path and skips the `commit_id` / `path` fields that the base `/comments` endpoint may demand under stricter validation.
+- **Resolve the thread** via GraphQL `resolveReviewThread` mutation. The thread node ID (`PRRT_*`) comes from a prior query: `gh api graphql -f query='{ repository(owner:"x",name:"y") { pullRequest(number:N) { reviewThreads(first:100) { nodes { id, isResolved, comments(first:1) { nodes { databaseId } } } } } } }'` — match each thread's first-comment `databaseId` against the review comment IDs.
+- **Skip both for non-actionable comments** (e.g., Vercel-bot deployment-status posts have no `comment_id`).
 
 ## Do NOT
 
