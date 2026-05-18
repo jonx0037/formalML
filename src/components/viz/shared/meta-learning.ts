@@ -116,12 +116,33 @@ export function sampleSinusoidTask(
 /**
  * Evaluate the RBF kernel matrix K(x1, x2) with lengthscale ell. Returns an
  * n1 × n2 matrix. Matches cell 7's `rbf_kernel`.
+ *
+ * When called with `x1 === x2` (same array reference — the Gram-matrix case in
+ * `sampleGpTask` and elsewhere), computes only the strict lower triangle and
+ * mirrors to the upper, with the diagonal pinned to K[i][i] = exp(0) = 1.
+ * Halves the Math.exp count on n × n symmetric calls. The reference-equality
+ * fast path is a no-op for the general n1 × n2 case.
  */
 export function rbfKernel(x1: number[], x2: number[], ell: number): number[][] {
   const n1 = x1.length;
-  const n2 = x2.length;
   const inv2ell2 = 1.0 / (2.0 * ell * ell);
   const K: number[][] = new Array(n1);
+
+  if (x1 === x2) {
+    for (let i = 0; i < n1; i++) K[i] = new Array(n1);
+    for (let i = 0; i < n1; i++) {
+      K[i][i] = 1.0;
+      for (let j = 0; j < i; j++) {
+        const d = x1[i] - x1[j];
+        const val = Math.exp(-d * d * inv2ell2);
+        K[i][j] = val;
+        K[j][i] = val;
+      }
+    }
+    return K;
+  }
+
+  const n2 = x2.length;
   for (let i = 0; i < n1; i++) {
     const row = new Array(n2);
     for (let j = 0; j < n2; j++) {
