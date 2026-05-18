@@ -126,7 +126,7 @@ Topic-shipment briefs sometimes specify patterns that don't match the codebase. 
 - **Astro/React versions.** PCA and SG-MCMC briefs both said "Astro 5 / React 18". Actual: Astro 6 / React 19 (per `package.json`).
 - **`prerequisites:` is formalML-only.** Sister-site prereqs (anything from formalcalculus / formalstatistics) belong in `formalcalculusPrereqs` / `formalstatisticsPrereqs` only. Briefs sometimes mix sister-site slugs (e.g., `empirical-processes`) into the top-level `prerequisites:` array — content-collection schema rejects them as missing topics. Move to the right object array.
 - **`domain:` is the layer-specific key, not a generic label.** Briefs occasionally write `domain: methodology` for T6 topics; the codebase key is `learning-theory` (see `curriculum.ts` track definition). The five ML Methodology layer keys: `supervised-learning`, `unsupervised`, `nonparametric-ml`, `bayesian-ml`, `learning-theory`. Briefs that name the layer in prose pick a different key than the codebase uses.
-- **Viz component name collisions.** Briefs sometimes specify a `<ComponentName>.tsx` that another topic already owns (the §3 RMHMC brief called for `FisherMetricExplorer.tsx`; the `information-geometry` topic owned that name). Run `grep -rl "^export default function ComponentName" src/components/viz/` before creating the file. On collision, rename to a topic-prefixed or topic-descriptive variant (e.g. `BananaMetricGeodesicExplorer.tsx`) and note the deviation in the PR description.
+- **Viz component name collisions.** Briefs sometimes specify a `<ComponentName>.tsx` that another topic already owns (the §3 RMHMC brief called for `FisherMetricExplorer.tsx`; the `information-geometry` topic owned that name). Run `grep -rl "^export default function <ComponentName>" src/components/viz/` (substituting the actual brief-proposed name for `<ComponentName>`) before creating the file. On collision, rename to a topic-prefixed or topic-descriptive variant (e.g. `BananaMetricGeodesicExplorer.tsx`) and note the deviation in the PR description.
 
 ### Cross-site references
 
@@ -294,7 +294,7 @@ All other topics stay in the NumPy/SciPy default. Notebook cells must run CPU-on
 
 When responding to inline PR review comments (Gemini, Copilot, or human), the gh CLI flow is:
 
-- **Post a reply** under an existing inline thread: `gh api -X POST /repos/<owner>/<repo>/pulls/<N>/comments -F in_reply_to=<comment_id> -f body="..."`. Note: `-F` (capital) for the integer `in_reply_to`, `-f` (lowercase) for the string `body`.
+- **Post a reply** under an existing inline thread via the dedicated replies endpoint: `gh api -X POST /repos/<owner>/<repo>/pulls/<N>/comments/<comment_id>/replies -f body="..."`. Note: `-f` (lowercase) for the string `body`. The alternate `/comments -F in_reply_to=<comment_id>` form works in practice but the `/replies` endpoint is GitHub's documented path and skips the `commit_id` / `path` fields that the base `/comments` endpoint may demand under stricter validation.
 - **Resolve the thread** via GraphQL `resolveReviewThread` mutation. The thread node ID (`PRRT_*`) comes from a prior query: `gh api graphql -f query='{ repository(owner:"x",name:"y") { pullRequest(number:N) { reviewThreads(first:100) { nodes { id, isResolved, comments(first:1) { nodes { databaseId } } } } } } }'` — match each thread's first-comment `databaseId` against the review comment IDs.
 - **Skip both for non-actionable comments** (e.g., Vercel-bot deployment-status posts have no `comment_id`).
 
