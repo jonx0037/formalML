@@ -851,12 +851,16 @@ function buildKernel(centers: number[][], rho: number, sigma: number, jitter: nu
   const d = centers.length;
   const K: number[][] = Array.from({ length: d }, () => new Array(d).fill(0));
   const sig2 = sigma * sigma;
+  const invTwoRho2 = 1 / (2 * rho * rho);
+  // Symmetric: compute the lower triangle only and mirror.
   for (let i = 0; i < d; i++) {
-    for (let j = 0; j < d; j++) {
+    for (let j = 0; j <= i; j++) {
       const dx = centers[i][0] - centers[j][0];
       const dy = centers[i][1] - centers[j][1];
       const r2 = dx * dx + dy * dy;
-      K[i][j] = sig2 * Math.exp(-r2 / (2 * rho * rho));
+      const val = sig2 * Math.exp(-r2 * invTwoRho2);
+      K[i][j] = val;
+      if (i !== j) K[j][i] = val;
     }
     K[i][i] += jitter;
   }
@@ -1005,14 +1009,16 @@ function lcpVolumeAndGrad(
 ): { V: number; gradV: number[] } {
   // V = ½ log det G
   const V = 0.5 * choleskyLogDet(cholG);
-  // gradV_k = ½ A exp(x_k) [G^{-1}]_{kk}; compute diag(G^{-1}) via column solves
+  // gradV_k = ½ A exp(x_k) [G^{-1}]_{kk}; compute diag(G^{-1}) via column solves.
+  // Buffer hoisted: one e vector reused across k via single-entry toggle.
   const gradV: number[] = new Array(m.d);
+  const e: number[] = new Array(m.d).fill(0);
   for (let k = 0; k < m.d; k++) {
-    const e: number[] = new Array(m.d).fill(0);
     e[k] = 1;
     const y = solveLowerTriangular(cholG, e);
     const xk = solveUpperTriangularT(cholG, y);
     gradV[k] = 0.5 * m.cellArea * Math.exp(x[k]) * xk[k];
+    e[k] = 0;
   }
   return { V, gradV };
 }
@@ -1189,8 +1195,8 @@ export function lcpRmhmcSample(
 // =============================================================================
 // Geyer initial monotone-positive sequence (ArviZ default for split-half ESS).
 
-/** Sample autocorrelation at lag k for a 1D chain. */
-function autocorr(chain: number[], maxLag: number): number[] {
+/** Sample autocorrelation at lag k for a 1D chain. Accepts plain arrays or TypedArrays. */
+function autocorr(chain: ArrayLike<number>, maxLag: number): number[] {
   const n = chain.length;
   let mean = 0;
   for (let i = 0; i < n; i++) mean += chain[i];
@@ -1213,7 +1219,7 @@ function autocorr(chain: number[], maxLag: number): number[] {
  * Effective sample size via Geyer initial positive sequence (single-chain
  * approximation; for multi-chain we apply per-chain and sum).
  */
-export function ess(chain: number[]): number {
+export function ess(chain: ArrayLike<number>): number {
   const n = chain.length;
   if (n < 4) return n;
   const maxLag = Math.min(n - 1, 500);
