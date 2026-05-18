@@ -150,7 +150,11 @@ function computeContours(spec: ContourSpec): { thresholds: number[]; densityFiel
       }
     }
   }
-  // 8 evenly spaced contour levels between the 10th and 99th percentile
+  // 8 evenly spaced contour levels between the 40th and 99th percentile of the
+  // log-density field. The lower bound is 0.4 rather than 0.1 because the bottom
+  // 40% of (τ, θ) cells on the funnel and (θ_1, θ_2) cells on the banana are
+  // effectively zero-density background; clipping them avoids painting nine
+  // overlapping contour strokes that all sit out in the support's tails.
   const sorted = field.filter((v) => Number.isFinite(v)).slice().sort((a, b) => a - b);
   const q = (p: number) => sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor(p * sorted.length)))];
   const lo = q(0.4);

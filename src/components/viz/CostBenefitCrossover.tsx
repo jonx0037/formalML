@@ -71,8 +71,15 @@ function measureCost(eps: number): CostBreakdown {
   const l00 = Math.sqrt(G[0][0]);
   const l10 = G[1][0] / l00;
   const l11 = Math.sqrt(Math.max(G[1][1] - l10 * l10, 1e-12));
+  // Proper p ~ N(0, G): p = L z with L the Cholesky factor. Both components
+  // share the same z0, then z1 enters only the second component.
+  const seedMomentum = (): [number, number] => {
+    const z0 = gauss();
+    const z1 = gauss();
+    return [l00 * z0, l10 * z0 + l11 * z1];
+  };
   let theta: number[] = [COST_THETA0[0], COST_THETA0[1]];
-  let mom: number[] = [l00 * gauss(), l10 * 0.5 + l11 * gauss()];
+  let mom: number[] = seedMomentum();
   // Warm-up
   for (let i = 0; i < 10; i++) {
     const r = generalizedLeapfrogStep(theta, mom, eps, BANANA_B0);
@@ -82,7 +89,7 @@ function measureCost(eps: number): CostBreakdown {
   }
   // Reset for timing
   theta = [COST_THETA0[0], COST_THETA0[1]];
-  mom = [l00 * gauss(), l10 * 0.5 + l11 * gauss()];
+  mom = seedMomentum();
   const t0 = performance.now();
   for (let i = 0; i < COST_N_STEPS; i++) {
     const r = generalizedLeapfrogStep(theta, mom, eps, BANANA_B0);
@@ -94,20 +101,26 @@ function measureCost(eps: number): CostBreakdown {
   // Notebook (cell 29 averaged across ε): Cholesky ≈ 45% of total, metric ≈ 8%,
   // gradient ≈ 5%, fp_kinetic ≈ 17%, other ≈ 25%. Apply same proportions to the
   // measured browser total. ε-dependent shift: at smaller ε the Cholesky share
-  // shrinks (fewer FP iterations); at larger ε it grows. Scale by ε.
-  const choleskyFrac = 0.35 + 0.4 * (eps - 0.05) / 0.25;
-  const fpKinFrac = 0.12 + 0.1 * (eps - 0.05) / 0.25;
-  const metricFrac = 0.08;
-  const gradFrac = 0.05;
-  const otherFrac = 1 - choleskyFrac - fpKinFrac - metricFrac - gradFrac;
+  // shrinks (fewer FP iterations); at larger ε it grows. Scale by ε, then
+  // renormalize so the segments always sum to 1 (otherwise large ε can push
+  // otherFrac < 0 and produce negative bar heights).
+  const raw = {
+    cholesky: 0.35 + (0.4 * (eps - 0.05)) / 0.25,
+    fpKinetic: 0.12 + (0.1 * (eps - 0.05)) / 0.25,
+    metric: 0.08,
+    gradient: 0.05,
+    other: 0.25, // floor; renormalization below redistributes
+  };
+  const rawSum = raw.cholesky + raw.fpKinetic + raw.metric + raw.gradient + raw.other;
+  const norm = (v: number) => (rawSum > 0 ? Math.max(v, 0) / rawSum : 0);
   return {
     eps,
     total_us: totalUs,
-    cholesky_us: totalUs * choleskyFrac,
-    metric_us: totalUs * metricFrac,
-    gradient_us: totalUs * gradFrac,
-    fpKinetic_us: totalUs * fpKinFrac,
-    other_us: totalUs * otherFrac,
+    cholesky_us: totalUs * norm(raw.cholesky),
+    metric_us: totalUs * norm(raw.metric),
+    gradient_us: totalUs * norm(raw.gradient),
+    fpKinetic_us: totalUs * norm(raw.fpKinetic),
+    other_us: totalUs * norm(raw.other),
   };
 }
 

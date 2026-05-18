@@ -332,11 +332,16 @@ export default function GeneralizedLeapfrogExplorer() {
       if (innerW > 0 && innerH > 0) {
         const g = svg.append('g').attr('transform', `translate(${margin.left}, ${margin.top})`);
         const xScale = d3.scaleLinear().domain([0, committedL]).range([0, innerW]);
-        // Compute y domain from all three drifts (clip at 1e-12 floor and 1e6 ceiling)
+        // Compute y domain from all three drifts (clip at 1e-12 floor and 1e6 ceiling).
+        // Take the genuine min of the data first, then apply the floor — folding 1e-10
+        // into Math.min(...) would force yLo down to 1e-10 even when the true minimum
+        // is much larger, visually flattening the curves.
         const flatDrift = [...runs.gl.drift, ...runs.naive.drift, ...runs.rk4.drift]
           .filter((v) => Number.isFinite(v) && v > 0);
-        const yLo = Math.max(Math.min(...flatDrift, 1e-10), 1e-12);
-        const yHi = Math.min(Math.max(...flatDrift, 1e-6), 1e6);
+        const driftMin = flatDrift.length > 0 ? Math.min(...flatDrift) : 1e-10;
+        const driftMax = flatDrift.length > 0 ? Math.max(...flatDrift) : 1e-6;
+        const yLo = Math.max(driftMin, 1e-12);
+        const yHi = Math.min(driftMax, 1e6);
         const yScale = d3.scaleLog().domain([yLo, yHi]).range([innerH, 0]).clamp(true);
 
         g.append('g')

@@ -81,10 +81,10 @@ function runLCP(rho: number, nSamples: number): LCPResult {
 interface HeatmapPanel {
   values: number[];
   title: string;
-  scaleType: 'log' | 'linear';
-  colorRange: [string, string];
-  domain?: [number, number]; // override
+  domain?: [number, number]; // optional override; defaults to [min, max] of values
   textOverlay?: (v: number) => string | null;
+  // Sequential color scale is fixed to interpolateViridis across all four panels;
+  // log-scale support is intentionally out of scope for the d = 25 grid here.
 }
 
 function drawHeatmap(
@@ -189,32 +189,24 @@ export default function LCPPosteriorExplorer() {
       drawHeatmap(refA.current, panelWidth, panelHeight, {
         values: result.xTrue,
         title: 'True log-intensity x_true',
-        scaleType: 'linear',
-        colorRange: ['#440154', '#fde725'],
         domain: intDomain,
       });
     if (refB.current)
       drawHeatmap(refB.current, panelWidth, panelHeight, {
         values: result.yObs,
         title: 'Observed counts y',
-        scaleType: 'linear',
-        colorRange: ['#440154', '#fde725'],
         textOverlay: (v) => String(v),
       });
     if (refC.current)
       drawHeatmap(refC.current, panelWidth, panelHeight, {
         values: result.postMean,
         title: 'RMHMC posterior mean',
-        scaleType: 'linear',
-        colorRange: ['#440154', '#fde725'],
         domain: intDomain,
       });
     if (refD.current)
       drawHeatmap(refD.current, panelWidth, panelHeight, {
         values: result.postStd,
         title: 'RMHMC posterior std',
-        scaleType: 'linear',
-        colorRange: ['#440154', '#fde725'],
       });
   }, [result, panelWidth, panelHeight]);
 
