@@ -108,7 +108,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'The Bayesian toolkit at modern ML scale \u2014 variational methods, neural-network posteriors, Gaussian processes, probabilistic programming, specialized MCMC.',
-    planned: ['meta-learning', 'sequential-monte-carlo', 'reversible-jump-mcmc'],
+    planned: ['sequential-monte-carlo', 'reversible-jump-mcmc'],
     calculusDependent: false,
   },
   {
