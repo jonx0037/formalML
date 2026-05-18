@@ -63,6 +63,14 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The spectral decomposition Σ = QΛQ^T gives the principal axes of the MVN distribution. Eigenvalues are the variances along principal axes. This is the mathematical core of PCA._
 
+## When `formalcalculus/implicit-function-theorem` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/riemann-manifold-hmc** declares `formalcalculusPrereqs` → `implicit-function-theorem` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The generalized leapfrog integrator's well-posedness — existence and uniqueness of the fixed-point solution to the implicit momentum and position updates at small step size — is a direct applicatio…_
+
 ## When `formalcalculus/induction` ships
 
 Add the reciprocal pointer back to:
