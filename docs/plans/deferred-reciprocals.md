@@ -67,6 +67,9 @@ Add the reciprocal pointer back to:
 
 Add the reciprocal pointer back to:
 
+- **formalML/meta-learning** declares `formalcalculusPrereqs` → `implicit-function-theorem` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Implicit MAML (Rajeswaran et al. 2019) bypasses recursive autograd by inverting the inner-loop fixed-point via the implicit function theorem. The IFT-based meta-gradient computation in §3.5 — equat…_
 - **formalML/riemann-manifold-hmc** declares `formalcalculusPrereqs` → `implicit-function-theorem` (prereqs)
   - Reciprocal field on the new topic: `formalmlConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The generalized leapfrog integrator's well-posedness — existence and uniqueness of the fixed-point solution to the implicit momentum and position updates at small step size — is a direct applicatio…_
@@ -553,14 +556,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Logistic regression is MLE for a Bernoulli GLM with logit link. The log-likelihood has no closed-form MLE; Newton-Raphson (IRLS) computes it iteratively._
 
-## When `formalml/meta-learning` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/hierarchical-bayes-and-partial-pooling** declares `formalmlConnections` → `meta-learning` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _MAML and hierarchical Bayes over task distributions; the machine-learning reading of §28's group-level hyperparameters. §28.10 Ex 14 pointer._
-
 ## When `formalml/metric-learning` ships
 
 Add the reciprocal pointer back to:
@@ -761,3 +756,19 @@ Add the reciprocal pointer back to:
 - **formalStatistics/regularization-and-penalized-estimation** declares `formalmlConnections` → `weight-decay` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§23.7 Rem 18 forward-points: weight decay in stochastic gradient descent and AdamW (decoupled weight decay) are MAP estimation with a Gaussian prior, exactly as Thm 5 says. The implementation diffe…_
+
+## When `formalstatistics/empirical-bayes` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/meta-learning** declares `formalstatisticsPrereqs` → `empirical-bayes` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Empirical Bayes — estimating the prior from data rather than fixing it a priori — is the conceptual ancestor of meta-optimization. Meta-learning generalizes the EB prior-estimation idea from data-w…_
+
+## When `formalstatistics/parametric-vs-nonparametric-models` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/meta-learning** declares `formalstatisticsPrereqs` → `parametric-vs-nonparametric-models` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Neural Processes sit at the boundary: parametric in the network weights but nonparametric in the implicit stochastic process they sample from. The §4 development cites this distinction without re-d…_
