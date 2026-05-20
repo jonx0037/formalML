@@ -687,14 +687,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Self-supervised learning objectives (contrastive, masked-modeling) implicitly discover sufficient statistics of $X$ for downstream tasks. The Rao-Blackwellization intuition — that optimal estimator…_
 
-## When `formalml/reversible-jump-mcmc` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-model-comparison-and-bma** declares `formalmlConnections` → `reversible-jump-mcmc` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _RJMCMC (Green 1995) samples directly from the joint posterior over $(\mathcal{M}_k, \theta_k)$, providing BMA weights as a byproduct. An alternative to separate marginal-likelihood estimates when t…_
-
 ## When `formalml/robust-statistics` ships
 
 Add the reciprocal pointer back to:
