@@ -711,14 +711,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Score matching minimizes ∫||∇ log p_θ - ∇ log p_data||² dx, an L² norm of gradient differences. Well-definedness requires ∇ log p ∈ L²._
 
-## When `formalml/sequential-monte-carlo` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/bayesian-computation-and-mcmc** declares `formalmlConnections` → `sequential-monte-carlo` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _SMC / particle filters are the alternative when the target is a sequence π_t indexed by time or annealing parameter. Parallel to MCMC's single-target framework. §26.10 Rem 31._
-
 ## When `formalml/spectral-methods` ships
 
 Add the reciprocal pointer back to:
@@ -757,6 +749,14 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _§23.7 Rem 18 forward-points: weight decay in stochastic gradient descent and AdamW (decoupled weight decay) are MAP estimation with a Gaussian prior, exactly as Thm 5 says. The implementation diffe…_
 
+## When `formalstatistics/bayesian-evidence-and-model-selection` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/sequential-monte-carlo** declares `formalstatisticsConnections` → `bayesian-evidence-and-model-selection` (connections)
+  - Reciprocal field on the new topic: `formalmlPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _SMC samplers yield an unbiased estimator of the log marginal likelihood as a side product (Del Moral–Doucet–Jasra 2006 Proposition 1) — the canonical alternative to bridge sampling and harmonic-mea…_
+
 ## When `formalstatistics/empirical-bayes` ships
 
 Add the reciprocal pointer back to:
@@ -764,6 +764,14 @@ Add the reciprocal pointer back to:
 - **formalML/meta-learning** declares `formalstatisticsPrereqs` → `empirical-bayes` (prereqs)
   - Reciprocal field on the new topic: `formalmlConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Empirical Bayes — estimating the prior from data rather than fixing it a priori — is the conceptual ancestor of meta-optimization. Meta-learning generalizes the EB prior-estimation idea from data-w…_
+
+## When `formalstatistics/hidden-markov-models` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/sequential-monte-carlo** declares `formalstatisticsPrereqs` → `hidden-markov-models` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The §6 particle filter generalizes the Kalman / HMM filtering recursion to non-linear / non-Gaussian state-space models; the linear-Gaussian baseline is cited rather than re-developed, and the stoc…_
 
 ## When `formalstatistics/parametric-vs-nonparametric-models` ships
 
