@@ -78,9 +78,9 @@ export default function AuxiliaryBijectionExplorer() {
       g.append('polygon')
         .attr('points', testRect.map((p) => `${x(p.beta)},${y(p.u)}`).join(' '))
         .style('fill', 'var(--color-accent)')
-        .style('opacity', 0.35)
+        .attr('opacity', 0.35)
         .style('stroke', 'var(--color-accent)')
-        .style('stroke-width', 1.5);
+        .attr('stroke-width', 2.5);
 
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');
@@ -121,9 +121,9 @@ export default function AuxiliaryBijectionExplorer() {
       g.append('polygon')
         .attr('points', imageRect.map((p) => `${x(p.x)},${y(p.y)}`).join(' '))
         .style('fill', 'var(--color-accent)')
-        .style('opacity', 0.35)
+        .attr('opacity', 0.35)
         .style('stroke', 'var(--color-accent)')
-        .style('stroke-width', 1.5);
+        .attr('stroke-width', 2.5);
 
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');

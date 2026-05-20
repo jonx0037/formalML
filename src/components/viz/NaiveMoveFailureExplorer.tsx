@@ -6,7 +6,9 @@
 // (A) 150 source samples on the line beta_2 = 0 — Lebesgue measure zero in R^2;
 // (B) same 150 samples paired with Gaussian auxiliary u — fills R^2.
 //
-// Slider controls the auxiliary proposal scale sigma_u; toggle naive vs auxiliary.
+// Slider controls the auxiliary proposal scale sigma_u; both panels render
+// side-by-side so the reader can compare the naive measure-zero image against
+// the auxiliary-variable cloud at the same horizontal axis.
 // Static fallback: /images/topics/reversible-jump-mcmc/fig04_naive_move_failure.png
 // =============================================================================
 import { useMemo, useState } from 'react';
@@ -69,8 +71,8 @@ export default function NaiveMoveFailureExplorer() {
     const y = d3.scaleLinear().domain(ranges).range([h, 0]);
 
     // Grid lines at 0
-    g.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', h).style('stroke', 'var(--color-border)').style('stroke-dasharray', '2 3');
-    g.append('line').attr('x1', 0).attr('x2', w).attr('y1', y(0)).attr('y2', y(0)).style('stroke', 'var(--color-border)').style('stroke-dasharray', '2 3');
+    g.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', h).style('stroke', 'var(--color-border)').attr('stroke-dasharray', '2 3');
+    g.append('line').attr('x1', 0).attr('x2', w).attr('y1', y(0)).attr('y2', y(0)).style('stroke', 'var(--color-border)').attr('stroke-dasharray', '2 3');
 
     // Samples
     g.selectAll('circle.s')
@@ -81,7 +83,7 @@ export default function NaiveMoveFailureExplorer() {
       .attr('cy', (d) => y(d.beta2))
       .attr('r', 2.5)
       .style('fill', 'var(--color-accent)')
-      .style('opacity', 0.65);
+      .attr('opacity', 0.65);
 
     g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');
     g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');

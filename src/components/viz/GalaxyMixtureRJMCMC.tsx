@@ -167,9 +167,10 @@ function runGalaxyChain(T: number, burn: number, hyp: Hyp, seed: number): ChainS
   const s2Buf = new Float64Array(Kmax);
   const wBuf = new Float64Array(Kmax);
   let K_cur = 2;
-  // Init: two components at quantiles
-  muBuf[0] = d3.quantile(GALAXY.slice().sort((a, b) => a - b), 0.25) ?? 20;
-  muBuf[1] = d3.quantile(GALAXY.slice().sort((a, b) => a - b), 0.75) ?? 24;
+  // Init: two components at the 25th / 75th quantiles of the data.
+  const galaxySorted = GALAXY.slice().sort((a, b) => a - b);
+  muBuf[0] = d3.quantile(galaxySorted, 0.25) ?? 20;
+  muBuf[1] = d3.quantile(galaxySorted, 0.75) ?? 24;
   s2Buf[0] = 4;
   s2Buf[1] = 4;
   wBuf[0] = 0.5;
@@ -529,8 +530,8 @@ export default function GalaxyMixtureRJMCMC() {
       const pts: { t: number; K: number }[] = [];
       for (let t = 0; t < T; t += downsample) pts.push({ t, K: result.ch.Ktrace[t] });
       const line = d3.line<{ t: number; K: number }>().x((d) => x(d.t)).y((d) => y(d.K)).curve(d3.curveStepAfter);
-      g.append('path').datum(pts).attr('d', line).style('fill', 'none').style('stroke', 'var(--color-text)').style('stroke-width', 1);
-      g.append('line').attr('x1', x(result.burn)).attr('x2', x(result.burn)).attr('y1', 0).attr('y2', h).style('stroke', 'var(--color-text-secondary)').style('stroke-dasharray', '3 3');
+      g.append('path').datum(pts).attr('d', line).style('fill', 'none').style('stroke', 'var(--color-text)').attr('stroke-width', 1);
+      g.append('line').attr('x1', x(result.burn)).attr('x2', x(result.burn)).attr('y1', 0).attr('y2', h).style('stroke', 'var(--color-text-secondary)').attr('stroke-dasharray', '3 3');
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(5, '~s')).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('g').call(d3.axisLeft(y).ticks(committed.Kmax)).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('text').attr('x', w / 2).attr('y', h + 28).attr('text-anchor', 'middle').style('font-size', '11px').style('font-family', 'var(--font-sans)').style('fill', 'var(--color-text)').text('iteration t');
@@ -602,10 +603,10 @@ export default function GalaxyMixtureRJMCMC() {
         .attr('width', (b) => Math.max(0, x(b.x1!) - x(b.x0!) - 1))
         .attr('height', (b) => h - y(b.length / N))
         .style('fill', 'var(--color-border)')
-        .style('opacity', 0.7);
+        .attr('opacity', 0.7);
 
-      const line = d3.line<number>().x((_, i) => x(result.xs[i])).y((y) => y).curve(d3.curveMonotoneX);
-      g.append('path').datum(densArr).attr('d', d3.line<number>().x((_, i) => x(result.xs[i])).y((d) => y(d)).curve(d3.curveMonotoneX)).style('fill', 'none').style('stroke', 'var(--color-accent)').style('stroke-width', 2);
+      const densLine = d3.line<number>().x((_, i) => x(result.xs[i])).y((d) => y(d)).curve(d3.curveMonotoneX);
+      g.append('path').datum(densArr).attr('d', densLine).style('fill', 'none').style('stroke', 'var(--color-accent)').attr('stroke-width', 2);
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(6)).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('g').call(d3.axisLeft(y).ticks(5, '.2f')).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('text').attr('x', w / 2).attr('y', h + 28).attr('text-anchor', 'middle').style('font-size', '11px').style('font-family', 'var(--font-sans)').style('fill', 'var(--color-text)').text('velocity y');

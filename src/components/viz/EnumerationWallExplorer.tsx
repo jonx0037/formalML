@@ -199,7 +199,7 @@ export default function EnumerationWallExplorer() {
           .attr('y1', y(fr.y))
           .attr('y2', y(fr.y))
           .style('stroke', 'var(--color-border)')
-          .style('stroke-dasharray', '4 4');
+          .attr('stroke-dasharray', '4 4');
         g.append('text')
           .attr('x', w - 4)
           .attr('y', y(fr.y) - 4)
@@ -219,7 +219,7 @@ export default function EnumerationWallExplorer() {
         .attr('d', line)
         .style('fill', 'none')
         .style('stroke', 'var(--color-accent)')
-        .style('stroke-width', 2);
+        .attr('stroke-width', 2);
 
       // Highlight current p
       g.append('circle')
@@ -283,7 +283,7 @@ export default function EnumerationWallExplorer() {
         .attr('width', x.bandwidth())
         .attr('height', (d) => h - y(d.logPost))
         .style('fill', (_, i) => (i < 5 ? 'var(--color-accent)' : 'var(--color-border)'))
-        .style('opacity', (_, i) => (i < 5 ? 1 : 0.7));
+        .attr('opacity', (_, i) => (i < 5 ? 1 : 0.7));
       g.append('g')
         .attr('transform', `translate(0,${h})`)
         .call(d3.axisBottom(x).tickValues([]))

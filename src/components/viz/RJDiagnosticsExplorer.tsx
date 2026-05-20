@@ -453,10 +453,10 @@ export default function RJDiagnosticsExplorer() {
           .y0((_, i) => y(Math.max(0, pK - sigmaAt(ts[i]))))
           .y1((_, i) => y(Math.min(1, pK + sigmaAt(ts[i]))))
           .curve(d3.curveMonotoneX);
-        g.append('path').datum(r.pts).attr('d', area).style('fill', colors[idx % colors.length]).style('opacity', 0.15);
+        g.append('path').datum(r.pts).attr('d', area).attr('fill', colors[idx % colors.length]).attr('opacity', 0.15);
         // Curve
         const line = d3.line<number>().x((_, i) => x(ts[i])).y((d) => y(d)).curve(d3.curveMonotoneX);
-        g.append('path').datum(r.pts).attr('d', line).style('fill', 'none').style('stroke', colors[idx % colors.length]).style('stroke-width', 1.5);
+        g.append('path').datum(r.pts).attr('d', line).attr('fill', 'none').attr('stroke', colors[idx % colors.length]).attr('stroke-width', 1.5);
         // Label at right
         if (r.pts.length > 0) {
           g.append('text')
@@ -499,7 +499,7 @@ export default function RJDiagnosticsExplorer() {
         .attr('width', w)
         .attr('height', y(0.05) - y(0.5))
         .style('fill', 'var(--color-accent)')
-        .style('opacity', 0.1);
+        .attr('opacity', 0.1);
       g.append('text').attr('x', 4).attr('y', y(0.5) + 12).style('font-size', '10px').style('font-family', 'var(--font-sans)').style('fill', 'var(--color-text-secondary)').text('Goldilocks 5-50%');
 
       g.selectAll('rect.bar')
@@ -553,7 +553,7 @@ export default function RJDiagnosticsExplorer() {
         .attr('y1', y(0))
         .attr('y2', (l) => y(result.acf[l]))
         .style('stroke', 'var(--color-accent)')
-        .style('stroke-width', 2);
+        .attr('stroke-width', 2);
       // Two-axis labels
       const tickLags = [0, 10, 20, 30];
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).tickValues(tickLags.map((l) => l.toString())).tickFormat((d) => d)).selectAll('text').style('fill', 'var(--color-text-secondary)');

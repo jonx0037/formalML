@@ -115,7 +115,7 @@ export default function LatticeAndDimensionStairExplorer() {
         .attr('x2', (e) => xS(lattice.idxOf(e.t).x))
         .attr('y2', (e) => yS(lattice.idxOf(e.t).y))
         .style('stroke', 'var(--color-border)')
-        .style('stroke-width', 1);
+        .attr('stroke-width', 1);
 
       // Trajectory arrows
       svg.append('defs').append('marker')
@@ -139,7 +139,7 @@ export default function LatticeAndDimensionStairExplorer() {
           .attr('x2', xS(t.x))
           .attr('y2', yS(t.y))
           .style('stroke', 'var(--color-accent)')
-          .style('stroke-width', 2)
+          .attr('stroke-width', 2)
           .attr('marker-end', 'url(#arrow-traj)');
       }
 
@@ -156,7 +156,7 @@ export default function LatticeAndDimensionStairExplorer() {
           visited.has(d.id) ? 'var(--color-accent)' : 'var(--color-surface)',
         )
         .style('stroke', 'var(--color-text)')
-        .style('stroke-width', 1);
+        .attr('stroke-width', 1);
 
       // Dimension labels along left axis
       for (let k = 0; k <= p; k++) {
@@ -201,7 +201,7 @@ export default function LatticeAndDimensionStairExplorer() {
         .x((K) => x(K))
         .y((K) => y(3 * K - 1))
         .curve(d3.curveStepAfter);
-      g.append('path').datum(Ks).attr('d', line).style('fill', 'none').style('stroke', 'var(--color-border)').style('stroke-width', 1.5);
+      g.append('path').datum(Ks).attr('d', line).style('fill', 'none').style('stroke', 'var(--color-border)').attr('stroke-width', 1.5);
       g.selectAll('circle')
         .data(Ks)
         .join('circle')
@@ -247,7 +247,7 @@ export default function LatticeAndDimensionStairExplorer() {
           )
           .style('fill', 'none')
           .style('stroke', 'var(--color-text-secondary)')
-          .style('stroke-width', 1)
+          .attr('stroke-width', 1)
           .attr('marker-end', 'url(#arrow-stair)');
         // Merge arrow down
         g.append('path')
@@ -257,8 +257,8 @@ export default function LatticeAndDimensionStairExplorer() {
           )
           .style('fill', 'none')
           .style('stroke', 'var(--color-text-secondary)')
-          .style('stroke-width', 1)
-          .style('stroke-dasharray', '3 3')
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '3 3')
           .attr('marker-end', 'url(#arrow-stair)');
       }
 

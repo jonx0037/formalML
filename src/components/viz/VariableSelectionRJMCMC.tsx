@@ -305,7 +305,7 @@ export default function VariableSelectionRJMCMC() {
           .attr('width', x.bandwidth())
           .attr('height', h)
           .style('fill', 'var(--color-accent)')
-          .style('opacity', 0.08);
+          .attr('opacity', 0.08);
       }
       for (const j of js) {
         g.append('rect')
@@ -369,7 +369,7 @@ export default function VariableSelectionRJMCMC() {
         .attr('y1', 0)
         .attr('y2', h)
         .style('stroke', 'var(--color-text)')
-        .style('stroke-dasharray', '3 3');
+        .attr('stroke-dasharray', '3 3');
       g.append('text')
         .attr('x', (x(TRUE_ACTIVE.length.toString()) ?? 0) + x.bandwidth() / 2 + 4)
         .attr('y', 12)

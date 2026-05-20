@@ -195,7 +195,7 @@ export default function TransDimStateSpaceExplorer() {
         .attr('x2', (e) => xScale(lattice.nodes.find((n) => n.id === e.target)!.x))
         .attr('y2', (e) => yScale(lattice.nodes.find((n) => n.id === e.target)!.y))
         .style('stroke', 'var(--color-border)')
-        .style('stroke-width', 1);
+        .attr('stroke-width', 1);
 
       const nodeR = Math.max(4, Math.min(10, 18 - 2 * p));
       g.selectAll('circle.node')
@@ -213,7 +213,7 @@ export default function TransDimStateSpaceExplorer() {
               : 'var(--color-surface)',
         )
         .style('stroke', 'var(--color-text)')
-        .style('stroke-width', 1)
+        .attr('stroke-width', 1)
         .style('cursor', 'pointer')
         .on('click', (_, d) => setSelected(d.id === selected ? null : d.id));
 
@@ -301,7 +301,7 @@ export default function TransDimStateSpaceExplorer() {
         .attr('width', (b) => Math.max(0, xScale(b.x1!) - xScale(b.x0!) - 1))
         .attr('height', (b) => H - yScale(b.length / GALAXY.length))
         .style('fill', 'var(--color-border)')
-        .style('opacity', 0.7);
+        .attr('opacity', 0.7);
 
       // PDF curve
       const line = d3
@@ -314,7 +314,7 @@ export default function TransDimStateSpaceExplorer() {
         .attr('d', line)
         .style('fill', 'none')
         .style('stroke', 'var(--color-accent)')
-        .style('stroke-width', 2);
+        .attr('stroke-width', 2);
 
       // Component means as ticks
       g.selectAll('line.mu')
@@ -326,7 +326,7 @@ export default function TransDimStateSpaceExplorer() {
         .attr('y1', H)
         .attr('y2', H - 8)
         .style('stroke', 'var(--color-accent)')
-        .style('stroke-width', 2);
+        .attr('stroke-width', 2);
 
       // x-label
       g.append('text')

@@ -96,13 +96,13 @@ export default function MoveCatalogExplorer() {
         .attr('d', lineGen(srcPdf))
         .style('fill', 'none')
         .style('stroke', 'var(--color-text-secondary)')
-        .style('stroke-width', 1.5)
-        .style('stroke-dasharray', '4 3');
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '4 3');
       // Children
-      g.append('path').attr('d', lineGen(c1Pdf)).style('fill', 'var(--color-accent)').style('opacity', 0.25).style('stroke', 'var(--color-accent)').style('stroke-width', 1);
-      g.append('path').attr('d', lineGen(c2Pdf)).style('fill', 'var(--color-accent)').style('opacity', 0.25).style('stroke', 'var(--color-accent)').style('stroke-width', 1);
+      g.append('path').attr('d', lineGen(c1Pdf)).style('fill', 'var(--color-accent)').attr('opacity', 0.25).style('stroke', 'var(--color-accent)').attr('stroke-width', 1);
+      g.append('path').attr('d', lineGen(c2Pdf)).style('fill', 'var(--color-accent)').attr('opacity', 0.25).style('stroke', 'var(--color-accent)').attr('stroke-width', 1);
       // Sum: solid
-      g.append('path').attr('d', lineGen(sumPdf)).style('fill', 'none').style('stroke', 'var(--color-accent)').style('stroke-width', 2);
+      g.append('path').attr('d', lineGen(sumPdf)).style('fill', 'none').style('stroke', 'var(--color-accent)').attr('stroke-width', 2);
 
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(xS).ticks(6)).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('g').call(d3.axisLeft(yS).ticks(5, '.2f')).selectAll('text').style('fill', 'var(--color-text-secondary)');
@@ -124,14 +124,15 @@ export default function MoveCatalogExplorer() {
       const xS = d3.scaleLinear().domain([0, 1]).range([0, w]);
       const yS = d3.scaleLog().domain([1e-17, 2]).range([h, 0]).clamp(true);
 
-      // Underflow horizon
+      // Rounding-loss horizon — below this the det-then-log idiom accumulates
+      // serious error long before the value itself underflows (~2e-308).
       g.append('line')
         .attr('x1', 0)
         .attr('x2', w)
         .attr('y1', yS(1e-15))
         .attr('y2', yS(1e-15))
         .style('stroke', 'var(--color-text-secondary)')
-        .style('stroke-dasharray', '3 3');
+        .attr('stroke-dasharray', '3 3');
       g.append('text')
         .attr('x', w - 4)
         .attr('y', yS(1e-15) - 4)
@@ -139,7 +140,7 @@ export default function MoveCatalogExplorer() {
         .style('font-size', '10px')
         .style('font-family', 'var(--font-sans)')
         .style('fill', 'var(--color-text-secondary)')
-        .text('float64 underflow ≈ 10⁻¹⁵');
+        .text('rounding-loss horizon ≈ 10⁻¹⁵');
 
       const colors = d3.schemeTableau10;
       Ks.forEach((Kk, idx) => {
@@ -148,7 +149,7 @@ export default function MoveCatalogExplorer() {
           .line<number>()
           .x((_, i) => xS(us[i]))
           .y((y) => yS(y));
-        g.append('path').datum(pts).attr('d', line).style('fill', 'none').style('stroke', colors[idx % colors.length]).style('stroke-width', Kk === K ? 2.5 : 1.2);
+        g.append('path').datum(pts).attr('d', line).style('fill', 'none').style('stroke', colors[idx % colors.length]).attr('stroke-width', Kk === K ? 2.5 : 1.2);
         g.append('text')
           .attr('x', xS(0.85))
           .attr('y', yS(Math.pow(1 - 0.85, Kk - 1) || 1e-300))
@@ -157,7 +158,8 @@ export default function MoveCatalogExplorer() {
           .style('fill', colors[idx % colors.length])
           .text(`K=${Kk}`);
       });
-      // Current u_w marker (use u_1 as proxy demonstration)
+      // Reference marker at u_w = 0.5 — the balanced-split midpoint where the
+      // birth/death Jacobian on the current K reaches the value (1/2)^(K-1).
       const valHere = Math.pow(1 - 0.5, K - 1);
       g.append('circle').attr('cx', xS(0.5)).attr('cy', yS(Math.max(valHere, 1e-17))).attr('r', 4).style('fill', 'var(--color-accent)');
       g.append('text')

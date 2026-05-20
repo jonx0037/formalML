@@ -76,7 +76,7 @@ export default function BijectionInvolutionExplorer() {
         .attr('cy', (p) => y(p.u))
         .attr('r', 2.5)
         .style('fill', 'var(--color-accent)')
-        .style('opacity', 0.65);
+        .attr('opacity', 0.65);
 
       // Round-trip overlay (T then T^-1) — should match source if α > 0
       if (showRoundtrip) {
@@ -88,7 +88,7 @@ export default function BijectionInvolutionExplorer() {
           .attr('cy', (p) => y(p.u))
           .attr('r', 1.5)
           .style('fill', 'var(--color-text)')
-          .style('opacity', 0.9);
+          .attr('opacity', 0.9);
       }
 
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');
@@ -119,7 +119,7 @@ export default function BijectionInvolutionExplorer() {
         .attr('cy', (p) => y(p.y))
         .attr('r', 2.5)
         .style('fill', 'var(--color-accent)')
-        .style('opacity', 0.65);
+        .attr('opacity', 0.65);
 
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').style('fill', 'var(--color-text-secondary)');

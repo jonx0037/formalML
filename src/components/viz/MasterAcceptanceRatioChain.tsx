@@ -276,7 +276,7 @@ export default function MasterAcceptanceRatioChain() {
         .attr('width', w)
         .attr('height', y(1.95) - y(2.05))
         .style('fill', 'var(--color-accent)')
-        .style('opacity', 0.08);
+        .attr('opacity', 0.08);
 
       // Trace as steps
       const burn = Math.floor(T * 0.25);
@@ -288,7 +288,7 @@ export default function MasterAcceptanceRatioChain() {
         .x((d) => x(d.t))
         .y((d) => y(d.M))
         .curve(d3.curveStepAfter);
-      g.append('path').datum(pts).attr('d', line).style('fill', 'none').style('stroke', 'var(--color-text)').style('stroke-width', 1);
+      g.append('path').datum(pts).attr('d', line).style('fill', 'none').style('stroke', 'var(--color-text)').attr('stroke-width', 1);
 
       // Burn-in line
       g.append('line')
@@ -297,7 +297,7 @@ export default function MasterAcceptanceRatioChain() {
         .attr('y1', 0)
         .attr('y2', h)
         .style('stroke', 'var(--color-text-secondary)')
-        .style('stroke-dasharray', '3 3');
+        .attr('stroke-dasharray', '3 3');
       g.append('text')
         .attr('x', x(burn) + 4)
         .attr('y', 12)
