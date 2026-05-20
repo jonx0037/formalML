@@ -573,8 +573,18 @@ console.log('\n[9] Bootstrap particle filter on stochastic-volatility (§6.4)');
   const avgEss = filt.ess.reduce((s, v) => s + v, 0) / filt.ess.length;
   within('9.2  average ESS > 100 (of N = 500)', avgEss, 100, 500, 'avg ESS');
 
-  // log p(y_{1:T}) is finite.
-  ok('9.3  log Ẑ is finite', isFinite(filt.logZ), `log Ẑ = ${filt.logZ.toFixed(2)}`);
+  // log p(y_{1:T}) is the cumulative bootstrap-PF log-evidence estimator. At
+  // T = 60 SV observations the magnitude is ~70 (dominated by the per-step
+  // emission log-density of a 0.6-stationary-std latent process). Locked here
+  // to catch silent drift in the logZ formula — earlier this was just an
+  // `isFinite` check, which the PR #98 review correctly flagged as no-signal.
+  within(
+    '9.3  log Ẑ in plausible range for SV at T = 60',
+    filt.logZ,
+    -120,
+    -40,
+    'cumulative bootstrap PF log p̂(y_{1:T})',
+  );
 }
 
 // =============================================================================

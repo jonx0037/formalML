@@ -116,10 +116,14 @@ export default function SMCSkeletonExplorer() {
       const gA = svg.append('g').attr('transform', 'translate(0, 0)');
       const innerA = gA.append('g').attr('transform', `translate(${margin.left}, ${margin.top})`);
       const xA = d3.scaleLinear().domain([0, 1]).range([0, innerW]);
-      // y range: capture both initial cloud spread and terminal target
+      // y range: capture both initial cloud spread and terminal target.
+      // We use d3.extent (single-pass min/max) rather than Math.min/max with
+      // the spread operator, since at N = 500 × T = 20 = 10 000 elements the
+      // spread call would exceed the engine call-stack limit on some browsers.
       const allTheta = result.thetaHistory.flat();
-      const yMin = Math.min(...allTheta, MU0 - 2 * SIGMA0);
-      const yMax = Math.max(...allTheta, MUT + 2 * SIGMAT);
+      const ext = d3.extent(allTheta) as [number, number];
+      const yMin = Math.min(ext[0], MU0 - 2 * SIGMA0);
+      const yMax = Math.max(ext[1], MUT + 2 * SIGMAT);
       const yA = d3.scaleLinear().domain([yMin, yMax]).range([innerH, 0]);
       innerA
         .append('g')

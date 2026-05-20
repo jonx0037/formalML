@@ -400,7 +400,7 @@ export default function ParticleFilterExplorer() {
       <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3" style={{ color: 'var(--color-text)' }}>
         <div className="font-mono">RMSE(filter mean vs truth) = {rmse.toFixed(3)}</div>
         <div className="font-mono">avg ESS = {(filt.ess.reduce((s, v) => s + v, 0) / filt.ess.length).toFixed(1)}</div>
-        <div className="font-mono">log p̂(y_{`{1:T}`}) = {filt.logZ.toFixed(2)}</div>
+        <div className="font-mono">{`log p̂(y_{1:T}) = `}{filt.logZ.toFixed(2)}</div>
       </div>
     </div>
   );

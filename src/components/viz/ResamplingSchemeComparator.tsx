@@ -113,8 +113,14 @@ function compute(beta: number): ComputeResult {
     systematic: 0,
   };
 
-  for (const scheme of SCHEMES) {
-    const rngS = mulberry32(SMC_SEED + 100 + scheme.length); // distinct seed per scheme
+  for (let s = 0; s < SCHEMES.length; s++) {
+    const scheme = SCHEMES[s];
+    // Distinct seed per scheme. Earlier this used `scheme.length`, but
+    // `'stratified'.length === 'systematic'.length === 10`, so the
+    // multinomial/residual streams differed but stratified and systematic
+    // collided — making the variance comparison correlated. Indexing into
+    // SCHEMES gives genuinely independent Monte-Carlo streams.
+    const rngS = mulberry32(SMC_SEED + 100 + s * 7919);
     const estimates = new Array<number>(M);
     const accCounts = new Array<number>(N).fill(0);
     for (let m = 0; m < M; m++) {

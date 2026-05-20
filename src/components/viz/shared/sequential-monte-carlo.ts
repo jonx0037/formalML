@@ -133,12 +133,26 @@ export function normalizeLogW(logW: readonly number[]): number[] {
 }
 
 /** Effective sample size from log-weights: 1 / Σ w_i^2.
- * Equivalent to exp(-logSumExp(2 * log_w_norm)). */
+ *
+ * Implemented via the scale-invariant identity
+ *     ESS = (Σ_i e^{ℓ_i})² / Σ_i e^{2 ℓ_i}
+ * computed in one pass over `logW` after a max-shift for numerical stability.
+ * Zero intermediate allocations — important because this lives on the hot
+ * path of every SMC step (reweight, ESS check, adaptive bisection). */
 export function logSpaceESS(logW: readonly number[]): number {
-  const lwNorm = normalizeLogW(logW);
-  const twice = new Array<number>(lwNorm.length);
-  for (let i = 0; i < lwNorm.length; i++) twice[i] = 2 * lwNorm[i];
-  return Math.exp(-logSumExp(twice));
+  const n = logW.length;
+  if (n === 0) return 0;
+  let maxL = -Infinity;
+  for (let i = 0; i < n; i++) if (logW[i] > maxL) maxL = logW[i];
+  if (!isFinite(maxL)) return 1; // all -Infinity → degenerate to one effective particle
+  let sumExp = 0;
+  let sumExpSq = 0;
+  for (let i = 0; i < n; i++) {
+    const w = Math.exp(logW[i] - maxL);
+    sumExp += w;
+    sumExpSq += w * w;
+  }
+  return (sumExp * sumExp) / sumExpSq;
 }
 
 /** Running log-Ẑ_t = logSumExp(log_w) - log N (Theorem 4 estimator). */
@@ -201,7 +215,11 @@ export function multinomialResample(
 }
 
 /** Systematic resampling (Kitagawa 1996): one base uniform shifted by k/N.
- * Variance-minimal among the four schemes for bounded test functions. */
+ * Variance-minimal among the four schemes for bounded test functions.
+ *
+ * Implementation note: the grid u_k = (u0 + k)/N is materialized inline in
+ * the binary-search loop rather than as an intermediate array, eliminating
+ * an O(N) allocation per resampling event. */
 export function systematicResample(
   wNorm: readonly number[],
   rng: () => number,
@@ -209,10 +227,21 @@ export function systematicResample(
 ): number[] {
   const n = N ?? wNorm.length;
   const cum = cumsumNormalized(wNorm);
+  const cumLen = cum.length;
   const u0 = rng();
-  const u = new Array<number>(n);
-  for (let k = 0; k < n; k++) u[k] = (u0 + k) / n;
-  return searchSorted(cum, u);
+  const out = new Array<number>(n);
+  for (let k = 0; k < n; k++) {
+    const uk = (u0 + k) / n;
+    let lo = 0;
+    let hi = cumLen - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (cum[mid] < uk) lo = mid + 1;
+      else hi = mid;
+    }
+    out[k] = lo;
+  }
+  return out;
 }
 
 /** Stratified resampling (Kitagawa 1996): one uniform per stratum k/N. */
@@ -316,8 +345,11 @@ export function geometricPathIncrementalLogWeight(
 // τ_adapt · N. ESS is monotone-decreasing in β so bisection always converges.
 // =============================================================================
 
-/** Projected ESS at β, given current particle log-weights and the cached
- * log-likelihood values at the current cloud positions. */
+/** Projected ESS at β given current weights and likelihood cache.
+ *
+ * Streaming single-pass implementation: applies the (β − β_t)·logLik tilt
+ * inline with the max-shift / ratio identity used by `logSpaceESS`, with
+ * zero intermediate allocations. */
 export function projectedEss(
   beta: number,
   betaCurrent: number,
@@ -325,14 +357,31 @@ export function projectedEss(
   logLik: readonly number[]
 ): number {
   const n = logW.length;
-  const proj = new Array<number>(n);
+  if (n === 0) return 0;
   const delta = beta - betaCurrent;
-  for (let i = 0; i < n; i++) proj[i] = logW[i] + delta * logLik[i];
-  return logSpaceESS(proj);
+  let maxL = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const v = logW[i] + delta * logLik[i];
+    if (v > maxL) maxL = v;
+  }
+  if (!isFinite(maxL)) return 1;
+  let sumExp = 0;
+  let sumExpSq = 0;
+  for (let i = 0; i < n; i++) {
+    const w = Math.exp(logW[i] + delta * logLik[i] - maxL);
+    sumExp += w;
+    sumExpSq += w * w;
+  }
+  return (sumExp * sumExp) / sumExpSq;
 }
 
 /** Bisect β in [β_t, 1] to find the next temperature that hits target ESS.
- * Returns the new beta and the realized ESS at that beta. */
+ * Returns the new beta and the realized ESS at that beta.
+ *
+ * Implementation note: the inner ESS evaluations use the allocation-free
+ * `projectedEss` above (two passes over `logW`/`logLik` per call). Across
+ * a bisection of up to 60 iterations × N particles this saves ~60·N
+ * allocations per SMC step. */
 export function findNextBeta(
   betaCurrent: number,
   logW: readonly number[],
@@ -343,7 +392,6 @@ export function findNextBeta(
 ): { beta: number; ess: number; iters: number } {
   const essAtOne = projectedEss(1.0, betaCurrent, logW, logLik);
   if (essAtOne >= targetEss) {
-    // We can jump straight to β = 1 without falling below target.
     return { beta: 1.0, ess: essAtOne, iters: 0 };
   }
   let lo = betaCurrent;
@@ -438,15 +486,20 @@ export function cloudCov(
 // =============================================================================
 
 /** Multivariate Gaussian log-density at theta, given a precomputed Cholesky
- * factor L of Σ. Closed-form via solveLowerTriangular(L, theta - mu). */
+ * factor L of Σ. Closed-form via solveLowerTriangular(L, theta - mu).
+ *
+ * `workDiff` is an optional pre-allocated buffer of length d for `theta − mu`.
+ * Pass one in to avoid the per-call allocation when calling this on the hot
+ * path (e.g., the 2N-per-step IMH cloud-fit sweep). */
 export function mvnLogPdfChol(
   theta: readonly number[],
   mu: readonly number[],
   L: readonly number[][],
-  logDet: number
+  logDet: number,
+  workDiff?: number[]
 ): number {
   const d = theta.length;
-  const diff = new Array<number>(d);
+  const diff = workDiff && workDiff.length >= d ? workDiff : new Array<number>(d);
   for (let i = 0; i < d; i++) diff[i] = theta[i] - mu[i];
   const y = solveLowerTriangular(L as number[][], diff);
   let q = 0;
@@ -454,17 +507,30 @@ export function mvnLogPdfChol(
   return -0.5 * (d * Math.log(2 * Math.PI) + logDet + q);
 }
 
-/** Sample one d-dim Gaussian: x = mu + L · z with z ~ N(0, I). */
+/** Sample one d-dim Gaussian: x = mu + L · z with z ~ N(0, I).
+ *
+ * `out` and `workZ` are optional length-d workspaces. Pass them in to avoid
+ * per-call allocation when sampling many proposals (e.g., once per particle
+ * inside an IMH sweep). */
 export function mvnSampleChol(
   mu: readonly number[],
   L: readonly number[][],
-  gaussRng: () => number
+  gaussRng: () => number,
+  out?: number[],
+  workZ?: number[]
 ): number[] {
   const d = mu.length;
-  const z = new Array<number>(d);
+  const z = workZ && workZ.length >= d ? workZ : new Array<number>(d);
   for (let i = 0; i < d; i++) z[i] = gaussRng();
-  const x = matVec(L as number[][], z);
-  for (let i = 0; i < d; i++) x[i] += mu[i];
+  // x = L · z + mu, computed in place if `out` provided.
+  const x = out && out.length >= d ? out : new Array<number>(d);
+  const Lmat = L as number[][];
+  for (let i = 0; i < d; i++) {
+    let s = 0;
+    const Li = Lmat[i];
+    for (let j = 0; j <= i; j++) s += Li[j] * z[j];
+    x[i] = s + mu[i];
+  }
   return x;
 }
 
@@ -544,7 +610,14 @@ export function rwmSweeps1D(
   return { theta: cur, acceptRate: accCount / Math.max(1, totalCount) };
 }
 
-/** Vectorized d-dim RWM step. logTarget evaluates a d-dim point. */
+/** Vectorized d-dim RWM step. logTarget evaluates a d-dim point.
+ *
+ * Hot-path discipline: a single length-d `prop` buffer is reused across all N
+ * particles. On accept, we copy `prop` into the (also pre-allocated) `out[i]`
+ * row; on reject, we copy `cur[i]` into `out[i]`. No per-particle allocations.
+ *
+ * Caller-side note: `out` rows are always freshly-owned by `out`, never
+ * aliased to `theta` rows — safe to feed back into another step that mutates. */
 export function rwmStepDDim(
   theta: readonly (readonly number[])[],
   sigma: number,
@@ -554,25 +627,31 @@ export function rwmStepDDim(
 ): { theta: number[][]; accepted: boolean[] } {
   const n = theta.length;
   const d = theta[0].length;
+  // Pre-allocate the output rows and a single proposal scratch buffer.
   const out: number[][] = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = new Array<number>(d);
+  const prop = new Array<number>(d);
   const acc = new Array<boolean>(n);
   for (let i = 0; i < n; i++) {
     const cur = theta[i];
-    const prop = new Array<number>(d);
     for (let j = 0; j < d; j++) prop[j] = cur[j] + sigma * gaussRng();
     const logAcc = logTarget(prop) - logTarget(cur);
-    if (Math.log(rng()) < logAcc) {
-      out[i] = prop;
-      acc[i] = true;
+    const accept = Math.log(rng()) < logAcc;
+    acc[i] = accept;
+    const outRow = out[i];
+    if (accept) {
+      for (let j = 0; j < d; j++) outRow[j] = prop[j];
     } else {
-      out[i] = cur.slice();
-      acc[i] = false;
+      for (let j = 0; j < d; j++) outRow[j] = cur[j];
     }
   }
   return { theta: out, accepted: acc };
 }
 
-/** Multiple d-dim RWM sweeps. */
+/** Multiple d-dim RWM sweeps with in-place reuse of the per-sweep buffer.
+ *
+ * Allocates a single `cur` working cloud once; each sweep mutates it in place
+ * rather than producing a fresh nested array. */
 export function rwmSweepsDDim(
   theta: readonly (readonly number[])[],
   sigma: number,
@@ -581,14 +660,28 @@ export function rwmSweepsDDim(
   rng: () => number,
   gaussRng: () => number
 ): { theta: number[][]; acceptRate: number } {
-  let cur: number[][] = theta.map((row) => row.slice());
+  const n = theta.length;
+  const d = theta[0].length;
+  // Hoisted scratch: working cloud, proposal buffer.
+  const cur: number[][] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const row = new Array<number>(d);
+    const src = theta[i];
+    for (let j = 0; j < d; j++) row[j] = src[j];
+    cur[i] = row;
+  }
+  const prop = new Array<number>(d);
   let accCount = 0;
   let totalCount = 0;
   for (let s = 0; s < sweeps; s++) {
-    const step = rwmStepDDim(cur, sigma, logTarget, rng, gaussRng);
-    cur = step.theta;
-    for (let i = 0; i < step.accepted.length; i++) {
-      if (step.accepted[i]) accCount++;
+    for (let i = 0; i < n; i++) {
+      const row = cur[i];
+      for (let j = 0; j < d; j++) prop[j] = row[j] + sigma * gaussRng();
+      const logAcc = logTarget(prop) - logTarget(row);
+      if (Math.log(rng()) < logAcc) {
+        for (let j = 0; j < d; j++) row[j] = prop[j];
+        accCount++;
+      }
       totalCount++;
     }
   }
@@ -596,7 +689,13 @@ export function rwmSweepsDDim(
 }
 
 /** One IMH cloud-fit propagation sweep. Refits the Gaussian proposal to the
- * weighted cloud, then runs one IMH step per particle. */
+ * weighted cloud, then runs one IMH step per particle.
+ *
+ * Hot-path discipline: per-particle work uses three hoisted length-d
+ * workspaces (`prop`, `workZ`, `workDiff`) reused across the entire sweep.
+ * The output rows are pre-allocated once and written in place. At N = 300
+ * over 60 SMC steps this collapses ~50,000 nested array allocations to
+ * O(N + d) for the lifetime of the sweep. */
 export function imhCloudFitSweep(
   theta: readonly (readonly number[])[],
   wNorm: readonly number[],
@@ -607,20 +706,29 @@ export function imhCloudFitSweep(
 ): { theta: number[][]; acceptRate: number; fit: ImhCloudFit } {
   const fit = fitImhProposal(theta, wNorm, ridge);
   const n = theta.length;
+  const d = fit.d;
+  // Pre-allocated output rows + scratch buffers (none escape the sweep).
   const out: number[][] = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = new Array<number>(d);
+  const prop = new Array<number>(d);
+  const workZ = new Array<number>(d);
+  const workDiff = new Array<number>(d);
   let accCount = 0;
   for (let i = 0; i < n; i++) {
-    const prop = mvnSampleChol(fit.mu, fit.L, gaussRng);
-    const logTargetCur = logTarget(theta[i]);
+    const cur = theta[i];
+    mvnSampleChol(fit.mu, fit.L, gaussRng, prop, workZ);
+    const logTargetCur = logTarget(cur);
     const logTargetProp = logTarget(prop);
-    const logProposalCur = mvnLogPdfChol(theta[i], fit.mu, fit.L, fit.logDet);
-    const logProposalProp = mvnLogPdfChol(prop, fit.mu, fit.L, fit.logDet);
+    const logProposalCur = mvnLogPdfChol(cur, fit.mu, fit.L, fit.logDet, workDiff);
+    const logProposalProp = mvnLogPdfChol(prop, fit.mu, fit.L, fit.logDet, workDiff);
     const logAcc = logTargetProp - logTargetCur + logProposalCur - logProposalProp;
-    if (Math.log(rng()) < logAcc) {
-      out[i] = prop;
+    const accept = Math.log(rng()) < logAcc;
+    const outRow = out[i];
+    if (accept) {
+      for (let j = 0; j < d; j++) outRow[j] = prop[j];
       accCount++;
     } else {
-      out[i] = theta[i].slice();
+      for (let j = 0; j < d; j++) outRow[j] = cur[j];
     }
   }
   return { theta: out, acceptRate: accCount / Math.max(1, n), fit };
@@ -1158,24 +1266,43 @@ export function bootstrapParticleFilter(
   const q025 = new Array<number>(T);
   const q975 = new Array<number>(T);
   const ess = new Array<number>(T);
+  // Running cumulative log-evidence. Maintained as
+  //   log Ẑ_t = logSumExp(logW_after_reweight) − log N.
+  // Reset of `logW` to a uniform `log Ẑ_t` after resampling preserves this
+  // invariant (logSumExp of a constant `c` over N entries is `c + log N`).
+  // The incremental form
+  //     log p̂(y_t | y_{1:t-1}) = logSumExp(logW_norm_{t-1} + logLik_t)
+  // (i.e., the weighted average of the per-particle likelihoods rather than
+  // the unweighted mean — Gordon-Salmond-Smith 1993 §III) is captured by the
+  // logSumExp(logW) delta across the reweight step.
   let logZ = 0;
+
+  // Hoisted scratch — these stay length-N for the lifetime of the filter.
+  const logLikBuf = new Array<number>(N);
+  const wNorm = new Array<number>(N);
+  const sortIdx = new Array<number>(N);
 
   for (let t = 0; t < T; t++) {
     // propagate via prior dynamics
     for (let i = 0; i < N; i++) x[i] = phi * x[i] + sigma * gauss();
-    // reweight by emission likelihood
-    const logLik = new Array<number>(N);
-    for (let i = 0; i < N; i++) logLik[i] = svEmissionLogPdf(data.y[t], x[i]);
-    for (let i = 0; i < N; i++) logW[i] += logLik[i];
-    // marginal log-likelihood update: log p(y_t | y_{1:t-1}) ≈ logsumexp(logW) - logsumexp(prev)
-    // simpler: incrementally accumulate logZ = sum_t log mean(exp(logLik))
-    logZ += logSumExp(logLik) - Math.log(N);
+    // reweight by emission likelihood (Gordon-Salmond-Smith bootstrap PF
+    // increment α_t^{(i)} = p(y_t | x_t^{(i)}))
+    for (let i = 0; i < N; i++) logLikBuf[i] = svEmissionLogPdf(data.y[t], x[i]);
+    for (let i = 0; i < N; i++) logW[i] += logLikBuf[i];
+    // Updated cumulative log-evidence: logSumExp(logW) - log N. This is the
+    // correct form whether or not the prior step's weights were uniform; the
+    // weighted-likelihood average emerges automatically across the
+    // logSumExp(logW) delta against the pre-reweight state.
+    logZ = logSumExp(logW) - Math.log(N);
     // diagnostics
-    const wNorm = normalizeLogW(logW).map(Math.exp);
-    const m = cloudMean1D(x, wNorm);
+    const lse = logSumExp(logW);
+    for (let i = 0; i < N; i++) wNorm[i] = Math.exp(logW[i] - lse);
+    let m = 0;
+    for (let i = 0; i < N; i++) m += wNorm[i] * x[i];
     mean[t] = m;
-    // quantiles via weighted sort
-    const sortIdx = x.map((_, i) => i).sort((a, b) => x[a] - x[b]);
+    // quantiles via weighted sort (in-place, single allocation per call)
+    for (let i = 0; i < N; i++) sortIdx[i] = i;
+    sortIdx.sort((a, b) => x[a] - x[b]);
     let cumw = 0;
     let q025v = x[sortIdx[0]];
     let q975v = x[sortIdx[N - 1]];
@@ -1192,13 +1319,14 @@ export function bootstrapParticleFilter(
     q025[t] = q025v;
     q975[t] = q975v;
     ess[t] = logSpaceESS(logW);
-    // resample if needed
+    // resample if needed; reset logW to the running log Ẑ so that the
+    // invariant logSumExp(logW) − log N = logZ is preserved across the reset.
     if (ess[t] < tau * N) {
       const idx = resample(scheme, wNorm, rng, N);
       const newX = new Array<number>(N);
       for (let i = 0; i < N; i++) newX[i] = x[idx[i]];
       x = newX;
-      logW = new Array<number>(N).fill(0);
+      logW = new Array<number>(N).fill(logZ);
     }
   }
   return { T, N, mean, q025, q975, ess, logZ };
