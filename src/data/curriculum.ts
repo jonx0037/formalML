@@ -81,7 +81,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'Nonparametric and high-dimensional supervised learning \u2014 kernel and local-polynomial regression, lasso and debiased lasso, p \u226b n asymptotics.',
-    planned: [],
+    planned: ['naive-bayes'],
     calculusDependent: false,
   },
   {
@@ -90,7 +90,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'Density estimation, dimensionality reduction, clustering, and generative modeling from a statistical perspective \u2014 mean-shift, density-ratio estimation, normalizing flows.',
-    planned: [],
+    planned: ['representation-learning'],
     calculusDependent: false,
   },
   {
@@ -108,7 +108,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'The Bayesian toolkit at modern ML scale \u2014 variational methods, neural-network posteriors, Gaussian processes, probabilistic programming, specialized MCMC.',
-    planned: [],
+    planned: ['bayesian-inference'],
     calculusDependent: false,
   },
   {
@@ -117,7 +117,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'Generalization theory, semiparametric efficiency, causal inference, and uncertainty quantification \u2014 methodology that cuts across model families.',
-    planned: [],
+    planned: ['selective-inference', 'information-bottleneck', 'always-valid-inference', 'generalized-method-of-moments'],
     calculusDependent: false,
   },
 ] as const;
