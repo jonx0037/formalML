@@ -31,14 +31,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Beta-Bernoulli, Gamma-Poisson, and Normal-Normal are the three canonical conjugate pairs used in Bayesian inference and online learning._
 
-## When `formalml/empirical-risk-minimization` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/method-of-moments** declares `formalmlConnections` → `empirical-risk-minimization` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _M-estimation IS empirical risk minimization: θ̂ minimizes the empirical average of a loss ρ(X; θ), equivalently solves Σ ψ(X; θ) = 0 where ψ = ∇_θ ρ. Every ERM estimator with a smooth convex loss i…_
-
 ## When `formalml/feature-selection-and-multiplicity` ships
 
 Add the reciprocal pointer back to:
@@ -46,20 +38,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/multiple-testing-and-false-discovery** declares `formalmlConnections` → `feature-selection-and-multiplicity` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Every high-dimensional feature-selection procedure inherits a multiple-testing problem. BH is the default tool for selecting significant coefficients in deployed scikit-learn and R glmnet pipelines…_
-
-## When `formalml/generalized-linear-models` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/continuous-distributions** declares `formalmlConnections` → `generalized-linear-models` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Normal response → linear regression (identity link). Gamma response → Gamma GLM (log link) for positive-valued outcomes like insurance claims and time durations._
-- **formalStatistics/discrete-distributions** declares `formalmlConnections` → `generalized-linear-models` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Poisson regression (log link, count response) and Negative Binomial regression (overdispersed counts) use these distributions as the response family in GLMs._
-- **formalStatistics/exponential-families** declares `formalmlConnections` → `generalized-linear-models` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Every GLM requires an exponential family response distribution. The canonical link function is (A')⁻¹. Logistic, Poisson, and Gamma regression are instances._
 
 ## When `formalml/generalized-method-of-moments` ships
 
@@ -84,14 +62,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/sufficient-statistics** declares `formalmlConnections` → `information-bottleneck` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The information bottleneck method finds a compressed representation $T$ of the data $X$ that preserves information about a target $Y$. In the special case $\theta = Y$ and $T$ is the sufficient sta…_
-
-## When `formalml/logistic-regression` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/discrete-distributions** declares `formalmlConnections` → `logistic-regression` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Logistic regression models Y|X ~ Bernoulli(σ(β^T X)). The natural parameter η = log(p/(1−p)) = β^T X is the log-odds, directly from the exponential family form. Cross-entropy loss is the negative B…_
 
 ## When `formalml/naive-bayes` ships
 
