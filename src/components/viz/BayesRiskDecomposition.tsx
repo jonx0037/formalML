@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { useD3 } from './shared/useD3';
-import { paletteNB, normPdf, bayesRiskGaussianMixture1D } from './shared/naive-bayes';
+import { paletteNB, normCdf, normPdf, bayesRiskGaussianMixture1D } from './shared/naive-bayes';
 
 // =============================================================================
 // BayesRiskDecomposition — §3.2 companion. Two equal-variance Gaussians at
@@ -211,7 +211,7 @@ export default function BayesRiskDecomposition() {
       <svg ref={svgRef} className="w-full" style={{ maxHeight: H }} role="img" aria-label="Bayes risk on 1D Gaussian mixture"/>
       <div className="text-xs opacity-75 mt-1 text-center">
         Bayes risk = <strong>{bayesRisk.toFixed(4)}</strong>. For the symmetric equal-prior case (Δ = {separation.toFixed(2)}, σ = {sigma.toFixed(2)}, π = 0.5)
-        this equals Φ(−Δ/(2σ)) = <strong>{(0.5 * (1 - Math.tanh((separation / (2 * sigma)) / Math.SQRT1_2 * 0.7978845608 ))).toFixed(4) /* approx for display */}</strong> approximately; the displayed value is the exact numerical quadrature for the chosen π.
+        this equals Φ(−Δ/(2σ)) = <strong>{normCdf(-separation / (2 * sigma)).toFixed(4)}</strong>; the displayed value is the numerical quadrature for the chosen π.
       </div>
     </div>
   );
