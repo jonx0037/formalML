@@ -31,6 +31,14 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Beta-Bernoulli, Gamma-Poisson, and Normal-Normal are the three canonical conjugate pairs used in Bayesian inference and online learning._
 
+## When `formalml/embeddings` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/linear-algebra** declares `formalmlConnections` → `embeddings` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Word2Vec, BERT, and graph-embedding methods produce vectors in ℝᵈ where cosine similarity ⟨u, v⟩ / (‖u‖ ‖v‖) measures semantic proximity. Choosing an embedding is choosing a basis for the latent sp…_
+
 ## When `formalml/feature-selection-and-multiplicity` ships
 
 Add the reciprocal pointer back to:
@@ -63,13 +71,29 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The information bottleneck method finds a compressed representation $T$ of the data $X$ that preserves information about a target $Y$. In the special case $\theta = Y$ and $T$ is the sufficient sta…_
 
-## When `formalml/naive-bayes` ships
+## When `formalml/kernel-methods` ships
 
 Add the reciprocal pointer back to:
 
-- **formalStatistics/discrete-distributions** declares `formalmlConnections` → `naive-bayes` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Bernoulli Naive Bayes models binary feature vectors as independent Bernoulli random variables given the class label._
+- **formalCalculus/eigenvalues-eigenvectors** declares `formalmlConnections` → `kernel-methods` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Mercer's theorem decomposes a positive-semidefinite kernel as K(x, y) = Σᵢ λᵢ φᵢ(x) φᵢ(y) — an eigenvalue expansion. The finite-dimensional version is the spectral decomposition of the Gram matrix …_
+
+## When `formalml/multi-armed-bandits` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/probability-and-union-bound** declares `formalmlConnections` → `multi-armed-bandits` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _UCB confidence intervals are union bounds across arms and time. The 'union bound + tail concentration' pattern in §9 is the same machinery._
+
+## When `formalml/neural-network-basics` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/linear-algebra** declares `formalmlConnections` → `neural-network-basics` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _A feedforward layer x ↦ σ(Wx + b) is the composition of a linear map W with a componentwise nonlinearity. The column space of W is what the layer can output linearly; the rank of W is the number of…_
 
 ## When `formalml/online-fdr` ships
 
@@ -78,6 +102,22 @@ Add the reciprocal pointer back to:
 - **formalStatistics/multiple-testing-and-false-discovery** declares `formalmlConnections` → `online-fdr` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The streaming generalization of BH — Javanmard–Montanari 2018 Online-BH and Ramdas et al. 2018 SAFFRON / LORD — allows hypotheses to arrive sequentially with FDR control at each time. §20.10 Rem 27…_
+
+## When `formalml/pca-and-spectral-methods` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/eigenvalues-eigenvectors** declares `formalmlConnections` → `pca-and-spectral-methods` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PCA is the spectral theorem applied to a covariance matrix. The first k principal components are the top k eigenvectors of XᵀX/(n−1), and the k-dimensional projection retaining maximum variance is …_
+
+## When `formalml/regression-fundamentals` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/linear-algebra** declares `formalmlConnections` → `regression-fundamentals` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Ordinary least squares is the orthogonal projection of y onto col(X). The closed-form β̂ = (XᵀX)⁻¹Xᵀy is the algebraic shadow of the geometric statement P_col(X) y = Xβ̂, and the residual y − Xβ̂ i…_
 
 ## When `formalml/representation-learning` ships
 
@@ -94,3 +134,30 @@ Add the reciprocal pointer back to:
 - **formalStatistics/method-of-moments** declares `formalmlConnections` → `robust-statistics` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Huber and Tukey M-estimators are the foundation of modern robust regression. The breakdown point and influence function quantify resistance to outliers. Huber loss is used routinely in ML for regre…_
+
+## When `formalstatistics/covariance-correlation` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/eigenvalues-eigenvectors** declares `formalstatisticsConnections` → `covariance-correlation` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _A covariance matrix Σ is symmetric and positive-semidefinite, so it has real non-negative eigenvalues and an orthonormal eigenbasis. The eigenvalues are the variances of the principal-component sco…_
+- **formalCalculus/linear-algebra** declares `formalstatisticsConnections` → `covariance-correlation` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The covariance matrix Σ of a mean-centered random vector is the Gram matrix XᵀX/n of the centered data. Its rank equals the dimension of the linear span of the observations, and its column space is…_
+
+## When `formalstatistics/mahalanobis-distance` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/eigenvalues-eigenvectors** declares `formalstatisticsConnections` → `mahalanobis-distance` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Mahalanobis distance d(x, y) = √((x − y)ᵀ Σ⁻¹ (x − y)) is the Euclidean distance in the basis where Σ becomes the identity — the whitening transformation Σ^(−1/2) is constructed by the spectral…_
+
+## When `formalstatistics/principal-components-analysis` ships
+
+Add the reciprocal pointer back to:
+
+- **formalCalculus/eigenvalues-eigenvectors** declares `formalstatisticsConnections` → `principal-components-analysis` (connections)
+  - Reciprocal field on the new topic: `formalcalculusPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _PCA on mean-centered data X solves the eigenproblem ΣQ = QΛ for Σ = XᵀX/(n−1). The principal components are the eigenvectors qᵢ ordered by descending eigenvalues λᵢ, and the variance captured by th…_

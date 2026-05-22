@@ -15,14 +15,14 @@ formalML has two layers:
 - Topology & TDA, Linear Algebra, Probability & Statistics, Optimization,
   Differential Geometry, Information Theory, Graph Theory, Category Theory
 
-**ML Methodology layer (5 tracks, 32 topics planned):**
-- T2 Supervised Learning (3 topics)
+**ML Methodology layer (5 tracks, 33 topics planned):**
+- T2 Supervised Learning (4 topics)
 - T3 Unsupervised & Generative (3 topics)
 - T4 Nonparametric & Distribution-Free (6 topics)
 - T5 Bayesian & Probabilistic ML (13 topics)
 - T6 Learning Theory & Methodology (7 topics)
 
-The 32 ML Methodology topics discharge forward-pointers from formalstatistics.com Topics 22–32. See [docs/plans/formalml-consolidated-strategic-planning-document.md](docs/plans/formalml-consolidated-strategic-planning-document.md) for the full inventory, track rationale, and first-wave sequencing recommendation.
+The original 32 ML Methodology topics discharge forward-pointers from formalstatistics.com Topics 22–32; `naive-bayes` (the 33rd, added 2026-05-22 as a T2 expansion) discharges an inbound deferred reciprocal from `formalStatistics/discrete-distributions`. See [docs/plans/formalml-consolidated-strategic-planning-document.md](docs/plans/formalml-consolidated-strategic-planning-document.md) for the full inventory, track rationale, and first-wave sequencing recommendation.
 
 ## Tech Stack
 

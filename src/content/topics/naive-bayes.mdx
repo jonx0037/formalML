@@ -1,0 +1,987 @@
+---
+title: "Naive Bayes"
+subtitle: "Generative classification via the conditional-independence factorization — the Bayes-optimal classifier and its plug-in approximation, three classical variants (Gaussian, Multinomial, Bernoulli), Laplace smoothing as conjugate Bayesian update, the Ng–Jordan discriminative-vs-generative asymptotics that explain why naive Bayes wins at small n, calibration repair via Platt and isotonic, and structured extensions (TAN, AODE) that relax the independence assumption."
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "concentration-inequalities"
+  - "kl-divergence"
+  - "shannon-entropy"
+  - "pac-learning"
+  - "high-dimensional-regression"
+formalstatisticsPrereqs:
+  - topic: "discrete-distributions"
+    site: "formalstatistics"
+    relationship: "The Bernoulli / Multinomial / Categorical families that supply the class-conditional likelihoods in §5 (Multinomial NB, Bernoulli NB) and the Dirichlet conjugate prior in §6 are developed there. The discrete-distributions topic already declares formalmlConnections → naive-bayes for the Bernoulli-NB special case; this prereq closes the reciprocal and discharges the deferred-reciprocals.md entry."
+  - topic: "bayesian-foundations-and-prior-selection"
+    site: "formalstatistics"
+    relationship: "The §6 derivation of Laplace add-one smoothing as a uniform Dirichlet prior, and the more general add-α smoothing as Dirichlet(α,...,α), draws directly on the conjugate-prior framework. The Dirichlet–multinomial conjugate pair developed there is what makes the posterior-predictive plug-in in §6.4 closed-form."
+  - topic: "maximum-likelihood"
+    site: "formalstatistics"
+    relationship: "MLE for the per-class Gaussian mean and variance in §4.2, per-class token probabilities in §5.2, and per-class Bernoulli rates in §5.3 are all standard one-parameter-family MLE arguments. The §7.2 logistic-regression asymptotic-error bound also uses MLE asymptotics (Fisher information, asymptotic normality) as background."
+  - topic: "exponential-families"
+    site: "formalstatistics"
+    relationship: "Gaussian, multinomial, and Bernoulli are all exponential-family distributions; the linear-in-features log-posterior derived in §2.2 (and used implicitly through the topic) is the natural-parameter linearization that makes NB log-linear in the sufficient statistics. The §7 Ng–Jordan setup uses the exponential-family / GLM parameterization to align GNB and logistic regression on a shared model class."
+  - topic: "multivariate-distributions"
+    site: "formalstatistics"
+    relationship: "The §4 Gaussian Naive Bayes derivation uses the multivariate Gaussian density and the diagonal-covariance assumption. The §4.4 LDA / QDA / GNB three-way comparison draws on multivariate-Gaussian decision-theory machinery (shared vs class-specific covariances, the quadric decision boundary). The §10.3 correlated-features failure mode also depends on multivariate-Gaussian intuition."
+formalcalculusPrereqs:
+  - topic: "multiple-integrals"
+    site: "formalcalculus"
+    relationship: "The §6.2 Dirichlet–multinomial conjugate-update integral over the (K−1)-simplex and the §3.2 Bayes-error computation as an integral over the decision-region boundary are both standard multivariate-integration moves. The §4.3 normalization constant of the multivariate Gaussian also appears here, with the same use as in kernel-regression §6."
+  - topic: "derivative"
+    site: "formalcalculus"
+    relationship: "MLE first-order conditions in §4.2 (Gaussian NB), §5.2 (Multinomial NB), and §5.3 (Bernoulli NB) — set the log-likelihood gradient to zero and solve in closed form. The §7.2–7.3 Ng–Jordan asymptotic-rate proofs use Taylor-expansion machinery similar in spirit to kernel-regression's §3 bias derivation."
+formalstatisticsConnections:
+  - topic: "generalized-linear-models"
+    site: "formalstatistics"
+    relationship: "Naive Bayes and logistic regression are the canonical generative-discriminative pair of binary classifiers. Both fit within the GLM framework (logit link, exponential-family response), but they differ in how they fit the parameters (joint-density MLE vs conditional-likelihood MLE). The §7 Ng–Jordan asymptotic comparison is the cleanest illustration of when each parameterization wins. A future GLM revision in formalstatistics could naturally point back at this topic for the generative-side treatment."
+formalcalculusConnections: []
+tags:
+  - "supervised-learning"
+  - "classification"
+  - "generative-models"
+  - "naive-bayes"
+  - "bayes-optimal-classifier"
+  - "text-classification"
+  - "laplace-smoothing"
+  - "calibration"
+  - "discriminative-vs-generative"
+  - "graphical-models"
+  - "machine-learning"
+domain: "supervised-learning"
+videoId: null
+notebookPath: "notebooks/naive-bayes/01_naive_bayes.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/naive-bayes.mdx"
+datePublished: 2026-05-22
+estimatedReadTime: 55
+abstract: "Naive Bayes classifies an input x by computing posterior class probabilities P(y | x) under the strong assumption that the features x_1, ..., x_d are conditionally independent given y. The assumption is almost always wrong on real data; the classifier is almost always competitive anyway, often beating much more sophisticated methods at small sample sizes and in high-feature-count text-classification regimes. This topic develops the full pipeline: the Bayes-optimal classifier (the minimum-0/1-loss decision rule, achievable only with knowledge of the true posterior) and naive Bayes as its plug-in approximation; three classical variants (Gaussian NB for continuous features, Multinomial NB for token counts, Bernoulli NB for binary features) with full MLE derivations and the log-sum-exp numerical implementation; Laplace and Dirichlet smoothing as conjugate Bayesian updates that fix the zero-count crisis in §5.2; the Ng–Jordan (2002) discriminative-vs-generative asymptotic comparison that shows GNB has sample complexity O(log d / n) versus logistic regression's O(d / n), explaining why NB wins at small n and loses at large n; the Domingos–Pazzani (1997) analysis of why NB ranks well even when its class-probability estimates are miscalibrated, plus the Platt-scaling / isotonic-regression repair procedures; and structured extensions (TAN, AODE, hidden NB) that relax the strict-independence assumption when feature dependencies dominate. The topic closes by placing NB in its broader family — as a generative-model alternative to high-dimensional-regression's logistic lasso, as a calibrated base classifier for conformal-prediction, and as the simplest member of the directed-graphical-model family."
+connections:
+  - topic: "concentration-inequalities"
+    relationship: "Direct prerequisite for the §7.3 GNB asymptotic-error bound. The Ng–Jordan O(log d / n) sample complexity proof uses a union bound over d Gaussian MLE deviations together with sub-Gaussian concentration; the high-dimensional-regression-style maximal inequality machinery is the substrate. Cross-link via Markdown, do not re-derive."
+  - topic: "kl-divergence"
+    relationship: "The §9.1 Chow–Liu tree-augmented naive Bayes construction selects the tree that minimizes KL divergence between the true joint and the product-of-pairwise-marginals approximation — equivalently, the maximum-mutual-information spanning tree. The §10.2 'ranking-vs-calibration' discussion also invokes KL divergence between true and NB-estimated posteriors."
+  - topic: "shannon-entropy"
+    relationship: "Mutual information drives the §9.1 Chow–Liu edge selection. The §3.2 Bayes-risk decomposition also leans on the Shannon-entropy framing of the class-label uncertainty: H(Y) - H(Y | X) is the maximum information any classifier can extract."
+  - topic: "pac-learning"
+    relationship: "The §7 Ng–Jordan asymptotic comparison is fundamentally a sample-complexity statement: how many examples does each classifier need to reach error ε of its asymptotic-best? The PAC-learning framework (VC dimension, growth function, Rademacher complexity) provides the rigorous machinery for this kind of comparison; the §7 brief uses PAC concepts and forward-points to the pac-learning topic for the rigorous foundations."
+  - topic: "high-dimensional-regression"
+    relationship: "The §7 discriminative-vs-generative comparison contrasts Gaussian NB (generative) with logistic regression (discriminative); the high-dim-regression topic develops the §11.1 logistic lasso as the high-dimensional discriminative classifier. The §10.3 correlated-features failure mode echoes high-dim-regression's §6.2 irrepresentable-condition discussion. NB is the small-n generative alternative when sparsity assumptions in high-dim-regression don't hold."
+  - topic: "conformal-prediction"
+    relationship: "NB is a natural base classifier for split-conformal classification: produce class-probability scores, calibrate by quantile-thresholding on a held-out set, output a prediction set with marginal coverage. The §8 calibration framework developed here is what makes NB suitable as a conformal base classifier (raw NB probabilities are typically too overconfident)."
+  - topic: "bayesian-neural-networks"
+    relationship: "NB is the simplest generative classifier in the same hierarchy that BNNs occupy at the deep end. The §10.4 forward pointer relates NB's Dirichlet–multinomial conjugacy to the prior-over-weights stance BNNs take, and the §10.3 correlated-features failure of NB is exactly the kind of problem BNNs were designed to handle through richer parameterizations."
+references:
+  - type: paper
+    authors: "Maron, M. E."
+    title: "Automatic indexing: an experimental inquiry"
+    year: 1961
+    venue: "Journal of the ACM 8(3), 404–417"
+    url: "https://doi.org/10.1145/321075.321084"
+  - type: book
+    authors: "Duda, R. O. & Hart, P. E."
+    title: "Pattern Classification and Scene Analysis"
+    year: 1973
+    venue: "Wiley"
+    url: "https://www.wiley.com/en-us/Pattern+Classification+and+Scene+Analysis-p-9780471223610"
+  - type: paper
+    authors: "Lewis, D. D."
+    title: "Naive (Bayes) at forty: the independence assumption in information retrieval"
+    year: 1998
+    venue: "Proceedings of ECML 1998, 4–15"
+    url: "https://doi.org/10.1007/BFb0026666"
+  - type: paper
+    authors: "Domingos, P. & Pazzani, M."
+    title: "On the optimality of the simple Bayesian classifier under zero-one loss"
+    year: 1997
+    venue: "Machine Learning 29(2–3), 103–130"
+    url: "https://doi.org/10.1023/A:1007413511361"
+  - type: paper
+    authors: "Friedman, N., Geiger, D. & Goldszmidt, M."
+    title: "Bayesian network classifiers"
+    year: 1997
+    venue: "Machine Learning 29(2–3), 131–163"
+    url: "https://doi.org/10.1023/A:1007465528199"
+  - type: paper
+    authors: "McCallum, A. & Nigam, K."
+    title: "A comparison of event models for naive Bayes text classification"
+    year: 1998
+    venue: "AAAI-98 Workshop on Learning for Text Categorization, 41–48"
+    url: "https://www.aaai.org/Papers/Workshops/1998/WS-98-05/WS98-05-007.pdf"
+  - type: paper
+    authors: "Platt, J. C."
+    title: "Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods"
+    year: 1999
+    venue: "Advances in Large Margin Classifiers, 61–74 (MIT Press)"
+    url: "https://www.cs.colorado.edu/~mozer/Teaching/syllabi/6622/papers/Platt1999.pdf"
+  - type: paper
+    authors: "Friedman, J. H."
+    title: "On bias, variance, 0/1-loss, and the curse-of-dimensionality"
+    year: 1997
+    venue: "Data Mining and Knowledge Discovery 1(1), 55–77"
+    url: "https://doi.org/10.1023/A:1009778005914"
+  - type: paper
+    authors: "Zadrozny, B. & Elkan, C."
+    title: "Transforming classifier scores into accurate multiclass probability estimates"
+    year: 2002
+    venue: "Proceedings of KDD 2002, 694–699"
+    url: "https://doi.org/10.1145/775047.775151"
+  - type: paper
+    authors: "Ng, A. Y. & Jordan, M. I."
+    title: "On discriminative vs. generative classifiers: a comparison of logistic regression and naive Bayes"
+    year: 2002
+    venue: "Advances in Neural Information Processing Systems 14, 841–848"
+    url: "https://proceedings.neurips.cc/paper/2001/hash/7b7a53e239400a13bd6be6c91c4f6c4e-Abstract.html"
+  - type: paper
+    authors: "Rennie, J. D. M., Shih, L., Teevan, J. & Karger, D. R."
+    title: "Tackling the poor assumptions of naive Bayes text classifiers"
+    year: 2003
+    venue: "Proceedings of ICML 2003, 616–623"
+    url: "https://www.aaai.org/Papers/ICML/2003/ICML03-081.pdf"
+  - type: paper
+    authors: "Hand, D. J. & Yu, K."
+    title: "Idiot's Bayes — not so stupid after all?"
+    year: 2001
+    venue: "International Statistical Review 69(3), 385–398"
+    url: "https://doi.org/10.1111/j.1751-5823.2001.tb00465.x"
+  - type: paper
+    authors: "Webb, G. I., Boughton, J. R. & Wang, Z."
+    title: "Not so naive Bayes: aggregating one-dependence estimators"
+    year: 2005
+    venue: "Machine Learning 58(1), 5–24"
+    url: "https://doi.org/10.1007/s10994-005-4258-6"
+  - type: paper
+    authors: "Niculescu-Mizil, A. & Caruana, R."
+    title: "Predicting good probabilities with supervised learning"
+    year: 2005
+    venue: "Proceedings of ICML 2005, 625–632"
+    url: "https://doi.org/10.1145/1102351.1102430"
+  - type: paper
+    authors: "Chow, C. K. & Liu, C. N."
+    title: "Approximating discrete probability distributions with dependence trees"
+    year: 1968
+    venue: "IEEE Transactions on Information Theory 14(3), 462–467"
+    url: "https://doi.org/10.1109/TIT.1968.1054142"
+  - type: paper
+    authors: "Jiang, L., Zhang, H. & Cai, Z."
+    title: "A novel Bayes model: hidden naive Bayes"
+    year: 2009
+    venue: "IEEE Transactions on Knowledge and Data Engineering 21(10), 1361–1371"
+    url: "https://doi.org/10.1109/TKDE.2008.234"
+  - type: paper
+    authors: "Wang, S. I. & Manning, C. D."
+    title: "Baselines and bigrams: simple, good sentiment and topic classification"
+    year: 2012
+    venue: "Proceedings of ACL 2012, 90–94"
+    url: "https://aclanthology.org/P12-2018/"
+  - type: book
+    authors: "Devroye, L., Györfi, L. & Lugosi, G."
+    title: "A Probabilistic Theory of Pattern Recognition"
+    year: 1996
+    venue: "Springer"
+    url: "https://doi.org/10.1007/978-1-4612-0711-5"
+  - type: book
+    authors: "Bishop, C. M."
+    title: "Pattern Recognition and Machine Learning"
+    year: 2006
+    venue: "Springer"
+    url: "https://link.springer.com/book/9780387310732"
+  - type: book
+    authors: "Murphy, K. P."
+    title: "Machine Learning: A Probabilistic Perspective"
+    year: 2012
+    venue: "MIT Press"
+    url: "https://mitpress.mit.edu/9780262018029/machine-learning/"
+  - type: book
+    authors: "Hastie, T., Tibshirani, R. & Friedman, J."
+    title: "The Elements of Statistical Learning"
+    year: 2009
+    venue: "Springer (2nd ed.)"
+    url: "https://doi.org/10.1007/978-0-387-84858-7"
+  - type: book
+    authors: "Manning, C. D., Raghavan, P. & Schütze, H."
+    title: "Introduction to Information Retrieval"
+    year: 2008
+    venue: "Cambridge University Press"
+    url: "https://doi.org/10.1017/CBO9780511809071"
+  - type: book
+    authors: "Koller, D. & Friedman, N."
+    title: "Probabilistic Graphical Models: Principles and Techniques"
+    year: 2009
+    venue: "MIT Press"
+    url: "https://mitpress.mit.edu/9780262013192/probabilistic-graphical-models/"
+  - type: paper
+    authors: "Blei, D. M., Ng, A. Y. & Jordan, M. I."
+    title: "Latent Dirichlet allocation"
+    year: 2003
+    venue: "Journal of Machine Learning Research 3, 993–1022"
+    url: "https://www.jmlr.org/papers/v3/blei03a.html"
+  - type: paper
+    authors: "Hand, D. J."
+    title: "Classifier technology and the illusion of progress"
+    year: 2006
+    venue: "Statistical Science 21(1), 1–14"
+    url: "https://doi.org/10.1214/088342306000000060"
+  - type: paper
+    authors: "Yang, Y. & Pedersen, J. O."
+    title: "A comparative study on feature selection in text categorization"
+    year: 1997
+    venue: "Proceedings of ICML 1997, 412–420"
+    url: "https://www.aaai.org/Papers/ICML/1997/ICML97-082.pdf"
+  - type: paper
+    authors: "Guo, C., Pleiss, G., Sun, Y. & Weinberger, K. Q."
+    title: "On calibration of modern neural networks"
+    year: 2017
+    venue: "Proceedings of ICML 2017, 1321–1330"
+    url: "https://proceedings.mlr.press/v70/guo17a.html"
+  - type: paper
+    authors: "Bouckaert, R. R."
+    title: "Naive Bayes classifiers that perform well with continuous variables"
+    year: 2004
+    venue: "Proceedings of Australian Conference on AI 2004, 1089–1094"
+    url: "https://doi.org/10.1007/978-3-540-30549-1_106"
+---
+
+import Figure from '../../components/ui/Figure.astro';
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import PosteriorOddsExplorer from '../../components/viz/PosteriorOddsExplorer.tsx';
+import IndependenceDAGViewer from '../../components/viz/IndependenceDAGViewer.tsx';
+import BayesRiskDecomposition from '../../components/viz/BayesRiskDecomposition.tsx';
+import GaussianNBBoundaryComparison from '../../components/viz/GaussianNBBoundaryComparison.tsx';
+import MultinomialNBTextExplorer from '../../components/viz/MultinomialNBTextExplorer.tsx';
+import LaplaceSmoothingPosterior from '../../components/viz/LaplaceSmoothingPosterior.tsx';
+import DvGCrossoverPlot from '../../components/viz/DvGCrossoverPlot.tsx';
+import CalibrationReliabilityDiagram from '../../components/viz/CalibrationReliabilityDiagram.tsx';
+import ChowLiuTANStructureLearner from '../../components/viz/ChowLiuTANStructureLearner.tsx';
+import NBVsLogisticOnCorrelatedFeatures from '../../components/viz/NBVsLogisticOnCorrelatedFeatures.tsx';
+
+## §1. From features to a class label: the generative recipe
+
+### §1.1 A spam-filter vignette
+
+Suppose we receive an email whose body, after tokenization, reduces to the bag $\{\text{"buy"}, \text{"now"}, \text{"click"}, \text{"here"}\}$. Is it spam? A reasonable answer needs three ingredients: the prior probability that any email is spam $\pi_1 = P(Y = \text{spam})$; the *generative* description of what tokens spam emails tend to contain $p(\mathbf{x} \mid Y = \text{spam})$; the same for ham $p(\mathbf{x} \mid Y = \text{ham})$. **Bayes' rule** assembles them into the posterior we actually want:
+
+$$
+P(Y = \text{spam} \mid \mathbf{x}) \;=\; \frac{p(\mathbf{x} \mid Y = \text{spam})\,\pi_1}{p(\mathbf{x} \mid Y = \text{spam})\,\pi_1 + p(\mathbf{x} \mid Y = \text{ham})\,\pi_0}.
+$$
+
+The decision rule that minimizes the expected number of misclassifications (we'll see in §3 that this is the 0/1-loss-optimal rule) is just *predict the class with the larger posterior*. Bayes' rule is the entire framework. The "naive" in naive Bayes refers to a structural assumption about the likelihood $p(\mathbf{x} \mid Y)$ that makes the right-hand side estimable from data; before we get there, let's see why it's needed.
+
+### §1.2 Bayes' rule for classification
+
+Fix a finite label set $\mathcal{Y} = \{0, 1, \ldots, K-1\}$. Given an observation $\mathbf{x} \in \mathcal{X}$ (continuous, discrete, or mixed), Bayes' rule writes the *posterior* in terms of the *prior* and the *class-conditional likelihood*:
+
+$$
+P(Y = k \mid \mathbf{X} = \mathbf{x}) \;=\; \frac{p(\mathbf{x} \mid Y = k)\,P(Y = k)}{\sum_{j=0}^{K-1} p(\mathbf{x} \mid Y = j)\,P(Y = j)} \;\propto\; p(\mathbf{x} \mid Y = k)\,\pi_k,
+$$
+
+where $\pi_k := P(Y = k)$ and the denominator $p(\mathbf{x}) = \sum_j p(\mathbf{x} \mid j) \pi_j$ is the marginal-evidence normalization. The proportionality is the form we'll use everywhere — the denominator is the same across $k$ and drops out of any argmax.
+
+**Decision rule (Bayes classifier under 0/1 loss; see §3.1 for the derivation).** Predict $\hat y(\mathbf{x}) = \arg\max_k P(Y = k \mid \mathbf{x}) = \arg\max_k \, p(\mathbf{x} \mid k)\,\pi_k$.
+
+This is the cleanest classifier in all of statistics. The only obstacle is that we don't know $p(\mathbf{x} \mid k)$ and $\pi_k$ from data — we have to estimate them. Estimating $\pi_k$ is easy (count class labels). Estimating $p(\mathbf{x} \mid k)$ is, in general, *very* hard, which brings us to the next subsection.
+
+<PosteriorOddsExplorer client:visible />
+
+### §1.3 Why $p(\mathbf{x} \mid y)$ is intractable in high dimensions
+
+Suppose every feature is binary ($x_j \in \{0, 1\}$) and there are $d$ of them. A full joint distribution over $\mathbf{x}$ given $y$ has $2^d - 1$ free parameters per class. At $d = 30$ — a tiny problem by modern standards — that's already over $10^9$ parameters per class. Even with $n = 10^6$ training examples, only a vanishing fraction of the $2^d$ joint configurations are ever observed; the empirical estimate of $p(\mathbf{x} \mid y)$ is zero almost everywhere.
+
+The same issue afflicts continuous features. Estimating a $d$-dimensional density $p(\mathbf{x} \mid y)$ nonparametrically — by KDE, say — requires sample size $n \asymp h^{-d}$ to keep variance under control, where $h$ is the bandwidth. The curse-of-dimensionality rate from `kernel-regression` §6 applies here too: density estimation is rate $n^{-4/(4+d)}$, which collapses to nothing past $d \approx 10$.
+
+We need to break the high-dimensional density estimation problem into a sequence of tractable low-dimensional problems. The naive Bayes assumption is the simplest possible way to do this, and we'll see in §3.4 / §8 / §10 that it's also surprisingly effective for classification (not so much for calibrated probability estimation, but classification is what we asked for).
+
+### §1.4 The conditional-independence assumption
+
+The **naive Bayes assumption** is that, *given the class label*, the features are independent:
+
+$$
+\boxed{\quad p(\mathbf{x} \mid y) \;=\; \prod_{j=1}^{d} p(x_j \mid y). \quad}
+$$
+
+Two things this is **not**. First, it's *not* saying that the features are independent unconditionally — typically they aren't, because they're all driven by the class label. Second, it's *not* saying that the features are *actually* conditionally independent in the data-generating distribution; in real applications they almost never are. The assumption is a *modeling choice*. We're going to plug a structured, easy-to-estimate factorized likelihood into Bayes' rule and see what happens.
+
+The estimation problem now decomposes: instead of one $d$-dimensional density per class, we have $d$ one-dimensional densities per class. For continuous features under a Gaussian per-coordinate model that's $2d$ parameters per class (mean and variance); for binary features under a Bernoulli per-coordinate model it's $d$ parameters per class (rates). Total parameter count grows *linearly* in $d$ rather than *exponentially*. This is the central trade — accept structural bias from the wrong-independence assumption in exchange for tractable estimation at high $d$.
+
+### §1.5 Roadmap
+
+The rest of the notebook answers four questions about this classifier.
+
+**What does it look like?** §2 formalizes the product-factorization estimator and the argmax-of-log decision rule, shows the directed-graphical-model picture, and locates naive Bayes in the generative-vs-discriminative taxonomy.
+
+**Is it any good?** §3 develops Bayes-optimal classifier theory — the 0/1-loss decomposition, the Bayes risk floor, the excess-risk bound for plug-in classifiers, and the preview of why NB ranks classes well even when it calibrates poorly.
+
+**How do we fit it?** §§4–5 work out MLE for three classical variants (Gaussian, Multinomial, Bernoulli) and the implementation tricks (log-sum-exp, var-smoothing, sparse-matrix multiplication). §6 adds Laplace smoothing as a Bayesian conjugate update.
+
+**When is it the right tool?** §7 is the Ng–Jordan (2002) discriminative-vs-generative asymptotic comparison — the headline theoretical result on when NB wins (small $n$) and when logistic regression wins (large $n$). §8 covers calibration repair. §9 covers structure-learning extensions (TAN, AODE) that relax the strict-independence assumption. §10 closes with text-classification applications and forward pointers.
+
+## §2. The naive Bayes classifier
+
+### §2.1 The product factorization and the decision rule
+
+Plugging the naive-Bayes factorization into the proportional Bayes rule from §1.2:
+
+$$
+\widehat{P}(Y = k \mid \mathbf{x}) \;\propto\; \pi_k \prod_{j=1}^{d} p(x_j \mid Y = k).
+$$
+
+The decision rule predicts $\hat y(\mathbf{x}) = \arg\max_k \pi_k \prod_j p(x_j \mid k)$. We almost never compute the product directly — products of many small numbers underflow `float64` quickly (already at $d \approx 700$ for typical token-probability scales). We work in log-space throughout:
+
+$$
+\hat y(\mathbf{x}) \;=\; \arg\max_k \, \log\pi_k + \sum_{j=1}^{d} \log p(x_j \mid Y = k).
+$$
+
+For *probabilities* (rather than just class labels) we use the log-sum-exp identity:
+
+$$
+P(Y = k \mid \mathbf{x}) \;=\; \frac{\exp(\ell_k)}{\sum_{j} \exp(\ell_j)} \;=\; \exp\!\bigl(\ell_k - \mathrm{LSE}(\boldsymbol\ell)\bigr),
+$$
+
+where $\ell_k := \log\pi_k + \sum_j \log p(x_j \mid k)$ and $\mathrm{LSE}(\boldsymbol\ell) := \log\sum_j \exp(\ell_j)$. The numerically-safe LSE subtracts the max first: $\mathrm{LSE}(\boldsymbol\ell) = \max_j \ell_j + \log\sum_j \exp(\ell_j - \max_j \ell_j)$.
+
+### §2.2 The naive Bayes classifier as a log-linear model
+
+Substitute exponential-family per-feature likelihoods $p(x_j \mid y) = h_j(x_j) \exp\bigl(\eta_{jy}^\top T_j(x_j) - A_j(\eta_{jy})\bigr)$ into the log-posterior:
+
+$$
+\log\widehat{P}(Y = k \mid \mathbf{x}) \;=\; \underbrace{\log \pi_k}_{\text{bias}_k} \;+\; \sum_{j=1}^{d} \Bigl[\, \eta_{jk}^\top T_j(x_j) - A_j(\eta_{jk}) \,\Bigr] + \text{const}.
+$$
+
+The terms not depending on $k$ drop in the argmax. What remains is *linear* in the sufficient statistics $T_j(x_j)$ with class-dependent weights $\eta_{jk}$. **Naive Bayes is a log-linear classifier in the sufficient-statistic representation.** This is the formal sense in which Gaussian NB shares a decision-rule family with linear discriminant analysis (LDA), and Multinomial NB shares one with multiclass logistic regression. The Ng–Jordan §7 comparison is meaningful precisely because the two classifiers occupy the same hypothesis class — the difference is in how the parameters are *estimated*, not in what functions the classifier can express.
+
+### §2.3 The naive Bayes directed graphical model
+
+Naive Bayes corresponds to a particular directed acyclic graph (DAG): the label node $Y$ is the parent of every feature node $X_j$, and there are no edges between the features.
+
+```
+        Y
+      / | \
+     /  |  \
+    X_1 X_2 ... X_d
+```
+
+The joint factorizes as $p(y, \mathbf{x}) = p(y) \prod_j p(x_j \mid y)$, which is exactly the naive-Bayes assumption. The graph encodes a set of *conditional independence* statements: $X_i \perp X_j \mid Y$ for all $i \ne j$. (Unconditionally, the features are typically *not* independent — knowing $X_1$ tells you something about $Y$, which tells you something about $X_2$.)
+
+This graphical view makes the §9 extensions natural: relax the independence by adding edges between the $X_j$. A *tree* over the features (with $Y$ still the universal parent) is the Tree-Augmented Naive Bayes (TAN, Friedman–Geiger–Goldszmidt 1997). A complete graph would recover the full joint and lose the tractability gain.
+
+<Figure
+  src="/images/topics/naive-bayes/02_dag_comparison.png"
+  alt="Two Bayesian-network structures: naive Bayes (left, Y → X_i with no edges among features) vs a tree-augmented variant."
+  caption="Two Bayesian-network structures: naive Bayes (left, Y → X_i with no edges among features) vs a tree-augmented variant."
+/>
+
+<IndependenceDAGViewer client:visible />
+
+### §2.4 Generative vs discriminative
+
+Naive Bayes is a **generative** model: it estimates the *joint* distribution $p(\mathbf{x}, y) = p(\mathbf{x} \mid y)\,p(y)$ and derives the conditional $p(y \mid \mathbf{x})$ via Bayes' rule. The competing approach — used by logistic regression, support vector machines, neural networks — is **discriminative**: estimate $p(y \mid \mathbf{x})$ directly, never modeling $p(\mathbf{x})$ at all.
+
+Why does the distinction matter?
+
+- **Sample complexity.** Generative models have more parameters to fit (they model $\mathbf{x}$ too), so they typically need more data to reach their asymptotic accuracy *if no shortcut is used*. Naive Bayes is the shortcut: factorize the joint, restrict to $O(d)$ parameters, get the small-$n$ advantage. §7 develops this carefully (Ng–Jordan 2002).
+- **Asymptotic bias.** Discriminative methods are asymptotically optimal for *prediction* under the class of conditional models they can express. Generative methods may have lower asymptotic accuracy if the joint model is misspecified — but naive Bayes' joint model is *always* misspecified on real data, so this asymptotic gap is the price of the small-$n$ advantage.
+- **What you get for free.** Generative models give you $p(\mathbf{x})$ as a byproduct — useful for anomaly detection, missing-feature imputation, and synthetic-example generation. Discriminative models don't, by design.
+
+The takeaway: **NB and logistic regression occupy the same hypothesis class but estimate the parameters differently**, and that difference produces the small-$n$ vs large-$n$ trade we'll see in §7.
+
+## §3. Bayes-optimal classifier theory
+
+### §3.1 The 0/1-loss decomposition
+
+For a classifier $h : \mathcal{X} \to \mathcal{Y}$ trained on data and evaluated on a fresh pair $(\mathbf{X}, Y)$ from the true joint distribution, the **0/1 risk** is
+
+$$
+R(h) \;:=\; \mathbb{E}_{(\mathbf{X}, Y)} \bigl[\mathbb{1}\{h(\mathbf{X}) \ne Y\}\bigr] \;=\; \Pr\bigl(h(\mathbf{X}) \ne Y\bigr).
+$$
+
+The **Bayes classifier** $h^\star$ minimizes this risk:
+
+$$
+h^\star(\mathbf{x}) \;=\; \arg\max_{k} P(Y = k \mid \mathbf{X} = \mathbf{x}).
+$$
+
+**Theorem (Bayes-classifier optimality).** $R(h^\star) \le R(h)$ for every measurable $h$.
+
+<TheoremBlock type="proof">
+
+Fix $\mathbf{x}$. Then $\Pr(h(\mathbf{X}) = Y \mid \mathbf{X} = \mathbf{x}) = \sum_k P(Y = k \mid \mathbf{x}) \mathbb{1}\{h(\mathbf{x}) = k\}$. This sum picks out the single term $P(Y = h(\mathbf{x}) \mid \mathbf{x})$ — the prior-times-likelihood of the class $h$ named. The maximum over $h(\mathbf{x})$ is therefore $\max_k P(Y = k \mid \mathbf{x})$, attained by $h^\star$. Taking expectations over $\mathbf{X}$ preserves the inequality.
+
+</TheoremBlock>
+
+The **Bayes risk** (or *Bayes error rate*, *irreducible error*) is
+
+$$
+R^\star \;:=\; R(h^\star) \;=\; \mathbb{E}_{\mathbf{X}} \Bigl[\, 1 - \max_k P(Y = k \mid \mathbf{X}) \,\Bigr].
+$$
+
+Any classifier — naive Bayes, logistic regression, the latest deep net — is at best $R^\star$. The gap is irreducible: it's the inherent randomness in $Y$ given $\mathbf{X}$, which no amount of data or model complexity can erase.
+
+### §3.2 The Bayes risk floor — what no classifier can beat
+
+Let $\eta(\mathbf{x}) := P(Y = 1 \mid \mathbf{X} = \mathbf{x})$ be the true posterior in a two-class problem. Then $R^\star = \mathbb{E}[\min(\eta(\mathbf{X}), 1 - \eta(\mathbf{X}))]$. The minimum picks the smaller of the two posterior probabilities — exactly the per-point misclassification rate of the Bayes classifier. When $\eta(\mathbf{x}) \in \{0, 1\}$ for all $\mathbf{x}$ — labels are deterministic functions of features — the Bayes risk is zero. When $\eta(\mathbf{x}) \equiv 1/2$ — the label is independent of the features — the Bayes risk is $1/2$.
+
+Two facts to internalize. (1) **Bayes risk is a property of the data distribution, not of any classifier.** It quantifies how much information the features carry about the label. (2) **It's the right benchmark.** Reporting "our classifier achieves 5% error" is uninformative without context; reporting "Bayes risk is 2%; our classifier achieves 5%, leaving 3% excess risk" tells you how much room there is to improve.
+
+For naive Bayes specifically, the plug-in classifier $\hat h_{NB}(\mathbf{x}) = \arg\max_k \hat p(\mathbf{x} \mid k) \hat\pi_k$ approaches *some* asymptotic limit as $n \to \infty$, but it's not generally $h^\star$ because $\hat p(\mathbf{x} \mid y)$ is biased (the factorization is wrong). The asymptotic NB-risk gap above Bayes risk is the *bias term*; the finite-$n$ gap above the asymptotic NB-risk is the *variance term*. §7 makes both terms precise for the Ng–Jordan setup.
+
+<Figure
+  src="/images/topics/naive-bayes/03_bayes_risk_vs_separation.png"
+  alt="Bayes risk on a 1D Gaussian mixture as a function of class separation. For symmetric equal-prior mixtures with σ = 1, the risk equals Φ(−Δ/2) and drops monotonically as the means move apart."
+  caption="Bayes risk on a 1D Gaussian mixture as a function of class separation. For symmetric equal-prior mixtures with σ = 1, the risk equals Φ(−Δ/2) and drops monotonically as the means move apart."
+/>
+
+<BayesRiskDecomposition client:visible />
+
+### §3.3 Plug-in classifiers and the excess-risk bound
+
+The plug-in approach builds a classifier by estimating the posterior $\hat\eta(\mathbf{x}) \approx \eta(\mathbf{x})$ and thresholding at $1/2$:
+
+$$
+\hat h(\mathbf{x}) \;=\; \mathbb{1}\bigl\{\hat\eta(\mathbf{x}) > \tfrac{1}{2}\bigr\}.
+$$
+
+Naive Bayes, logistic regression, kernel-density-based classifiers — all are plug-in classifiers with different choices for $\hat\eta$.
+
+**Theorem (Devroye–Györfi–Lugosi 1996, Theorem 2.2; binary case).** For any plug-in classifier,
+
+$$
+R(\hat h) - R^\star \;\le\; 2\,\mathbb{E}_\mathbf{X}\bigl|\hat\eta(\mathbf{X}) - \eta(\mathbf{X})\bigr|.
+$$
+
+*Proof sketch.* Condition on $\mathbf{X} = \mathbf{x}$. The Bayes classifier misclassifies with probability $\min(\eta, 1 - \eta) = \frac{1}{2}(1 - |2\eta - 1|)$. The plug-in classifier misclassifies with probability that equals the Bayes classifier's *unless* $\hat\eta$ and $\eta$ lie on opposite sides of $1/2$. In that case, the excess is $|2\eta - 1|$, which is bounded by $2|\hat\eta - \eta|$. Taking expectations over $\mathbf{X}$ gives the result. The factor of 2 is loose for most distributions but tight in the worst case. 
+
+**The takeaway:** **excess risk is bounded by twice the $L^1$ error in posterior estimation.** A classifier whose $\hat\eta$ is uniformly within $0.05$ of $\eta$ has excess risk at most $0.1$. Conversely, the only thing that matters for classification is getting the *sign* of $\hat\eta - 1/2$ right at each $\mathbf{x}$; absolute calibration is secondary. This is the formal version of the Domingos–Pazzani thesis we'll meet in §3.4 and develop fully in §8: **a classifier can rank classes well without estimating posterior probabilities well.**
+
+### §3.4 Why NB ranks well but calibrates poorly (preview)
+
+Naive Bayes' estimated posterior $\hat\eta_{NB}(\mathbf{x})$ is *systematically* miscalibrated whenever the conditional-independence assumption is wrong. The intuition (formalized in §8.1): when features are positively correlated given the class, the product likelihood $\prod_j \hat p(x_j \mid y)$ multiplies redundant evidence as if it were independent, *amplifying* the log-likelihood and pushing the posterior toward 0 or 1.
+
+So $\hat\eta_{NB}(\mathbf{x})$ is typically much closer to 0 or 1 than the true $\eta(\mathbf{x})$ — that's the "overconfidence" failure mode. But **the sign of $\hat\eta_{NB} - 1/2$ often matches the sign of $\eta - 1/2$**. The plug-in classifier flips only when both posteriors lie strictly on the same side of $1/2$ but in different positions; the sign-match is robust to monotone-distorted probability estimates. This is why a model with terrible calibration can still classify almost as well as the Bayes classifier — Domingos and Pazzani (1997) prove this rigorously for an interesting class of misspecified naive-Bayes models, and we'll re-derive their result in §8.1.
+
+## §4. Gaussian Naive Bayes
+
+### §4.1 The per-class Gaussian conditional-density assumption
+
+For continuous features $\mathbf{x} \in \mathbb{R}^d$, the simplest naive-Bayes likelihood is per-class, per-coordinate Gaussian:
+
+$$
+p(x_j \mid Y = k) \;=\; \frac{1}{\sqrt{2\pi\sigma_{jk}^2}} \exp\!\left(-\frac{(x_j - \mu_{jk})^2}{2\sigma_{jk}^2}\right).
+$$
+
+Combined with the independence factorization, the multivariate likelihood is
+
+$$
+p(\mathbf{x} \mid Y = k) \;=\; \prod_{j=1}^{d} p(x_j \mid Y = k) \;=\; \frac{1}{(2\pi)^{d/2}\prod_j \sigma_{jk}} \exp\!\left(-\frac{1}{2}\sum_{j=1}^{d}\frac{(x_j - \mu_{jk})^2}{\sigma_{jk}^2}\right).
+$$
+
+This is a multivariate Gaussian with **diagonal covariance** $\boldsymbol\Sigma_k = \mathrm{diag}(\sigma_{1k}^2, \ldots, \sigma_{dk}^2)$ — features uncorrelated within each class. Per-class means $\boldsymbol\mu_k$ may differ; per-class variance vectors $\boldsymbol\sigma_k^2$ may differ. Parameter count: $2dK + (K-1)$, including the priors. Linear in $d$, as advertised.
+
+### §4.2 MLE for $\boldsymbol\mu_k$, $\boldsymbol\sigma_k^2$, and $\pi_k$
+
+Given $n$ iid pairs $(\mathbf{X}_i, Y_i)$, the joint log-likelihood is
+
+$$
+\ell(\boldsymbol\theta) \;=\; \sum_{i=1}^{n} \log\pi_{Y_i} \;+\; \sum_{i=1}^{n}\sum_{j=1}^{d} \log p(X_{ij} \mid Y_i; \boldsymbol\mu, \boldsymbol\sigma).
+$$
+
+The two terms decouple — the priors $\pi_k$ depend only on the class labels, and the per-feature Gaussian parameters $(\mu_{jk}, \sigma_{jk}^2)$ depend only on the corresponding feature values within each class. Set $n_k := |\{i : Y_i = k\}|$ for the per-class counts. Maximizing each term separately:
+
+$$
+\hat\pi_k \;=\; \frac{n_k}{n}, \qquad
+\hat\mu_{jk} \;=\; \frac{1}{n_k}\sum_{i : Y_i = k} X_{ij}, \qquad
+\hat\sigma_{jk}^2 \;=\; \frac{1}{n_k}\sum_{i : Y_i = k} (X_{ij} - \hat\mu_{jk})^2.
+$$
+
+*Derivation of $\hat\mu_{jk}$.* The relevant piece of $\ell$ involving $\mu_{jk}$ is $-\sum_{i : Y_i = k} (X_{ij} - \mu_{jk})^2 / (2\sigma_{jk}^2)$. Differentiating with respect to $\mu_{jk}$ and setting to zero: $\sum_{i : Y_i = k} (X_{ij} - \mu_{jk}) / \sigma_{jk}^2 = 0$, which gives the sample mean. The same one-variable Gaussian-MLE argument as in formalstatistics's `maximum-likelihood` topic.
+
+*Derivation of $\hat\sigma_{jk}^2$.* The relevant piece is $-\sum_{i : Y_i = k} \log\sigma_{jk} - \sum_{i : Y_i = k} (X_{ij} - \hat\mu_{jk})^2/(2\sigma_{jk}^2)$. Differentiating with respect to $\sigma_{jk}^2$: $-n_k/(2\sigma_{jk}^2) + \sum (X_{ij} - \hat\mu_{jk})^2 / (2\sigma_{jk}^4) = 0$, which gives the sample variance with denominator $n_k$ (the MLE; the unbiased estimator uses $n_k - 1$).
+
+**Var-smoothing safeguard.** Because $\hat\sigma_{jk}^2$ can vanish if all in-class observations are identical, scikit-learn's `GaussianNB` adds a small additive term $\epsilon \cdot \max_j \mathrm{Var}(X_{\cdot j})$ to every variance estimate, with default $\epsilon = 10^{-9}$. This avoids divide-by-zero in the log-density and is essentially harmless in practice.
+
+### §4.3 The decision boundary is a quadric
+
+The Gaussian-NB log-posterior ratio between two classes $k$ and $\ell$ is
+
+$$
+\log\frac{P(Y = k \mid \mathbf{x})}{P(Y = \ell \mid \mathbf{x})} \;=\; \log\frac{\pi_k}{\pi_\ell} \;+\; \sum_{j=1}^{d}\left[\, \frac{1}{2}\log\frac{\sigma_{j\ell}^2}{\sigma_{jk}^2} - \frac{(x_j - \mu_{jk})^2}{2\sigma_{jk}^2} + \frac{(x_j - \mu_{j\ell})^2}{2\sigma_{j\ell}^2} \,\right].
+$$
+
+The right-hand side is a *quadratic* polynomial in $\mathbf{x}$ (the squares expand into $x_j^2$ terms with class-dependent coefficients). Setting it to zero gives the decision boundary, which is therefore a *quadric* — generally an ellipse, hyperbola, or parabola in 2D; the multivariate version is a quadric hypersurface.
+
+A useful special case: when the per-class variance vectors are equal ($\sigma_{jk}^2 = \sigma_j^2$ across $k$), the $x_j^2$ terms cancel and the decision boundary becomes *linear*. This reduces GNB to a special case of LDA — diagonal LDA — and shows that the diagonal-covariance structure is the source of the quadric (not the per-class differences in $\boldsymbol\mu_k$).
+
+<Figure
+  src="/images/topics/naive-bayes/04_decision_boundary_comparison.png"
+  alt="Decision boundaries for Gaussian Naive Bayes, LDA, and QDA on the same 2D anisotropic two-class fixture. GNB ignores within-class correlation; LDA forces a shared covariance; QDA fits per-class covariance."
+  caption="Decision boundaries for Gaussian Naive Bayes, LDA, and QDA on the same 2D anisotropic two-class fixture. GNB ignores within-class correlation; LDA forces a shared covariance; QDA fits per-class covariance."
+/>
+
+<GaussianNBBoundaryComparison client:visible />
+
+### §4.4 LDA / QDA / GNB — three corners of one design space
+
+| Model | Covariance structure | Free params per class | Decision boundary |
+|---|---|---|---|
+| **LDA** | Shared $\boldsymbol\Sigma$ across classes | $d$ (mean only) | Linear |
+| **GNB** | Per-class diagonal $\boldsymbol\Sigma_k$ | $2d$ | Quadric |
+| **QDA** | Per-class general $\boldsymbol\Sigma_k$ | $d + d(d+1)/2$ | Quadric |
+
+All three model the within-class density as Gaussian. They differ in how much covariance structure they're willing to estimate from data:
+
+- **LDA** estimates one $d \times d$ matrix shared across classes; ignores per-class anisotropy entirely but pools data efficiently. Best when classes have similar shapes and class separation is mainly in the mean.
+- **QDA** estimates a separate $d \times d$ matrix per class; captures the most structure but burns the most parameters. Best when classes differ in shape *and* enough data is available to fit $K \cdot d(d+1)/2$ matrices.
+- **GNB** estimates one *diagonal* matrix per class; allows per-class shapes but ignores correlation between features within each class. Always wrong on real data (features are usually correlated), but cheap to fit and surprisingly competitive at small $n$ — the §7 Ng–Jordan story.
+
+In an even more degenerate corner: **diagonal LDA** shares a single diagonal covariance across all classes — most heavily restricted of all, linear decision boundary, often the strongest small-$n$ baseline for high-dimensional classification.
+
+### §4.5 Implementation: scikit-learn `GaussianNB` and var-smoothing
+
+A few practical notes:
+
+- **`var_smoothing` parameter.** Default $10^{-9}$. Adds $\epsilon \cdot \max_j \mathrm{Var}(X_{\cdot j})$ to every variance estimate. Increase to $10^{-7}$ if predictions are unstable (zero-variance features), tune via cross-validation if necessary.
+- **Numerical safety.** Use `scipy.special.logsumexp` for posterior normalization, never `np.log(np.sum(np.exp(...)))`.
+- **Partial fit.** `GaussianNB.partial_fit` supports online learning via Welford's running-mean / running-variance update — useful for streaming data where the entire training set doesn't fit in memory.
+- **Multi-class.** All MLE formulas apply with $K > 2$ — the only change is that the prediction is a $K$-way argmax over log-posteriors.
+- **Inverse-Wishart prior.** A full Bayesian GNB would place an inverse-Wishart prior on each $\boldsymbol\sigma_k^2$ vector. The posterior-mean variance is then $(\alpha + \sum (x - \hat\mu)^2) / (\alpha + n_k - 1)$ for a particular hyperparameter $\alpha$ — equivalent to var-smoothing for an appropriate choice. (We'll see the analogous conjugate-update story for *categorical* features in §6, where the calculation is cleaner.)
+
+## §5. Multinomial and Bernoulli Naive Bayes
+
+### §5.1 Multinomial NB: the bag-of-words generative story
+
+For text classification, the canonical feature representation is the **bag of words**: count how many times each vocabulary token appears in a document, ignoring word order. A document is a vector $\mathbf{x} \in \mathbb{N}_0^V$ where $V$ is the vocabulary size and $x_j$ is the count of token $j$.
+
+**Generative model.** Given a class label $y$, generate the document by repeatedly sampling tokens from a categorical distribution with class-specific probabilities $\boldsymbol\theta_y = (\theta_{y1}, \ldots, \theta_{yV})$ where $\sum_j \theta_{yj} = 1$. If the document has total length $N(\mathbf{x}) := \sum_j x_j$:
+
+$$
+p(\mathbf{x} \mid y, \boldsymbol\theta_y) \;=\; \frac{N(\mathbf{x})!}{\prod_j x_j!} \prod_{j=1}^{V} \theta_{yj}^{x_j}.
+$$
+
+The multinomial coefficient $N(\mathbf{x})! / \prod x_j!$ doesn't depend on $y$ — drops out of any argmax — so the relevant log-likelihood is
+
+$$
+\log p(\mathbf{x} \mid y) \;=\; \sum_{j=1}^{V} x_j \log\theta_{yj} \;+\; \text{const}.
+$$
+
+This is **linear in the feature vector $\mathbf{x}$** with class-dependent weights $\log\boldsymbol\theta_y$. The full log-posterior $\log\pi_y + \mathbf{x}^\top \log\boldsymbol\theta_y$ is the dot-product form a discriminative linear classifier would use; the difference is in how $\boldsymbol\theta_y$ is estimated.
+
+The "naive" assumption here is the *within-class* part: tokens within a single document are assumed iid from $\boldsymbol\theta_y$, ignoring the fact that real text has strong sequential and topic-coherence dependencies. McCallum and Nigam (1998) is the canonical reference for the Multinomial vs Bernoulli choice — the latter is the next subsection.
+
+### §5.2 MLE for token probabilities and the zero-count crisis
+
+The MLE for $\theta_{yj}$ is the empirical token frequency within class $y$:
+
+$$
+\hat\theta_{yj} \;=\; \frac{\sum_{i : Y_i = y} X_{ij}}{\sum_{j'=1}^{V} \sum_{i : Y_i = y} X_{ij'}} \;=\; \frac{c_{yj}}{c_{y\cdot}},
+$$
+
+where $c_{yj}$ is the total count of token $j$ in class $y$ training documents and $c_{y\cdot} := \sum_j c_{yj}$. Derivation: maximize $\sum_i \sum_j X_{ij} \log\theta_{yj}$ subject to $\sum_j \theta_{yj} = 1$ via a Lagrange multiplier $\lambda$. First-order conditions: $c_{yj}/\theta_{yj} = \lambda$ for all $j$, so $\theta_{yj} \propto c_{yj}$ and normalization gives the above.
+
+**The zero-count crisis.** Suppose token $j^\star$ never appears in any class-$y$ training document, so $c_{yj^\star} = 0$ and $\hat\theta_{yj^\star} = 0$. Now a test document containing token $j^\star$ has $\log p(\mathbf{x} \mid y) = -\infty$ — class $y$ is *categorically* ruled out, even if the test document overwhelmingly looks like a class-$y$ document otherwise. This is the *zero-frequency problem* (Lewis 1998), and it makes raw MLE multinomial NB unusable in practice. The fix is Laplace smoothing — replace counts $c_{yj}$ with $c_{yj} + \alpha$ for some $\alpha > 0$ — which we'll derive as a conjugate-Bayesian update in §6.
+
+<MultinomialNBTextExplorer client:visible />
+
+### §5.3 Bernoulli NB: binary-feature variant for short documents
+
+When documents are short (single sentences, social-media posts) or the question is *presence/absence* rather than count, Bernoulli NB is a more natural model:
+
+- Features are binary: $x_j \in \{0, 1\}$ — token $j$ either appears in the document or not.
+- Per-class likelihood is a product of Bernoullis: $p(\mathbf{x} \mid y) = \prod_j \theta_{yj}^{x_j} (1 - \theta_{yj})^{1 - x_j}$.
+- Importantly, **the absence of a token is informative** — the $(1 - \theta_{yj})^{1 - x_j}$ factor explicitly penalizes class $y$ when a token typical of class $y$ is *missing*. Multinomial NB, by contrast, simply gives that factor a probability of 1 (the token contributes nothing if its count is 0).
+
+MLE: $\hat\theta_{yj} = (\sum_{i : Y_i = y} \mathbb{1}\{X_{ij} > 0\}) / n_y$. Same zero-count crisis when a token never appears in some class; same Laplace smoothing fix.
+
+**When does Bernoulli win?** Short documents (one or two sentences) where token presence is more informative than token count; very small vocabularies where the multinomial-coefficient correction matters less; situations where a token's absence is diagnostically important (negation, missing keyword). McCallum and Nigam (1998) report Bernoulli NB winning on small-vocabulary subsets and Multinomial winning on full-vocabulary, longer-document benchmarks.
+
+### §5.4 Complement Naive Bayes (Rennie et al. 2003)
+
+Rennie, Shih, Teevan, and Karger (2003) identified a systematic flaw in vanilla Multinomial NB: when class proportions are very unequal, the larger-class likelihood estimates dominate the smaller-class estimates simply because more counts are aggregated. They proposed **Complement Naive Bayes**, which estimates $\boldsymbol\theta_y$ from the *complement* of class $y$ — all documents not belonging to class $y$ — and inverts the decision rule:
+
+$$
+\hat\theta_{yj}^{\text{CNB}} \;=\; \frac{\alpha + \sum_{i : Y_i \ne y} X_{ij}}{\alpha V + \sum_{j'} \sum_{i : Y_i \ne y} X_{ij'}}, \qquad
+\hat y^{\text{CNB}}(\mathbf{x}) \;=\; \arg\min_{y} \sum_j x_j \log\hat\theta_{yj}^{\text{CNB}}.
+$$
+
+The argmin (rather than argmax) implements "the class least like the data" — flipping the standard rule. Rennie et al. also add log-count weighting (`log(1 + x_j)` instead of raw counts) and per-document length normalization. These TF-IDF-like preprocessing steps improve Multinomial NB even without the complement trick.
+
+Scikit-learn implements both: `MultinomialNB(alpha=1.0)` and `ComplementNB(alpha=1.0, norm=True)`. The complement variant is the recommended default for text classification on imbalanced data.
+
+### §5.5 Implementation: log-sum-exp, sparse matrices, vectorized prediction
+
+Text-classification matrices are *very* sparse — a vocabulary of 30,000 tokens with average document length 200 gives a density of $\approx 0.7\%$. scikit-learn uses `scipy.sparse.csr_matrix` throughout, and the implementation of `MultinomialNB.predict_log_proba` is essentially one sparse matrix product:
+
+```
+log_posterior = X @ log_theta.T + log_class_priors
+```
+
+where `log_theta` is `(K, V)` and `X` is `(n, V)` sparse — total cost $O(\text{nnz}(\mathbf{X}) \cdot K)$ rather than $O(n V K)$. Normalization via log-sum-exp is then a single broadcast operation along the class axis.
+
+The same trick works for Bernoulli NB; the only difference is that "presence" must be extracted from the count matrix first (`X.binarize()` in scikit-learn). Gaussian NB does *not* benefit from sparsity in the same way because the Gaussian log-density involves squared differences from the mean — a dense operation.
+
+## §6. Smoothing as conjugate Bayesian update
+
+### §6.1 Laplace add-one smoothing as a uniform Dirichlet prior
+
+Recall the MLE zero-count crisis from §5.2: $\hat\theta_{yj} = 0$ ruins the log-likelihood whenever an unseen token appears in a test document. The standard fix adds a fictitious *pseudo-count* $\alpha > 0$ to every cell:
+
+$$
+\hat\theta_{yj}^{\text{Laplace}} \;=\; \frac{c_{yj} + \alpha}{c_{y\cdot} + \alpha V}.
+$$
+
+When $\alpha = 1$, this is **Laplace add-one smoothing** (Laplace 1812 — yes, *that* Laplace). When $\alpha = 1/2$, **Krichevsky–Trofimov smoothing**. When $\alpha < 1$, the smoothing is light; when $\alpha \to \infty$, the estimate converges to the uniform $1/V$ regardless of data.
+
+The Bayesian interpretation: $\hat\theta_{yj}^{\text{Laplace}}$ is the **posterior mean** under a *symmetric Dirichlet prior* $\boldsymbol\theta_y \sim \mathrm{Dirichlet}(\alpha, \alpha, \ldots, \alpha)$. We make this precise in the next subsection.
+
+### §6.2 The Dirichlet–multinomial conjugate pair
+
+The Dirichlet distribution over the $(V-1)$-simplex $\{\boldsymbol\theta \in \mathbb{R}_{>0}^V : \sum_j \theta_j = 1\}$ has density
+
+$$
+\mathrm{Dir}(\boldsymbol\theta \mid \boldsymbol\alpha) \;=\; \frac{\Gamma(\alpha_0)}{\prod_j \Gamma(\alpha_j)} \prod_{j=1}^{V} \theta_j^{\alpha_j - 1}, \qquad \alpha_0 := \sum_j \alpha_j.
+$$
+
+**Conjugacy theorem.** If $\boldsymbol\theta \sim \mathrm{Dir}(\boldsymbol\alpha)$ and $\mathbf{c} \mid \boldsymbol\theta \sim \mathrm{Multinomial}(N, \boldsymbol\theta)$, then $\boldsymbol\theta \mid \mathbf{c} \sim \mathrm{Dir}(\boldsymbol\alpha + \mathbf{c})$.
+
+<TheoremBlock type="proof">
+
+Bayes' rule: the posterior density is proportional to (prior) × (likelihood),
+
+</TheoremBlock>
+
+$$
+p(\boldsymbol\theta \mid \mathbf{c}) \;\propto\; \prod_j \theta_j^{\alpha_j - 1} \cdot \prod_j \theta_j^{c_j} \;=\; \prod_j \theta_j^{(\alpha_j + c_j) - 1},
+$$
+
+which is the Dirichlet density up to a normalizing constant — i.e., $\mathrm{Dir}(\boldsymbol\alpha + \mathbf{c})$. The multinomial coefficient $N!/\prod c_j!$ depends only on $\mathbf{c}$, contributes to the normalizer but not the posterior shape. 
+
+**Posterior mean.** $\mathbb{E}[\boldsymbol\theta \mid \mathbf{c}] = (\boldsymbol\alpha + \mathbf{c})/(\alpha_0 + N)$. Component-wise, $\mathbb{E}[\theta_j \mid \mathbf{c}] = (\alpha_j + c_j)/(\alpha_0 + N)$.
+
+**Symmetric special case.** With $\boldsymbol\alpha = (\alpha, \ldots, \alpha)$, the posterior mean is exactly the Laplace formula $\hat\theta_j^{\text{Laplace}} = (c_j + \alpha)/(c_\cdot + \alpha V)$. The $\alpha = 1$ (uniform Dirichlet) corresponds to add-one smoothing; $\alpha = 1/2$ to Jeffreys' prior (Krichevsky–Trofimov).
+
+**This is the cleanest way to think about smoothing.** It's not a heuristic regularizer — it's the closed-form Bayesian posterior under a particular weakly-informative prior. The $\alpha$ parameter controls how much weight to put on the prior vs the data, and the choice of $\alpha = 1$ (uniform) is the smallest amount of smoothing that still makes the estimator well-defined.
+
+<LaplaceSmoothingPosterior client:visible />
+
+### §6.3 Add-$\alpha$ smoothing and cross-validation
+
+In practice, $\alpha$ is a hyperparameter and the right value depends on the dataset. Common heuristics:
+
+- **$\alpha = 1$ (Laplace add-one).** The default in scikit-learn. Works well on medium-sized vocabularies where most tokens are observed in most classes.
+- **$\alpha = 0.01$ or $0.1$ (light smoothing).** For very large vocabularies and rich training data — the prior should be down-weighted relative to the data.
+- **$\alpha = 10$ or higher (heavy smoothing).** For very small training sets where the empirical token frequencies are noisy.
+- **Cross-validation.** The principled choice. Tune $\alpha$ on a held-out fold to minimize log-loss or maximize accuracy.
+
+The §6 fixture below sweeps $\alpha \in \{0.01, 0.1, 1.0, 10.0\}$ on the 20-Newsgroups subset and shows the test-accuracy plateau in the middle.
+
+<Figure
+  src="/images/topics/naive-bayes/06_alpha_cv_curve.png"
+  alt="Five-fold cross-validation accuracy as a function of the Laplace α on the 20-Newsgroups baseball-vs-medicine task. The selected α is the maximizer."
+  caption="Five-fold cross-validation accuracy as a function of the Laplace α on the 20-Newsgroups baseball-vs-medicine task. The selected α is the maximizer."
+/>
+
+### §6.4 Posterior-predictive vs MAP
+
+For a fully Bayesian NB, predicting a new token $\tilde x$ given the training counts $\mathbf{c}$ uses the *posterior-predictive*:
+
+$$
+P(\tilde X = j \mid \mathbf{c}) \;=\; \int_{\Delta^{V-1}} \theta_j \, p(\boldsymbol\theta \mid \mathbf{c}) \, d\boldsymbol\theta \;=\; \mathbb{E}[\theta_j \mid \mathbf{c}] \;=\; \frac{\alpha_j + c_j}{\alpha_0 + N},
+$$
+
+which is exactly the Laplace formula. **For the Dirichlet–multinomial pair, the posterior-predictive equals the posterior mean.** This is a happy coincidence of the conjugacy — it doesn't hold in general (for Gaussian–Gaussian, the posterior-predictive has wider variance than a plug-in normal at the posterior mean).
+
+So the Laplace-smoothed plug-in classifier we've been using *is* the proper Bayesian posterior-predictive classifier — no integration over $\boldsymbol\theta$ needed. This is one reason naive Bayes with Laplace smoothing is so widely used: it's both empirically simple and theoretically defensible.
+
+**MAP vs posterior-mean.** The MAP estimator is $\hat\theta_{yj}^{\text{MAP}} = (\alpha_j + c_{yj} - 1)/(\alpha_0 + c_{y\cdot} - V)$ — same as the posterior mean but with $\alpha_j - 1$ in the numerator (the additional $-1$ comes from the Dirichlet density's $\theta_j^{\alpha_j - 1}$ exponent). When $\alpha_j < 1$, the MAP can be negative or undefined; the posterior mean is always well-defined and gives the more standard "add-$\alpha$" formula. We use posterior-mean throughout.
+
+### §6.5 Empirical Bayes choice of $\alpha$
+
+When cross-validation is too expensive (very large datasets, online learning), one can choose $\alpha$ by *empirical Bayes* — maximize the marginal likelihood $p(\mathbf{c} \mid \alpha)$ over $\alpha$:
+
+$$
+p(\mathbf{c} \mid \alpha) \;=\; \int p(\mathbf{c} \mid \boldsymbol\theta) p(\boldsymbol\theta \mid \alpha) d\boldsymbol\theta \;=\; \frac{\Gamma(\alpha V)}{\Gamma(N + \alpha V)} \prod_j \frac{\Gamma(\alpha + c_j)}{\Gamma(\alpha)}
+$$
+
+(closed form by Dirichlet–multinomial conjugacy). Maximize the log-marginal-likelihood numerically — it's smooth and one-dimensional, so any scalar optimizer works. Minka (2000) gives fixed-point iteration formulas that are faster than gradient descent.
+
+For typical text-classification problems, empirical Bayes and cross-validated $\alpha$ agree to within a factor of 2 on the optimal value. The main reason to prefer cross-validation is that it directly targets the loss you care about (accuracy, log-loss), whereas empirical Bayes targets marginal likelihood — which is a sensible proxy but not identical.
+
+## §7. The discriminative-vs-generative asymptotics
+
+### §7.1 The Ng–Jordan (2002) setup
+
+Ng and Jordan (2002) compare a generative classifier (Gaussian NB) with its discriminative counterpart (logistic regression) on a **shared model class**. The setup is essentially the cleanest possible:
+
+- Two equiprobable classes $Y \in \{0, 1\}$, $\pi_0 = \pi_1 = 1/2$.
+- Features $\mathbf{X} \in \mathbb{R}^d$ with class-conditional Gaussian: $\mathbf{X} \mid Y = 1 \sim \mathcal{N}(\boldsymbol\mu, \mathbf{I})$, $\mathbf{X} \mid Y = 0 \sim \mathcal{N}(-\boldsymbol\mu, \mathbf{I})$ for some unit-norm $\boldsymbol\mu \in \mathbb{R}^d$. Identity covariance, equal magnitudes — *both* the generative model (GNB with shared diagonal $\boldsymbol\Sigma = \mathbf{I}$) and the discriminative model (logistic regression with linear decision boundary) are correctly specified.
+- The Bayes-optimal classifier is the linear classifier $\hat y(\mathbf{x}) = \mathbb{1}\{\mathbf{x}^\top \boldsymbol\mu > 0\}$.
+
+GNB and logistic regression in this setup both converge to the Bayes-optimal classifier as $n \to \infty$. The interesting question is *how fast*.
+
+The Ng–Jordan headline result: GNB converges at rate $O(\sqrt{\log(d)/n})$ while logistic regression converges at rate $O(\sqrt{d/n})$. For excess error, that's $O(\log d / n)$ vs $O(d / n)$. At small $n$ and large $d$, GNB wins by a substantial margin; at large $n$, the discriminative classifier wins because it's asymptotically optimal in a *broader* sense (correctly classifies even when the Gaussian-likelihood assumption fails).
+
+### §7.2 Logistic regression's $O(d/n)$ rate
+
+Logistic regression maximizes the conditional log-likelihood:
+
+$$
+\hat{\mathbf{w}}_{\text{LR}} \;=\; \arg\max_{\mathbf{w}} \sum_{i=1}^{n} \bigl[\, y_i \log\sigma(\mathbf{x}_i^\top \mathbf{w}) + (1-y_i) \log(1 - \sigma(\mathbf{x}_i^\top \mathbf{w})) \,\bigr],
+$$
+
+where $\sigma$ is the sigmoid. Standard MLE asymptotics: $\sqrt n (\hat{\mathbf{w}}_{\text{LR}} - \mathbf{w}^\star) \overset{d}{\to} \mathcal{N}(\mathbf{0}, \mathbf{I}^{-1})$ where $\mathbf{I}$ is the Fisher information. For the Ng–Jordan setup, the Fisher information matrix is $\mathbf{I}(\mathbf{w}^\star) = \mathbb{E}[\sigma(\mathbf{X}^\top \mathbf{w}^\star)(1-\sigma)\mathbf{X}\mathbf{X}^\top]$, which scales like $\mathbf{I}_d$ at the truth. So $\|\hat{\mathbf{w}}_{\text{LR}} - \mathbf{w}^\star\|^2 = O_p(d/n)$, and the excess 0/1 risk is also $O(d/n)$ to leading order (the constant depends on the marginal-density gap at the decision boundary).
+
+**Sample complexity:** to reach $\epsilon$ excess error, logistic regression needs $n = O(d / \epsilon)$ samples.
+
+### §7.3 Gaussian NB's $O(\log(d)/n)$ rate — the union-bound argument
+
+Gaussian NB with shared diagonal covariance estimates the per-coordinate class means and a shared per-coordinate variance. Under the Ng–Jordan setup the variance is known to be 1, so the only parameters are $\hat\mu_j^{+} := \frac{1}{n_1}\sum_{i:y_i=1} x_{ij}$ and $\hat\mu_j^{-} := \frac{1}{n_0}\sum_{i:y_i=0} x_{ij}$. The classifier output reduces to the sign of $\mathbf{x}^\top (\hat{\boldsymbol\mu}^+ - \hat{\boldsymbol\mu}^-)$.
+
+The estimate error decomposes per coordinate: $\hat\mu_j^+ - \mu_j$ is Gaussian with variance $1/n_1 \le 2/n$ (since $n_1 \ge n/4$ with high probability by Hoeffding). By a sub-Gaussian union bound, the max-coordinate error is
+
+$$
+\max_{j \le d} |\hat\mu_j^+ - \mu_j| \;=\; O_p\!\left(\sqrt{\log d / n}\right).
+$$
+
+This $\sqrt{\log d}$ instead of $\sqrt{d}$ is what makes GNB's rate dimension-light: errors at the $d$ coordinates are *averaged* (via the dot product in the decision rule), not summed in $L^2$. By Cauchy–Schwarz and the union-bound max-coordinate control, the excess 0/1 risk is $O(\log(d)/n)$.
+
+**Sample complexity:** to reach $\epsilon$ excess error, GNB needs $n = O(\log d / \epsilon)$ samples.
+
+**Caveat — when this works and when it doesn't.** The Ng–Jordan rate assumes the GNB model is *correctly specified* (true class-conditional is Gaussian with the assumed covariance structure). On real data the assumption is wrong, and GNB inherits a model-misspecification bias term that does not vanish with $n$. The $O(\log d / n)$ rate refers only to the variance term; the asymptotic gap to the Bayes risk is the bias term. So at large $n$, logistic regression beats GNB because the misspecification bias dominates the variance — that's the "crossover."
+
+### §7.4 The crossover phenomenon — empirical verification
+
+We run the Ng–Jordan §3 simulation: vary $n$ from 20 to 5000, fix $d = 100$ (a regime where $\log d \approx 4.6$ is much smaller than $d$), and plot test error for Gaussian NB and unregularized logistic regression across 15 replicates per sample size. The two rates predict that GNB approaches its asymptotic error *faster* than logistic regression — its learning curve should be steeper at small-to-moderate $n$ while logistic regression catches up only once $n / d$ is large.
+
+That's what the empirical curve shows. Between $n = 80$ and $n = 320$ — the sweet spot where the $\log d / n$ rate is favorable but $d / n$ is still pessimistic — GNB pulls ahead by about five percentage points (test error ≈ 0.22 vs ≈ 0.27 at $n = 320$). Both methods converge to the Bayes-error floor near $0.17$ once $n \gtrsim 1000$.
+
+At very small $n$ (here $n = 20$ to $40$), logistic regression edges out GNB by a thin margin. The theoretical asymptotics don't pin down constants, and at sample sizes barely larger than the feature count, the precise behavior depends on which estimator's per-coordinate variance bites first. The clean "NB wins at small $n$" story emerges most clearly at higher $d$ — toggle the viz to $d = 200$ to see the small-$n$ GNB-wins region widen substantially, exactly as the rate inequality predicts.
+
+<Figure
+  src="/images/topics/naive-bayes/07_ng_jordan_crossover.png"
+  alt="Test-error learning curves for Gaussian NB and unregularized logistic regression on the Ng–Jordan synthetic setup at d = 100. GNB approaches the Bayes floor faster between n ≈ 80 and n ≈ 320; both converge near n = 2560."
+  caption="Test-error learning curves for Gaussian NB and unregularized logistic regression on the Ng–Jordan synthetic setup at d = 100. GNB approaches the Bayes floor faster between n ≈ 80 and n ≈ 320; both converge near n = 2560."
+/>
+
+<DvGCrossoverPlot client:visible />
+
+### §7.5 Caveats: misspecification, regularization, and "no free lunch"
+
+Three caveats on the §7.4 verification.
+
+**Correct specification matters.** The simulation is GNB-optimal: features are independent given the class, true covariance is $\mathbf{I}$. On real data the model is misspecified and GNB's asymptotic bias may dominate the small-$n$ variance advantage entirely. The Ng–Jordan paper itself reports mixed results on UCI datasets — GNB sometimes wins, sometimes loses, with no clean rate-prediction.
+
+**Regularization changes the story.** $\ell_2$-regularized logistic regression effectively reduces $d$ via shrinkage, narrowing the gap to GNB at small $n$. $\ell_1$-regularized logistic (the lasso from `high-dimensional-regression` §11.1) is even more competitive: sample complexity becomes $O(s \log d / n)$ where $s$ is the true sparsity, matching GNB's dimension-light rate when $s = O(\log d)$. So the §7.4 GNB-wins region narrows when both methods are tuned via cross-validation.
+
+**No free lunch.** Generative classifiers win when their generative model is approximately right. When it's badly wrong, they lose. There's no universal classifier — the right answer depends on what you know about the data-generating process.
+
+## §8. Calibration and class-probability estimation
+
+### §8.1 Why naive Bayes is miscalibrated
+
+A classifier is **calibrated** if, among the test examples for which it predicts $\hat P(Y = 1 \mid \mathbf{x}) = p$, the fraction with $Y = 1$ is approximately $p$. NB is rarely calibrated — its predicted probabilities cluster near 0 and 1 while the true posterior takes intermediate values for most inputs. The phenomenon is called **overconfidence**.
+
+The mechanism (Domingos–Pazzani 1997): the conditional-independence assumption *multiplies* log-likelihoods that aren't really independent, so correlated evidence is counted multiple times. Suppose two features $X_1, X_2$ are perfectly correlated within each class — the second feature carries no new information beyond the first — but NB treats them as independent. NB's log-likelihood ratio includes the same evidence twice, doubling its magnitude. Posteriors are pushed twice as far from $1/2$ as they should be: a true posterior of $0.7$ becomes an NB-estimated posterior of $\approx 0.91$.
+
+But the *sign* of the log-likelihood ratio is preserved. Overconfidence doesn't flip classifications; it just exaggerates them. That's why NB classifies well (rank-preserving) but calibrates poorly (magnitude-distorted). Theorem 3 of Domingos and Pazzani (1997) makes this precise for a class of correlated-feature NB models.
+
+<Figure
+  src="/images/topics/naive-bayes/08_nb_proba_histogram.png"
+  alt="Predicted P(Y = 1 | x) from Multinomial NB on the 20-Newsgroups test split. Probabilities pile up at 0 and 1 — the characteristic NB overconfidence."
+  caption="Predicted P(Y = 1 | x) from Multinomial NB on the 20-Newsgroups test split. Probabilities pile up at 0 and 1 — the characteristic NB overconfidence."
+/>
+
+### §8.2 Platt scaling — fit a sigmoid on the scores
+
+Platt (1999) proposed fitting a one-dimensional logistic regression on the raw classifier scores to recover calibration:
+
+$$
+\hat P_{\text{Platt}}(Y = 1 \mid \mathbf{x}) \;=\; \sigma(A \cdot s(\mathbf{x}) + B),
+$$
+
+where $s(\mathbf{x})$ is the raw classifier output (for NB, the log-posterior-odds), and $A, B$ are fit by MLE on a **held-out calibration set** (never the training set!). Two parameters only, so the fit is robust to small calibration sets.
+
+When to use Platt scaling: classifier scores are already monotone in the true posterior (NB satisfies this in practice) and the transformation is approximately sigmoid-shaped. Works well for SVMs and naive Bayes in the "moderate-sample-but-overconfident" regime.
+
+**Critical detail.** The held-out set must be separate from both training and final testing. Fitting Platt on the training set and evaluating on the same set produces in-sample-perfect calibration that's meaningless out-of-sample. The recipe: split data 50/50 into train/calibration, fit the classifier on train, fit Platt on calibration. Re-split if data is precious.
+
+### §8.3 Isotonic regression — nonparametric monotone fit
+
+Zadrozny and Elkan (2002) proposed **isotonic regression** as a nonparametric alternative to Platt scaling. The idea: fit a monotone-nondecreasing function $g$ that minimizes $\sum_i (y_i - g(s_i))^2$ over $g \in \{\text{monotone nondecreasing}\}$.
+
+Closed-form solution via the **pool-adjacent-violators (PAV)** algorithm: walk through the sorted-by-score data, replacing any violation $g(s_i) > g(s_{i+1})$ with their average, repeat until monotone. $O(n)$ time, no hyperparameters.
+
+When isotonic wins over Platt: large held-out sets (PAV becomes a smooth nonparametric estimator), or when the score-to-posterior map is *not* approximately sigmoid. When Platt wins: small held-out sets (isotonic overfits the calibration set when $n_{\text{calib}}$ is small).
+
+The §8.3 fixture compares both on the 20-Newsgroups task — see the next code cell.
+
+<Figure
+  src="/images/topics/naive-bayes/08_reliability_diagram.png"
+  alt="Reliability diagrams for raw NB, Platt-scaled, and isotonic-regressed probabilities on the 20-Newsgroups task. Platt brings the calibration curve closest to the diagonal."
+  caption="Reliability diagrams for raw NB, Platt-scaled, and isotonic-regressed probabilities on the 20-Newsgroups task. Platt brings the calibration curve closest to the diagonal."
+/>
+
+<CalibrationReliabilityDiagram client:visible />
+
+### §8.4 Calibration metrics: Brier, log-loss, ECE
+
+Three standard metrics for evaluating calibration quality.
+
+**Brier score.** Mean squared error between predicted probability and binary label:
+
+$$
+\text{Brier} \;=\; \frac{1}{n} \sum_{i=1}^{n} (p_i - y_i)^2.
+$$
+
+Decomposes (Murphy 1973) into **reliability + resolution − uncertainty**: low Brier requires both calibration *and* discrimination. Range $[0, 1]$, lower is better.
+
+**Log-loss (cross-entropy).** $-\frac{1}{n}\sum_i [y_i \log p_i + (1-y_i)\log(1-p_i)]$. Strictly proper scoring rule — only minimized when $p_i = P(Y = 1 \mid \mathbf{x}_i)$ exactly. Penalizes overconfident *wrong* predictions much more harshly than Brier (logarithmic vs quadratic blow-up near $p = 0$ or $p = 1$).
+
+**Expected Calibration Error (ECE).** Bin predictions into $K$ bins, compare per-bin mean predicted probability to per-bin frequency of positives:
+
+$$
+\text{ECE} \;=\; \sum_{k=1}^{K} \frac{|B_k|}{n} \bigl| \overline{p}_{B_k} - \overline{y}_{B_k} \bigr|.
+$$
+
+Hand-tunable via $K$; sensitive to binning strategy. Guo et al. (2017) recommend ECE for reporting calibration on classification tasks.
+
+**Which loss for which task?** Use log-loss to *train* (it's the proper-scoring-rule MLE); use Brier or ECE to *report* (more interpretable). For ranking-only tasks (search relevance, anomaly detection) where calibration doesn't matter, AUC is the right metric instead.
+
+## §9. Beyond strict independence: structure-learning extensions
+
+### §9.1 Tree-Augmented Naive Bayes (TAN) via Chow–Liu
+
+The simplest principled relaxation of the strict-independence assumption: allow each feature $X_j$ to have *one* additional parent in the DAG (besides $Y$). The resulting graph is a tree over the features rooted at $Y$. The joint factorizes as
+
+$$
+p(y, \mathbf{x}) \;=\; p(y) \prod_{j=1}^{d} p(x_j \mid y, x_{\pi(j)}),
+$$
+
+where $\pi(j)$ is the feature-parent of $X_j$ (or $\emptyset$ for the tree root).
+
+**How do you pick the tree?** Chow and Liu (1968) — twenty years before Friedman–Geiger–Goldszmidt 1997 brought it to classification — proved that the **maximum-likelihood tree** is the **maximum-mutual-information spanning tree** of the complete weighted graph on the features. Edge weights are conditional mutual informations $I(X_i; X_j \mid Y)$, computed from the training data. Run Kruskal's or Prim's algorithm. $O(d^2)$ to compute MIs, $O(d^2 \log d)$ for the MST. Choose any feature as the root; the choice doesn't affect classification accuracy (the joint factorization is the same).
+
+**Why TAN often beats NB.** TAN captures the dominant feature dependencies (those with the largest pairwise MI), reducing the "double-counting redundant evidence" failure mode of strict NB. On most UCI benchmarks, TAN classifies better than NB and produces better-calibrated probabilities, at the cost of $K \cdot d \cdot V^2$ parameters (vs $K \cdot d \cdot V$ for NB).
+
+<ChowLiuTANStructureLearner client:visible />
+
+### §9.2 Averaged One-Dependence Estimators (AODE)
+
+Webb, Boughton, and Wang (2005) proposed **AODE** as an ensemble alternative to TAN. Instead of picking *one* spanning tree, AODE averages over all $d$ classifiers that have each single feature $X_j$ as a "super-parent" (every other feature depends on $X_j$ and on $Y$).
+
+$$
+\hat P_{\text{AODE}}(y \mid \mathbf{x}) \;\propto\; \sum_{j=1}^{d} \mathbb{1}\{n_{y, x_j} \ge m\} \cdot \hat P(y, x_j) \prod_{i \ne j} \hat P(x_i \mid y, x_j),
+$$
+
+where $m$ (often 30) is a frequency threshold to avoid unreliable conditional estimates.
+
+**Advantages over TAN.** No structure search (deterministic ensemble), more robust against any single dependency choice being wrong, often beats TAN on benchmarks. **Disadvantage.** Storage: $K \cdot d^2 \cdot V^2$ parameters — substantial at large vocabulary. Suitable for moderate-feature-count tabular tasks; not ideal for text.
+
+**Other Bayesian-network extensions.** Selective NB (Langley & Sage 1994) selects a feature subset before fitting. K-dependence Bayesian classifier (Sahami 1996) generalizes TAN to up to $K$ parents per feature. Hidden NB (Jiang–Zhang–Cai 2009) introduces a latent hidden parent. All sit on the spectrum between NB and the full joint, trading parameters for expressiveness.
+
+### §9.3 Hidden Naive Bayes
+
+Jiang, Zhang, and Cai (2009) introduced **Hidden Naive Bayes (HNB)** as another structural extension: each feature $X_j$ depends on $Y$ and on a *hidden parent* $X_{hp(j)}$ that is a weighted combination of all other features. The weights are computed from mutual information; the hidden-parent effect aggregates structure across all features rather than picking just one.
+
+HNB's joint is
+
+$$
+P(y, \mathbf{x}) \;=\; P(y) \prod_{j=1}^{d} P(x_j \mid y, x_{hp(j)}),
+$$
+
+where $P(x_j \mid y, x_{hp(j)}) = \sum_{i \ne j} W_{ji} P(x_j \mid y, x_i)$ and $W_{ji}$ is the normalized conditional mutual information $I(X_j; X_i \mid Y)$.
+
+Reported results: HNB beats NB and is competitive with TAN/AODE while being computationally cheaper than AODE (no $V^2$ count tables). Practical use is more limited than TAN, but for low-to-moderate dimensional tabular classification it's another option.
+
+### §9.4 Connection to latent Dirichlet allocation
+
+The Multinomial NB story — one $\boldsymbol\theta_y$ per class, documents drawn from the corresponding multinomial — is a special case of **Latent Dirichlet Allocation (LDA, Blei–Ng–Jordan 2003)**. LDA extends NB by allowing each document to be a *mixture* of class-like "topics" rather than belonging to a single class:
+
+$$
+\text{LDA: }\quad \boldsymbol\phi_d \sim \mathrm{Dir}(\alpha), \quad z_n \sim \mathrm{Cat}(\boldsymbol\phi_d), \quad w_n \sim \mathrm{Cat}(\boldsymbol\beta_{z_n}).
+$$
+
+Each document $d$ has a topic distribution $\boldsymbol\phi_d$, each word $w_n$ in the document is drawn from a topic-specific vocabulary distribution $\boldsymbol\beta_{z_n}$. NB recovers as the special case where each document's topic distribution is a one-hot vector (i.e., the class label).
+
+**Why this matters for NB.** It positions NB as the simplest, most degenerate member of a much larger family of *latent-variable text models* — LDA, hierarchical Dirichlet processes, dynamic topic models. Each adds structural flexibility (mixed topics, topic-document correlations, time evolution) at the cost of harder inference (variational methods, MCMC). NB is the limit case where the latent variable degenerates to an observed class label and inference becomes one MLE.
+
+### §9.5 Naive Bayes in the broader graphical-models family
+
+The structural progression — NB, TAN, AODE, full Bayesian network — sits at one end of a spectrum that the **graphical-models** topic on formalstatistics (when shipped) will treat in full generality:
+
+- **Naive Bayes** = star graph rooted at $Y$ (this topic, §1–§8).
+- **TAN** = tree over features rooted at $Y$ (this topic, §9.1).
+- **AODE** = ensemble of star-graphs with each feature as a super-parent (this topic, §9.2).
+- **General Bayesian network classifier** = arbitrary DAG with $Y$ as a vertex.
+- **Latent Dirichlet allocation** = NB lifted to mixture-of-multinomials with latent topics (§9.4).
+- **Markov random fields / conditional random fields** = undirected analogs; CRF is the discriminative undirected counterpart to MRF.
+
+Naive Bayes is the *limit of simplicity* on this spectrum. Many tasks that look like they need more structure turn out to be fine with NB; many that look amenable to NB turn out to need more structure. The diagnostic question is "do feature dependencies, after conditioning on $Y$, materially affect classification?" — if yes, move to TAN or beyond; if no, NB is plenty.
+
+## §10. Connections, applications, and limits
+
+### §10.1 Text classification as the canonical success story
+
+Wang and Manning (2012) revisited naive Bayes vs SVMs vs logistic regression on a battery of text-classification tasks (sentiment, topic, news categorization). They found that **a properly tuned Multinomial NB (with log-count features and bigram extension)** is competitive with or beats much more complex methods on most benchmarks, especially with limited training data.
+
+Their preferred variant — *NB-SVM* — combines NB log-likelihood-ratio features with an SVM linear classifier, getting the best of both: NB's small-$n$ advantage and SVM's large-$n$ asymptotic optimality. On 10 of 11 benchmark datasets, NB-SVM beats every published baseline through 2012 — including ones with elaborate feature engineering.
+
+The Wang–Manning takeaway: **for text classification, start with NB before reaching for anything more complex.** It's fast, it's interpretable, it's competitive, and any model you reach for next should beat NB on a held-out test set before being worth the additional complexity.
+
+### §10.2 The ranking-vs-calibration thesis
+
+Domingos and Pazzani's 1997 paper had a more general thesis than just "NB works on text" — they argued that **classifiers that estimate posterior probabilities poorly can still rank classes correctly**, and many real-world classification tasks need only the ranking. Hand (2006) develops this further: most "improvements" in classifier accuracy reported in the ML literature are within the noise of the within-classifier variance from random data splits.
+
+For tasks where ranking is what matters (search relevance, anomaly scores, top-K prediction), NB is competitive with much more complex methods. For tasks where calibrated probabilities matter (medical risk scores, financial forecasts, downstream Bayesian updates), NB's overconfidence is a real liability — fix it with Platt scaling or isotonic regression (§8), or use a discriminative method.
+
+The §3.3 plug-in excess-risk bound formalizes this: classification accuracy is sensitive to the *sign* of $\hat\eta - 1/2$ at each $\mathbf{x}$, not to the *magnitude*. NB's miscalibration mostly preserves signs (overconfidence in the same direction as truth), hence the ranking-vs-calibration separation.
+
+### §10.3 Where naive Bayes breaks down
+
+Three failure modes worth flagging.
+
+**Strongly correlated features.** Duplicate or near-duplicate features amplify NB's overconfidence (§8.1) and can cause the *sign* of the log-likelihood ratio to be wrong, not just the magnitude. Mitigations: TAN/AODE structure (§9), feature selection (Yang–Pedersen 1997) to remove redundancy, or simply switch to logistic regression.
+
+**Calibrated-probability requirements.** Medical risk scores, financial probabilities, anything fed into a downstream Bayesian update — NB's raw probabilities are not trustworthy. Always Platt-scale or isotonic-regress on a held-out set, or use a discriminative method with proper-loss training (cross-entropy).
+
+**Long-range dependencies.** Text classification with token-order-sensitive structure (sentiment of "not good"), images with spatial structure, time series — NB's bag-of-features representation ignores order. Use sequence models (RNN, Transformer), structured-output models (CRF), or convolutional architectures instead. NB is for the bag-of-features regime; outside it, it's not the right tool.
+
+<NBVsLogisticOnCorrelatedFeatures client:visible />
+
+### §10.4 Forward pointers in formalML
+
+NB connects forward to several formalML topics.
+
+- **`conformal-prediction`** (T4) — NB is a natural base classifier for split-conformal classification. Compute raw NB class-probability scores, calibrate on a held-out set via quantile-thresholding, output a prediction set with marginal coverage. The §8 calibration framework developed here is what makes NB suitable: raw NB probabilities are too overconfident to be conformal scores directly, but Platt-scaled or isotonic-regressed scores work well. See conformal-prediction §3.6 for the implementation.
+- **`bayesian-neural-networks`** (T5) — At the other end of the generative-classifier spectrum from NB. BNNs treat the network weights as random variables with priors; the classifier output is a posterior over class labels rather than a point estimate. NB is the simplest generative classifier (one weight per feature per class); BNNs are the most complex (millions of weights with Bayesian posteriors). The §7 generative-vs-discriminative trade-offs apply throughout.
+- **`high-dimensional-regression`** (T2 sibling) — The §7 discriminative-vs-generative comparison maps onto §11.1's logistic-lasso vs NB comparison. When sparsity is the dominant structure, sparse logistic regression beats NB. When the small-$n$ regime dominates, NB beats sparse logistic regression. The crossover depends on $d$, $n$, $s$, and the true generative structure.
+- **`prediction-intervals`** (T4) — Calibrated NB probabilities give natural Bayesian prediction intervals on the per-class probability scale. See prediction-intervals §4 for the construction.
+
+### §10.5 Closing thesis
+
+Naive Bayes endures, despite being theoretically suspect, because it occupies a specific niche extremely well: **the small-$n$, large-$d$, ranking-dominated regime**. In that niche, the dimension-light sample complexity ($O(\log d / n)$) dominates the misspecification bias, the ranking-preserving nature of overconfidence preserves classification quality, and the simple log-linear structure makes training and prediction fast enough to deploy at any scale.
+
+Outside that niche — when $n$ is large enough for discriminative methods to converge, when calibrated probabilities are required for downstream decisions, when feature dependencies dominate the classification signal — naive Bayes is the wrong tool. But the right answer is rarely to ignore it. The Wang–Manning advice is reasonable: **always start with NB and compare to it.** A more complex method that doesn't beat NB on a held-out set is not worth its additional cost.
+
+The mathematical interest of NB extends beyond practical engineering. It's the simplest member of a much richer family — directed graphical models — and the cleanest setting in which to develop the generative-vs-discriminative classifier theory that pervades modern ML. The §7 Ng–Jordan asymptotic comparison applies, with modifications, to any pair of generative + discriminative classifiers fit on the same hypothesis class. The §8 calibration framework applies to *any* miscalibrated classifier, not just NB. The §3 plug-in excess-risk bound is the canonical formalization of "good ranking with bad calibration." Naive Bayes is a 60-year-old method, and its pedagogical value remains as strong as ever.
+
+## Connections and Further Reading
+
+**Internal formalML topics this builds on:**
+- `concentration-inequalities` — direct prerequisite for the §7 union-bound rate proofs.
+- `kl-divergence` and `shannon-entropy` — drive the §9.1 Chow–Liu mutual-information construction.
+- `pac-learning` — rigorous sample-complexity vocabulary for §7.
+- `high-dimensional-regression` — §7 comparison with logistic regression (§11.1 sparse logistic).
+
+**Internal formalML topics this informs:**
+- `conformal-prediction` — calibrated NB scores feed split-conformal classification.
+- `bayesian-neural-networks` — the deep generative-classifier extension of NB.
+- `prediction-intervals` — Bayesian NB posterior-predictive gives natural class-probability intervals.
+
+**Sister-site links (cross-site frontmatter):**
+- `formalstatistics/discrete-distributions` — Bernoulli / Multinomial / Categorical foundations for §5.
+- `formalstatistics/bayesian-foundations-and-prior-selection` — Dirichlet–multinomial conjugacy for §6.
+- `formalstatistics/maximum-likelihood` — MLE machinery for §§4–5.
+- `formalstatistics/exponential-families` — the log-linear structure of §2.2.
+- `formalstatistics/multivariate-distributions` — multivariate Gaussian background for §4.
+- `formalcalculus/multiple-integrals` — Dirichlet simplex and Gaussian integrals.
+- `formalcalculus/derivative` — MLE first-order conditions.
+
+**External references** appear in the brief and the MDX frontmatter. The foundational triad to read first: Domingos & Pazzani (1997) for the why-NB-works-despite-being-wrong analysis, Ng & Jordan (2002) for the discriminative-vs-generative asymptotic comparison, McCallum & Nigam (1998) for the canonical Multinomial-vs-Bernoulli study on text. For a contemporary survey: Murphy (2012) Chapter 3 (NB as the simplest probabilistic classifier) and Chapter 4 (the Gaussian-NB / LDA / QDA family).

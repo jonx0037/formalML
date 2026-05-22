@@ -80,8 +80,8 @@ export const tracks = [
     label: 'Supervised Learning',
     layer: 'ML Methodology',
     description:
-      'Nonparametric and high-dimensional supervised learning \u2014 kernel and local-polynomial regression, lasso and debiased lasso, p \u226b n asymptotics.',
-    planned: ['naive-bayes'],
+      'Nonparametric and high-dimensional supervised learning \u2014 kernel and local-polynomial regression, lasso and debiased lasso, p \u226b n asymptotics, and generative classification via naive Bayes.',
+    planned: [],
     calculusDependent: false,
   },
   {

@@ -41,10 +41,10 @@ This document also does not include per-topic content plans for the 22 newly ide
 
 ### §2.1 Headline numbers
 
-- **32 total new topics** across 5 new application-focused tracks (T2–T6)
+- **33 total new topics** across 5 new application-focused tracks (T2–T6) (was 32; T2 expanded to 4 with the addition of `naive-bayes` on 2026-05-22)
 - **Existing formalML state:** 35 topics across 8 complete math-foundation tracks
-- **Final buildout target:** 67 topics across 13 tracks
-- **Perfect discharge match:** 32 topics absorb all 32 distinct formalstatistics forward-pointer slugs (by construction of this inventory)
+- **Final buildout target:** 68 topics across 13 tracks
+- **Discharge match:** the original 32 inventory absorbed all 32 distinct formalstatistics forward-pointer slugs; `naive-bayes` (33rd) additionally discharges one inbound deferred reciprocal from `formalStatistics/discrete-distributions`.
 - **Estimated total authoring time:** 18–24 months at the Topic-30 cadence, assuming interleaving with other commitments continues
 
 ### §2.2 At-a-glance topic inventory
@@ -62,6 +62,7 @@ This document also does not include per-topic content plans for the 22 newly ide
 | 7 | `kernel-regression` | T2 | intermediate | 1 | Topic 30 |
 | 8 | `local-regression` | T2 | intermediate | 1 | Topic 30 |
 | 9 | `high-dimensional-regression` | T2 | advanced | 3 | Topics 22/23/32 |
+| 9b | `naive-bayes` | T2 | advanced | 1 (deferred-reciprocal) | formalStatistics `discrete-distributions` |
 | 10 | `clustering` | T3 | intermediate | 1 | Topic 30 |
 | 11 | `density-ratio-estimation` | T3 | advanced | 1 | Topic 30 |
 | 12 | `normalizing-flows` | T3 | advanced | 1 | Topic 30 |
@@ -90,7 +91,7 @@ This document also does not include per-topic content plans for the 22 newly ide
 
 ### §2.3 Track distribution
 
-- T2 Supervised Learning: 3 topics
+- T2 Supervised Learning: 4 topics (expanded from 3 on 2026-05-22 with `naive-bayes`)
 - T3 Unsupervised & Generative: 3 topics
 - T4 Nonparametric & Distribution-Free: 6 topics
 - T5 Bayesian & Probabilistic ML: 13 topics (the biggest track — split possibility noted in §3.6)
@@ -120,19 +121,20 @@ The 8 existing math-foundation tracks collectively constitute formalML's "Founda
 
 When the `/paths` page is revised to accommodate the new tracks, the 8 existing math tracks should appear as a grouped "Foundations" section and the 5 new tracks should appear as a grouped "ML Methodology" section. This is a presentation-layer change for the existing `/paths` page; no backend data restructuring is required beyond the track additions documented here.
 
-### §3.2 T2 — Supervised Learning (3 topics)
+### §3.2 T2 — Supervised Learning (4 topics)
 
-**Scope.** Nonparametric and high-dimensional supervised-learning methodology, centered on covariate-conditional estimation and the modern theory of regression in $p \gtrsim n$ regimes.
+**Scope.** Nonparametric and high-dimensional supervised-learning methodology, centered on covariate-conditional estimation and the modern theory of regression in $p \gtrsim n$ regimes, plus the canonical generative-classifier complement.
 
 | Slug | Difficulty | One-line scope |
 |---|---|---|
 | `kernel-regression` | intermediate | Nadaraya–Watson as the covariate-conditional extension of KDE; leading-order bias/variance with the design-density correction; curse of dimensionality. |
 | `local-regression` | intermediate | Fan–Gijbels local-polynomial extension; boundary-bias elimination at odd degree; equivalent-kernel formulation. |
 | `high-dimensional-regression` | advanced | $p \gg n$ regression asymptotics, restricted-eigenvalue conditions, lasso $\ell_2$-consistency, debiased lasso, minimax bounds. Absorbs the engineering `logistic-regression` scope. |
+| `naive-bayes` | advanced | Generative classifier under conditional-independence; Bayes-optimal classifier theory and plug-in approximation; Gaussian / Multinomial / Bernoulli variants with full MLE; Laplace smoothing as conjugate Dirichlet update; Ng–Jordan discriminative-vs-generative asymptotics ($O(\log d / n)$ vs $O(d / n)$); Domingos–Pazzani ranking-vs-calibration analysis; TAN / AODE structure-learning extensions. |
 
-**Placement rationale.** These three share the "covariate-conditional estimation" narrative and the kernel-methods / penalized-estimation mathematical substrate. Gaussian processes could be cross-listed here, but they're placed in T5 Bayesian because the Bayesian framing is essential to their identity (see §3.5).
+**Placement rationale.** These four share the "supervised covariate-to-label" narrative. The first three center on regression/continuous-response covariate-conditional estimation (the kernel-methods / penalized-estimation mathematical substrate); `naive-bayes` joins as the generative-classifier complement that discharges the deferred reciprocal from formalStatistics' `discrete-distributions`. Gaussian processes could be cross-listed here, but they're placed in T5 Bayesian because the Bayesian framing is essential to their identity (see §3.5).
 
-**Track size caveat.** Three topics are thin relative to the existing 4-per-track norm. That's acceptable here because most supervised-learning methods are implemented as specific techniques across other tracks (convex analysis → gradient descent in Optimization; spectral methods in Linear Algebra; GNNs in Graph Theory). T2 is the "what's left over" track for nonparametric and high-dim supervised methodology specifically.
+**Track size note.** Four topics aligns with the existing 4-per-track norm. T2 covers what's left over in supervised methodology after the major techniques are absorbed by adjacent tracks (convex analysis → gradient descent in Optimization; spectral methods in Linear Algebra; GNNs in Graph Theory). The track now spans both the regression branch (`kernel-regression`, `local-regression`, `high-dimensional-regression`) and the classification branch (`naive-bayes`).
 
 ### §3.3 T3 — Unsupervised & Generative (3 topics)
 
@@ -350,7 +352,7 @@ When `pnpm audit:cross-site` was run after PR #52, [deferred-reciprocals.md](def
 | **A. In strategic doc inventory (will discharge when topic ships)** | 18 | None — covered by §4 sequencing. Audit will retire these as topics ship. | `bayesian-neural-networks`, `causal-inference-methods`, `gaussian-processes`, `generalization-bounds`, `high-dimensional-regression`, `meta-learning`, `mixed-effects`, `normalizing-flows`, `probabilistic-programming`, `quantile-regression`, `reversible-jump-mcmc`, `riemann-manifold-hmc`, `sequential-monte-carlo`, `sparse-bayesian-priors`, `stochastic-gradient-mcmc`, `variational-inference`, `conformal-prediction`, `prediction-intervals` |
 | **B. Already-published formalML topics (sister-site reciprocal needed now)** | ~6 | Open a sister-site PR adding the reciprocal entry now — no formalML work needed. | `bayesian-nonparametrics`, `information-geometry`, `pac-learning`, `measure-theoretic-probability`, `shannon-entropy`, `minimum-description-length` |
 | **C. Slug drift / wrong-name pointers from sister sites** | ~6 | Sister-site PR to fix the slug. Formalstatistics points at `principal-component-analysis` (formalML has `pca-low-rank`); `variational-methods` (formalML inventory: `variational-inference`); `stochastic-gradient-descent` (formalML has `gradient-descent`). The audit's "Slug drift" section names each. | `principal-component-analysis` → `pca-low-rank`; `variational-methods` → `variational-inference`; `stochastic-gradient-descent` → `gradient-descent` |
-| **D. Out-of-inventory slugs pointed at but unplanned** | ~28 | Decision per slug: (a) fold into an inventory topic as a named section; (b) redirect the sister-site pointer per §5.4 / §7.3; (c) add to a future inventory expansion. None of these block first-wave authoring. | `ab-testing`, `ab-testing-platforms`, `always-valid-inference`, `bayesian-inference`, `bayesian-model-averaging`, `bias-variance-tradeoff`, `cross-entropy-loss`, `cross-fitting`, `cross-validation`, `differential-privacy`, `diffusion-models`, `dimensionality-reduction`, `embedding-spaces`, `empirical-risk-minimization`, `ensemble-methods`, `expectation-maximization`, `feature-engineering`, `feature-selection-and-multiplicity`, `fourier-neural-operators`, `generalized-method-of-moments`, `generative-modeling`, `graphical-models`, `high-dimensional-testing-knockoffs`, `importance-sampling`, `information-bottleneck`, `kernel-methods`, `metric-learning`, `model-comparison`, `monte-carlo-methods`, `naive-bayes`, `online-fdr`, `optimization-theory`, `post-selection-inference`, `probability-spaces`, `regression`, `regularization`, `reinforcement-learning`, `representation-learning`, `robust-statistics`, `score-matching`, `spectral-methods`, `statistical-learning-theory`, `structural-risk-minimization`, `wasserstein-distances`, `weight-decay` |
+| **D. Out-of-inventory slugs pointed at but unplanned** | ~27 | Decision per slug: (a) fold into an inventory topic as a named section; (b) redirect the sister-site pointer per §5.4 / §7.3; (c) add to a future inventory expansion. None of these block first-wave authoring. (`naive-bayes` removed from this bucket on 2026-05-22 — promoted to T2 inventory item #9b.) | `ab-testing`, `ab-testing-platforms`, `always-valid-inference`, `bayesian-inference`, `bayesian-model-averaging`, `bias-variance-tradeoff`, `cross-entropy-loss`, `cross-fitting`, `cross-validation`, `differential-privacy`, `diffusion-models`, `dimensionality-reduction`, `embedding-spaces`, `empirical-risk-minimization`, `ensemble-methods`, `expectation-maximization`, `feature-engineering`, `feature-selection-and-multiplicity`, `fourier-neural-operators`, `generalized-method-of-moments`, `generative-modeling`, `graphical-models`, `high-dimensional-testing-knockoffs`, `importance-sampling`, `information-bottleneck`, `kernel-methods`, `metric-learning`, `model-comparison`, `monte-carlo-methods`, `online-fdr`, `optimization-theory`, `post-selection-inference`, `probability-spaces`, `regression`, `regularization`, `reinforcement-learning`, `representation-learning`, `robust-statistics`, `score-matching`, `spectral-methods`, `statistical-learning-theory`, `structural-risk-minimization`, `wasserstein-distances`, `weight-decay` |
 
 **Bucket-specific notes:**
 
@@ -516,8 +518,8 @@ formalML has two layers:
 - Topology & TDA, Linear Algebra, Probability & Statistics, Optimization,
   Differential Geometry, Information Theory, Graph Theory, Category Theory
 
-**ML Methodology layer (5 tracks, 32 topics planned):**
-- T2 Supervised Learning (3 topics)
+**ML Methodology layer (5 tracks, 33 topics planned):**
+- T2 Supervised Learning (4 topics)
 - T3 Unsupervised & Generative (3 topics)
 - T4 Nonparametric & Distribution-Free (6 topics)
 - T5 Bayesian & Probabilistic ML (13 topics)
