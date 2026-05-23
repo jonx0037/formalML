@@ -98,7 +98,7 @@ export default function PosteriorPredictiveBands() {
               .line<number>()
               .x((_, i) => x(yGrid[i]))
               .y((v) => y(v))
-              .curve(d3.curveMonotoneX)(Array.from(d.dens)) ?? '',
+              .curve(d3.curveMonotoneX)(d.dens as unknown as number[]) ?? '',
           )
           .attr('fill', 'none')
           .attr('stroke', d.color)

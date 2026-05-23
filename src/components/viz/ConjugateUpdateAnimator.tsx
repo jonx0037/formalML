@@ -120,7 +120,7 @@ export default function ConjugateUpdateAnimator() {
             d3
               .line<number>()
               .x((_, i) => x(theta[i]))
-              .y((v) => y(v))(Array.from(c.density)) ?? '',
+              .y((v) => y(v))(c.density as unknown as number[]) ?? '',
           )
           .attr('fill', 'none')
           .attr('stroke', colorScale(c.n))

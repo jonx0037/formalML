@@ -109,7 +109,7 @@ export default function SequentialUpdatingTimeline() {
               .line<number>()
               .x((_, i) => xL(theta[i]))
               .y((v) => yL(v))
-              .curve(d3.curveMonotoneX)(Array.from(d.dens)) ?? '',
+              .curve(d3.curveMonotoneX)(d.dens as unknown as number[]) ?? '',
           )
           .attr('fill', 'none')
           .attr('stroke', colorScale(d.n))

@@ -49,15 +49,21 @@ export default function BayesCycleExplorer() {
     const likelihood = new Float64Array(THETA_N);
     const post = new Float64Array(THETA_N);
     const updated = betaBinomialUpdate(alpha, beta, n, s);
-    let maxLik = 0;
+    // Log-likelihoods are negative — initialize to -Infinity so the first
+    // valid value always becomes the max. The earlier `let maxLik = 0` + `||
+    // i === 0` guard never fired the special case because theta[0] = 0
+    // fails the `t > 0 && t < 1` check, leaving maxLik stuck at 0 and the
+    // exponentiated likelihood ≈ 0 everywhere.
+    let maxLik = -Infinity;
+    const nMinusS = n - s;
     for (let i = 0; i < THETA_N; i++) {
       const t = theta[i];
       prior[i] = betaPdf(t, alpha, beta);
       // Likelihood proportional to theta^s (1-theta)^(n-s); rescale by max for display
       if (t > 0 && t < 1) {
-        const lik = s * Math.log(t) + (n - s) * Math.log(1 - t);
+        const lik = s * Math.log(t) + nMinusS * Math.log(1 - t);
         likelihood[i] = lik;
-        if (lik > maxLik || i === 0) maxLik = Math.max(maxLik, lik);
+        if (lik > maxLik) maxLik = lik;
       } else likelihood[i] = -Infinity;
       post[i] = betaPdf(t, updated.alpha, updated.beta);
     }
@@ -109,7 +115,7 @@ export default function BayesCycleExplorer() {
           .y1((v) => y(v))
           .curve(d3.curveMonotoneX);
         g.append('path')
-          .attr('d', area(Array.from(vals)) ?? '')
+          .attr('d', area(vals as unknown as number[]) ?? '')
           .attr('fill', colors[k])
           .attr('opacity', 0.35);
         g.append('path')
@@ -119,7 +125,7 @@ export default function BayesCycleExplorer() {
               .line<number>()
               .x((_, i) => x(theta[i]))
               .y((v) => y(v))
-              .curve(d3.curveMonotoneX)(Array.from(vals)) ?? '',
+              .curve(d3.curveMonotoneX)(vals as unknown as number[]) ?? '',
           )
           .attr('fill', 'none')
           .attr('stroke', colors[k])

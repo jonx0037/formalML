@@ -106,7 +106,7 @@ export default function PosteriorSummaryDashboard() {
           .y1((v) => y(v))
           .curve(d3.curveMonotoneX);
         g.append('path')
-          .attr('d', area(Array.from(p.density)) ?? '')
+          .attr('d', area(p.density as unknown as number[]) ?? '')
           .attr('fill', color)
           .attr('opacity', 0.28);
         g.append('path')
@@ -116,7 +116,7 @@ export default function PosteriorSummaryDashboard() {
               .line<number>()
               .x((_, i) => x(theta[i]))
               .y((v) => y(v))
-              .curve(d3.curveMonotoneX)(Array.from(p.density)) ?? '',
+              .curve(d3.curveMonotoneX)(p.density as unknown as number[]) ?? '',
           )
           .attr('fill', 'none')
           .attr('stroke', color)

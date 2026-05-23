@@ -115,7 +115,7 @@ export default function PriorChoiceComparator() {
           .y1((v) => y(v))
           .curve(d3.curveMonotoneX);
         g.append('path')
-          .attr('d', area(Array.from(dens)) ?? '')
+          .attr('d', area(dens as unknown as number[]) ?? '')
           .attr('fill', col === 0 ? COLOR_VARIANT_A : col === 1 ? COLOR_LIKELIHOOD : COLOR_VARIANT_B)
           .attr('opacity', 0.32);
         g.append('path')
@@ -125,7 +125,7 @@ export default function PriorChoiceComparator() {
               .line<number>()
               .x((_, i) => x(theta[i]))
               .y((v) => y(v))
-              .curve(d3.curveMonotoneX)(Array.from(dens)) ?? '',
+              .curve(d3.curveMonotoneX)(dens as unknown as number[]) ?? '',
           )
           .attr('fill', 'none')
           .attr('stroke', col === 0 ? COLOR_VARIANT_A : col === 1 ? COLOR_LIKELIHOOD : COLOR_VARIANT_B)

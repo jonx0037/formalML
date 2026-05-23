@@ -181,7 +181,7 @@ export default function HierarchicalShrinkageDemo() {
               .line<number>()
               .x((_, i) => xR(theta[i]))
               .y((v) => yR(v))
-              .curve(d3.curveMonotoneX)(Array.from(d.density)) ?? '',
+              .curve(d3.curveMonotoneX)(d.density as unknown as number[]) ?? '',
           )
           .attr('fill', 'none')
           .attr('stroke', palette(d.label))
