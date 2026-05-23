@@ -446,21 +446,22 @@ export function cka(
       crossSq += s * s;
     }
   }
-  // ||X^T X||_F^2 (then sqrt).
+  // ||X^T X||_F^2 (then sqrt). X^T X is symmetric, so we compute the upper
+  // triangle once and double off-diagonal contributions — halves the work.
   let xxSq = 0;
   for (let j = 0; j < dx; j++) {
-    for (let l = 0; l < dx; l++) {
+    for (let l = j; l < dx; l++) {
       let s = 0;
       for (let i = 0; i < n; i++) s += Xc[i * dx + j] * Xc[i * dx + l];
-      xxSq += s * s;
+      xxSq += j === l ? s * s : 2 * s * s;
     }
   }
   let yySq = 0;
   for (let j = 0; j < dy; j++) {
-    for (let l = 0; l < dy; l++) {
+    for (let l = j; l < dy; l++) {
       let s = 0;
       for (let i = 0; i < n; i++) s += Yc[i * dy + j] * Yc[i * dy + l];
-      yySq += s * s;
+      yySq += j === l ? s * s : 2 * s * s;
     }
   }
   const denom = Math.sqrt(xxSq) * Math.sqrt(yySq);
