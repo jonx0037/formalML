@@ -119,14 +119,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Ordinary least squares is the orthogonal projection of y onto col(X). The closed-form β̂ = (XᵀX)⁻¹Xᵀy is the algebraic shadow of the geometric statement P_col(X) y = Xβ̂, and the residual y − Xβ̂ i…_
 
-## When `formalml/representation-learning` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/sufficient-statistics** declares `formalmlConnections` → `representation-learning` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Self-supervised learning objectives (contrastive, masked-modeling) implicitly discover sufficient statistics of $X$ for downstream tasks. The Rao-Blackwellization intuition — that optimal estimator…_
-
 ## When `formalml/robust-statistics` ships
 
 Add the reciprocal pointer back to:
@@ -145,6 +137,14 @@ Add the reciprocal pointer back to:
 - **formalCalculus/linear-algebra** declares `formalstatisticsConnections` → `covariance-correlation` (connections)
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The covariance matrix Σ of a mean-centered random vector is the Gram matrix XᵀX/n of the centered data. Its rank equals the dimension of the linear span of the observations, and its column space is…_
+
+## When `formalstatistics/kullback-leibler-divergence` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/representation-learning** declares `formalstatisticsPrereqs` → `kullback-leibler-divergence` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The KL divergence is the central information-theoretic quantity in §4 (ELBO regularization term D_KL(q_φ || p)), §5 (mutual information as KL between joint and product distributions), and §7 (the I…_
 
 ## When `formalstatistics/mahalanobis-distance` ships
 
