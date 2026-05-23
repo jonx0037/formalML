@@ -1,0 +1,1638 @@
+---
+title: "Representation Learning"
+subtitle: "Sufficient statistics, autoencoders, contrastive learning, and the simplex equiangular tight frame — the three-way convergence of classical sufficiency, supervised neural collapse, and InfoNCE-optimal self-supervised encoders to the same geometric object under progressively weaker information assumptions."
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "pca-low-rank"
+  - "kl-divergence"
+  - "density-ratio-estimation"
+  - "shannon-entropy"
+formalstatisticsPrereqs:
+  - topic: "sufficient-statistics"
+    site: "formalstatistics"
+    relationship: "§2 is built directly on the Fisher–Neyman factorization, Lehmann–Schefé minimality, and the Bayes-risk equivalence theorem developed in formalstatistics. The classical sufficient statistic is presented here as the limit point of 'good representation' — a learned encoder is a soft (ε-sufficient) version of the same object. §12.4 closes the loop by showing that the closed-form sufficient statistic of a Gaussian mixture and the InfoNCE-optimal encoder both converge to the same simplex equiangular tight frame. This prereq discharges the inbound deferred reciprocal from formalstatistics/sufficient-statistics."
+  - topic: "exponential-families"
+    site: "formalstatistics"
+    relationship: "The Gaussian decoder p_θ(x|z) of §4's VAE is a standard exponential-family conditional density; the Bernoulli decoder for binary data is another. The iVAE identifiability result of §10.2 (Khemakhem et al. 2020) requires that the auxiliary-conditional density p(z|u) belong to an exponential family with linearly independent sufficient statistics. Without this scaffolding the §10.2 theorem cannot be stated, let alone interpreted."
+  - topic: "maximum-likelihood"
+    site: "formalstatistics"
+    relationship: "§4.1 frames the VAE training goal as maximum-likelihood estimation of θ in the latent-variable model p_θ(x) = ∫ p_θ(x|z) p(z) dz. The Evidence Lower Bound (Theorem 4.1) is precisely a tractable surrogate for the intractable marginal likelihood. The MLE framing is also what makes the §4.5 β-VAE objective interpretable as a Lagrangian relaxation of the variational MLE problem."
+  - topic: "kullback-leibler-divergence"
+    site: "formalstatistics"
+    relationship: "The KL divergence is the central information-theoretic quantity in §4 (ELBO regularization term D_KL(q_φ || p)), §5 (mutual information as KL between joint and product distributions), and §7 (the IB Lagrangian's relationship to KL projections via the Donsker–Varadhan representation). The closed-form Gaussian-vs-Gaussian KL of §4.3 is the explicit case we work with end-to-end."
+  - topic: "multivariate-distributions"
+    site: "formalstatistics"
+    relationship: "The §3.2 Baldi–Hornik proof uses the spectral decomposition of the multivariate covariance matrix, the Ky Fan trace-maximization principle, and the orthogonal-projector characterization of the top-d eigenspace — all standard multivariate-distributions machinery. The §4 Gaussian-conditional decoder, the §7.2 Gaussian IB closed form, and the §12.4 Gaussian-mixture sufficient-statistic calculation all live in this same toolkit."
+formalcalculusPrereqs:
+  - topic: "derivative"
+    site: "formalcalculus"
+    relationship: "The §4.4 reparametrization trick is the canonical example of pathwise-derivative gradient computation: writing z = T_φ(ε, x) as a deterministic function of fixed-distribution noise ε lets the chain rule pass through the sampling step. The §5 InfoNCE loss backpropagation through the softmax also relies on standard multivariable derivatives. The §3.2 linear-AE gradient descent loop uses the matrix-derivative form of the squared-error loss."
+  - topic: "multiple-integrals"
+    site: "formalcalculus"
+    relationship: "The §4 marginal-likelihood integral p_θ(x) = ∫ p_θ(x|z) p(z) dz is a multivariate integral over a latent space of dimension d. The §3.4 Tweedie identity proof differentiates this convolution integral under the integral sign — a standard multiple-integral move whose rigorous justification requires the dominated-convergence theorem from this prereq topic."
+formalstatisticsConnections:
+  - topic: "sufficient-statistics"
+    site: "formalstatistics"
+    relationship: "Reciprocal to the formalstatisticsPrereqs entry. The classical sufficient-statistic framework of formalstatistics gains a modern, soft-sufficiency reading through this topic: any learned representation is a soft sufficient statistic for the family of downstream tasks the augmentation prior implicitly defines. The §12.4 sufficiency-to-contrastive bridge — where Gaussian-mixture sufficient statistics, supervised neural collapse, and InfoNCE-optimal encoders all converge to the simplex ETF — is the natural follow-up for a formalstatistics reader of sufficient statistics."
+formalcalculusConnections: []
+tags:
+  - "representation-learning"
+  - "self-supervised-learning"
+  - "contrastive-learning"
+  - "autoencoders"
+  - "variational-autoencoder"
+  - "information-bottleneck"
+  - "neural-collapse"
+  - "identifiability"
+  - "infonce"
+  - "simclr"
+  - "unsupervised"
+  - "machine-learning"
+domain: "unsupervised"
+videoId: null
+notebookPath: "notebooks/representation-learning/01_representation_learning.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/representation-learning.mdx"
+datePublished: 2026-05-22
+estimatedReadTime: 65
+abstract: "Representation learning is the search for a soft sufficient statistic under progressively weaker information assumptions. Classical sufficiency assumes a parametric family; supervised learning assumes labels; self-supervised learning assumes only an augmentation prior that respects the latent class structure. This topic develops the full arc: §2 reframes sufficiency information-theoretically as ε-sufficiency, §3–§4 develop the reconstruction lens through linear autoencoders (with the Baldi–Hornik PCA equivalence and its proof), denoising autoencoders (with the Tweedie identity bridging to score matching), and variational autoencoders (with the ELBO, the reparametrization trick, and the β-VAE rate-distortion picture); §5–§6 develop the invariance lens through the InfoNCE objective (with the mutual-information bound and the alignment-uniformity decomposition) and the SimCLR design space; §7 unifies them via the information bottleneck Lagrangian, with the Gaussian closed form and an honest treatment of the Shwartz-Ziv–Saxe debate; §8 surveys pretext / masked / multi-modal alternatives; §9 develops the evaluation toolkit (linear probing, CKA, Saunshi's downstream guarantee); §10 presents the Locatello impossibility theorem for unsupervised disentanglement and the iVAE / Zimmermann restorations under auxiliary information; §11 handles the computational considerations of large-batch contrastive training; and §12 closes with the sufficiency-to-contrastive bridge — Gaussian-mixture sufficient statistics, supervised neural collapse, and InfoNCE-optimal encoders all converge to the same simplex equiangular tight frame."
+connections:
+  - topic: "pca-low-rank"
+    relationship: "Direct prereq for §3.2's linear-AE = PCA theorem. The Baldi–Hornik proof builds on the spectral decomposition machinery developed there; the same eigendecomposition reappears in the §7.2 Gaussian IB closed form and the §12.1 within/between scatter decomposition."
+  - topic: "kl-divergence"
+    relationship: "Used throughout §4 (ELBO regularization term D_KL(q_φ(z|x) || p(z))), §5 (mutual information as KL between joint and product distributions), and §7 (information bottleneck Lagrangian as KL projection). The closed-form Gaussian-vs-Gaussian KL of §4.3 is the explicit case worked end-to-end."
+  - topic: "density-ratio-estimation"
+    relationship: "The §5.4 InfoNCE-as-DRE bridge is one of the topic's three central theoretical results. The optimal contrastive critic is the log density-ratio of formalML's density-ratio-estimation topic; the entire §5 InfoNCE analysis can be re-read as a sample-efficient implementation of the DRE machinery."
+  - topic: "shannon-entropy"
+    relationship: "The §5 and §7 mutual-information machinery sits on top of entropy and conditional entropy. The §2.4 Bayes-risk equivalence theorem also implicitly invokes the H(Y) − H(Y|T) decomposition of MI."
+  - topic: "rate-distortion"
+    relationship: "§4.5 and §7 both invoke the rate-distortion picture. The β-VAE traces a variational approximation of the IB curve, which is the rate-distortion curve in disguise. The §7.2 Gaussian IB frontier is essentially the rate-distortion frontier for the Gaussian source."
+  - topic: "information-geometry"
+    relationship: "Lightly pointed at in §10.3 — the identifiability statements for contrastive learning (Zimmermann et al. 2021) are best read through the Fisher-information lens. Optional follow-up after the topic."
+  - topic: "conformal-prediction"
+    relationship: "§9.3 forwards to the conformal framework for distribution-free uncertainty quantification on top of any representation-trained downstream classifier. Split-conformal wraps cleanly around the linear probe of §9.1."
+  - topic: "meta-learning"
+    relationship: "The §9.4 Saunshi guarantee is the bridge to meta-learning's transfer-learning framework — both lines of work ask 'when does a representation trained for one objective transfer to a downstream task?'."
+references:
+  - type: paper
+    authors: "Baldi, P. & Hornik, K."
+    title: "Neural networks and principal component analysis: learning from examples without local minima"
+    year: 1989
+    venue: "Neural Networks 2(1), 53–58"
+    url: "https://doi.org/10.1016/0893-6080(89)90014-2"
+  - type: paper
+    authors: "Bengio, Y., Courville, A. & Vincent, P."
+    title: "Representation learning: a review and new perspectives"
+    year: 2013
+    venue: "IEEE Transactions on Pattern Analysis and Machine Intelligence 35(8), 1798–1828"
+    url: "https://doi.org/10.1109/TPAMI.2013.50"
+  - type: paper
+    authors: "Hinton, G. E. & Salakhutdinov, R. R."
+    title: "Reducing the dimensionality of data with neural networks"
+    year: 2006
+    venue: "Science 313(5786), 504–507"
+    url: "https://doi.org/10.1126/science.1127647"
+  - type: paper
+    authors: "Hyvärinen, A. & Pajunen, P."
+    title: "Nonlinear independent component analysis: existence and uniqueness results"
+    year: 1999
+    venue: "Neural Networks 12(3), 429–439"
+    url: "https://doi.org/10.1016/S0893-6080(98)00140-3"
+  - type: paper
+    authors: "Olshausen, B. A. & Field, D. J."
+    title: "Emergence of simple-cell receptive field properties by learning a sparse code for natural images"
+    year: 1996
+    venue: "Nature 381(6583), 607–609"
+    url: "https://doi.org/10.1038/381607a0"
+  - type: paper
+    authors: "Tishby, N., Pereira, F. C. & Bialek, W."
+    title: "The information bottleneck method"
+    year: 1999
+    venue: "Proceedings of the 37th Annual Allerton Conference on Communication, Control, and Computing"
+    url: "https://arxiv.org/abs/physics/0004057"
+  - type: paper
+    authors: "Chen, T., Kornblith, S., Norouzi, M. & Hinton, G."
+    title: "A simple framework for contrastive learning of visual representations"
+    year: 2020
+    venue: "Proceedings of the 37th International Conference on Machine Learning, 1597–1607"
+    url: "https://proceedings.mlr.press/v119/chen20j.html"
+  - type: paper
+    authors: "Chen, X. & He, K."
+    title: "Exploring simple Siamese representation learning"
+    year: 2021
+    venue: "Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 15750–15758"
+    url: "https://doi.org/10.1109/CVPR46437.2021.01549"
+  - type: paper
+    authors: "Devlin, J., Chang, M.-W., Lee, K. & Toutanova, K."
+    title: "BERT: pre-training of deep bidirectional transformers for language understanding"
+    year: 2019
+    venue: "Proceedings of NAACL-HLT 2019, 4171–4186"
+    url: "https://doi.org/10.18653/v1/N19-1423"
+  - type: paper
+    authors: "Grill, J.-B., Strub, F., Altché, F. et al."
+    title: "Bootstrap your own latent: a new approach to self-supervised learning"
+    year: 2020
+    venue: "Advances in Neural Information Processing Systems 33, 21271–21284"
+    url: "https://proceedings.neurips.cc/paper/2020/hash/f3ada80d5c4ee70142b17b8192b2958e-Abstract.html"
+  - type: paper
+    authors: "He, K., Chen, X., Xie, S., Li, Y., Dollár, P. & Girshick, R."
+    title: "Masked autoencoders are scalable vision learners"
+    year: 2022
+    venue: "Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 16000–16009"
+    url: "https://doi.org/10.1109/CVPR52688.2022.01553"
+  - type: paper
+    authors: "He, K., Fan, H., Wu, Y., Xie, S. & Girshick, R."
+    title: "Momentum contrast for unsupervised visual representation learning"
+    year: 2020
+    venue: "Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 9729–9738"
+    url: "https://doi.org/10.1109/CVPR42600.2020.00975"
+  - type: paper
+    authors: "Higgins, I., Matthey, L., Pal, A. et al."
+    title: "β-VAE: learning basic visual concepts with a constrained variational framework"
+    year: 2017
+    venue: "International Conference on Learning Representations"
+    url: "https://openreview.net/forum?id=Sy2fzU9gl"
+  - type: paper
+    authors: "Kingma, D. P. & Welling, M."
+    title: "Auto-encoding variational Bayes"
+    year: 2014
+    venue: "International Conference on Learning Representations"
+    url: "https://arxiv.org/abs/1312.6114"
+  - type: paper
+    authors: "Mairal, J., Bach, F., Ponce, J. & Sapiro, G."
+    title: "Online dictionary learning for sparse coding"
+    year: 2009
+    venue: "Proceedings of the 26th International Conference on Machine Learning, 689–696"
+    url: "https://doi.org/10.1145/1553374.1553463"
+  - type: paper
+    authors: "van den Oord, A., Li, Y. & Vinyals, O."
+    title: "Representation learning with contrastive predictive coding"
+    year: 2018
+    venue: "arXiv preprint"
+    url: "https://arxiv.org/abs/1807.03748"
+  - type: paper
+    authors: "Radford, A., Kim, J. W., Hallacy, C. et al."
+    title: "Learning transferable visual models from natural language supervision"
+    year: 2021
+    venue: "Proceedings of the 38th International Conference on Machine Learning, 8748–8763"
+    url: "https://proceedings.mlr.press/v139/radford21a.html"
+  - type: paper
+    authors: "Rezende, D. J., Mohamed, S. & Wierstra, D."
+    title: "Stochastic backpropagation and approximate inference in deep generative models"
+    year: 2014
+    venue: "Proceedings of the 31st International Conference on Machine Learning, 1278–1286"
+    url: "https://proceedings.mlr.press/v32/rezende14.html"
+  - type: paper
+    authors: "Vincent, P., Larochelle, H., Bengio, Y. & Manzagol, P.-A."
+    title: "Extracting and composing robust features with denoising autoencoders"
+    year: 2008
+    venue: "Proceedings of the 25th International Conference on Machine Learning, 1096–1103"
+    url: "https://doi.org/10.1145/1390156.1390294"
+  - type: paper
+    authors: "Wu, Z., Xiong, Y., Yu, S. X. & Lin, D."
+    title: "Unsupervised feature learning via non-parametric instance discrimination"
+    year: 2018
+    venue: "Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 3733–3742"
+    url: "https://doi.org/10.1109/CVPR.2018.00393"
+  - type: paper
+    authors: "Alemi, A. A., Fischer, I., Dillon, J. V. & Murphy, K."
+    title: "Deep variational information bottleneck"
+    year: 2017
+    venue: "International Conference on Learning Representations"
+    url: "https://openreview.net/forum?id=HyxQzBceg"
+  - type: paper
+    authors: "Alemi, A. A., Poole, B., Fischer, I., Dillon, J. V., Saurous, R. A. & Murphy, K."
+    title: "Fixing a broken ELBO"
+    year: 2018
+    venue: "Proceedings of the 35th International Conference on Machine Learning, 159–168"
+    url: "https://proceedings.mlr.press/v80/alemi18a.html"
+  - type: paper
+    authors: "Bahadur, R. R."
+    title: "Sufficiency and statistical decision functions"
+    year: 1954
+    venue: "Annals of Mathematical Statistics 25(3), 423–462"
+    url: "https://doi.org/10.1214/aoms/1177728715"
+  - type: paper
+    authors: "Bordes, F., Balestriero, R. & Bottou, L."
+    title: "Guillotine regularization: improving deep networks generalization by removing their head"
+    year: 2023
+    venue: "Transactions on Machine Learning Research"
+    url: "https://openreview.net/forum?id=ZgXfXSz51n"
+  - type: paper
+    authors: "Chechik, G., Globerson, A., Tishby, N. & Weiss, Y."
+    title: "Information bottleneck for Gaussian variables"
+    year: 2005
+    venue: "Journal of Machine Learning Research 6, 165–188"
+    url: "https://www.jmlr.org/papers/v6/chechik05a.html"
+  - type: paper
+    authors: "Goldfeld, Z., van den Berg, E., Greenewald, K. et al."
+    title: "Estimating information flow in deep neural networks"
+    year: 2019
+    venue: "Proceedings of the 36th International Conference on Machine Learning, 2299–2308"
+    url: "https://proceedings.mlr.press/v97/goldfeld19a.html"
+  - type: paper
+    authors: "Khemakhem, I., Kingma, D. P., Monti, R. P. & Hyvärinen, A."
+    title: "Variational autoencoders and nonlinear ICA: a unifying framework"
+    year: 2020
+    venue: "Proceedings of the 23rd International Conference on Artificial Intelligence and Statistics, 2207–2217"
+    url: "https://proceedings.mlr.press/v108/khemakhem20a.html"
+  - type: paper
+    authors: "Kornblith, S., Norouzi, M., Lee, H. & Hinton, G."
+    title: "Similarity of neural network representations revisited"
+    year: 2019
+    venue: "Proceedings of the 36th International Conference on Machine Learning, 3519–3529"
+    url: "https://proceedings.mlr.press/v97/kornblith19a.html"
+  - type: paper
+    authors: "Locatello, F., Bauer, S., Lucic, M. et al."
+    title: "Challenging common assumptions in the unsupervised learning of disentangled representations"
+    year: 2019
+    venue: "Proceedings of the 36th International Conference on Machine Learning, 4114–4124"
+    url: "https://proceedings.mlr.press/v97/locatello19a.html"
+  - type: paper
+    authors: "Papyan, V., Han, X. Y. & Donoho, D. L."
+    title: "Prevalence of neural collapse during the terminal phase of deep learning training"
+    year: 2020
+    venue: "Proceedings of the National Academy of Sciences 117(40), 24652–24663"
+    url: "https://doi.org/10.1073/pnas.2015509117"
+  - type: paper
+    authors: "Poole, B., Ozair, S., van den Oord, A., Alemi, A. & Tucker, G."
+    title: "On variational bounds of mutual information"
+    year: 2019
+    venue: "Proceedings of the 36th International Conference on Machine Learning, 5171–5180"
+    url: "https://proceedings.mlr.press/v97/poole19a.html"
+  - type: paper
+    authors: "Radovanović, M., Nanopoulos, A. & Ivanović, M."
+    title: "Hubs in space: popular nearest neighbors in high-dimensional data"
+    year: 2010
+    venue: "Journal of Machine Learning Research 11, 2487–2531"
+    url: "https://www.jmlr.org/papers/v11/radovanovic10a.html"
+  - type: paper
+    authors: "Saunshi, N., Plevrakis, O., Arora, S., Khandeparkar, M. & Khandeparkar, H."
+    title: "A theoretical analysis of contrastive unsupervised representation learning"
+    year: 2019
+    venue: "Proceedings of the 36th International Conference on Machine Learning, 5628–5637"
+    url: "https://proceedings.mlr.press/v97/saunshi19a.html"
+  - type: paper
+    authors: "Saxe, A. M., Bansal, Y., Dapello, J. et al."
+    title: "On the information bottleneck theory of deep learning"
+    year: 2018
+    venue: "International Conference on Learning Representations"
+    url: "https://openreview.net/forum?id=ry_WPG-A-"
+  - type: paper
+    authors: "Shwartz-Ziv, R. & Tishby, N."
+    title: "Opening the black box of deep neural networks via information"
+    year: 2017
+    venue: "arXiv preprint"
+    url: "https://arxiv.org/abs/1703.00810"
+  - type: paper
+    authors: "Tian, Y., Chen, X. & Ganguli, S."
+    title: "Understanding self-supervised learning dynamics without contrastive pairs"
+    year: 2021
+    venue: "Proceedings of the 38th International Conference on Machine Learning, 10268–10278"
+    url: "https://proceedings.mlr.press/v139/tian21a.html"
+  - type: paper
+    authors: "Wang, T. & Isola, P."
+    title: "Understanding contrastive representation learning through alignment and uniformity on the hypersphere"
+    year: 2020
+    venue: "Proceedings of the 37th International Conference on Machine Learning, 9929–9939"
+    url: "https://proceedings.mlr.press/v119/wang20k.html"
+  - type: paper
+    authors: "Zimmermann, R. S., Sharma, Y., Schneider, S., Bethge, M. & Brendel, W."
+    title: "Contrastive learning inverts the data generating process"
+    year: 2021
+    venue: "Proceedings of the 38th International Conference on Machine Learning, 12979–12990"
+    url: "https://proceedings.mlr.press/v139/zimmermann21a.html"
+  - type: blog
+    authors: "Bricken, T., Templeton, A., Batson, J. et al."
+    title: "Towards monosemanticity: decomposing language models with dictionary learning"
+    year: 2023
+    venue: "Anthropic"
+    url: "https://transformer-circuits.pub/2023/monosemantic-features/index.html"
+  - type: paper
+    authors: "Cunningham, H., Ewart, A., Riggs, L., Huben, R. & Sharkey, L."
+    title: "Sparse autoencoders find highly interpretable features in language models"
+    year: 2023
+    venue: "arXiv preprint"
+    url: "https://arxiv.org/abs/2309.08600"
+  - type: paper
+    authors: "Doersch, C., Gupta, A. & Efros, A. A."
+    title: "Unsupervised visual representation learning by context prediction"
+    year: 2015
+    venue: "Proceedings of the IEEE International Conference on Computer Vision (ICCV), 1422–1430"
+    url: "https://doi.org/10.1109/ICCV.2015.167"
+  - type: paper
+    authors: "Gidaris, S., Singh, P. & Komodakis, N."
+    title: "Unsupervised representation learning by predicting image rotations"
+    year: 2018
+    venue: "International Conference on Learning Representations"
+    url: "https://openreview.net/forum?id=S1v4N2l0-"
+  - type: paper
+    authors: "Hendrycks, D., Mazeika, M., Kadavath, S. & Song, D."
+    title: "Using self-supervised learning can improve model robustness and uncertainty"
+    year: 2019
+    venue: "Advances in Neural Information Processing Systems 32, 15663–15674"
+    url: "https://proceedings.neurips.cc/paper/2019/hash/a2b15837edac15df90721968986f7f8e-Abstract.html"
+  - type: paper
+    authors: "Noroozi, M. & Favaro, P."
+    title: "Unsupervised learning of visual representations by solving jigsaw puzzles"
+    year: 2016
+    venue: "European Conference on Computer Vision (ECCV), 69–84"
+    url: "https://doi.org/10.1007/978-3-319-46466-4_5"
+  - type: course
+    authors: "Ng, A."
+    title: "Sparse autoencoder"
+    year: 2011
+    venue: "CS294A Lecture Notes, Stanford University"
+    url: "https://web.stanford.edu/class/cs294a/sparseAutoencoder_2011new.pdf"
+---
+
+import Figure from '../../components/ui/Figure.astro';
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import SufficiencyFactorizationDemo from '../../components/viz/SufficiencyFactorizationDemo.tsx';
+import LinearAEisPCA from '../../components/viz/LinearAEisPCA.tsx';
+import DenoisingAEScoreField from '../../components/viz/DenoisingAEScoreField.tsx';
+import ReparametrizationTrickDiagram from '../../components/viz/ReparametrizationTrickDiagram.tsx';
+import InfoNCETemperatureExplorer from '../../components/viz/InfoNCETemperatureExplorer.tsx';
+import IBLagrangianFrontier from '../../components/viz/IBLagrangianFrontier.tsx';
+import RepresentationGeometryViewer from '../../components/viz/RepresentationGeometryViewer.tsx';
+import VAELatentSpaceExplorer from '../../components/viz/VAELatentSpaceExplorer.tsx';
+import AlignmentUniformityScatter from '../../components/viz/AlignmentUniformityScatter.tsx';
+import NeuralCollapseSimplex from '../../components/viz/NeuralCollapseSimplex.tsx';
+import SufficiencyToContrastiveBridge from '../../components/viz/SufficiencyToContrastiveBridge.tsx';
+
+## §1. What is a representation, and what makes one good?
+
+"Representation learning" sounds like a technique, but it's closer to a research program: take a high-dimensional, structured input — an image, a sentence, a sensor stream — and learn a map into a vector space where the geometry is *useful* for whatever comes next. Usefulness is the load-bearing word, and the rest of this topic is an inquiry into what it means and how to optimize for it without knowing the downstream task in advance.
+
+We approach the question along three roads. The first, **sufficiency**, is the oldest: classical statistics already has a precise notion of a "lossless summary" of data, and modern representation learning is, in a soft sense, trying to learn one without parametric assumptions. The second, **reconstruction**, drives the autoencoder family — if a low-dimensional code can rebuild the input, it must have captured the input's structure. The third, **invariance**, drives contrastive methods — if two views of the same object map close together while unrelated objects map far apart, the geometry has learned what the object *is* rather than how it looked on any given day. The same destination, three viewpoints; the topic ends by reconciling them.
+
+### §1.1 The folk definition
+
+A representation is a map $f_\phi : \mathcal{X} \to \mathbb{R}^d$ — typically with $d$ much smaller than the ambient input dimension and the parameters $\phi$ learned from data — together with three desiderata the map should satisfy:
+
+1. **Task-relevant signal is preserved.** A downstream classifier or regressor built on $z = f_\phi(x)$ should perform almost as well as one built on $x$ itself. We make this precise in §2 (via sufficiency) and §9 (via linear probing).
+
+2. **Nuisance variation is discarded.** Two inputs that differ only in "irrelevant" ways — viewpoint, lighting, paraphrase, channel noise — should map to nearby codes. What counts as nuisance is task-dependent; §5 makes the nuisance group explicit through positive-pair construction.
+
+3. **The geometry is linearly probe-friendly.** A linear classifier on $z$ should recover the task. This is a much stronger property than "any classifier on $z$ works" — it asks that the relevant information be laid out along directions rather than buried in nonlinear submanifolds. Why we want this is pragmatic: linear probes are cheap, calibrated, and reveal what the representation actually learned. §9.1 returns to this.
+
+These three desiderata aren't independent — preserving signal while discarding nuisance, in the limit, forces a linear geometry — but at the level of folk intuition they're the three things practitioners check.
+
+### §1.2 A motivating vignette
+
+To make the question "what makes a representation good?" concrete, we set up a synthetic fixture we'll re-use in §3 and §12. Sample two classes in $\mathbb{R}^{20}$:
+
+- Class means $\boldsymbol\mu_0 = \mathbf{0}$ and $\boldsymbol\mu_1 = \Delta\,\mathbf{e}_1$, with $\Delta = 2$. The discriminative direction is the first coordinate.
+- A diagonal covariance $\boldsymbol\Sigma$ with variance $1$ along the discriminative axis and almost everywhere else, but variance $25$ along the last coordinate $\mathbf{e}_{20}$ — a high-variance *nuisance* direction uncorrelated with the class label.
+
+Now project the cloud into $\mathbb{R}^2$ three ways:
+
+- **Random:** project onto two orthonormal random axes — the naive baseline.
+- **PCA:** project onto the top two eigenvectors of the sample covariance.
+- **LDA:** project onto Fisher's linear-discriminant direction (1D) padded with one orthogonal axis — the *supervised reference* representation.
+
+The figure shows what each projection sees. PCA's top eigenvector is almost exactly $\mathbf{e}_{20}$, the nuisance axis — it found the direction of maximum *variance*, which is not the direction of maximum *signal*. LDA finds the discriminative direction because it uses the labels. A 5-NN classifier on each 2D projection makes the gap precise: random ≈ 0.55, PCA ≈ 0.81, LDA ≈ 0.82.
+
+<Figure
+  src="/images/topics/representation-learning/01_motivating_vignette.png"
+  alt="Three 2D projections of a 20-D two-class Gaussian fixture: random, PCA, and LDA."
+  caption="PCA finds variance, not signal. Three 2D projections of the same 20-D two-class fixture; the nuisance axis dominates the principal components, the supervised reference recovers the class separation, and the random projection lands somewhere in between."
+/>
+
+<RepresentationGeometryViewer client:visible />
+
+This is the central question of the topic: can we approximate the LDA-like projection *without* labels? The answer is "approximately yes, under structural assumptions on the data," and the three lenses below are three flavors of those assumptions.
+
+### §1.3 Three theoretical lenses
+
+The same goal — "preserve signal, discard nuisance" — admits three different formalizations, and most of representation-learning theory is some version of one of these:
+
+**The sufficiency lens (§2).** A representation $T(X)$ is *sufficient* for a task $Y$ if the conditional distribution $p(X \mid T(X), Y)$ doesn't actually depend on $Y$. The classical Fisher–Neyman factorization gives this a precise form; we relax it to "soft sufficiency" — keep $I(X; Y \mid T) \le \varepsilon$ — and ask which estimators achieve it. The autoencoder is the case $Y = X$ (predict yourself); the contrastive critic is the case $Y = X^+$ (predict the augmented view). The information bottleneck of §7 is the Lagrangian form of approximate sufficiency.
+
+**The reconstruction lens (§3, §4).** A representation $z = f_\phi(x)$ is good if there exists a decoder $g_\theta$ with $g_\theta(z) \approx x$. The intuition: if the code suffices to rebuild the input, it must encode the input's manifold structure. This gives us PCA (linear, §3.2), autoencoders (nonlinear, §3.1), denoising autoencoders (which connect to score matching, §3.4), and variational autoencoders (which couple reconstruction to a probabilistic prior on $z$, §4).
+
+**The invariance lens (§5, §6).** A representation is good if two related inputs $(x, x^+)$ map close together and unrelated inputs map far apart. The positive-pair distribution $p^+$ encodes which transformations the representation should be *invariant* to — color jitter for an image classifier, back-translation for a sentence encoder, sub-sequence sampling for time series. The InfoNCE objective makes this precise as a variational lower bound on mutual information; SimCLR, MoCo, and BYOL are engineering instantiations.
+
+These lenses are not three different theories of representation learning; they're three windows onto the same object. §12 shows the windows meet — a sufficient statistic, a low-distortion reconstruction code, and the optimum of an InfoNCE loss converge to the same geometry in the cases where we can solve all three closed-form.
+
+### §1.4 Roadmap
+
+The topic is structured as theory → method → critique → synthesis:
+
+- §2–§4 set up the **statistical** view: sufficiency, autoencoders, VAEs.
+- §5–§6 set up the **contrastive** view: InfoNCE, SimCLR, design space.
+- §7–§8 set up two **synthesis lenses**: the information bottleneck (§7) and self-supervised pretext tasks beyond contrastive (§8).
+- §9–§10 set up the **evaluation** machinery and the **honest limits**: linear probing, the Saunshi guarantee, the impossibility theorems for unsupervised disentanglement.
+- §11–§12 set up the **computational and geometric** payoff: what gets hard at scale, and what the learned geometry looks like.
+- §13 closes the loop with cross-site connections and forward pointers.
+
+The Bengio–Courville–Vincent (2013) survey is the closest mid-density entry point in the literature; this topic adds the theory threads that have matured since 2013 — InfoNCE, alignment-uniformity, neural collapse, the disentanglement impossibility results — and weaves them into a single narrative.
+
+---
+
+## §2. Sufficient statistics as the limit point of "good representation"
+
+The phrase "good representation" begs the question — good for what? In classical statistics there's a precise answer, due to Fisher: good for *inference about a parametric model*. A statistic $T(X)$ is **sufficient** for a parameter $\theta$ if, once we know $T(X)$, the rest of the data $X$ tells us nothing additional about $\theta$. Sufficiency is the original lossless-compression theorem of mathematical statistics, and modern representation learning can be read as the empirical search for a soft, task-implicit version of it.
+
+This section makes the bridge explicit. We restate Fisher–Neyman (§2.1), characterize *minimal* sufficient statistics via Lehmann–Schefé (§2.2), relax classical sufficiency to a smooth, information-theoretic version that makes sense without a model (§2.3), and prove the Bayes-risk equivalence property that makes sufficiency the right target for representation learning (§2.4).
+
+### §2.1 Fisher–Neyman factorization
+
+Let $\{p_\theta : \theta \in \Theta\}$ be a family of densities on $\mathcal{X}$ (continuous or discrete; we'll write integrals and let the discrete case follow by replacing the integral with a sum). Let $T : \mathcal{X} \to \mathcal{T}$ be a measurable map. Call $T$ a **statistic** — any function of the data, summarizing it into a value $t = T(x)$.
+
+<TheoremBlock type="definition" number={2.1} title="sufficient statistic">
+$T$ is **sufficient** for $\theta$ if the conditional distribution $p_\theta(X \mid T(X) = t)$ does not depend on $\theta$ for any $t \in \mathcal{T}$.
+</TheoremBlock>
+
+The intuition: once you've seen $T(X)$, the residual variation in $X$ is distributed the same way no matter what $\theta$ generated the data. There is no additional information in $X$ that helps you pin down $\theta$.
+
+Sufficiency is hard to check from the definition because it asks something about conditional distributions. The Fisher–Neyman theorem replaces the check with a *factorization* of the joint density:
+
+<TheoremBlock type="theorem" number={2.1} title="Fisher–Neyman factorization">
+$T$ is sufficient for $\theta$ if and only if the density factorizes as
+$$
+p_\theta(x) \;=\; g_\theta(T(x)) \cdot h(x)
+$$
+for some non-negative measurable functions $g_\theta$ (which may depend on $\theta$) and $h$ (which does not).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Both directions, in the discrete case.
+
+($\Leftarrow$) Suppose $p_\theta(x) = g_\theta(T(x)) h(x)$. Fix $t$ and condition:
+$$
+p_\theta(X = x \mid T(X) = t)
+\;=\; \frac{p_\theta(x) \,\mathbf{1}[T(x) = t]}{\sum_{x' : T(x') = t} p_\theta(x')}
+\;=\; \frac{g_\theta(t)\, h(x) \,\mathbf{1}[T(x) = t]}{g_\theta(t) \sum_{x' : T(x') = t} h(x')}
+\;=\; \frac{h(x)\,\mathbf{1}[T(x) = t]}{\sum_{x' : T(x') = t} h(x')}.
+$$
+The $g_\theta(t)$ factors cancel, leaving an expression that depends only on $h$ and $T$ — no $\theta$. So $T$ is sufficient.
+
+($\Rightarrow$) Suppose $T$ is sufficient, so $p_\theta(X = x \mid T(X) = t)$ doesn't depend on $\theta$. Call that conditional $\pi(x \mid t)$. Then
+$$
+p_\theta(x) \;=\; p_\theta(X = x, T(X) = T(x))
+\;=\; p_\theta(T(X) = T(x)) \cdot p_\theta(X = x \mid T(X) = T(x))
+\;=\; g_\theta(T(x)) \cdot \pi(x \mid T(x)),
+$$
+which is the desired factorization with $h(x) := \pi(x \mid T(x))$.
+
+The continuous-density case requires a Radon–Nikodym argument and a careful choice of conditional version (Halmos–Savage 1949); the conclusion is the same.
+</TheoremBlock>
+
+**Examples we'll reuse.** For $X_1, \ldots, X_n \stackrel{\text{iid}}{\sim} \mathcal{N}(\mu, \sigma^2)$ with known $\sigma^2$, the sample mean $T(X) = \bar X_n$ is sufficient for $\mu$: the joint density factors as
+$$
+p_\mu(x) \;=\; \underbrace{(2\pi\sigma^2)^{-n/2} \exp\!\left(-\frac{n(\bar x - \mu)^2}{2\sigma^2}\right)}_{g_\mu(\bar x)} \cdot \underbrace{\exp\!\left(-\frac{\sum (x_i - \bar x)^2}{2\sigma^2}\right)}_{h(x)}.
+$$
+For unknown $\mu$ and $\sigma^2$, the pair $T(X) = (\bar X_n, S_n^2)$ is sufficient. For an exponential-family model $p_\theta(x) = \exp(\theta^\top T(x) - A(\theta)) h(x)$, the natural sufficient statistic is the exponential-family $T$ itself — and the autoencoder of §3 is, in a sense, an attempt to learn one when the family is unknown.
+
+**The representation-learning reading.** A sufficient statistic is a hand-designed encoder $f : \mathcal{X} \to \mathcal{T}$ that is lossless for inference under a *known* parametric family. The rest of this topic asks: what do we do when the family is unknown, or when "inference about $\theta$" is the wrong question and we want a representation good for many downstream tasks?
+
+### §2.2 Minimal sufficient statistics
+
+Sufficiency alone doesn't constrain how compressed $T$ is. For any sufficient $T$, the pair $(T, U)$ with any auxiliary $U$ is also sufficient — you can pad with junk. The interesting object is the *most-compressed* sufficient statistic.
+
+<TheoremBlock type="definition" number={2.2} title="minimal sufficient statistic">
+A sufficient statistic $T$ is **minimal** if, for every other sufficient statistic $T'$, there exists a measurable function $\psi$ with $T(x) = \psi(T'(x))$ almost surely.
+</TheoremBlock>
+
+In words: every sufficient statistic factors *through* the minimal one. The minimal sufficient statistic is the coarsest summary you can compute and still have lost no information for $\theta$-inference.
+
+The Lehmann–Schefé characterization tells us how to find it.
+
+<TheoremBlock type="theorem" number={2.2} title="Lehmann–Schefé minimality">
+Define the equivalence relation $x \sim x'$ iff the likelihood ratio $p_\theta(x) / p_\theta(x')$ does not depend on $\theta$. Then any statistic $T$ whose level sets $\{x : T(x) = t\}$ coincide with the equivalence classes of $\sim$ is a minimal sufficient statistic.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The level sets are exactly the sets on which the parameter $\theta$ "cannot tell points apart" — i.e., where the data is informationally equivalent. A sufficient statistic must be constant on every such set (otherwise it would distinguish two informationally-equivalent points, an asymmetry that wouldn't survive the factorization). So any sufficient statistic's level sets are *unions* of these equivalence classes, which means $T$ — whose level sets *are* the equivalence classes — is a coarsening of any other sufficient statistic, i.e., minimal. Bahadur (1954) gives the full measure-theoretic argument.
+</TheoremBlock>
+
+**Why minimality matters for representation learning.** Pure sufficiency lets us cheat by carrying the full input around: $T(x) = x$ is trivially sufficient for any model. Minimality forces compression — it says *throw away everything that doesn't distinguish parameters*. This is the unsupervised-analog of what representation learning wants: a code $z = f_\phi(x)$ that's just rich enough for the downstream task and no richer.
+
+The catch, of course, is that "the downstream task" isn't fixed. The classical theory assumes a single parameter $\theta$ to estimate; modern representation learning is in the multi-task regime where $\theta$ is replaced by a *family* of downstream tasks. §2.3 generalizes minimal sufficiency to handle this.
+
+### §2.3 Approximate (soft) sufficiency
+
+Classical sufficiency is binary: a statistic is or isn't sufficient. For a learned representation $f_\phi(X)$, we want a smooth notion that lets us say "this representation is mostly sufficient." The natural object is conditional mutual information.
+
+<TheoremBlock type="definition" number={2.3} title="ε-sufficiency">
+Given a downstream variable $Y$ (a class label, a regression target, an augmented view), a representation $T(X)$ is $\varepsilon$-**sufficient** for $Y$ if
+$$
+I(X; Y \mid T(X)) \;\le\; \varepsilon,
+$$
+equivalently $I(T(X); Y) \;\ge\; I(X; Y) - \varepsilon$.
+</TheoremBlock>
+
+The equivalence is the chain rule for mutual information: $I(X; Y) = I(T(X); Y) + I(X; Y \mid T(X))$, since $T(X)$ is a function of $X$ and therefore $I((X, T(X)); Y) = I(X; Y)$.
+
+When $\varepsilon = 0$, the definition recovers a measure-theoretic version of classical sufficiency: $T(X)$ is exactly sufficient for $Y$ iff $Y \perp\!\!\!\perp X \mid T(X)$, which the chain rule gives as $I(X; Y \mid T) = 0$.
+
+**The bridge to representation learning.** A learned encoder $f_\phi$ aims to minimize $\varepsilon$ over a set of plausible downstream tasks. Three specializations recur throughout this topic:
+
+- **Supervised representation:** $Y$ is a known label and $f_\phi$ is trained to maximize $I(f_\phi(X); Y)$ directly. This is the supervised-learning setting; the IB theory of §7 gives the Lagrangian.
+- **Self-supervised representation:** $Y$ is replaced by an augmented view $X^+$ — same instance, different view. $f_\phi$ is trained to maximize $I(f_\phi(X); X^+)$. The InfoNCE bound of §5 gives a sample-computable lower bound on this MI.
+- **Generative representation:** $Y$ is the original input $X$ itself, viewed through a probabilistic decoder. The ELBO of §4 gives a sample-computable lower bound on $-\log p(X)$, which is in turn related to $I(X; Z)$ by the data-processing inequality.
+
+The three lenses of §1.3 are the three choices of $Y$.
+
+**A subtlety.** $I(X; Y \mid T(X))$ involves entropies of high-dimensional continuous random variables, which are notoriously hard to estimate from samples. The InfoNCE bound of §5.3 is the workaround — instead of estimating $I$, we maximize a *lower bound* that is sample-computable. The looseness of that bound is what separates representation-learning theory from the information-theoretic ideal of §2.3.
+
+<SufficiencyFactorizationDemo client:visible />
+
+### §2.4 Bayes-risk equivalence
+
+Sufficiency has a striking decision-theoretic consequence: a sufficient statistic preserves the Bayes-optimal performance of *any* decision rule.
+
+<TheoremBlock type="theorem" number={2.3} title="Bayes-risk equivalence under sufficiency">
+Let $T$ be sufficient for $\theta$, let $L(\theta, a)$ be any loss function over actions $a \in \mathcal{A}$, and let $\delta^* : \mathcal{X} \to \mathcal{A}$ be the Bayes-optimal decision rule given a prior $\pi(\theta)$. Then there exists a decision rule $\tilde\delta^* : \mathcal{T} \to \mathcal{A}$ with the same Bayes risk: $R(\tilde\delta^*) = R(\delta^*)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Define $\tilde\delta^*(t) := \arg\min_a \mathbb{E}[L(\theta, a) \mid T = t]$, the Bayes-optimal action given only the summary $t$. We show this matches the full-data Bayes risk by the tower property. For any decision rule $\delta : \mathcal{X} \to \mathcal{A}$,
+$$
+R(\delta) \;=\; \mathbb{E}_{\pi}\!\left[\mathbb{E}_X\!\big[L(\theta, \delta(X))\big]\right]
+\;=\; \mathbb{E}_{\pi}\!\left[\mathbb{E}_T\!\big[\mathbb{E}\!\big[L(\theta, \delta(X)) \mid T\big]\big]\right].
+$$
+The inner conditional expectation, by sufficiency, satisfies $\mathbb{E}[L(\theta, \delta(X)) \mid T(X) = t, \theta] = \mathbb{E}[L(\theta, \delta(X)) \mid T(X) = t]$, so the conditional distribution of $\delta(X)$ given $T$ doesn't carry extra $\theta$-information. Therefore the Bayes-optimal action given $T = t$ — call it $\tilde\delta^*(t)$ — achieves the same conditional risk as the Bayes-optimal action given the full $X$, and the outer expectation matches.
+</TheoremBlock>
+
+**The corollary for representation learning.** A sufficient statistic $T(X)$ is a *lossless representation* for any decision problem in $\theta$'s family. In the soft / multi-task version of §2.3, an $\varepsilon$-sufficient representation $f_\phi(X)$ is approximately lossless for any task $Y$ in the family — up to an additive $O(\varepsilon)$ slack in the Bayes risk, by Pinsker-type arguments we'll formalize in §9.4 (Saunshi guarantee).
+
+This is the mathematical target of representation learning: build $f_\phi$ such that downstream Bayes risks under $f_\phi(X)$ are close to the Bayes risks under $X$, *without* having access to the downstream tasks at training time. The rest of the topic gives constructive ways to do this — by reconstruction (§3, §4), by invariance (§5, §6), and by an explicit information-theoretic Lagrangian (§7).
+
+<Figure
+  src="/images/topics/representation-learning/02_soft_sufficiency.png"
+  alt="Mutual-information saturation curves for top-d PCA vs LDA on the §1.2 fixture."
+  caption="Mutual-information saturation for top-d representations of the §1.2 fixture. The LDA 1-D direction already captures essentially all the class information I(X; Y), while PCA needs many dimensions before it catches up — and PCA's first component carries near-zero label information because it picks the nuisance axis. This is the §2.3 ε-sufficiency saturation curve the rest of the topic tries to climb without labels."
+/>
+
+---
+
+## §3. The autoencoder family
+
+The reconstruction lens is the oldest unsupervised representation-learning principle in deep learning: if a low-dimensional code can rebuild the input, the code must have captured the input's structure. The autoencoder makes this operational — pair an encoder $f_\phi$ with a decoder $g_\theta$, train the composition to be the identity on the data, take whatever $f_\phi$ learned as the representation.
+
+What makes the family interesting (and worth a section) is not the recipe but its theoretical content. The linear case is exactly PCA — Baldi–Hornik (1989) — which gives us a closed-form characterization of what the bottleneck recovers and a sharp lower bound on the reconstruction error in terms of the spectrum of the data covariance. The denoising variant of Vincent (2008) turns out to be implicitly estimating the score $\nabla \log p$ of the data distribution via the Tweedie identity. The sparse variant connects to classical dictionary learning. The VAE of §4 will quantize this whole picture with a probabilistic prior on the code; everything in this section is its deterministic ancestor.
+
+### §3.1 Definition
+
+<TheoremBlock type="definition" number={3.1} title="autoencoder">
+An autoencoder consists of two parametric maps,
+$$
+f_\phi : \mathcal{X} \to \mathbb{R}^d \qquad \text{(encoder),} \qquad
+g_\theta : \mathbb{R}^d \to \mathcal{X} \qquad \text{(decoder),}
+$$
+jointly trained to minimize the **reconstruction loss**
+$$
+\mathcal{L}_{\text{AE}}(\phi, \theta) \;=\; \mathbb{E}_{X \sim p}\,\big\| X - g_\theta(f_\phi(X)) \big\|^2.
+$$
+The representation is the encoder output $z = f_\phi(x) \in \mathbb{R}^d$; the bottleneck dimension $d$ is a hyperparameter, typically $d \ll \dim(\mathcal{X})$.
+</TheoremBlock>
+
+Three design choices distinguish AE variants. The function class — linear, shallow MLP, deep MLP, convolutional, transformer — controls expressivity. The reconstruction loss — squared error, cross-entropy for discrete inputs, perceptual losses for images — controls what "rebuild" means. The regularization on the encoder or the latents — denoising, sparsity, KL to a prior — controls what kind of code we incentivize. We work through these in order of theoretical content.
+
+### §3.2 Linear autoencoders are PCA
+
+The simplest AE has linear encoder $f_\phi(x) = Wx$ with $W \in \mathbb{R}^{d \times D}$ and linear decoder $g_\theta(z) = Uz$ with $U \in \mathbb{R}^{D \times d}$. Take $X$ mean-centered with covariance $\boldsymbol\Sigma = \mathbb{E}[XX^\top]$ of full rank $D$. The reconstruction loss becomes
+$$
+\mathcal{L}(W, U) \;=\; \mathbb{E}\big\|X - UWX\big\|^2 \;=\; \operatorname{tr}(\boldsymbol\Sigma) - 2\,\operatorname{tr}(UW\boldsymbol\Sigma) + \operatorname{tr}(W^\top U^\top UW \boldsymbol\Sigma).
+$$
+
+<TheoremBlock type="theorem" number={3.1} title="Baldi–Hornik 1989">
+The minimum of $\mathcal{L}(W, U)$ is achieved when $UW$ equals the orthogonal projector onto the top-$d$ eigenspace of $\boldsymbol\Sigma$. The minimum value is
+$$
+\mathcal{L}^* \;=\; \sum_{j = d+1}^{D} \lambda_j,
+$$
+where $\lambda_1 \ge \lambda_2 \ge \cdots \ge \lambda_D \ge 0$ are the eigenvalues of $\boldsymbol\Sigma$. The individual $W^*$ and $U^*$ are determined only up to an invertible reparametrization $W^* \mapsto AW^*$, $U^* \mapsto U^*A^{-1}$ for $A \in \mathrm{GL}(d)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We optimize $U$ first, holding $W$ fixed. The loss is quadratic in $U$; differentiating and setting the gradient to zero gives
+$$
+\frac{\partial \mathcal{L}}{\partial U} \;=\; -2\boldsymbol\Sigma W^\top + 2 U W \boldsymbol\Sigma W^\top \;=\; 0,
+$$
+so $U^* = \boldsymbol\Sigma W^\top (W \boldsymbol\Sigma W^\top)^{-1}$ (assuming $W \boldsymbol\Sigma W^\top$ is invertible, which holds when $W$ has full row rank and $\boldsymbol\Sigma$ is positive definite). Substituting back,
+$$
+\mathcal{L}(W, U^*) \;=\; \operatorname{tr}(\boldsymbol\Sigma) - \operatorname{tr}\!\left(\boldsymbol\Sigma W^\top (W \boldsymbol\Sigma W^\top)^{-1} W \boldsymbol\Sigma\right).
+$$
+
+Make the change of variables $\widetilde W := W \boldsymbol\Sigma^{1/2}$. Then $W \boldsymbol\Sigma W^\top = \widetilde W \widetilde W^\top$ and $W \boldsymbol\Sigma = \widetilde W \boldsymbol\Sigma^{1/2}$, so the second trace becomes
+$$
+\operatorname{tr}\!\left(\boldsymbol\Sigma^{1/2} \widetilde W^\top (\widetilde W \widetilde W^\top)^{-1} \widetilde W \boldsymbol\Sigma^{1/2}\right) \;=\; \operatorname{tr}(\boldsymbol\Sigma^{1/2} P_{\widetilde W} \boldsymbol\Sigma^{1/2}) \;=\; \operatorname{tr}(P_{\widetilde W} \boldsymbol\Sigma),
+$$
+where $P_{\widetilde W} := \widetilde W^\top (\widetilde W \widetilde W^\top)^{-1} \widetilde W$ is the orthogonal projector onto the row space of $\widetilde W$ — a rank-$d$ orthogonal projector in $\mathbb{R}^D$.
+
+We are therefore maximizing $\operatorname{tr}(P \boldsymbol\Sigma)$ over rank-$d$ orthogonal projectors $P$. By Ky Fan's maximum principle, this trace is maximized by the projector onto the top-$d$ eigenspace of $\boldsymbol\Sigma$, with maximum $\sum_{j=1}^d \lambda_j$. So
+$$
+\mathcal{L}^* \;=\; \operatorname{tr}(\boldsymbol\Sigma) - \sum_{j=1}^d \lambda_j \;=\; \sum_{j=d+1}^D \lambda_j.
+$$
+The optimal $W^*$ has $\widetilde W^* = W^* \boldsymbol\Sigma^{1/2}$ with row space spanning the top-$d$ eigenvectors of $\boldsymbol\Sigma$ — equivalently, $W^* = AV^\top$ where $V \in \mathbb{R}^{D \times d}$ stacks the top-$d$ eigenvectors and $A \in \mathrm{GL}(d)$ is any invertible matrix. The corresponding $U^* = VA^{-1}$ gives the product $U^* W^* = VV^\top$, the projector onto the top-$d$ eigenspace.
+</TheoremBlock>
+
+**Reparametrization invariance.** The product $UW$ is identified; the individual $W$ and $U$ are not. Linear autoencoders therefore can't learn "unique principal components" — they learn a rotated basis within the correct subspace. This is benign but worth knowing when interpreting the encoder weights of a trained AE.
+
+**The geometric reading.** A linear AE projects the data onto the subspace of maximum variance and discards the orthogonal complement. The recovered subspace is identical to PCA's. So PCA isn't a competitor of representation learning — it's the base case the rest of the topic generalizes.
+
+<Figure
+  src="/images/topics/representation-learning/03_linear_ae_pca.png"
+  alt="Gradient descent on a linear autoencoder converges to PCA's top eigenvector."
+  caption="Gradient descent on the linear-AE loss converges to PCA. Left: a 2D Gaussian point cloud with elongated covariance; the closed-form top eigenvector (solid) and the AE-recovered bottleneck direction after 200 epochs of training (dashed) coincide. Right: across epochs, the cosine alignment |cos∠(u, v_top)| climbs to 1 and the reconstruction loss falls to the floor λ_2 — the Baldi–Hornik bound."
+/>
+
+<LinearAEisPCA client:visible />
+
+### §3.3 The bottleneck inequality and the manifold gap
+
+<TheoremBlock type="corollary" number={3.1} title="bottleneck inequality">
+For any linear autoencoder with bottleneck dimension $d$ trained on data with covariance $\boldsymbol\Sigma$ of eigenvalues $\lambda_1 \ge \cdots \ge \lambda_D$,
+$$
+\mathcal{L}_{\text{AE}}(\phi, \theta) \;\ge\; \sum_{j = d+1}^{D} \lambda_j,
+$$
+with equality when $UW$ is the top-$d$ eigenprojector.
+</TheoremBlock>
+
+This bound is a hard floor: no choice of linear $W, U$ can do better. The data "want" $d$ dimensions exactly when the spectrum of $\boldsymbol\Sigma$ has a clean knee at index $d+1$ — i.e., the bottom $D - d$ eigenvalues sum to something small. When the spectrum is flat, no linear AE compresses well.
+
+**Where nonlinearity helps.** The bottleneck inequality is *linear-AE specific*. Consider a data distribution supported on a smooth $d$-dimensional submanifold of $\mathbb{R}^D$ — say, points on a circle in $\mathbb{R}^2$ ($d = 1$, $D = 2$). The covariance has rank 2 in this case; the linear bottleneck floor is positive. But a nonlinear AE with even modest capacity can parametrize the circle by an angle and reconstruct it exactly, achieving $\mathcal{L}^* = 0$ at $d = 1$. The nonlinear AE is *off-graph* with respect to the linear-AE floor.
+
+**Where nonlinearity doesn't help as much as you'd think.** In practice, deep AEs on natural data (images, text embeddings) underperform their theoretical nonlinear ceiling because (a) the manifold hypothesis is approximate, not exact — there's always noise off the manifold; (b) optimization is hard; (c) the squared-error loss is geometrically inappropriate for many natural data types. The VAE of §4 fixes (c) by switching from a deterministic squared-error decoder to a probabilistic one; §10's identifiability theorems give us a vocabulary for talking about (a).
+
+### §3.4 Denoising autoencoders and the score-matching connection
+
+A **denoising autoencoder** corrupts the input with noise and trains the network to reconstruct the clean input from the corrupted version (Vincent 2008). Concretely, with Gaussian noise $\eta \sim \mathcal{N}(0, \sigma^2 I)$,
+$$
+\mathcal{L}_{\text{DAE}}(\phi, \theta) \;=\; \mathbb{E}_{X \sim p,\, \eta \sim \mathcal{N}(0, \sigma^2 I)}\,\big\| X - g_\theta(f_\phi(X + \eta)) \big\|^2.
+$$
+
+This is the deterministic AE of §3.1 with a *stochastic encoder input*. The trick is that the population minimizer has a strikingly clean form, and that form connects denoising to score estimation.
+
+<TheoremBlock type="theorem" number={3.2} title="Tweedie's identity / Vincent 2008">
+Let $X \sim p$ and $\widetilde X = X + \eta$ with $\eta \sim \mathcal{N}(0, \sigma^2 I)$ independent of $X$. Let $p_\sigma$ denote the density of $\widetilde X$ (the convolution $p \ast \phi_\sigma$). Then the optimal denoiser $r^*(\widetilde x) := \mathbb{E}[X \mid \widetilde X = \widetilde x]$ satisfies
+$$
+r^*(\widetilde x) \;=\; \widetilde x \;+\; \sigma^2 \, \nabla \log p_\sigma(\widetilde x).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+By Bayes' rule, $p(x \mid \widetilde x) = p(x) \phi_\sigma(\widetilde x - x) / p_\sigma(\widetilde x)$, where $\phi_\sigma$ is the $\mathcal{N}(0, \sigma^2 I)$ density. The key gradient identity is
+$$
+\nabla_{\widetilde x} \phi_\sigma(\widetilde x - x) \;=\; -\frac{\widetilde x - x}{\sigma^2}\, \phi_\sigma(\widetilde x - x).
+$$
+Differentiate the convolution $p_\sigma(\widetilde x) = \int p(x) \phi_\sigma(\widetilde x - x)\,dx$ under the integral sign:
+$$
+\nabla p_\sigma(\widetilde x) \;=\; -\frac{1}{\sigma^2}\int p(x) (\widetilde x - x) \phi_\sigma(\widetilde x - x)\,dx \;=\; -\frac{\widetilde x}{\sigma^2}\, p_\sigma(\widetilde x) + \frac{1}{\sigma^2}\int x \,p(x) \phi_\sigma(\widetilde x - x)\,dx.
+$$
+The remaining integral is $p_\sigma(\widetilde x) \cdot \mathbb{E}[X \mid \widetilde X = \widetilde x] = p_\sigma(\widetilde x) \, r^*(\widetilde x)$, so dividing through by $p_\sigma(\widetilde x)$ gives
+$$
+\nabla \log p_\sigma(\widetilde x) \;=\; \frac{1}{\sigma^2}\big(r^*(\widetilde x) - \widetilde x\big),
+$$
+which rearranges to the claim.
+</TheoremBlock>
+
+**The interpretation.** The denoising displacement $r^*(\widetilde x) - \widetilde x$ *is* the score of the smoothed density, scaled by $\sigma^2$. The DAE doesn't just learn to clean inputs; it implicitly learns the gradient of the log-density in the neighborhood of the data manifold. This is the connection that diffusion models exploit in earnest: training a sequence of denoisers at different noise scales is training a sequence of score estimators, and the reverse-time SDE for sampling is built directly on those scores. Diffusion sits downstream of this topic — we'll point at it from §13 — but the mathematical content of Tweedie is right here, three lines from the AE loss.
+
+<Figure
+  src="/images/topics/representation-learning/03b_dae_score_field.png"
+  alt="Tweedie identity verified on a 2D Gaussian mixture: the optimal denoiser displacement equals the score field to machine precision."
+  caption="Tweedie identity verified on a 2D Gaussian mixture: the closed-form optimal denoiser displacement r*(x̃) − x̃ (red arrows) coincides with σ² ∇log p_σ(x̃) (green arrows) to machine precision. The field points from low-density regions toward the modes — which is what a denoiser should do and what a score estimator must do."
+/>
+
+<DenoisingAEScoreField client:visible />
+
+### §3.5 Sparse autoencoders and dictionary learning
+
+A **sparse autoencoder** adds a penalty on the latent activations to incentivize codes where only a small fraction of latent units fire for any given input (Olshausen–Field 1996, Ng 2011). The standard variants are
+$$
+\mathcal{L}_{\text{sparse}}(\phi, \theta) \;=\; \mathcal{L}_{\text{AE}}(\phi, \theta) \;+\; \lambda \cdot \Omega(f_\phi(X)),
+$$
+with two common choices of $\Omega$: the $\ell_1$ penalty $\Omega(z) = \mathbb{E}\,\|z\|_1$ (the Lasso of representation learning), or the KL penalty $\Omega(z) = \sum_j \mathrm{KL}(\rho \,\|\, \hat\rho_j)$ where $\rho$ is a target average activation rate (typically $\rho \approx 0.05$) and $\hat\rho_j$ is the empirical mean activation of the $j$-th latent unit.
+
+**Why we'd want sparsity.** With an overcomplete latent ($d > D$), the AE without regularization has trivial perfect-reconstruction solutions (set $W = U^{-1}$). Sparsity breaks this degeneracy by forcing the network to use a *combinatorial* code — different inputs activate different sparse subsets of the latents — which mirrors the sparse-coding model of biological vision (Olshausen–Field 1996) and makes the learned features more interpretable.
+
+**Dictionary-learning equivalence.** The sparse-AE objective with linear decoder $g_\theta(z) = Uz$ and $\ell_1$ penalty, $\min_{U, \{z_i\}} \sum_i \|x_i - Uz_i\|^2 + \lambda \|z_i\|_1$, is exactly the **dictionary-learning** problem (Mairal et al. 2009): find an overcomplete basis $U$ and sparse codes $z_i$ that linearly reconstruct the data. The "encoder" is implicit — solving the lasso $z^* = \arg\min_z \|x - Uz\|^2 + \lambda \|z\|_1$ per input — but morally this is just a sparse AE where the encoder is replaced by an optimization solver. Modern sparse-AE work on transformer features (Bricken et al. 2023, Cunningham et al. 2023) is dictionary learning at scale with a learned (rather than optimization-based) encoder.
+
+This closes the deterministic-AE family. The VAE of §4 replaces the deterministic squared-error decoder with a probabilistic one and the deterministic encoder with a variational posterior; the contrastive methods of §5 drop the decoder entirely in favor of an invariance signal. Both trajectories begin here.
+
+---
+
+## §4. The variational autoencoder
+
+The deterministic autoencoder of §3 has no story about *uncertainty in the code*. Given an input $x$, the encoder returns a single point $z = f_\phi(x)$; given a code $z$, the decoder returns a single reconstruction $\hat x = g_\theta(z)$. This works if the data lies cleanly on a low-dim manifold, but it makes the AE unhappy in two ways: there's no principled way to sample new data, and there's no way to express the encoder's confidence about an ambiguous input.
+
+The **variational autoencoder** (Kingma–Welling 2014; Rezende–Mohamed–Wierstra 2014) fixes both at once by replacing the deterministic encoder/decoder pair with a probabilistic latent-variable model. The training objective — the **Evidence Lower Bound** — is identical in form to the ELBO of variational inference, and three new pieces make it work end-to-end: the amortization of $q_\phi(z \mid x)$ as a neural network, the reparametrization trick that lets gradients pass through the latent sampling step, and the closed-form Gaussian KL that makes the KL term trivially differentiable. We derive each in turn.
+
+### §4.1 A latent-variable generative model
+
+<TheoremBlock type="definition" number={4.1} title="deep latent-variable model">
+A deep latent-variable model is a triple $(p(z), p_\theta(x \mid z), \mathcal{X})$ where:
+
+- $p(z)$ is a fixed prior on $\mathbb{R}^d$ (typically $\mathcal{N}(0, I)$);
+- $p_\theta(x \mid z)$ is a parametric conditional density on $\mathcal{X}$, with parameters $\theta$ realized as a neural-network mapping $z \mapsto \text{distribution parameters of } x$;
+- the implied marginal density on $\mathcal{X}$ is $p_\theta(x) = \int p_\theta(x \mid z)\, p(z)\, dz$.
+</TheoremBlock>
+
+The model is **generative** because the prior-decoder pair $(p(z), p_\theta(x \mid z))$ defines a sampler: draw $z \sim p(z)$, then $x \sim p_\theta(x \mid z)$. Standard choices for $p_\theta(x \mid z)$ are $\mathcal{N}(\mu_\theta(z), \sigma^2 I)$ for continuous data (giving a squared-error reconstruction loss) and Bernoulli$(\rho_\theta(z))$ per pixel for binary data (giving a cross-entropy reconstruction loss). We'll use the Gaussian decoder throughout because it makes the §3 connection transparent.
+
+The training goal is **maximum-likelihood estimation** of $\theta$:
+$$
+\theta^* \;=\; \arg\max_\theta\, \mathbb{E}_{X \sim p_{\text{data}}} \big[\log p_\theta(X)\big].
+$$
+This is what the AE of §3 *isn't* doing — the deterministic AE optimizes reconstruction without any reference to a probability density. The VAE makes the connection explicit, but at the cost of an intractable integral: $\log p_\theta(x) = \log \int p_\theta(x \mid z) p(z)\, dz$ has no closed form when $p_\theta(x \mid z)$ comes from a neural network. The ELBO is the workaround.
+
+### §4.2 The Evidence Lower Bound
+
+The classical move (Jordan, Ghahramani, Jaakkola, Saul 1999) is to introduce an auxiliary density $q(z)$ — call it a *variational distribution* — and use it to construct a lower bound on $\log p_\theta(x)$. The cleanest derivation is through a direct identity.
+
+<TheoremBlock type="theorem" number={4.1} title="ELBO identity">
+For any density $q(z)$ on $\mathbb{R}^d$ with $q(z) > 0$ wherever $p_\theta(z \mid x) > 0$, and any $\theta$,
+$$
+\log p_\theta(x) \;=\; \underbrace{\mathbb{E}_{Z \sim q}\!\left[\log p_\theta(x, Z) - \log q(Z)\right]}_{\mathrm{ELBO}(x; \theta, q)} \;+\; D_{\mathrm{KL}}\!\big(q(\cdot)\,\big\|\,p_\theta(\cdot \mid x)\big).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Write the joint as $p_\theta(x, z) = p_\theta(x)\, p_\theta(z \mid x)$ and expand the ELBO:
+$$
+\mathrm{ELBO}(x; \theta, q)
+\;=\; \mathbb{E}_q\!\left[\log p_\theta(x) + \log p_\theta(Z \mid x) - \log q(Z)\right]
+\;=\; \log p_\theta(x) \;-\; D_{\mathrm{KL}}(q \,\|\, p_\theta(\cdot \mid x)),
+$$
+where we used that $\log p_\theta(x)$ doesn't depend on $z$ to pull it out of the expectation. Rearranging gives the identity.
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={4.1} title="variational lower bound">
+Since $D_{\mathrm{KL}} \ge 0$,
+$$
+\log p_\theta(x) \;\ge\; \mathrm{ELBO}(x; \theta, q),
+$$
+with equality if and only if $q(z) = p_\theta(z \mid x)$ almost everywhere.
+</TheoremBlock>
+
+The ELBO is therefore a tight lower bound on $\log p_\theta(x)$ — tight when $q$ is the *true* posterior — and at any $q$ it has the same gradient with respect to $\theta$ as $\log p_\theta(x)$ would, up to the variational gap. We maximize the ELBO instead of the intractable $\log p_\theta(x)$, jointly over $\theta$ and the parameters of $q$.
+
+**Amortization.** Optimizing a separate $q^{(i)}(z)$ for each data point $x^{(i)}$ scales linearly in dataset size and is impractical. The VAE *amortizes* the variational distribution by parametrizing $q_\phi(z \mid x)$ as a neural network with shared parameters $\phi$ — a single encoder produces the variational distribution for every input. Common choice: $q_\phi(z \mid x) = \mathcal{N}(\mu_\phi(x), \mathrm{diag}(\sigma^2_\phi(x)))$, a diagonal Gaussian whose mean and (log-)variance are network outputs. The ELBO becomes
+$$
+\mathrm{ELBO}(x; \theta, \phi) \;=\; \mathbb{E}_{Z \sim q_\phi(\cdot \mid x)}\!\left[\log p_\theta(x, Z) - \log q_\phi(Z \mid x)\right],
+$$
+and we maximize this jointly over $(\theta, \phi)$ — encoder and decoder trained together by stochastic gradient ascent on the dataset average.
+
+### §4.3 Reconstruction + KL decomposition
+
+The ELBO admits a particularly useful rewriting that exposes the two forces inside it.
+
+<TheoremBlock type="proposition" number={4.1} title="ELBO decomposition">
+For any latent-variable model,
+$$
+\mathrm{ELBO}(x; \theta, \phi)
+\;=\; \underbrace{\mathbb{E}_{q_\phi(z \mid x)}\!\left[\log p_\theta(x \mid Z)\right]}_{\text{reconstruction}}
+\;-\; \underbrace{D_{\mathrm{KL}}\!\big(q_\phi(z \mid x)\,\big\|\,p(z)\big)}_{\text{regularization}}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Substitute the joint factorization $p_\theta(x, z) = p_\theta(x \mid z) p(z)$:
+$$
+\mathrm{ELBO} \;=\; \mathbb{E}_q[\log p_\theta(x \mid Z) + \log p(Z) - \log q_\phi(Z \mid x)] \;=\; \mathbb{E}_q[\log p_\theta(x \mid Z)] - D_{\mathrm{KL}}(q_\phi(\cdot \mid x) \| p).
+$$
+</TheoremBlock>
+
+**The geometric reading.** Maximizing the ELBO pushes two objectives against each other:
+
+1. **Reconstruction** wants the decoder's predicted distribution to put high probability on the actual input $x$. For a Gaussian decoder with fixed variance, $\mathbb{E}_q[\log p_\theta(x \mid Z)] = -\frac{1}{2\sigma_x^2} \mathbb{E}_q\|x - \mu_\theta(Z)\|^2 + \text{const}$ — the squared-error reconstruction loss of §3 wrapped in an expectation over $q$.
+2. **Regularization** wants the encoder's posterior $q_\phi(z \mid x)$ to stay close to the prior $p(z)$. This is the new piece — it didn't exist in the deterministic AE — and it's what makes the VAE's latent space samplable.
+
+**Why the KL term has a closed form.** For Gaussian $q_\phi(z \mid x) = \mathcal{N}(\boldsymbol\mu, \mathrm{diag}(\boldsymbol\sigma^2))$ and Gaussian prior $p(z) = \mathcal{N}(0, I)$,
+$$
+D_{\mathrm{KL}}\!\big(q_\phi(z \mid x) \,\big\|\, p(z)\big) \;=\; \frac{1}{2}\sum_{j=1}^d \big(\mu_j^2 + \sigma_j^2 - 1 - \log \sigma_j^2\big).
+$$
+This is a hand-derivable Gaussian-vs-Gaussian KL; no Monte Carlo needed. The reconstruction term, by contrast, *does* require Monte Carlo — which is what §4.4 enables to backpropagate through.
+
+<Figure
+  src="/images/topics/representation-learning/04_vae_latent_space.png"
+  alt="VAE latent space on an 8-class synthetic fixture, colored by class label."
+  caption="Encoder posterior means q_φ(z|x) for an 8-class synthetic fixture, color-coded by class label. The Gaussian prior pulls the latent codes toward the origin; the reconstruction term pushes them apart enough to distinguish classes."
+/>
+
+<VAELatentSpaceExplorer client:visible />
+
+### §4.4 The reparametrization trick
+
+The gradient $\nabla_\phi \mathrm{ELBO}$ has a subtlety: the encoder parameters $\phi$ appear inside the *distribution we're integrating against*, not just inside the integrand. The naive approach — sample $z \sim q_\phi(z \mid x)$, then differentiate — doesn't work because the sampling step is not differentiable in $\phi$.
+
+Two estimators handle this:
+
+**Score-function estimator (REINFORCE).** Use the log-derivative trick, $\nabla_\phi q_\phi(z) = q_\phi(z) \nabla_\phi \log q_\phi(z)$, to write
+$$
+\nabla_\phi \mathbb{E}_{Z \sim q_\phi}[f(Z)] \;=\; \mathbb{E}_{Z \sim q_\phi}\!\left[f(Z)\, \nabla_\phi \log q_\phi(Z)\right].
+$$
+This is unbiased and works for any $q_\phi$ — including discrete distributions — but it's notoriously high-variance because $f(z)$ is *not* mean-zero in $z$. The estimator is dominated by the magnitude of $f$ even when only its shape matters for the gradient.
+
+**Reparametrization estimator (Kingma–Welling 2014).** If we can write the sample as a deterministic function of a noise variable $\epsilon$ that doesn't depend on $\phi$,
+$$
+Z \;=\; T_\phi(\epsilon, x), \qquad \epsilon \sim p_\epsilon,
+$$
+then the gradient passes through:
+$$
+\nabla_\phi \mathbb{E}_{Z \sim q_\phi}[f(Z)] \;=\; \nabla_\phi \mathbb{E}_{\epsilon \sim p_\epsilon}[f(T_\phi(\epsilon, x))] \;=\; \mathbb{E}_{\epsilon}\!\left[\nabla_\phi f(T_\phi(\epsilon, x))\right].
+$$
+
+For the diagonal Gaussian $q_\phi(z \mid x) = \mathcal{N}(\boldsymbol\mu_\phi(x), \mathrm{diag}(\boldsymbol\sigma_\phi(x)^2))$, the reparametrization is
+$$
+Z \;=\; \boldsymbol\mu_\phi(x) \;+\; \boldsymbol\sigma_\phi(x) \odot \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I).
+$$
+The encoder outputs $\boldsymbol\mu_\phi(x), \boldsymbol\sigma_\phi(x)$ — both fully differentiable in $\phi$ — and the noise $\epsilon$ is fixed at sample time, breaking the non-differentiability.
+
+**Why the variance reduction.** The reparametrization estimator uses the *pathwise* derivative — gradient flows through $f$ via $T_\phi$ — and exploits local smoothness of $f$. The score-function estimator uses only the *value* of $f$, treating it as a black box. When $f$ is smooth (as in VAE losses with neural decoders), pathwise gradients have dramatically lower variance. Empirically, the gap is one to three orders of magnitude on standard VAE benchmarks.
+
+<Figure
+  src="/images/topics/representation-learning/04_reparam_variance.png"
+  alt="Gradient-variance comparison: reparametrization vs score-function estimators on a VAE training example."
+  caption="Gradient-variance comparison between reparametrization and score-function estimators on a single VAE training example. Across 200 Monte Carlo replications at fixed (φ, x), the reparametrization estimator's per-coordinate standard deviation is roughly 3× smaller. This is the empirical reason the trick matters — without it, optimization in the VAE's amortization regime is barely tractable."
+/>
+
+<ReparametrizationTrickDiagram client:visible />
+
+### §4.5 Posterior collapse, β-VAE, and the rate-distortion view
+
+In practice, training a VAE on data with a powerful decoder (e.g., a deep autoregressive $p_\theta(x \mid z)$) reveals an unwanted failure mode: $q_\phi(z \mid x)$ collapses to the prior $p(z)$, $D_{\mathrm{KL}}(q \| p) \to 0$, and the encoder stops conveying information about $x$. The latent space becomes useless and reconstruction relies entirely on the decoder's unconditional capacity. This is **posterior collapse**, and it's the VAE's analog of the bottleneck-too-loose pathology.
+
+**The β-VAE.** Higgins et al. (2017) introduced a single-scalar generalization of the ELBO that lets us trade off reconstruction against KL deliberately:
+$$
+\mathcal{L}_{\beta\text{-VAE}}(\theta, \phi; \beta) \;=\; \mathbb{E}_{q_\phi(z \mid x)}\!\left[\log p_\theta(x \mid Z)\right] \;-\; \beta\, D_{\mathrm{KL}}(q_\phi(z \mid x) \,\|\, p(z)).
+$$
+At $\beta = 1$ this is the standard ELBO. At $\beta > 1$, the KL penalty dominates and the encoder is incentivized to discard information — eventually collapsing to the prior. At $\beta < 1$, the KL penalty weakens and the encoder is free to encode more about each input, at the cost of a latent space that's less prior-like (and less generatively useful).
+
+**The rate-distortion reading.** The two terms are exactly the information-theoretic rate and distortion of the encoding:
+
+- $D_{\mathrm{KL}}(q_\phi(z \mid x) \| p(z))$ upper-bounds $I(X; Z)$ averaged over the data distribution (Alemi et al. 2018). This is the **rate** — bits per sample required to describe $z$ given the prior.
+- $-\mathbb{E}_q[\log p_\theta(x \mid Z)]$ is the **distortion** — average squared error (for Gaussian decoders) or cross-entropy (for Bernoulli decoders) between $x$ and its reconstruction.
+
+Sweeping $\beta$ traces the rate-distortion frontier for this specific encoder / decoder pair. The full rate-distortion theorem gives the *information-theoretic* lower bound any such pair must respect; the β-VAE's trade-off curve lies above it, with the gap measuring how "inefficient" the encoder/decoder are relative to the optimal vector quantizer.
+
+<Figure
+  src="/images/topics/representation-learning/05_beta_vae_frontier.png"
+  alt="β-VAE rate-distortion trade-off on the synthetic 8-class fixture."
+  caption="Rate-distortion trade-off from β ∈ {0.1, 0.5, 1, 2, 4, 8} on the synthetic 8-class fixture. Each point is the converged (rate, distortion) = (D_KL, −E_q[log p(x|Z)]) pair. At small β, rate is high and reconstruction is sharp; at large β, rate collapses toward 0 and reconstruction is essentially the data mean."
+/>
+
+This closes the variational autoencoder. The reconstruction lens has been formalized probabilistically; the next two sections shift to the invariance lens (§5 InfoNCE, §6 SimCLR), and §7 returns to this rate-distortion view under the explicit information-bottleneck objective.
+
+---
+
+## §5. The contrastive principle and the InfoNCE bound
+
+The reconstruction lens of §3-§4 asks the encoder to preserve enough of $x$ to rebuild it. The *invariance lens* asks something subtly different: preserve enough of $x$ to **recognize** $x$ — meaning the encoder should map two related views of the same instance close together and unrelated instances far apart. Two views of the same image (a crop, a color jitter), two paraphrases of the same sentence, two consecutive frames of the same video — these are the "positive pairs" the encoder should align. Everything else is, by default, a negative.
+
+This section formalizes the invariance lens through the InfoNCE objective (Oord, Li, and Vinyals 2018), the closed-form connection to mutual-information estimation, and the alignment-uniformity decomposition of Wang and Isola (2020). The §5.4 detour explains why the contrastive critic at optimum is the log density-ratio of formalML's density-ratio-estimation topic — the same object, in a different costume.
+
+### §5.1 Positive pairs and negative samples
+
+The contrastive setup begins with a **positive-pair distribution** $p^+(x, x^+)$ on $\mathcal{X} \times \mathcal{X}$. By construction, the marginals of $p^+$ are equal: $p^+(x) = p^+(x^+) = p_X$, the data distribution. The "positivity" enters through *correlation* between $x$ and $x^+$ — they're not independent samples but two related views of the same underlying instance.
+
+Three canonical constructions:
+
+- **Augmentation-based positives.** Define a stochastic augmentation $a : \mathcal{X} \to \mathcal{X}$ (random crop, color jitter, dropout, back-translation, time-warp). Set $p^+(x, x^+) = \mathbb{E}_{x_0 \sim p_X, a, a'}[\delta(x - a(x_0)) \delta(x^+ - a'(x_0))]$ — both $x$ and $x^+$ are independent augmentations of a shared anchor $x_0$.
+- **Temporal positives.** For sequential data, set $(x, x^+) = (s_t, s_{t+1})$ — consecutive frames or tokens. This is the Oord et al. (2018) "contrastive predictive coding" setup.
+- **Multi-modal positives.** $(x, x^+)$ are paired observations from two modalities (image, caption). The CLIP construction; we revisit in §8.
+
+Negatives are typically *implicit*: given a batch $\{(x_i, x_i^+)\}_{i=1}^K$ of positive pairs, the negatives for anchor $x_i$ are the other batch members' positives $\{x_j^+ : j \neq i\}$. Because $x_j^+$ is drawn from $p_X$ independently of $x_i$, this gives $K - 1$ valid negatives essentially for free — no separate negative-sampling step.
+
+**The augmentation group is the invariance prior.** What the encoder is *allowed* to throw away is determined by the augmentation: anything two augmented views can differ on is, by construction, deemed irrelevant. Choosing the augmentation set is the unsupervised counterpart of choosing the label space.
+
+### §5.2 The InfoNCE objective
+
+We parametrize an encoder $f_\phi : \mathcal{X} \to \mathbb{R}^d$ (often with its output $\ell_2$-normalized to the unit sphere, $z = f_\phi(x) / \|f_\phi(x)\|$) and define a **similarity** between two encoded views:
+$$
+\text{sim}_\phi(x, x') \;=\; \frac{\langle z, z' \rangle}{\tau} \;=\; \frac{1}{\tau}\, \frac{\langle f_\phi(x),\, f_\phi(x')\rangle}{\|f_\phi(x)\|\,\|f_\phi(x')\|}.
+$$
+Here $\tau > 0$ is the **temperature**, a scalar that controls how sharp the softmax becomes. Small $\tau$ makes the model pickier (only very-aligned pairs count as positive); large $\tau$ smooths the loss landscape.
+
+<TheoremBlock type="definition" number={5.1} title="InfoNCE loss, batch form">
+Given a batch $\mathcal{B} = \{(x_i, x_i^+)\}_{i=1}^K$ of positive pairs and a critic $f : \mathcal{X} \times \mathcal{X} \to \mathbb{R}$, the **InfoNCE loss** is
+$$
+\mathcal{L}_{\mathrm{NCE}}^{(K)}(f) \;=\; -\mathbb{E}_{\mathcal{B}}\!\left[\frac{1}{K}\sum_{i=1}^K \log \frac{e^{f(x_i,\, x_i^+)}}{\sum_{j=1}^K e^{f(x_i,\, x_j^+)}}\right].
+$$
+When $f(x, x') = \text{sim}_\phi(x, x')$, the loss depends on the encoder parameters $\phi$ through the cosine similarity.
+</TheoremBlock>
+
+The inner expression is the categorical cross-entropy of the **K-way classification problem** "which $x_j^+$ in the batch is the positive partner of $x_i$?" — with the softmax temperature absorbed into the critic. A perfect encoder makes the diagonal of the similarity matrix high and the off-diagonal entries low; the loss penalizes deviations from that pattern.
+
+**Two variants you will encounter in the wild.** (i) The "all-pairs" version treats every other batch element (both anchors and positives) as a candidate negative, giving $2K - 1$ negatives per anchor instead of $K - 1$ — this is the **NT-Xent** loss of SimCLR (Chen et al. 2020) and is what we'll use in §6. (ii) The "asymmetric" version uses separate encoders for the two views (MoCo's "query" and "key" encoders) and a queue of cached negatives. These are engineering variants of the same underlying objective.
+
+<InfoNCETemperatureExplorer client:visible />
+
+### §5.3 InfoNCE as a variational lower bound on mutual information
+
+The reason InfoNCE is interesting *theoretically* (and not just empirically) is that its negative is a tractable lower bound on the mutual information between the two views.
+
+<TheoremBlock type="theorem" number={5.1} title="InfoNCE MI bound (van den Oord, Li, Vinyals 2018, Poole et al. 2019)">
+For any positive-pair distribution $p^+(x, x^+)$ with marginal $p_X$, any critic $f : \mathcal{X} \times \mathcal{X} \to \mathbb{R}$, and any batch size $K \ge 2$,
+$$
+I(X;\, X^+) \;\ge\; \log K \;-\; \mathcal{L}_{\mathrm{NCE}}^{(K)}(f),
+$$
+with equality (asymptotically in $K$) when $f^*(x, x') = \log p(x' \mid x) / p(x') + c(x)$ for any function $c$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We give the proof through the optimal-critic argument. Frame the problem as a $K$-way classification: nature draws an index $J \sim \mathrm{Uniform}\{1, \dots, K\}$, then samples $X \sim p_X$ and a batch of candidates $\{Y_j\}_{j=1}^K$ with $(X, Y_J) \sim p^+$ (the positive is at index $J$) and $Y_k \sim p_X$ independently for $k \neq J$ (the negatives are marginal samples). Given the observed $(X, Y_{1:K})$, the goal is to recover $J$.
+
+**Step 1: identify the Bayes-optimal critic.** By Bayes' rule,
+$$
+p(J = j \mid X, Y_{1:K}) \;=\; \frac{p(Y_j \mid X) \prod_{k \neq j} p(Y_k)}{\sum_i p(Y_i \mid X) \prod_{k \neq i} p(Y_k)} \;=\; \frac{p(Y_j \mid X) / p(Y_j)}{\sum_i p(Y_i \mid X) / p(Y_i)},
+$$
+where the second equality divides numerator and denominator by $\prod_k p(Y_k)$. The right side is the softmax of $f^*(x, y) := \log p(y \mid x) / p(y)$, the log density-ratio. Therefore $f^*$ is the Bayes-optimal classifier.
+
+**Step 2: compute the loss at $f^*$.** The InfoNCE loss is the categorical cross-entropy of identifying $J$. At the Bayes-optimal classifier, the cross-entropy equals the conditional entropy:
+$$
+\mathcal{L}_{\mathrm{NCE}}^{(K)}(f^*) \;=\; H(J \mid X, Y_{1:K}).
+$$
+
+**Step 3: relate the conditional entropy to mutual information.** By the identity $H(J \mid X, Y_{1:K}) = H(J) - I(J; X, Y_{1:K})$, and using $H(J) = \log K$ (uniform on $K$ classes),
+$$
+\mathcal{L}_{\mathrm{NCE}}^{(K)}(f^*) \;=\; \log K \;-\; I(J;\, X, Y_{1:K}).
+$$
+
+**Step 4: bound $I(J; X, Y_{1:K})$ by $I(X; X^+)$.** Under the generative model, $J$ is independent of $X$ marginally, so $I(J; X) = 0$ and $I(J; X, Y_{1:K}) = I(J; Y_{1:K} \mid X)$. The information about $J$ contained in the batch $Y_{1:K}$ given $X$ is at most the information $X$ shares with the positive $Y_J$ — formally, by the chain rule and data-processing inequality:
+$$
+I(J;\, Y_{1:K} \mid X) \;\le\; I(X;\, Y_J) \;=\; I(X;\, X^+).
+$$
+
+**Step 5: conclude.** Combining steps 2-4,
+$$
+\mathcal{L}_{\mathrm{NCE}}^{(K)}(f^*) \;\ge\; \log K - I(X; X^+) \quad \Longleftrightarrow \quad I(X; X^+) \;\ge\; \log K - \mathcal{L}_{\mathrm{NCE}}^{(K)}(f^*).
+$$
+For any other critic $f$, Bayes-optimality gives $\mathcal{L}_{\mathrm{NCE}}^{(K)}(f) \ge \mathcal{L}_{\mathrm{NCE}}^{(K)}(f^*)$, so the bound holds for arbitrary $f$.
+</TheoremBlock>
+
+**The $\log K$ ceiling.** The bound's right-hand side is at most $\log K$ (since $\mathcal{L}_{\mathrm{NCE}}^{(K)} \ge 0$ always). So InfoNCE with $K$ candidates can only certify MI up to $\log K$ nats — if the true MI exceeds $\log K$, the bound is loose and grows linearly in $\log K$. This is the mathematical reason large-batch contrastive training matters in practice: larger $K$ raises the certifiable-MI ceiling.
+
+<Figure
+  src="/images/topics/representation-learning/06_infonce_mi_bound.png"
+  alt="Numerical verification of the InfoNCE MI lower bound on bivariate Gaussian data."
+  caption="Numerical verification of the InfoNCE bound on bivariate Gaussian (X, Y) with correlation ρ = 0.9 (true I(X; Y) = -½log(1 - ρ²) = 0.831 nats). At the optimal critic, log K − L_NCE converges to the true MI as K grows. For K ≤ 2, the log K ceiling bites and the bound saturates at log 2 = 0.693 < 0.831."
+/>
+
+### §5.4 InfoNCE as density-ratio estimation
+
+Step 1 of the §5.3 proof identified the Bayes-optimal contrastive critic as the log density-ratio $f^*(x, x') = \log p(x' \mid x) / p(x')$. This is not a coincidence; it's the same theoretical object that anchors formalML's [density-ratio-estimation](/topics/density-ratio-estimation) topic.
+
+**The two-distribution reading.** Define the "positive-pair joint" $p^+(x, x')$ and the "marginal product" $p_X(x) \otimes p_X(x')$. Each $x \in \mathcal{X}$ has a conditional density $p^+(x' \mid x)$ that's strictly different from $p_X(x')$ — that's the whole point of "positive pair." The ratio
+$$
+r(x, x') \;=\; \frac{p^+(x, x')}{p_X(x) p_X(x')} \;=\; \frac{p^+(x' \mid x)}{p_X(x')}
+$$
+measures how much more likely $(x, x')$ is to be a positive pair than two independent samples. The InfoNCE-optimal critic is exactly $\log r$.
+
+**The classification-DRE identity.** This bridge is the same one the DRE topic exploits — probabilistic classification as density-ratio estimation. Pool the positives with the negatives, train any well-calibrated binary classifier to discriminate them, and the logit recovers $\log r$. The contrastive setting differs only in how the negatives are *constructed*: augmentation-based positives plus in-batch marginal negatives give us a sample-efficient way to do DRE without ever materializing the negative distribution explicitly.
+
+**What InfoNCE buys over plug-in MI estimation.** Estimating $I(X; X^+)$ naively — fit $\widehat p(x, x')$ and $\widehat p_X(x)$ separately, then integrate — is exponentially hard in $\dim(\mathcal{X})$ (it's the curse of dimensionality applied to density estimation). InfoNCE sidesteps this by *only* estimating the ratio, which has lower complexity than either density. This is the formal reason contrastive methods work on high-dimensional inputs where direct MI estimation fails: they're solving the easier problem.
+
+### §5.5 The alignment-uniformity decomposition
+
+The InfoNCE loss simplifies dramatically in the limit of infinite negatives. Wang and Isola (2020) showed that the limit decomposes into two interpretable terms, each with a closed-form geometric optimum.
+
+<TheoremBlock type="theorem" number={5.2} title="Wang–Isola decomposition">
+For any critic $f$ and any positive-pair distribution $p^+$,
+$$
+\lim_{K \to \infty} \Big[\,\mathcal{L}_{\mathrm{NCE}}^{(K)}(f) - \log K\,\Big] \;=\; -\mathbb{E}_{(X, X^+) \sim p^+}\!\left[f(X, X^+)\right] \;+\; \mathbb{E}_{X \sim p_X}\!\log \mathbb{E}_{X' \sim p_X}\!\left[e^{f(X, X')}\right].
+$$
+When $f(x, x') = \langle z(x), z(x') \rangle / \tau$ with unit-norm features $z = f_\phi(x) / \|f_\phi(x)\|$, this is $\mathcal{L}_{\mathrm{align}}(\tau) + \mathcal{L}_{\mathrm{uniform}}(\tau)$ with $\mathcal{L}_{\mathrm{align}}(\tau) = -\tfrac{1}{\tau}\, \mathbb{E}_{p^+}\!\left[\langle z, z^+ \rangle\right]$ and $\mathcal{L}_{\mathrm{uniform}}(\tau) = \mathbb{E}_{p_X}\!\log \mathbb{E}_{p_X}\!\left[e^{\langle z, z' \rangle / \tau}\right]$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Expand the loss:
+$$
+\mathcal{L}_{\mathrm{NCE}}^{(K)}(f) \;=\; -\mathbb{E}\!\left[f(X, X^+)\right] \;+\; \mathbb{E}\log \sum_{j=1}^K e^{f(X, Y_j)}
+\;=\; -\mathbb{E}\!\left[f(X, X^+)\right] + \log K + \mathbb{E}\log \frac{1}{K}\sum_{j=1}^K e^{f(X, Y_j)}.
+$$
+The inner sum has one positive contribution ($e^{f(X, X^+)}$, with $X^+ \sim p(\cdot \mid X)$) and $K - 1$ negative contributions ($e^{f(X, Y_j)}$, with $Y_j \sim p_X$ independent of $X$). By the strong law of large numbers, as $K \to \infty$,
+$$
+\frac{1}{K}\sum_{j=1}^K e^{f(X, Y_j)} \;\xrightarrow{\text{a.s.}}\; \mathbb{E}_{Y \sim p_X}\!\left[e^{f(X, Y)} \,\Big|\, X\right]
+$$
+(the positive contribution's weight $1/K \to 0$). Substituting and rearranging gives the claimed limit.
+</TheoremBlock>
+
+**Geometric interpretation.** The two terms pull the encoder in different directions:
+
+- $\mathcal{L}_{\mathrm{align}}$ is minimized when $z(X) = z(X^+)$ almost surely — that is, when the encoder is *perfectly invariant* to the augmentations defining $p^+$. The minimum is $-1/\tau$ (cosine similarity of equal unit vectors is $1$).
+- $\mathcal{L}_{\mathrm{uniform}}$ is minimized when the marginal distribution of $z$ on the unit sphere is the *uniform distribution* on $\mathbb{S}^{d-1}$. Wang–Isola show this via Gegenbauer harmonics: the log-MGF of the cosine similarity is minimized when the latent marginal is rotation-invariant. Intuitively, uniformity spreads the data out, preventing the "all features collapse to one point" trivial solution.
+
+The two minimizers are *jointly achievable* in the limit $d \to \infty$: a perfectly invariant encoder mapping to a uniform distribution on a sufficiently high-dimensional sphere can satisfy both. For finite $d$, the two objectives compete — and the InfoNCE trade-off curve traced by varying $\tau$ is the practical handle (analogous to β-VAE's rate-distortion sweep).
+
+<Figure
+  src="/images/topics/representation-learning/07_align_uniform.png"
+  alt="Training trajectory of a contrastive encoder in the (L_align, L_uniform) plane."
+  caption="Training trajectory of a small contrastive encoder. Left: alignment and uniformity losses both decrease monotonically over training. Right: the trajectory in the (L_align, L_uniform) plane moves toward lower-left — the simultaneous-minimizer regime predicted by Theorem 5.2."
+/>
+
+<AlignmentUniformityScatter client:visible />
+
+The alignment-uniformity decomposition is the most useful diagnostic in modern contrastive learning. Posterior-collapse-style pathologies in contrastive methods (BYOL's "stop-gradient" trick, BatchNorm's role in SimSiam) all admit clean explanations in these two metrics. §12.2 returns to the alignment-uniformity scatter as a comparison axis across SSL methods.
+
+---
+
+## §6. SimCLR and the design space of contrastive methods
+
+§5 gave the contrastive principle a closed-form objective and a precise information-theoretic interpretation. This section closes the loop with **method** — how do you actually instantiate the principle into a system that learns useful representations on real data? The reference architecture is SimCLR (Chen, Kornblith, Norouzi, Hinton 2020); the design space around it — projection heads, memory banks, momentum encoders, predictor networks, non-contrastive variants — captures most of what makes modern self-supervised systems work.
+
+The math is lighter here than in §5; we'll lean on §5's foundations and spend the section on the four design decisions practitioners actually face.
+
+### §6.1 The SimCLR pipeline
+
+SimCLR — "A Simple Framework for Contrastive Learning of Visual Representations" — composes five components:
+
+1. **An augmentation distribution** $\mathcal{T}$ over functions $t : \mathcal{X} \to \mathcal{X}$. For images: random resized crop, horizontal flip, color jitter, Gaussian blur, with each augmentation applied stochastically and the composition $t = t_n \circ \cdots \circ t_1$ defining a single augmentation sample. For text: dropout masking, span replacement, back-translation. The augmentation defines the invariance prior — see §5.1.
+2. **An encoder** $f_\phi : \mathcal{X} \to \mathbb{R}^{d_h}$. In SimCLR's original paper a ResNet-50; the output $h = f_\phi(x)$ is the representation we'll keep at evaluation time.
+3. **A projection head** $g_\psi : \mathbb{R}^{d_h} \to \mathbb{R}^{d_z}$. Typically a 2-layer MLP with a nonlinearity in the middle. The output $z = g_\psi(h)$ is $\ell_2$-normalized and lives on $\mathbb{S}^{d_z - 1}$.
+4. **The NT-Xent loss** — the InfoNCE objective of §5 with cosine similarity, temperature $\tau$, and *in-batch negatives* applied to a batch of $K$ augmentation-pairs.
+5. **A discarding step**: at evaluation time, the projector $g_\psi$ is thrown away. Downstream tasks use $h$, not $z$.
+
+<TheoremBlock type="definition" number={6.1} title="NT-Xent loss">
+Given a batch $\{(x_i, x_i^+)\}_{i=1}^K$ of $K$ positive pairs and unit-norm projected features $\{(z_i, z_i^+)\}$, the NT-Xent loss is
+$$
+\mathcal{L}_{\text{NT-Xent}}(\phi, \psi) \;=\; -\frac{1}{2K} \sum_{i=1}^K \left[\log \frac{e^{\langle z_i, z_i^+\rangle/\tau}}{\sum_{j \in [2K], j \neq i} e^{\langle z_i, z_j\rangle/\tau}} + \log \frac{e^{\langle z_i^+, z_i\rangle/\tau}}{\sum_{j \in [2K], j \neq i^+} e^{\langle z_i^+, z_j\rangle/\tau}}\right],
+$$
+where the inner sums range over all $2K - 1$ other batch elements (both anchors and positives are treated as candidate negatives).
+</TheoremBlock>
+
+This is the all-pairs symmetric version of the InfoNCE batch form of Definition 5.1 — each batch element gets used as both anchor and as negative-for-other-anchors, giving $2K - 2$ effective negatives per anchor. The §5.3 MI bound applies directly with $K' = 2K - 1$.
+
+**The augmentation is the prior.** SimCLR's central methodological insight is that the *choice of augmentation* dominates the learned representation more than the architecture. A model trained with crop-only augmentation learns scale-invariant features; adding color jitter makes it color-invariant too. The augmentation set is the implicit specification of "which features should the representation throw away." Chen et al. (2020) report that color distortion *combined with* random cropping is far better than either alone — the two augmentations remove information the encoder would otherwise rely on as a shortcut.
+
+### §6.2 The projection head and why we throw it away
+
+SimCLR's most surprising empirical finding was that **linear-probe accuracy on $h$ exceeds linear-probe accuracy on $z$** by a substantial margin — on ImageNet, the gap is ~10% top-1. The projector $g_\psi$ is trained as part of the model and then discarded.
+
+**Why this happens.** The contrastive loss only sees $z$; the encoder $f_\phi$ receives gradient signal *only through* $g_\psi$. The composition $g \circ f$ must be invariant to the augmentation set, but the individual components need not be — and won't be, generically. The projector absorbs the invariance demands, leaving $f$ with features that include augmentation-variant directions. Those directions are precisely the ones a downstream task that *doesn't* share the augmentation invariance can profit from.
+
+<TheoremBlock type="proposition" number={6.1} title="informal projection-head principle (Bordes, Balestriero, Bottou 2023)">
+Under the contrastive loss, the projection head $g_\psi$ is incentivized to behave as an information bottleneck — discarding any feature that varies across positive pairs. The encoder $f_\phi$ is *not* under that pressure and retains augmentation-variant information that may be useful for downstream tasks orthogonal to the contrastive task.
+</TheoremBlock>
+
+A clean way to see this: the contrastive loss is a functional of $z$ only, so the encoder's "use-it-or-lose-it" pressure is mediated entirely by what the projector forwards. If the projector has enough capacity to express the augmentation invariances, the encoder is free to use its representation capacity for other things. We demonstrate the gap on a synthetic fixture where the augmentation specifically destroys "color" information.
+
+<Figure
+  src="/images/topics/representation-learning/08_projection_head.png"
+  alt="Linear-probe accuracy comparison: encoder output h vs projector output z on label and color tasks."
+  caption="Linear-probe accuracy on a 4-label × 4-color fixture: the contrastive task is color-invariant (heavy noise on the color dims, light noise on the label dims). On the label task — what the contrastive loss optimizes for — both h and z recover the labels well. On the color task — orthogonal to the contrastive task — only h retains useful information; z has discarded the color signal. This is the projection-head gap in microcosm."
+/>
+
+The lesson generalizes beyond SimCLR. Any contrastive method with a projection head will see the same pattern; this is why every paper since 2020 follows the "discard the head" convention. It's also why representation-quality benchmarks are now invariably reported on $h$, not $z$ — comparing post-projector features across methods would be a category error.
+
+### §6.3 Negatives, batch size, and the $\log K$ ceiling
+
+§5.3's bound $I(X; X^+) \ge \log K - \mathcal{L}_{\mathrm{NCE}}^{(K)}$ caps the certifiable mutual information at $\log K$ nats. On natural-image data, where two augmented views can share many nats of MI, this is a real constraint — SimCLR's reported batch sizes of $K = 2048, 4096, 8192$ are partly chasing the ceiling. The accuracy curve as $K$ grows is monotone increasing for SimCLR-style methods, with diminishing returns past $K \approx 4096$ on ImageNet (Chen et al. 2020, Figure 9).
+
+But large $K$ is expensive — the NT-Xent similarity matrix is $K \times K$, and gradient computation through the softmax involves $O(K^2)$ operations per step plus $O(K \cdot d_z)$ memory for the activations. Two engineering patches break the coupling between "number of negatives" and "current batch size."
+
+**Memory banks (Wu, Xiong, Yu, Lin 2018).** Maintain a cache $\mathcal{M}$ of $N$ feature vectors, one per training example. For each gradient step, sample $K$ negatives from $\mathcal{M}$ uniformly. After the step, update the cache slot for the current example with its new feature. The benefit: $N$ can be much larger than the current minibatch (e.g., $N = $ dataset size). The cost: cached features go stale because the encoder keeps moving; the negatives are encoded by old versions of $f_\phi$. The staleness introduces a bias that degrades quality on harder tasks.
+
+**Momentum encoder + queue (MoCo: He, Fan, Wu, Xie, Girshick 2020).** Maintain two encoders: a *query* encoder $f_q$ updated by SGD as usual, and a *key* encoder $f_k$ updated as an exponential moving average, $\theta_k \leftarrow m \theta_k + (1 - m) \theta_q$, with $m$ typically $0.999$. Negatives live in a FIFO queue of recent key features. The key encoder evolves slowly, so the queue's features stay nearly fresh; the query encoder still updates by gradient. MoCo decouples $K$ from the minibatch (queue size $K = 65{,}536$ at a minibatch of $256$ is the canonical setting) and was, in 2020, the state of the art before SimCLR showed that large minibatches without the queue could match it.
+
+**The empirical bottom line.** The ceiling matters, but the gap between $K = 256$ (typical) and $K = 8192$ (extreme) is a few accuracy points, not orders of magnitude. The choice between memory-bank, MoCo-queue, and large-batch SimCLR is a compute-budget decision more than a methodological one. The MI bound's tightening with $K$ is a useful framing, but practitioners aren't usually chasing $\log K \approx I(X; X^+)$ at training time — they're chasing downstream task accuracy, which saturates earlier.
+
+### §6.4 BYOL, SimSiam, and the no-negatives mystery
+
+Sometime around 2020 a methodological surprise landed: you can train a contrastive-style encoder *without negatives at all* and still avoid the trivial "everything collapses to a point" solution. Two papers established the recipe.
+
+**BYOL — Bootstrap Your Own Latent (Grill et al. 2020).** Two networks: an *online* encoder + projector + predictor $(f_\theta, g_\theta, q_\theta)$ and a *target* encoder + projector $(f_\xi, g_\xi)$ with no predictor. The target parameters are an exponential moving average of the online parameters, $\xi \leftarrow m\xi + (1 - m)\theta$. The loss is
+$$
+\mathcal{L}_{\text{BYOL}} \;=\; \mathbb{E}_{(x, x^+)} \left\|q_\theta(g_\theta(f_\theta(x))) \;-\; \mathrm{sg}\!\left[g_\xi(f_\xi(x^+))\right]\right\|^2 \;+\; (\text{symmetric term}),
+$$
+where $\mathrm{sg}[\cdot]$ is stop-gradient (target features carry no gradient signal back). No negatives anywhere. Empirically, BYOL matches or beats SimCLR at the same compute budget.
+
+**SimSiam — Stop, Drop, and Roll (Chen and He 2021).** Strip BYOL down: no EMA, no target network, just the online network applied to both views with stop-gradient on one side. Even simpler — and still it works. The predictor $q$ and the stop-gradient together are sufficient to prevent collapse.
+
+**Why does this work?** Honestly, it's still partly an open question. The phenomenology is clear: without stop-gradient, both BYOL and SimSiam collapse to constant features within a few epochs (which is what the no-negatives intuition would predict). *With* stop-gradient, the collapse is averted — but the mechanism is subtle. Two analyses have made progress:
+
+- **Tian, Chen, Ganguli (2021).** The predictor $q$ acts as a *temporal asymmetry*: gradient flows only through one side of the pair, so the network is solving an "anti-correlated" optimization problem rather than a symmetric one. They prove that under a linearization, the stop-gradient + predictor architecture has the collapsed solution as an *unstable* fixed point.
+- **Lee, Lee, Bahng, Han (2021).** The EMA target functions as an implicit regularizer that prevents the predictor from learning the identity function (which would close the loop and cause collapse).
+
+The full theoretical picture is still being filled in. For the practitioner the takeaway is operational: BYOL and SimSiam genuinely work, use less batch budget than SimCLR (because they don't need negatives), and have become the default for image SSL alongside the contrastive family.
+
+**The unifying view.** Whether explicit (InfoNCE, NT-Xent) or implicit (BYOL, SimSiam), all SSL methods we've seen so far define some notion of "positive pair" — two views that should map to similar representations — and some mechanism that prevents the trivial constant-output solution. The contrastive family uses negatives to enforce non-collapse; the non-contrastive family uses architectural asymmetries (predictor + stop-gradient + EMA). The augmentation, as ever, defines the invariance prior. §8 will broaden this further by replacing the augmentation-based positive-pair recipe with masked-input or multi-modal alternatives.
+
+---
+
+## §7. The information bottleneck perspective
+
+§4 gave us reconstruction-based representations through the β-VAE, and §5 gave us invariance-based representations through InfoNCE. Both ended up tracing a rate-distortion frontier in their respective settings. The **information bottleneck** (IB) is the explicit Lagrangian that both are implicitly optimizing — a single information-theoretic objective with one trade-off knob, due to Tishby, Pereira, and Bialek (1999), that unifies the two approaches and makes the rate-distortion analogy precise.
+
+This section establishes the IB objective, derives its closed-form solution in the Gaussian case (where the curve admits an honest analytic treatment), shows how InfoNCE and the β-VAE both fit into the IB framework as variational instantiations, and closes with a fair-minded discussion of the Shwartz-Ziv–Tishby (2017) compression-phase claim and its subsequent critiques.
+
+### §7.1 The IB objective
+
+Suppose we have a task variable $Y$ (a label, a regression target, an augmented view) and we want a representation $T$ of $X$ that is *predictively sufficient* for $Y$ — captures the task-relevant information — while being *maximally compressed* about $X$ — discarding irrelevant variation. The IB makes this trade-off explicit.
+
+<TheoremBlock type="definition" number={7.1} title="information bottleneck">
+Given a joint distribution $p(x, y)$ and a $\beta > 0$, the **information-bottleneck Lagrangian** is
+$$
+\mathcal{L}_{\mathrm{IB}}(p(t \mid x);\, \beta) \;=\; I(X;\, T) \;-\; \beta\, I(T;\, Y),
+$$
+minimized over conditional distributions $p(t \mid x)$ subject to the Markov condition $T \to X \to Y$ (i.e., $T$ depends on $Y$ only through $X$).
+</TheoremBlock>
+
+The objective has two competing terms:
+
+- **Rate** $I(X; T)$: the information $T$ carries about $X$. We want this small — a compressed code is cheaper to store, to transmit, and (under appropriate noise assumptions) generalizes better. Small rate means $T$ throws information away.
+- **Predictive sufficiency** $I(T; Y)$: the information $T$ shares with the task $Y$. We want this large — a useful representation should preserve task-relevant structure. The data-processing inequality guarantees $I(T; Y) \le I(X; Y)$, with equality when $T$ is sufficient for $Y$ (§2).
+
+$\beta$ is the trade-off knob. At $\beta = 0$, $T$ can be anything that discards $X$ entirely (e.g., a constant) — rate is minimized at zero. At $\beta \to \infty$, $T$ must preserve all $Y$-information — meaning $I(T; Y) \to I(X; Y)$, the data-processing limit. Sweeping $\beta$ traces the IB curve in the $(I(X; T), I(T; Y))$ plane.
+
+**The IB as a *normative* principle.** A "good" representation, in the IB view, is one that achieves a high $I(T; Y)$ at low $I(X; T)$ — i.e., sits on or near the IB frontier. The principle is general: it doesn't specify a parametric family, a loss function, or an optimization algorithm. Any method that approximates the IB Lagrangian — by upper-bounding the rate, lower-bounding the sufficiency, or both — is implementing an information-theoretic representation-learning principle. §7.3 shows that β-VAE and InfoNCE are exactly such methods.
+
+### §7.2 The Gaussian IB and the structure of the frontier
+
+For jointly Gaussian $(X, Y)$, the IB optimization admits a closed-form solution (Chechik, Globerson, Tishby, Weiss 2005). The structure is clean enough to derive the entire frontier explicitly in the 1-D case and use it as a benchmark for general methods.
+
+<TheoremBlock type="theorem" number={7.1} title="1-D Gaussian IB frontier">
+Let $(X, Y)$ be standard bivariate Gaussian with correlation $\rho$. Suppose $T = aX + \xi$ for some $a \in \mathbb{R}$ and $\xi \sim \mathcal{N}(0, 1)$ independent of $X$. Then
+$$
+R \;:=\; I(X; T) \;=\; \tfrac{1}{2}\log(1 + a^2), \qquad D \;:=\; I(T; Y) \;=\; \tfrac{1}{2}\log\!\frac{e^{2R}}{\rho^2 + (1 - \rho^2) e^{2R}}.
+$$
+The IB frontier is the curve $\{(R, D(R)) : R \in [0, \infty)\}$, with the asymptotic ceiling $D \to -\tfrac{1}{2}\log(1 - \rho^2) = I(X; Y)$ as $R \to \infty$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The rate: $T \mid X = x \sim \mathcal{N}(ax, 1)$, so $h(T \mid X) = \tfrac{1}{2}\log(2\pi e)$ is constant. Marginally, $\mathrm{Var}(T) = a^2 + 1$, so $h(T) = \tfrac{1}{2}\log(2\pi e (a^2 + 1))$ and $I(X; T) = h(T) - h(T \mid X) = \tfrac{1}{2}\log(1 + a^2)$.
+
+The predictive sufficiency: $(T, Y)$ is jointly Gaussian with covariance $\bigl(\begin{smallmatrix}a^2 + 1 & a\rho \\ a\rho & 1\end{smallmatrix}\bigr)$. The determinant is $a^2(1 - \rho^2) + 1$, and the MI of a bivariate Gaussian is
+$$
+I(T; Y) \;=\; -\tfrac{1}{2}\log\!\frac{\det \mathrm{Cov}(T, Y)}{\mathrm{Var}(T)\,\mathrm{Var}(Y)} \;=\; \tfrac{1}{2}\log\!\frac{a^2 + 1}{a^2(1 - \rho^2) + 1}.
+$$
+Substituting $a^2 = e^{2R} - 1$ and simplifying gives the claimed parametric form. As $R \to \infty$, $e^{2R}$ dominates and $D \to \tfrac{1}{2}\log\!\frac{e^{2R}}{(1 - \rho^2) e^{2R}} = -\tfrac{1}{2}\log(1 - \rho^2) = I(X; Y)$.
+</TheoremBlock>
+
+<TheoremBlock type="corollary" number={7.1} title="IB curve concavity">
+The function $R \mapsto D(R)$ is monotone non-decreasing and concave. Its derivative at $R = 0$ is $1$ (the curve starts diagonal), and its derivative at $R \to \infty$ is $0$ (the curve saturates).
+</TheoremBlock>
+
+The concavity holds in full generality (not just Gaussian) — the IB frontier is always concave because $I(T; Y)$ is a concave function of $p(t \mid x)$ for fixed $p(x, y)$, while $I(X; T)$ is convex. The slope of the frontier at any point equals $1/\beta$ at the corresponding Lagrangian solution. This is the analog of the rate-distortion curve in classical information theory.
+
+<Figure
+  src="/images/topics/representation-learning/09_ib_frontier.png"
+  alt="Gaussian information-bottleneck frontier at four values of ρ."
+  caption="Gaussian IB frontier at four values of ρ. The curve is concave; the asymptote at high rate is I(X; Y), the data-processing ceiling. For low rate (R ≪ 1), the curve is nearly diagonal — each bit of compression cost buys nearly one bit of task-relevant information. As R grows, the marginal benefit per bit decays toward zero."
+/>
+
+<IBLagrangianFrontier client:visible />
+
+### §7.3 Self-supervised IB: where β-VAE and InfoNCE live
+
+The IB Lagrangian assumes we know the task $Y$. In representation learning we typically don't — but we can substitute a *surrogate* task that the data implicitly provides.
+
+**β-VAE as IB with $Y = X$.** Set $Y = X$ in the IB Lagrangian: the task becomes "reconstruct $X$ from $T$." Then $I(T; Y) = I(T; X)$, which by the data-processing inequality is upper-bounded by $I(X; T)$ — the unconstrained IB collapses. To recover a non-trivial trade-off, we upper-bound the rate $I(X; T)$ by $\mathbb{E}_x D_{\mathrm{KL}}(q_\phi(t \mid x) \| p(t))$ and lower-bound the sufficiency $I(T; Y) = I(T; X)$ by $-\mathbb{E}_q[\log p_\theta(x \mid T)] - H(X)$. The β-VAE objective is exactly this bounded version of the IB Lagrangian with $Y = X$:
+$$
+\mathcal{L}_{\beta\text{-VAE}} \;=\; \underbrace{-\mathbb{E}_q[\log p_\theta(x \mid Z)]}_{\text{upper bound on } -I(T; X)} \;+\; \beta \cdot \underbrace{D_{\mathrm{KL}}(q_\phi \| p)}_{\text{upper bound on } I(X; T)}.
+$$
+The β-VAE rate-distortion frontier of §4.5 is a *variational approximation* of the IB frontier in the $Y = X$ regime — sitting above the true frontier because both bounds are loose. Alemi et al. (2018) "Fixing a Broken ELBO" works through the gap and proposes tighter bounds.
+
+**InfoNCE as IB with $Y = X^+$.** Set $Y = X^+$ (an augmented view): the task becomes "predict the positive partner." Now $I(T; X^+)$ is the *useful* MI — the information $T$ retains about what makes $X$ a specific instance, surviving the augmentation. By §5.3, InfoNCE is a lower bound on this MI:
+$$
+I(T; X^+) \;\ge\; \log K - \mathcal{L}_{\mathrm{NCE}}^{(K)}(f).
+$$
+The rate $I(X; T)$ isn't explicitly controlled in vanilla InfoNCE, but the encoder's bounded capacity and the unit-sphere normalization implicitly cap it. **Deep variational IB** (Alemi, Fischer, Dillon, Murphy 2017) is the architecturally explicit version: pair an InfoNCE-like lower bound on $I(T; Y)$ with a KL-to-prior upper bound on $I(X; T)$, and minimize the resulting variational IB Lagrangian end-to-end with SGD. This is the cleanest synthesis of the §4 reconstruction lens and the §5 invariance lens.
+
+**The unifying view.** Every method we've seen since §3 — autoencoders, VAEs, denoising AEs, InfoNCE, SimCLR — is a variational instantiation of the IB Lagrangian, differing only in (a) what surrogate $Y$ they use, (b) how they bound the rate, and (c) how they bound the sufficiency. The IB framing is the language in which "what does representation learning optimize?" has a one-line answer.
+
+### §7.4 The compression-phase controversy
+
+In 2017, Shwartz-Ziv and Tishby published an influential paper claiming that the training dynamics of deep MLPs explicitly traverse the IB curve. They reported two phases:
+
+1. **Fitting phase** (early epochs): $I(T; Y)$ rises rapidly as the layer activations become predictive.
+2. **Compression phase** (later epochs): $I(X; T)$ decreases as the activations compress, "absorbing" the IB principle into the training dynamics.
+
+The visual is striking — layer-by-layer trajectories in the $(I(X; T), I(T; Y))$ plane that look like noisy descents along the IB frontier — and the result was widely cited as a "thermodynamic" explanation of deep learning's generalization.
+
+**The critique.** Saxe et al. (2018) revisited the experiments with two important changes:
+
+- **Activation functions matter.** The original Shwartz-Ziv–Tishby experiments used tanh activations. With ReLUs (the modern default), the compression phase doesn't appear.
+- **The MI estimator is the issue.** Estimating $I(X; T)$ for continuous-valued layer activations requires discretization. The binning scheme Shwartz-Ziv–Tishby used conflates "tanh activations saturate near $\pm 1$" with "$I(X; T)$ decreases" — saturated activations *look* compressed under the binning estimator even when the underlying map is still injective. Goldfeld et al. (2019) confirmed this by injecting controlled noise and re-estimating MI: the compression phase disappears.
+
+**Current state.** The Shwartz-Ziv–Tishby compression phase is now generally understood as an artifact of (saturating activation + binning estimator), not a feature of general deep-learning dynamics. The IB *principle* — that good representations should compress task-irrelevant information — remains widely useful as a normative framework; the IB *description* of deep learning's optimization dynamics remains contested and architecture-dependent.
+
+This isn't a settled story; recent work continues to explore information-theoretic descriptions of training (e.g., the "implicit bias" line — Achille & Soatto 2018, Saxe et al. 2019 follow-up). The honest summary is: the IB gives us a clean theoretical scaffolding for talking about what representations *should* be, and an unsatisfying account of what *gradient descent on deep networks* actually does. Both the framework and the empirical pushback have permanently shaped the field's vocabulary, even where the strong dynamical claim hasn't held up.
+
+The full self-supervised IB story — including the methodological expansions of recent years (variational IB, contrastive IB, supervised IB) — has its own forthcoming formalML topic: **Information Bottleneck** *(coming soon)*. For our purposes here, the IB Lagrangian is the language in which everything we've built so far fits together.
+
+---
+
+## §8. Self-supervised pretext tasks beyond contrastive
+
+The contrastive recipe of §5-§6 is one specific way to manufacture a self-supervised signal — pair an instance with augmented versions of itself, push them together, push others apart. But it isn't the only way, and several genuinely different families of self-supervised methods have shaped modern deep learning. This section surveys three of them — predictive pretext tasks, masked autoencoding, and multi-modal contrastive — at survey depth. Each one is a $Y$ choice in the IB framework of §7; the differences are about what surrogate task the model is implicitly solving.
+
+### §8.1 Predictive pretext tasks
+
+The first wave of pre-contrastive self-supervised vision learning took the form: *invent a synthetic prediction task from the input alone*, train a network to solve it, then use the trained encoder for downstream transfer.
+
+Three canonical examples — chosen because they each illustrate a distinct design choice:
+
+- **Rotation prediction** (Gidaris, Singh, Komodakis 2018). Rotate each image by one of $\{0°, 90°, 180°, 270°\}$ and train a 4-way classifier to recover the rotation. The pretext task assumes the model needs to recognize canonical object orientations to succeed — forcing it to learn shape and pose features.
+- **Jigsaw puzzles** (Noroozi, Favaro 2016). Partition the image into a 3×3 grid, shuffle the patches according to one of a curated set of permutations, and train a classifier to identify which permutation was applied. The pretext task encourages spatial reasoning about object parts.
+- **Context prediction** (Doersch, Gupta, Efros 2015). Sample two patches from an image and train an 8-way classifier to predict their relative spatial configuration (above, below, left, right, diagonal). Similar in spirit to jigsaw, more granular.
+
+The common pattern: the pretext task is *hand-designed* to exploit some assumed structural prior — rotation invariance is the wrong prior, spatial reasoning is the right one, and so on. Quality of the learned representation correlates with how well the pretext task captures task-relevant invariances. The dependence on hand-design is the family's main weakness — the contrastive methods of §5-§6, and the masked methods below, are essentially attempts to *learn* the pretext task from data structure rather than specify it manually.
+
+### §8.2 Masked autoencoding
+
+If autoencoders (§3) reconstruct the input from a compressed code, **masked autoencoders** reconstruct a *masked portion* of the input from the rest. This is a different surrogate task — predict what's missing from what's there — and it scales dramatically better than either pretext or contrastive methods on large unlabeled corpora.
+
+The two reference instantiations:
+
+- **BERT** (Devlin, Chang, Lee, Toutanova 2018). For text: randomly mask 15% of tokens in a sentence and train a transformer to predict them. The model architecture is bidirectional (unlike autoregressive language models), and the prediction is per-token cross-entropy over the vocabulary. BERT was the first representation-learning method to dominate practically every downstream NLP benchmark; it's the foundation on which the entire pre-trained-encoder revolution rests.
+- **MAE — Masked Autoencoders** (He, Chen, Xie, Li, Dollár, Girshick 2022). The vision analog: divide an image into non-overlapping patches, mask 75% of them, and train a vision transformer to reconstruct the missing patches at pixel level. The high mask ratio is critical — at 50% masking, the model cheats by interpolation; at 75% it's forced to learn semantic structure. MAE outperforms contrastive vision pre-training at comparable scale.
+
+The unifying framing through §7's IB: the surrogate $Y$ is the masked portion of $X$ itself, and the encoder learns features that retain enough information about the un-masked portion to reconstruct the mask. This is a *reconstruction* objective in the sense of §3, but the "mask" prior gives it richer structure than vanilla autoencoders — because the model doesn't know which patches will be masked at any given step, it has to encode features that *could* be used to reconstruct any patch from the rest, not just the input as a whole.
+
+Masked autoencoding has converged with contrastive learning in practice: state-of-the-art vision encoders (DINOv2, EVA-CLIP) use combinations of the two, taking the contrastive signal's tight geometric structure and the masked signal's per-patch reconstruction density.
+
+### §8.3 Multi-modal contrastive: CLIP
+
+The most consequential variation on the contrastive theme over the last five years is **CLIP — Contrastive Language-Image Pre-training** (Radford et al. 2021). The construction:
+
+- Collect a large dataset of image-caption pairs (CLIP's original scrape used 400M pairs from the web).
+- Encode each image with a vision encoder $f_v$ and each caption with a text encoder $f_t$.
+- For a batch of $N$ image-caption pairs, define positives as matched pairs and negatives as cross-batch mismatched pairs.
+- Train both encoders simultaneously with a symmetric InfoNCE loss over the $N \times N$ similarity matrix — same loss form as SimCLR, but the "positive" relation is now image-to-caption rather than image-to-augmented-image.
+
+CLIP did three things that matter for representation learning:
+
+1. **Zero-shot classification.** Given a CLIP-trained pair of encoders, classify an image by computing its similarity to the embeddings of caption templates ("a photo of a cat", "a photo of a dog", …) and picking the argmax. No additional training needed; the contrastive signal alone produces a usable classifier for any label set you can describe in text.
+2. **Modality alignment as the invariance prior.** The augmentation set of §5-§6 is replaced by the human-annotated "this image and this caption describe the same thing" relation. The encoders are forced to be invariant to the medium (image vs text) while preserving the underlying semantic content.
+3. **Scale matters more than architecture.** CLIP's results were robust across encoder architectures (ResNet, ViT) and dominated by data scale. This was an empirical proof-of-concept that contrastive methods, given enough paired data, produce representations competitive with or exceeding supervised training.
+
+CLIP-style multi-modal contrastive is now the standard pre-training recipe for vision-language models. The downstream effects on generative AI (Stable Diffusion's CLIP-conditioned generator, GPT-4V's visual front-end) trace back to CLIP's demonstration that the contrastive framing extends naturally across modalities.
+
+The unifying frame: in IB terms, the surrogate task $Y$ is "the paired observation in the other modality." The augmentation prior is replaced by an annotation prior. The mathematical content remains identical to §5's InfoNCE — only the construction of positive pairs changes.
+
+---
+
+## §9. Evaluating representations
+
+Once we've trained an encoder $f_\phi$ — by §3's autoencoder, §4's VAE, §5's InfoNCE, §6's SimCLR, or any of §8's variations — we face a methodological question that doesn't have a single right answer: how do we measure whether the representation is good? This section develops the four most useful answers practitioners actually use, and closes with the cleanest theoretical guarantee available linking the contrastive objective to downstream classification error: the Saunshi et al. (2019) bound.
+
+### §9.1 Linear probing
+
+The canonical evaluation: freeze the encoder, fit a linear classifier on its outputs, and report held-out test accuracy. This is **linear probing**.
+
+<TheoremBlock type="definition" number={9.1} title="linear probe">
+Given a frozen encoder $f_\phi$ and a labeled dataset $\{(x_i, y_i)\}_{i=1}^n$, the linear-probe accuracy on the labeled task is
+$$
+\mathrm{Acc}_{\mathrm{LP}}(f_\phi) \;=\; \max_{W, b} \;\mathbb{P}\Big[\, \arg\max\, (W f_\phi(X) + b) \;=\; Y\,\Big],
+$$
+where the maximum is over linear classifier parameters $(W, b)$ fit on a training split and the probability is taken on a test split.
+</TheoremBlock>
+
+Three things to internalize about the choice:
+
+- **Why frozen, not fine-tuned.** Fine-tuning the encoder during evaluation lets the encoder adapt to the labeled task — but then we're measuring the encoder's *capacity for adaptation*, not the quality of its representation *as-is*. Frozen evaluation isolates the question we care about.
+- **Why linear, not k-NN or MLP.** k-NN measures local geometry; an MLP can compensate for poor features with extra parameters. Linear probing specifically tests the §1.1 desideratum #3 — that task-relevant information lives along *directions* in the representation, not in nonlinear submanifolds. Two representations with the same downstream MLP accuracy but different linear-probe accuracies are not equivalent for practical purposes.
+- **Why classification, not regression.** Most representation-learning benchmarks are classification; the methodology extends naturally to regression via $R^2$ of a linear fit. The principle is the same: freeze the encoder, measure the linear extractability of the target.
+
+In practice, linear probing is the **default** comparison axis in the self-supervised-learning literature. Every paper since SimCLR reports top-1 / top-5 linear-probe accuracy on ImageNet as the primary benchmark; cross-method comparisons assume the linear-probe protocol.
+
+The §6.2 experiment was already a linear-probe study — we compared encoder-output $h$ vs projector-output $z$ on two downstream tasks. The methodology generalizes to any pair of (encoder, task).
+
+### §9.2 CKA: comparing representations across models
+
+A different question: given two different encoders $f_\phi$ and $g_\psi$, how similar are their representations? Linear-probe accuracy on a task doesn't answer this — two different encoders can have the same accuracy via very different feature geometries.
+
+The standard answer is **centered kernel alignment** (CKA), introduced by Kornblith, Norouzi, Lee, and Hinton (2019) as a representation-similarity metric satisfying three properties any reasonable similarity measure should have: invariance to orthogonal transformations, invariance to isotropic scaling, and a smooth penalty for non-isotropic distortions.
+
+<TheoremBlock type="definition" number={9.2} title="linear CKA">
+Given two representation matrices $\mathbf{X} \in \mathbb{R}^{n \times d_1}$ and $\mathbf{Y} \in \mathbb{R}^{n \times d_2}$ of the same $n$ samples, centered along the sample dimension, the **linear CKA** between them is
+$$
+\mathrm{CKA}(\mathbf{X}, \mathbf{Y}) \;=\; \frac{\|\mathbf{Y}^\top \mathbf{X}\|_F^2}{\|\mathbf{X}^\top \mathbf{X}\|_F \,\|\mathbf{Y}^\top \mathbf{Y}\|_F}.
+$$
+</TheoremBlock>
+
+CKA takes values in $[0, 1]$: $\mathrm{CKA} = 1$ iff $\mathbf{X}$ and $\mathbf{Y}$ are related by a (possibly non-square) orthogonal transformation plus a scalar; $\mathrm{CKA} = 0$ iff the cross-covariance matrix has zero Frobenius norm. The nonlinear / RBF-kernel version replaces the linear inner products with kernel evaluations; it's more expressive but harder to interpret.
+
+**Use cases.** CKA is the standard tool for (a) comparing two encoders trained with different objectives on the same data (does SimCLR find similar features to BYOL?), (b) comparing layers within a single network (which layers are doing similar work?), and (c) measuring representation drift during training (how much does the encoder change between epoch $T$ and epoch $T+1$?). Kornblith et al.'s original paper used CKA to show that early layers in vision networks trained on different tasks find similar features — supporting the "universal early features" hypothesis.
+
+<Figure
+  src="/images/topics/representation-learning/10_cka_matrix.png"
+  alt="Pairwise CKA matrix for four representations of the §6.2 label×color fixture."
+  caption="Pairwise CKA matrix for four representations of the §6.2 label×color fixture: raw input, top-8 PCA, SimCLR encoder output h, SimCLR projector output z. The diagonal is 1 (self-similarity); high off-diagonal entries indicate representations that capture similar geometric structure."
+/>
+
+### §9.3 Robustness probes
+
+Test accuracy on an in-distribution evaluation set tells us about performance under the training distribution. Representation quality also depends on what happens when the distribution shifts. Three robustness probes structure the practical evaluation:
+
+- **Distribution shift.** Evaluate on shifted versions of the test set: ImageNet-C (corruptions: blur, noise, weather), ImageNet-R (renditions: sketch, art), WILDS (real-world domain shifts). Representation quality often degrades faster than supervised training would predict; the gap measures the encoder's generalization beyond its training-distribution comfort zone.
+- **Adversarial perturbations.** Apply small $\ell_p$-bounded perturbations $\delta$ to inputs and measure how much accuracy drops. Contrastive features tend to be *more* adversarially robust than supervised features (Hendrycks et al. 2019), which is one of the few unambiguous wins for self-supervised representation learning over supervised pre-training.
+- **Calibration.** Do the predicted probabilities of a downstream classifier match empirical frequencies? Self-supervised encoders paired with linear classifiers tend to be better calibrated than end-to-end supervised models — the linear head doesn't have the overfitting capacity to produce overconfident predictions.
+
+For **distribution-free** uncertainty quantification on top of any representation, see formalML's [conformal-prediction](/topics/conformal-prediction) topic — split-conformal prediction gives finite-sample coverage guarantees with no distributional assumptions. This is the cleanest way to attach calibrated prediction sets to a representation-trained downstream classifier.
+
+### §9.4 The Saunshi et al. (2019) downstream guarantee
+
+The mathematical question: can we *prove* that a small InfoNCE loss implies a small downstream classification error? Saunshi, Plevrakis, Arora, Khandeparkar, and Khandeparkar (2019) gave the cleanest positive answer. Their setup makes the "latent class structure" explicit and derives a Lipschitz-style bound.
+
+**Setup.** Suppose there are $K$ latent classes $c \in [K]$ with prior $\rho(c)$, each with conditional data distribution $D_c(x)$. Positive pairs are drawn as $(x, x^+) \sim D_c \otimes D_c$ for the same $c \sim \rho$ — i.e., positives come from the same latent class. Negatives are drawn from the marginal data distribution $D = \sum_c \rho(c) D_c$. The InfoNCE loss with $K$ negatives is the standard one of §5.
+
+For any encoder $f$, define two losses:
+
+- **Unsupervised loss:** $L_{\mathrm{un}}(f) = \mathcal{L}_{\mathrm{NCE}}^{(K)}(f)$ — the contrastive loss measured on the latent-class positive-pair distribution.
+- **Supervised mean-classifier loss:** $L_{\mathrm{sup}}^{\mathrm{mean}}(f)$ — the misclassification rate of the *mean classifier* $\hat c(x) = \arg\max_c \langle f(x), \mu_c \rangle$, where $\mu_c = \mathbb{E}_{X \sim D_c}[f(X)]$ is the class-mean representation. This is a particular linear classifier on $f$.
+
+<TheoremBlock type="theorem" number={9.1} title="Saunshi et al. 2019, informal">
+Under the latent-class setup, for any encoder $f$,
+$$
+L_{\mathrm{sup}}^{\mathrm{mean}}(f) \;\le\; \alpha \cdot L_{\mathrm{un}}(f) \;+\; \varepsilon(K, \rho),
+$$
+where $\alpha > 0$ depends on the loss class (cross-entropy vs hinge) and $\varepsilon(K, \rho)$ is an irreducible term involving the latent-class overlap structure and decreasing in the number of negatives.
+
+**Corollary.** Linear-probe accuracy (which optimizes over all linear classifiers, not just the mean classifier) satisfies $L_{\mathrm{LP}}(f) \le L_{\mathrm{sup}}^{\mathrm{mean}}(f) \le \alpha \cdot L_{\mathrm{un}}(f) + \varepsilon$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The argument has three steps; we sketch each at the level of "what makes the bound work" rather than tracking the constants — Saunshi et al. (2019, Theorems 4.1 and 4.5) give the full version.
+
+**Step 1: Express the InfoNCE loss in latent-class terms.** For a positive pair $(x, x^+) \sim D_c \otimes D_c$ and $K - 1$ negatives $x_j^- \sim D$, the InfoNCE loss decomposes (after a Jensen-style exchange of expectation and log) into a term determined entirely by the class-mean structure $\{\mu_c\}_{c=1}^K$ and the conditional distributions $\{D_c\}_{c=1}^K$, plus a negative-sampling correction that vanishes as $K$ grows.
+
+**Step 2: Bound the mean-classifier loss by the InfoNCE loss.** The mean classifier $\hat c(x) = \arg\max_c \langle f(x), \mu_c \rangle$ errs on $x \sim D_{c^*}$ exactly when there exists some $c' \neq c^*$ with $\langle f(x), \mu_{c'} \rangle \ge \langle f(x), \mu_{c^*} \rangle$. The cross-entropy loss of the mean classifier (with logits $\{\langle f(x), \mu_c \rangle\}_c$) upper-bounds the 0/1 misclassification rate by a constant factor. And the cross-entropy loss of the mean classifier coincides — up to the negative-sampling correction term — with the InfoNCE loss when $K$ is large enough to include all $K$ classes in the negative batch.
+
+The technical content of Step 2 is showing that the negative-sampling correction is controlled. Saunshi et al. use a union-bound argument plus the standard $\log(K) / K$-style bounds on the discrepancy between empirical and population-level softmax normalization.
+
+**Step 3: Bound the linear-probe loss by the mean-classifier loss.** The mean classifier is a *specific* linear classifier on $f$ — namely, the one with weight matrix $W = [\mu_1; \ldots; \mu_K]$ and zero bias. The linear-probe classifier optimizes over all linear $(W, b)$, so its loss is at most the mean classifier's loss:
+$$
+L_{\mathrm{LP}}(f) \;\le\; L_{\mathrm{sup}}^{\mathrm{mean}}(f).
+$$
+Combining with Step 2 gives the corollary.
+</TheoremBlock>
+
+**The interpretation.** Saunshi's guarantee gives us the cleanest theoretical justification for the contrastive recipe: minimizing $L_{\mathrm{un}}$ on a positive-pair distribution implicitly constrains the linear-probe error on the corresponding downstream classification task. The constraint is up to constants — the bound is not numerically tight in most practical settings — but the qualitative direction is what matters: *small contrastive loss implies linearly-separable representations for the latent-class task.*
+
+**The catch — when does this not apply?** The theorem assumes the downstream task's class structure *aligns* with the contrastive task's implicit latent-class structure. When they don't align — e.g., the augmentation forces invariance to a feature the downstream task needs (the §6.2 color experiment) — the bound is vacuous and the mean classifier is the wrong linear classifier. Linear-probe accuracy on the encoder output $h$ can still be high (per §6.2), but the guarantee no longer applies because the downstream task isn't the implicitly-bounded one.
+
+§10 takes up the other side of this — when self-supervised representations *cannot* identify the right structure, even in the limit. The Locatello et al. (2019) and Hyvärinen et al. (2019) impossibility results give the formal barriers.
+
+---
+
+## §10. Identifiability and what self-supervision cannot give you
+
+Three sections of theory (§5, §7, §9) and three sections of method (§4, §6, §8) might leave the impression that representation learning is a matter of picking the right objective and pushing hard enough. This section is the counterweight: a survey of the formal impossibility results that bound what *any* unsupervised method can recover, no matter how clever the objective. The takeaways:
+
+- Without inductive bias or auxiliary information, the latent structure of the data is **not identifiable** — multiple equally-good representations exist, and no algorithm can pick the "correct" one.
+- With the right kind of auxiliary information (time, class label, multi-modal pairing), identifiability is restored — this is the iVAE / nonlinear-ICA line.
+- Contrastive learning's augmentation prior is itself a form of auxiliary information; it identifies representations only up to the augmentation-equivalence classes it implicitly defines.
+
+The §9 Saunshi guarantee told us when InfoNCE works. This section tells us when it can't, and what the boundary looks like.
+
+### §10.1 Locatello et al.: unsupervised disentanglement is impossible
+
+The most influential impossibility result in recent representation learning is Locatello, Bauer, Lucic, Rätsch, Gelly, Schölkopf, Bachem (2019), "Challenging Common Assumptions in the Unsupervised Learning of Disentangled Representations." The central message is that the prevailing β-VAE / FactorVAE / DIP-VAE / TC-VAE line of "disentangled representation learning" methods cannot recover the ground-truth latent factors of variation from i.i.d. data without inductive bias.
+
+<TheoremBlock type="theorem" number={10.1} title="Locatello et al. 2019, informal">
+For any probability density $p(z)$ on $\mathbb{R}^d$ with independent components ($p(z) = \prod_j p_j(z_j)$) and any generator $f : \mathbb{R}^d \to \mathcal{X}$ producing observation density $p(x) = \int p(z) \delta(x - f(z))\,dz$, there exist infinitely many alternative pairs $(\tilde p(\tilde z), \tilde f)$ such that (a) $\tilde p$ has independent components, (b) $\tilde p \circ \tilde f^{-1}$ produces the same observation density $p(x)$, and (c) the components of $\tilde z$ are *entangled* nonlinear functions of the components of $z$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The rotation counterexample. Suppose $z \sim \mathcal{N}(0, I_d)$, so $z$'s components are independent standard Gaussians. Let $A$ be any orthogonal matrix in $O(d)$. Define $\tilde z = A z$. Then $\tilde z \sim \mathcal{N}(0, A A^\top) = \mathcal{N}(0, I_d)$, so $\tilde z$ also has independent standard Gaussian components. But the *map* $z \mapsto \tilde z$ is a non-identity rotation — $\tilde z_j = \sum_k A_{jk} z_k$ is a linear combination of the original components, not a function of any single $z_k$. From an observer's perspective, both $z$ and $\tilde z$ are valid "disentangled" latent representations of the same data, but they differ by an unrecoverable rotation. The same construction works for any rotation-invariant prior $p(z)$.
+
+For non-Gaussian (heavy-tailed, skewed) priors, the family of admissible transformations is smaller — *linear* ICA is identifiable up to permutation and scaling under non-Gaussianity — but the *nonlinear* generalization breaks anyway: Hyvärinen and Pajunen (1999) showed that nonlinear ICA is fundamentally non-identifiable without additional structure.
+</TheoremBlock>
+
+**The implication for method papers.** The β-VAE family claimed to "learn disentangled representations" from i.i.d. data with no supervision. Theorem 10.1 says this claim is not well-defined: any purported "disentangled" representation has infinitely many information-equivalent rotated cousins, and no purely-unsupervised algorithm has a principled way to pick between them. The bias-free disentanglement of the entire pre-2019 literature was, in retrospect, an artifact of architectural and hyperparameter choices that *implicitly* favored particular rotations — not a property of the optimization objective itself.
+
+Locatello et al. reinforced the point empirically: across 12,000 trained models spanning four disentanglement methods and four hyperparameter settings, the recovered "disentangled" latents correlated more with the random seed than with any property of the data. The conclusion: **disentanglement without inductive bias is not possible, and unsupervised model selection for disentanglement is not possible either**.
+
+<Figure
+  src="/images/topics/representation-learning/11_nonidentifiability.png"
+  alt="Linear-Gaussian non-identifiability counterexample: three rotated recoveries are all valid disentangled representations."
+  caption="The linear-Gaussian non-identifiability counterexample of Theorem 10.1's proof visualized in 2D. Three different rotated latent recoveries z = R_θ^T x all produce independent standard-Gaussian distributions. Without external information, no procedure can pick between them."
+/>
+
+### §10.2 The Hyvärinen–Khemakhem–Monti restoration
+
+The §10.1 impossibility result has a clean way out: **add auxiliary information**. If we observe a side variable $u$ — a time index, a class label, an environmental condition — and the conditional latent density $p(z \mid u)$ is sufficiently rich, identifiability is restored.
+
+The cleanest formulation is the **identifiable VAE** (iVAE) framework of Khemakhem, Kingma, Monti, Hyvärinen (2020), building on Hyvärinen, Sasaki, Turner (2019) and the broader nonlinear ICA literature.
+
+<TheoremBlock type="theorem" number={10.2} title="iVAE identifiability, informal">
+Suppose the generative model is $x = f(z) + \eta$ with $\eta$ a noise term and $z$ depending on an auxiliary variable $u$ through an exponential-family conditional
+$$
+p(z \mid u) \;=\; \prod_{j=1}^d Q_j(z_j) \exp\!\Big(\sum_{k=1}^K T_{j,k}(z_j) \lambda_{j,k}(u) - A_j(\lambda_j(u))\Big),
+$$
+where the sufficient-statistic vectors $T_{j,\cdot}$ are linearly independent across components $j$ and the function $u \mapsto \lambda(u)$ has rank at least $dK + 1$ at some point. Then $z$ is identifiable up to a permutation and a per-component affine transformation of the sufficient statistics.
+</TheoremBlock>
+
+**The intuition.** Without $u$, all rotated representations look the same. With $u$, we can ask: "which rotation makes the $u$-conditional distribution simplest (e.g., factorize as a product of exponential families)?" That extra constraint pins down the rotation. The auxiliary variable is the algorithm's escape hatch from the Locatello impossibility.
+
+**Sources of $u$ in practice.** Class labels are the most obvious, but iVAE-style identifiability also applies to: time indices (for time series — Hyvärinen & Sasaki 2018), domain labels (for multi-environment data), sound type / pitch / speaker (for audio representation learning). The contrastive setup of §5-§6 is also a form of auxiliary information: the augmentation orbit identifies the "underlying instance," and §10.3 makes the identifiability statement for this case precise.
+
+### §10.3 What contrastive learning actually identifies
+
+§5-§6 trained encoders without labels. The §10.1 impossibility seems to apply — what could contrastive methods possibly identify? The answer, due to Zimmermann, Sharma, Schneider, Bethge, Brendel (2021), "Contrastive Learning Inverts the Data Generating Process," is that contrastive methods identify representations up to the equivalence classes induced by the augmentation group.
+
+<TheoremBlock type="theorem" number={10.3} title="Zimmermann et al. 2021, informal">
+Suppose the data is generated by $x = f(z, n)$ where $z$ is a "content" latent and $n$ is a "style" latent (corrupted by the augmentation). Suppose the augmentation distribution affects only $n$ and the two views $x, x^+$ share the same $z$. Then under standard regularity conditions, the InfoNCE-optimal encoder $f^*$ recovers $z$ up to a permutation and a per-component invertible transformation.
+</TheoremBlock>
+
+*Interpretation.* The contrastive loss can only "see" features that are *invariant* across positive pairs — i.e., features of the content latent $z$, not the style latent $n$. Since the positive-pair distribution shares the same $z$, the contrastive optimum learns to extract $z$. Style features are discarded by construction.
+
+This is a sharper version of the §6.2 projection-head observation — the encoder $h$ retains style-relevant features that the contrastive loss doesn't reward, while the projector $z$ is forced to be content-only. The Saunshi guarantee of §9.4 applies precisely when the downstream task's class structure aligns with the content latents $z$; when the downstream task involves style information, the bound is vacuous.
+
+**The Wang–Isola invariance-covariance trade-off.** Recall §5.5's alignment-uniformity decomposition. The two terms now have a clean interpretation in identifiability terms:
+
+- **Alignment** is the **invariance** axis: it pushes positive pairs toward each other, enforcing invariance to the augmentation. The identifiability content: alignment ensures that two views of the same instance map to the same representation, identifying the content latent.
+- **Uniformity** is the **covariance** axis: it pushes negative pairs apart, enforcing that the marginal latent distribution is rotation-invariant on the sphere. The identifiability content: uniformity prevents the trivial constant-output solution and ensures the recovered content latent has full support.
+
+The "what contrastive methods identify" answer is: *the content latents, up to a permutation and per-component invertible transformation*. The augmentation defines which latents count as content and which as style — and this is the inductive bias that makes the §10.1 impossibility navigable.
+
+**The honest summary of identifiability for SSL.** Self-supervised learning is identifiable *to the extent that* the positive-pair relation encodes meaningful structure about the latents. The richer the augmentation set — the more nuisance directions it covers — the more of the content latent the contrastive optimum recovers. When the augmentation set is empty (or trivial), we're back in the §10.1 Locatello regime: nothing is identifiable, and the recovered representation depends on the random seed. The methods of §5-§8 work in practice because their augmentation priors are well-aligned with human-perceptual notions of "same object" / "same sentence" — a form of inductive bias inherited from the data scientists who chose the augmentations.
+
+The IB framing of §7 can also be read identifiability-style: the information-bottleneck objective is identifiable to the extent that the surrogate $Y$ structures the latent space. In the limit, the IB optimum recovers a sufficient statistic for $Y$ — which inherits all of $Y$'s identifiability or non-identifiability properties.
+
+---
+
+## §11. Computational considerations
+
+The math of §5-§7 is independent of implementation, but the engineering choices around representation learning shape what's actually achievable at scale. This section collects the four practical considerations that separate a working SSL training run from one that OOMs, diverges, or silently produces useless features: the memory cost of large-batch InfoNCE, the mixed-precision / gradient-checkpointing fixes, temperature numerical stability, and the regime where NumPy-only suffices.
+
+### §11.1 The memory cost of large-batch InfoNCE
+
+§5.3's $\log K$ ceiling motivates large batches, but the cost is quadratic in $K$. For a batch of $K$ positive pairs with $d$-dimensional projections, the similarity matrix has $(2K)^2 = 4K^2$ entries — each requiring storage and a gradient slot. At $K = 8192$, $d = 128$, $\mathrm{fp32}$:
+
+$$
+\underbrace{4 \cdot 8192^2 \cdot 4 \text{ bytes}}_{\text{similarity matrix}} \;\approx\; 1.07 \text{ GB}, \qquad \underbrace{2 \cdot 8192 \cdot 128 \cdot 4 \text{ bytes}}_{\text{projection activations}} \;\approx\; 8.4 \text{ MB}.
+$$
+
+The similarity matrix dominates by two orders of magnitude. Worse, the backward pass through the softmax requires another $O(K^2)$ working memory for intermediate gradients. The encoder activations themselves (for ResNet-50 with $K = 8192$) add another ~5-10 GB depending on input resolution. Total per-step GPU memory at this scale exceeds 20 GB — single-card V100/A100 territory.
+
+**This is the SSL training-budget tax.** Supervised training at the same batch size has no similarity-matrix overhead at all; the contrastive memory cost is intrinsic to the objective. The MoCo queue (§6.3) is the cleanest workaround because it decouples $K$ from the current batch — at $K = 65{,}536$ in the queue with a current batch of only $256$, the similarity matrix is $256 \cdot 65{,}536 \approx 1.7 \cdot 10^7$ entries (~67 MB), down from $K^2 = 4.3 \cdot 10^9$ entries for the naive SimCLR equivalent.
+
+The dual cost — quadratic compute + quadratic memory — is why contrastive SSL was inaccessible to single-GPU practitioners until the BYOL/SimSiam non-contrastive methods of §6.4 dropped the quadratic cost entirely. Those methods' empirical match of SimCLR's representation quality at lower compute is, in retrospect, much of why the field absorbed them so quickly.
+
+### §11.2 Mixed precision and gradient checkpointing
+
+Two standard tricks reduce memory by ~2× each without changing the objective:
+
+**Mixed precision (AMP).** Store activations in $\mathrm{fp16}$ ($\mathrm{bf16}$ on modern hardware) and compute critical operations in $\mathrm{fp32}$. The dynamic-range loss is mostly invisible — encoder activations and gradients don't routinely visit values that $\mathrm{fp16}$ can't represent — but the softmax and the loss reduction should stay in $\mathrm{fp32}$ to avoid catastrophic cancellation. PyTorch's `torch.cuda.amp` and `bfloat16` autocast contexts handle the bookkeeping. Empirically, AMP halves memory and matches $\mathrm{fp32}$ accuracy on SimCLR-style training to within $<0.5\%$ ImageNet linear-probe accuracy.
+
+**Gradient checkpointing.** During the forward pass, drop intermediate activations and re-compute them during the backward pass. Trades compute (one extra forward pass) for memory (no stored activations for the checkpointed layers). Effective for deep ViTs / CNNs where the encoder activations dominate the per-step memory cost. PyTorch's `torch.utils.checkpoint` and HuggingFace transformers' `gradient_checkpointing_enable()` are the standard interfaces.
+
+The two techniques compose: AMP + gradient checkpointing routinely fits batch size 4096 SimCLR training on a single 40 GB A100 where naive $\mathrm{fp32}$ would require batch size $\le 1024$. The cost is ~30% slower training (the extra forward passes from checkpointing) and the AMP-debugging headaches that come with mixed precision.
+
+### §11.3 Temperature stability and softmax diagnostics
+
+The temperature $\tau$ in the cosine-similarity InfoNCE objective is not a hyperparameter to set once and forget. It controls the softmax's peakedness:
+
+- **$\tau$ too small** → softmax saturates on the most-similar candidate → vanishing gradients on all others → encoder learns only the "hardest" positive at each step. Symptom: training loss plateaus early; the gradient norm collapses.
+- **$\tau$ too large** → softmax flattens toward uniform → InfoNCE loss approaches $\log K$ (the ceiling) → no contrastive signal. Symptom: training loss is near $\log K$ throughout, downstream accuracy stays at random.
+
+A good $\tau$ keeps the softmax distribution at moderate entropy — neither saturated at $0$ (one-hot on the best candidate) nor flat at $\log K$ (uniform). Practical range for SimCLR-style training: $\tau \in [0.05, 0.5]$. Chen et al. (2020) report $\tau = 0.1$ as optimal for ImageNet SimCLR; MoCo uses $\tau = 0.07$; CLIP starts at $\tau \approx 0.07$ and learns it as a trainable parameter.
+
+**The log-sum-exp trick.** Computing $\log \sum_j e^{s_j / \tau}$ directly overflows when $s_j / \tau$ is large (small $\tau$). The standard fix: subtract the max before exponentiation, $\log \sum_j e^{s_j / \tau} = \max_j (s_j / \tau) + \log \sum_j e^{(s_j - \max)/\tau}$. PyTorch's `F.cross_entropy` and `torch.logsumexp` implement this internally; rolling your own NT-Xent without the trick is a common source of `nan` losses.
+
+**Diagnostics.** Monitor (a) the mean softmax entropy across anchors, (b) the mean max-softmax value, and (c) the cosine similarity distribution itself. The entropy should sit in $(0.3 \log K,\, 0.9 \log K)$ during stable training; values outside this range indicate $\tau$ misconfiguration.
+
+<Figure
+  src="/images/topics/representation-learning/12_temperature_sweep.png"
+  alt="Temperature-sweep diagnostics on the §6 SimCLR-trained encoder."
+  caption="Temperature-sweep diagnostics on the §6 SimCLR-trained encoder. Left: softmax entropy as a function of τ — saturates at 0 for small τ (one-hot peakedness) and at log(2K − 1) for large τ (uniform). Middle: NT-Xent loss climbs monotonically with τ. Right: mean max-softmax value falls from ~1 (saturated) to ~1/K (uniform). The practitioner's sweet spot is the middle of all three plots."
+/>
+
+### §11.4 When NumPy is fine
+
+For a topic that has spent four sections in PyTorch, this is the counterweight: a substantial fraction of representation-learning's mathematical content is reachable in pure NumPy/SciPy at scales that run on a 2020-era laptop in seconds.
+
+What works in NumPy without compromise:
+
+- **Linear AE / PCA equivalence (§3.2).** Closed-form top-$d$ eigendecomposition of $\boldsymbol\Sigma$; the Baldi–Hornik floor is just the sum of bottom eigenvalues. No training needed.
+- **Tweedie identity / DAE-as-score (§3.4).** For Gaussian-mixture data, the optimal denoiser and the score have closed forms; numerical verification is a 20-line NumPy block.
+- **Gaussian IB frontier (§7.2).** The 1-D analytic formula plots in three lines.
+- **Closed-form InfoNCE bound (§5.3).** For bivariate-Gaussian $(X, Y)$ with known $\rho$, the optimal critic $f^* = \log p/q$ is available analytically; MI-bound verification doesn't need PyTorch.
+- **VAE / contrastive on 2D toys.** When the input is 2-D and the encoder/decoder are tiny MLPs, even hand-rolled NumPy training works; PyTorch is convenience, not necessity.
+
+What requires PyTorch (or JAX):
+
+- VAEs on real data (MNIST and up) where the encoder/decoder are CNNs/transformers.
+- SimCLR/BYOL/MoCo training at scale.
+- Anywhere the model has $> 10^4$ parameters and is trained with SGD for $> 100$ epochs.
+
+The notebook accompanying this topic uses the same strategy: §3.2, §3.4, §5.3, §7.2 are NumPy-only; §4 (VAE), §5.5 (contrastive trajectory), §6.2 (projection-head experiment), §12.3 (neural-collapse training) are PyTorch with 1-2 minute total CPU runtimes. The entire notebook end-to-end runs under 60 s on the target laptop.
+
+---
+
+## §12. The geometry of learned representations
+
+The synthesis section. Eleven sections of theory and method come together here in the geometry of the trained encoder's output space. We look at four facets: how classes cluster in the embedding (§12.1), how alignment and uniformity evolve during training (§12.2), how *supervised* training produces a specific geometric phase transition called neural collapse (§12.3), and how this all connects back to classical sufficient-statistic geometry from §2 (§12.4). The last subsection is the topic's clearest formal statement of "what self-supervised representation learning is approximating."
+
+### §12.1 Embedding-space topology
+
+The first thing to look at, given any trained encoder, is the embedding's class structure. Three quantities matter:
+
+- **Inter-class margin:** the distance between class-mean representations $\mu_k = \mathbb{E}_{x \mid y = k}[f_\phi(x)]$. Large margins mean classes are linearly separable on the encoder output; small margins mean a downstream linear probe will struggle.
+- **Intra-class spread:** the within-class variance $\mathrm{tr}(\Sigma_k)$ with $\Sigma_k = \mathrm{Cov}(f_\phi(X) \mid Y = k)$. Small spread means class instances cluster tightly; large spread means the encoder hasn't compressed the within-class nuisance variation.
+- **Hubness:** in high-dimensional embeddings, some points become *hubs* — close to many others by distance — distorting nearest-neighbor structure (Radovanović, Nanopoulos, Ivanović 2010). The effect is a concentration-of-measure consequence: in dimension $d \gg 1$, the volume of a hyperspherical shell at any fixed radius concentrates near the surface, making "close to many" the generic case. Encoders trained without explicit normalization tend to develop hubs; the $\ell_2$-normalization in SimCLR (mapping to $\mathbb{S}^{d-1}$) substantially mitigates the effect.
+
+The cleanest diagnostic for inter- vs intra-class structure is the **Fisher discriminant ratio** $\mathrm{FDR} = \mathrm{tr}(\Sigma_B) / \mathrm{tr}(\Sigma_W)$ where $\Sigma_B$ and $\Sigma_W$ are the between-class and within-class covariance matrices. High FDR means well-separated classes with tight clusters; low FDR means classes are smeared and probably not linearly separable. For the §6.2 SimCLR-trained encoder, FDR on the label task is far higher than on the color task (the contrastive loss specifically optimized for label separability).
+
+<Figure
+  src="/images/topics/representation-learning/13a_embedding_topology.png"
+  alt="SimCLR encoder output projected to 2D, colored by label and by color."
+  caption="The SimCLR encoder output h, projected to 2D via PCA, colored two ways: left, by the label class (the augmentation-invariant task — visible 4-cluster structure); right, by the color class (the augmentation-orthogonal task — less structured but not destroyed, since h retains color information). The contrastive objective shaped the embedding's geometry around the augmentation-invariant axis; the orthogonal axis is preserved but less linearly separable."
+/>
+
+### §12.2 Alignment and uniformity in practice
+
+§5.5 introduced Wang–Isola's alignment-uniformity decomposition and showed that both metrics evolve monotonically during contrastive training. The §12 reading of those metrics: they're not just diagnostics of the loss decomposition — they're a *comparison axis* across SSL methods.
+
+Different SSL methods land in different regions of the $(\mathcal{L}_{\mathrm{align}}, \mathcal{L}_{\mathrm{uniform}})$ plane, but all *successful* methods converge to a region near the joint minimizer. Wang–Isola (2020) report that across SimCLR, MoCo, and BYOL trained to comparable downstream accuracy, the final $(\mathcal{L}_{\mathrm{align}}, \mathcal{L}_{\mathrm{uniform}})$ points are within $\sim 0.05$ of one another — and the methods that deliver high downstream accuracy are precisely those that achieve both metrics low simultaneously. Methods that minimize alignment while letting uniformity inflate (poorly-tuned contrastive training) or minimize uniformity while letting alignment inflate (collapsing to the constant solution) under-perform downstream.
+
+The practical use: when comparing two SSL methods or two hyperparameter settings, plotting their $(\mathcal{L}_{\mathrm{align}}, \mathcal{L}_{\mathrm{uniform}})$ trajectories side by side is more informative than reporting only downstream accuracy. The trajectory tells you *why* one method beats another, not just *that* it does.
+
+This is also the cleanest pre-evaluation signal for SSL training quality. If alignment or uniformity stalls during training while the loss continues decreasing, the encoder is finding a degenerate solution (overfitting positives, collapsing to constant, etc.) — the trajectory diagnoses these before the linear-probe evaluation catches up.
+
+### §12.3 Neural collapse: the supervised geometric phase transition
+
+The most striking geometric result in recent representation-learning theory is the **neural-collapse** phenomenon of Papyan, Han, and Donoho (2020), "Prevalence of Neural Collapse during the terminal phase of deep learning training." The result: when a supervised classifier is trained to interpolation (zero training error) and *beyond* — into the "terminal phase" of training — its last-layer features undergo a remarkable phase transition into a maximally-symmetric geometric configuration.
+
+<TheoremBlock type="theorem" number={12.1} title="Neural collapse (Papyan, Han, Donoho 2020), informal">
+During the terminal phase of deep classifier training (after training accuracy reaches $100\%$ and continues for many epochs), the last-layer features $h_i = f_\phi(x_i)$ exhibit four properties:
+
+- **NC1 (variance collapse):** the within-class covariance matrix $\Sigma_W$ converges to zero. Each class collapses to a single point in feature space.
+- **NC2 (simplex ETF):** the class-mean vectors $\{\tilde \mu_k\}_{k=1}^K$ (centered and unit-normalized) form a **simplex equiangular tight frame**: equiangular with $\langle \tilde\mu_i, \tilde\mu_j \rangle = -\tfrac{1}{K - 1}$ for $i \neq j$, and maximally spread on the sphere subject to that constraint.
+- **NC3 (self-duality):** the classifier weight matrix $W \in \mathbb{R}^{K \times d}$ converges to a scaled multiple of the class-mean matrix, $W^\top \propto [\tilde\mu_1, \ldots, \tilde\mu_K]$.
+- **NC4 (NN = NCM):** the trained classifier's predictions coincide with the nearest-class-mean predictor — even though it wasn't trained to do so.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Outline (NC1 + NC2 are the load-bearing items). Papyan et al. show NC1-NC4 are *consequences* of the cross-entropy loss being optimized in the limit of (a) sufficient model capacity to interpolate, (b) balanced training classes, and (c) sufficient over-training.
+
+For NC1: with cross-entropy + interpolation, the optimization pushes $\|h_i - \mu_{y_i}\|^2 \to 0$ in a self-reinforcing manner — once the classifier is confident on class $k$, the gradient on $h_i$ for $y_i = k$ pulls it toward the class centroid. The collapse is asymptotic in training epochs.
+
+For NC2: subject to NC1 (point collapse) and the constraint that classes must remain *linearly separable* by the classifier, the arrangement that *minimizes* the cross-entropy loss is the geometric configuration that *maximizes* the pairwise angles between class means. The unique such configuration (up to rotation and isotropic scaling) is the simplex ETF: $K$ unit vectors with pairwise inner product $-\tfrac{1}{K-1}$, embedded in dimension $\ge K - 1$. The full argument uses the symmetry of the cross-entropy loss + a variational characterization of the simplex ETF as the minimum-energy configuration on the sphere.
+
+NC3 and NC4 follow from NC1 + NC2 by direct computation: once the features have collapsed and arranged as a simplex ETF, the gradient on the classifier weights pulls each row toward the corresponding class mean. The nearest-mean classifier and the learned classifier then coincide because they're solving the same geometric matching problem.
+</TheoremBlock>
+
+**Why this matters for representation learning.** Neural collapse describes the geometry that *supervised* training converges to. It's the gold-standard "what good representations look like" benchmark in a precise sense — the simplex ETF is provably the optimal configuration for $K$-way classification with cross-entropy loss. Contrastive learning is, in spirit, trying to approximate this geometry *without labels*. The §12.4 bridge formalizes how close it gets.
+
+<Figure
+  src="/images/topics/representation-learning/13_neural_collapse.png"
+  alt="Neural collapse trajectory: NC1 (within-class variance) collapses, NC2 converges to simplex ETF cosine."
+  caption="Neural collapse on an 8-class fixture trained supervised. Left: NC1 — the ratio of within-class to between-class variance falls from ~1 at initialization to ~10^−3 after 300 epochs, indicating within-class collapse. Center: NC2 — the mean pairwise cosine similarity between class means converges to -1/(K-1) = -1/7 ≈ -0.143, the simplex ETF target. Right: the final pairwise cos-sim matrix of class means shows the simplex structure visually."
+/>
+
+<NeuralCollapseSimplex client:visible />
+
+### §12.4 The sufficiency-to-contrastive bridge
+
+We close the topic by connecting the §12.3 simplex geometry back to §2's classical sufficient statistics — completing the sufficiency → reconstruction → invariance → collapse arc the topic has been building.
+
+**The supervised side: sufficient statistics for Gaussian mixtures.** Suppose the data is a Gaussian mixture: $X \mid Y = k \sim \mathcal{N}(\mu_k, \Sigma)$ with shared covariance $\Sigma$ and balanced class probabilities $p(Y = k) = 1/K$. The Fisher–Neyman factorization (§2.1) gives the sufficient statistic for $Y$ as
+$$
+T(x) \;=\; \big(\langle x - \bar\mu, \Sigma^{-1} \mu_1\rangle, \ldots, \langle x - \bar\mu, \Sigma^{-1} \mu_K\rangle\big) \;\in\; \mathbb{R}^K,
+$$
+the projections onto the class-mean directions in the $\Sigma$-Mahalanobis metric. By the Bayes-risk equivalence theorem (§2.4), $T$ is lossless for classification: a $T$-based classifier matches the Bayes-optimal $X$-based classifier in expected loss.
+
+After centering and normalization, the directions $\Sigma^{-1}\mu_k$ form a configuration in $\mathbb{R}^K$ that, for balanced classes and isotropic shared $\Sigma$, is *exactly* the simplex equiangular tight frame of NC2. The sufficient statistic of the Gaussian mixture and the supervised-trained-to-interpolation neural network arrive at the same geometric configuration — from completely different starting points.
+
+**The unsupervised side: what InfoNCE recovers.** The Zimmermann et al. (2021) result of §10.3 says that the InfoNCE-optimal encoder recovers the data's "content latent" up to permutation and per-component invertible transformation. For Gaussian-mixture data with augmentation positives that share class membership (i.e., augmentations that don't cross class boundaries), the content latent *is* the class label, and the encoder's optimal representation places samples from the same class on the same sphere region. The simplex ETF arises again — this time as the maximally-spread arrangement of $K$ classes on the sphere, which both maximizes uniformity (Wang–Isola) and minimizes within-class spread (alignment).
+
+**The three-way convergence.** Classical sufficient statistics (§2), supervised neural collapse (§12.3), and InfoNCE-optimal unsupervised representations (§5, §10.3) all converge to the same geometric object: the simplex ETF of class means. They differ in *what they can identify*:
+
+- Classical sufficient statistics require the parametric family to be known.
+- Supervised neural collapse requires labels.
+- InfoNCE requires only an augmentation prior that respects class boundaries.
+
+In the limit, all three deliver the same geometry. In practice, they're each optimal for the regime where their respective information requirements are met. Representation learning's whole arc — sufficiency → reconstruction → invariance → collapse — is, at this synthesis level, a search for the simplex ETF *under weaker and weaker information assumptions*.
+
+<SufficiencyToContrastiveBridge client:visible />
+
+---
+
+## §13. Connections, limits, and forward pointers
+
+The closing section. Three things here: an honest accounting of what the topic doesn't claim, the forward research pointers that situate representation learning in the broader ML research landscape, and the closing thesis.
+
+### §13.1 Honest limits — what this topic doesn't claim
+
+Four things the topic explicitly does *not* establish:
+
+1. **End-to-end theory for deep contrastive learning.** The §5 InfoNCE bound, the §9 Saunshi guarantee, and the §10.3 Zimmermann identifiability all assume idealized settings — optimal critic, latent-class structure, content/style decomposition. The gap between these assumptions and the reality of deep transformer encoders trained on web-scale data is substantial and not closed. Empirically SSL works at scale; theoretically we don't fully understand why deep ReLU networks find good critics rather than getting stuck.
+
+2. **Resolution of the Tishby compression-phase debate.** §7.4 presents both sides honestly. The current scholarly consensus leans toward the original claim being an artifact of tanh-activation saturation + binning MI estimators, but no single experiment has settled the question. The IB framework remains useful as a normative principle; whether deep learning dynamics actually traverse the IB curve is unresolved.
+
+3. **Unsupervised disentanglement without inductive bias.** §10.1 establishes this is impossible. The topic doesn't try to find loopholes; the impossibility result stands.
+
+4. **Scaling laws for representation learning.** Real-data SSL methods exhibit empirical scaling behavior — performance improves with model size, dataset size, and compute — but the functional form of these scaling laws is not well-understood theoretically. Bahri et al. (2021) and follow-ups have characterized supervised scaling laws; the SSL analog is active research.
+
+### §13.2 Forward research pointers
+
+Four directions the field is moving, beyond what this topic covers:
+
+- **Foundation-model-scale multi-modal pretraining.** CLIP (§8.3) was the proof of concept; the descendant line (Flamingo, GPT-4V, Gemini, multimodal LLMs) is now the dominant paradigm for vision-language tasks. The mathematical content remains rooted in the §5 InfoNCE framework, but the engineering and the data scale are far beyond what classical SSL benchmarks measured.
+- **Diffusion models as continuous-time score matching.** The §3.4 Tweedie identity connects denoising autoencoders to score estimation. Diffusion models (Sohl-Dickstein 2015, Song-Ermon 2019, Ho-Jain-Abbeel 2020) make this connection central: train a sequence of denoisers at different noise scales, get a generative model. The §3.4 result is the topic's clearest gateway to this active research area; a separate formalML topic on diffusion models is a natural next ship.
+- **Mechanistic interpretability of learned features.** The §3.5 sparse-autoencoder line has reignited interpretability research: Bricken et al. (2023) and Cunningham et al. (2023) demonstrate that sparse-coding-style dictionary learning on transformer activations recovers interpretable monosemantic features at scale.
+- **Identifiable representation learning at scale.** Post-iVAE (§10.2), the identifiability line continues — methods that bake in auxiliary information (time, modality, task) to escape the §10.1 impossibility. Hyvärinen's group, Bengio's group, and Locatello's group all maintain active research programs here. The cleanest open question: can we identify a representation from auxiliary information that *isn't* exponential-family structured?
+
+### §13.3 The closing thesis
+
+Representation learning is the search for a soft sufficient statistic under progressively weaker information assumptions. Classical sufficiency assumes the parametric family. Supervised learning assumes labels. SSL assumes an augmentation prior. Foundation-model pretraining assumes only the structure of web-scale paired data. Each weakening is hard-won and partial — and the boundary between "what we can identify" and "what is fundamentally not identifiable" (§10) is the field's permanent constraint.
+
+The three-way convergence of §12.4 is the cleanest payoff: the Gaussian-mixture sufficient statistic, the supervised neural-collapse simplex ETF, and the InfoNCE-optimal content latent all sit at the same geometric configuration on the sphere — three different starting points, one limit point. The path from §1's folk "good representation" to §12's simplex ETF is the topic's spine, and the impossibility of going further without auxiliary information (§10) is the honest limit at which the topic stops.
+
