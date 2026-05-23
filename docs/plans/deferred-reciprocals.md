@@ -20,17 +20,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The single-test framework of §20.3 assumes the $m$ hypotheses and the stopping rule are fixed in advance. Always-valid confidence sequences (Howard et al. 2021) and e-processes (Vovk 2019, Grünwald…_
 
-## When `formalml/bayesian-inference` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/conditional-probability** declares `formalmlConnections` → `bayesian-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The posterior distribution P(θ|data) ∝ P(data|θ)P(θ) is Bayes' theorem applied to parameter spaces. Every MCMC algorithm, every variational inference method targets this posterior._
-- **formalStatistics/continuous-distributions** declares `formalmlConnections` → `bayesian-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Beta-Bernoulli, Gamma-Poisson, and Normal-Normal are the three canonical conjugate pairs used in Bayesian inference and online learning._
-
 ## When `formalml/embeddings` ships
 
 Add the reciprocal pointer back to:
