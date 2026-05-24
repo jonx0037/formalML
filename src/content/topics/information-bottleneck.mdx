@@ -1,0 +1,1452 @@
+---
+title: "The Information Bottleneck"
+subtitle: "Compressing X while preserving information about Y"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "shannon-entropy"
+  - "kl-divergence"
+  - "rate-distortion"
+formalstatisticsPrereqs:
+  - topic: "mutual-information-and-divergences"
+    site: "formalstatistics"
+    relationship: "Foundational definitions of mutual information, conditional MI, and KL divergence used throughout this topic — the IB Lagrangian's two terms are both mutual information quantities, and the §3 stationarity rule's predictive distortion is a KL between target-conditional distributions."
+  - topic: "canonical-correlation-analysis"
+    site: "formalstatistics"
+    relationship: "CCA directions are exactly the IB-optimal projection directions for jointly Gaussian (X, Y). §6 derives the equivalence through the diagonalization ansatz; §7 shows the resulting phase transitions happen at the reciprocals of the squared canonical correlations."
+  - topic: "conditional-expectation-and-distributions"
+    site: "formalstatistics"
+    relationship: "The Markov chain Y → X → T at the foundation of the IB setting is a conditional-independence statement (T ⟂ Y | X). The sufficient-statistic framing in §11.4 inherits its formalism from the conditional-distribution machinery developed in the prereq."
+formalcalculusPrereqs:
+  - topic: "lagrange-multipliers"
+    site: "formalcalculus"
+    relationship: "KKT conditions for the constrained IB problem (§2.2, §3) and the matrix-calculus version for Gaussian IB (§6.3) both depend on the Lagrange-multiplier framework introduced in this prereq, including dual-variable interpretation of β as the reciprocal tangent slope of the IB curve."
+  - topic: "matrix-calculus"
+    site: "formalcalculus"
+    relationship: "The gradient of log|A Σ Aᵀ + I| with respect to A — used in §6.3 to derive the closed-form Gaussian IB encoder and the generalized-eigenproblem reduction — is a matrix-calculus identity that needs the chain rule for log-determinants."
+formalstatisticsConnections:
+  - topic: "sufficient-statistics"
+    site: "formalstatistics"
+    relationship: "The IB optimum at β → ∞ recovers the classical minimal-sufficient-statistic notion — §11.4 makes this concrete. Conversely, IB at finite β is the *lossy* generalization of sufficiency, the same way rate-distortion generalizes Shannon source coding. The prereq's exponential-family sufficiency apparatus is what makes the Gaussian-IB closed form in §6 land on the canonical-correlation projections."
+tags:
+  - "information-theory"
+  - "representation-learning"
+  - "variational-methods"
+  - "learning-theory"
+  - "rate-distortion"
+  - "mutual-information"
+domain: "learning-theory"
+videoId: null
+notebookPath: "notebooks/information-bottleneck/01_information_bottleneck.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/information-bottleneck.mdx"
+datePublished: 2026-05-24
+estimatedReadTime: 75
+abstract: "A representation T of an input X is good for a downstream task Y if it forgets the parts of X that don't matter for Y and keeps the parts that do. The information bottleneck principle (Tishby, Pereira & Bialek, 1999) formalizes this as a single-parameter family of optimization problems with a Lagrangian that trades a compression term against a predictiveness term. This topic develops the principle through three arcs: the discrete iterative algorithm with full convergence proof via Csiszár–Tusnády, the closed-form Gaussian case with spectral phase transitions and the canonical-correlation reading, and the variational lift that scales to deep neural-network encoders. We then take the deep-learning fitting-and-compression controversy head-on, separating IB's prescriptive value (VIB regularization, Information Dropout) from the descriptive claim about SGD that did not survive Saxe et al. 2018."
+connections:
+  - topic: "shannon-entropy"
+    relationship: "Mutual information — the currency of the IB Lagrangian — is defined and developed there. The IB curve's saturation point I(X;Y) and the DPI ceiling both inherit machinery from the prereq, and §1.3 reuses the entropy-decomposition view I(X;T) = H(X) − H(X|T) to motivate the compression term."
+  - topic: "kl-divergence"
+    relationship: "The predictive distortion d_IB(x,t) = D_KL(p(y|x) ‖ p(y|t)) that emerges from the §3 stationarity condition is exactly the KL from the prereq, and the §4 Lyapunov construction uses KL non-negativity twice (one penalty per auxiliary argument q and r)."
+  - topic: "rate-distortion"
+    relationship: "Closest parent. The Blahut–Arimoto algorithm template that the §3.4 IB iteration inherits is developed there; §11.1 compares R(D) against R(D_pred) explicitly, showing IB as RD with a self-emergent distortion."
+  - topic: "representation-learning"
+    relationship: "Downstream cousin. The §11.4 minimal-sufficient-statistic framing connects the IB optimum at β → ∞ to the classical sufficiency notion; representation-learning develops the contrastive and equiangular-tight-frame views of the same compress-while-preserving question."
+  - topic: "variational-inference"
+    relationship: "The §8 VIB bound is structurally identical to the supervised-VAE ELBO — same encoder–prior–decoder construction, with Y replacing X in the reconstruction target. The Alemi et al. 2017 identification of VIB as 'VAE with the targets switched' transfers the entire ELBO toolkit to IB."
+  - topic: "pac-bayes-bounds"
+    relationship: "PAC-Bayes uses D_KL(Q ‖ P) as a complexity penalty; the IB rate I(X;T) = E_x[D_KL(p(t|x) ‖ p(t))] is the same arithmetic in a different framing. §11.2 makes the Russo–Zou / Xu–Raginsky generalization-bound bridge explicit."
+  - topic: "minimum-description-length"
+    relationship: "Sibling Lagrangian framework. Both MDL and IB trade code length against fidelity; the prescriptive 'penalize complexity' arithmetic is shared between them. IB does not depend on MDL formally, but §11 places both in the broader rate-distortion lineage."
+references:
+  - type: "paper"
+    title: "On the Mathematical Foundations of Theoretical Statistics"
+    authors: "Fisher"
+    year: 1922
+    url: "https://doi.org/10.1098/rsta.1922.0009"
+    note: "The original sufficiency paper. §11.4 traces the IB-at-β-infinity limit back to the classical sufficient-statistic concept introduced here (Phil. Trans. Royal Soc. A 222: 309–368)."
+  - type: "paper"
+    title: "Relations Between Two Sets of Variates"
+    authors: "Hotelling"
+    year: 1936
+    url: "https://doi.org/10.2307/2333955"
+    note: "The canonical-correlation paper. §6.4 reads the Gaussian-IB spectrum through Hotelling's canonical correlations; §7 phase transitions sit at β_c = 1/ρ_i² (Biometrika 28: 321–377)."
+  - type: "paper"
+    title: "A Mathematical Theory of Communication"
+    authors: "Shannon"
+    year: 1948
+    url: "https://doi.org/10.1002/j.1538-7305.1948.tb01338.x"
+    note: "The foundational information-theory paper. The MI definitions used throughout this topic trace here (Bell System Technical Journal 27: 379–423)."
+  - type: "paper"
+    title: "Completeness, Similar Regions, and Unbiased Estimation: Part I"
+    authors: "Lehmann & Scheffé"
+    year: 1950
+    url: "https://www.jstor.org/stable/25048038"
+    note: "Minimal sufficient statistics. §11.4 cites this for the classical concept that IB generalizes (Sankhyā 10: 305–340)."
+  - type: "paper"
+    title: "An Algorithm for Computing the Capacity of Arbitrary Discrete Memoryless Channels"
+    authors: "Arimoto"
+    year: 1972
+    url: "https://doi.org/10.1109/TIT.1972.1054753"
+    note: "One half of the Blahut–Arimoto algorithm. §3.4 and §4 use the BA template directly for the IB iteration's structure and Csiszár–Tusnády proof (IEEE Trans. Info. Theory 18: 14–20)."
+  - type: "paper"
+    title: "Computation of Channel Capacity and Rate-Distortion Functions"
+    authors: "Blahut"
+    year: 1972
+    url: "https://doi.org/10.1109/TIT.1972.1054855"
+    note: "The other half of Blahut–Arimoto. §3.4 names this as the algorithmic parent of the IB iteration (IEEE Trans. Info. Theory 18: 460–473)."
+  - type: "paper"
+    title: "Estimating the Errors on Measured Entropy and Mutual Information"
+    authors: "Roulston"
+    year: 1999
+    url: "https://doi.org/10.1016/S0167-2789(98)00269-3"
+    note: "Bias analysis of plug-in MI estimators. §12.2 cites this for the binning-estimator pitfalls underlying the Saxe et al. critique (Physica D 125: 285–294)."
+  - type: "paper"
+    title: "The Information Bottleneck Method"
+    authors: "Tishby, Pereira & Bialek"
+    year: 1999
+    url: "https://arxiv.org/abs/physics/0004057"
+    note: "The IB principle is introduced here. The §3 fixed-point equations and §4 iterative algorithm both trace to this paper (Proc. 37th Allerton: 368–377)."
+  - type: "paper"
+    title: "Estimating Mutual Information"
+    authors: "Kraskov, Stögbauer & Grassberger"
+    year: 2004
+    url: "https://doi.org/10.1103/PhysRevE.69.066138"
+    note: "The KSG k-NN MI estimator. §12.2 names this as a principled alternative to binning for continuous data (Physical Review E 69: 066138)."
+  - type: "paper"
+    title: "Information Bottleneck for Gaussian Variables"
+    authors: "Chechik, Globerson, Tishby & Weiss"
+    year: 2005
+    url: "https://jmlr.org/papers/v6/chechik05a.html"
+    note: "The closed-form Gaussian-IB paper. §6 builds on Theorem 1 of this paper for the linear-Gaussian-noise optimal encoder; §7 derives the phase-transition staircase (JMLR 6: 165–188)."
+  - type: "book"
+    title: "Elements of Information Theory"
+    authors: "Cover & Thomas"
+    year: 2006
+    url: "https://doi.org/10.1002/047174882X"
+    note: "Standard reference for MI, KL, source coding, channel coding. Used as background throughout."
+  - type: "paper"
+    title: "Deep Learning and the Information Bottleneck Principle"
+    authors: "Tishby & Zaslavsky"
+    year: 2015
+    url: "https://doi.org/10.1109/ITW.2015.7133169"
+    note: "Proposed the IB-of-deep-learning framing. §9 takes the descriptive claim apart in light of Saxe et al. 2018 (IEEE Info. Theory Workshop)."
+  - type: "paper"
+    title: "Deep Variational Information Bottleneck"
+    authors: "Alemi, Fischer, Dillon & Murphy"
+    year: 2017
+    url: "https://arxiv.org/abs/1612.00410"
+    note: "The VIB paper. §8 derives the variational lower bound on −F_β from §3 of this paper; the linear-Gaussian VIB sandbox is the analytical specialization of their construction (ICLR 2017)."
+  - type: "paper"
+    title: "Gaussian Lower Bound for the Information Bottleneck Limit"
+    authors: "Painsky & Tishby"
+    year: 2017
+    url: "https://jmlr.org/papers/v18/15-621.html"
+    note: "Entropy-power-inequality refinement of the Gaussian-IB optimality claim. §6.2 cites this for the rigorous version of Theorem 5 (JMLR 18: 1–29)."
+  - type: "paper"
+    title: "Opening the Black Box of Deep Neural Networks via Information"
+    authors: "Shwartz-Ziv & Tishby"
+    year: 2017
+    url: "https://arxiv.org/abs/1703.00810"
+    note: "The empirical 'fitting then compression' trajectories. §9.1 quotes the three claims that rode this paper and §9.3 catalogs what Saxe et al. 2018 walked back (arXiv:1703.00810)."
+  - type: "paper"
+    title: "Emergence of Invariance and Disentangling in Deep Representations"
+    authors: "Achille & Soatto"
+    year: 2018
+    url: "https://jmlr.org/papers/v19/17-646.html"
+    note: "The invariance-from-IB-compression result. §10.1 cites this for the claim that minimizing the VIB Lagrangian with sufficient β produces nuisance-invariant representations (JMLR 19: 1–34)."
+  - type: "paper"
+    title: "Information Dropout: Learning Optimal Representations Through Noisy Computation"
+    authors: "Achille & Soatto"
+    year: 2018
+    url: "https://doi.org/10.1109/TPAMI.2017.2784440"
+    note: "Information dropout as a multiplicative-noise VIB. §10.1 derives the architectural one-liner from this paper (IEEE Trans. PAMI 40: 2897–2905)."
+  - type: "paper"
+    title: "On the Information Bottleneck Theory of Deep Learning"
+    authors: "Saxe, Bansal, Dapello, Advani, Kolchinsky, Tracey & Cox"
+    year: 2018
+    url: "https://openreview.net/forum?id=ry_WPG-A-"
+    note: "The Saxe et al. critique. §9.3 walks through the tanh-vs-ReLU result and the closed-form linear-network sandbox that motivated the §9.4 prescriptive-vs-descriptive split (ICLR 2018)."
+  - type: "paper"
+    title: "Estimating Information Flow in Deep Neural Networks"
+    authors: "Goldfeld, van den Berg, Greenewald, Melnyk, Nguyen, Kingsbury & Polyanskiy"
+    year: 2019
+    url: "https://proceedings.mlr.press/v97/goldfeld19a.html"
+    note: "Compression as entropic regularization of activations. §9.4 cites this for the post-Saxe synthesis (ICML 2019: 2299–2308)."
+  - type: "paper"
+    title: "On Information Plane Analyses of Neural Network Classifiers — A Review"
+    authors: "Geiger"
+    year: 2021
+    url: "https://arxiv.org/abs/2003.09671"
+    note: "Comprehensive review of the information-plane literature post-Saxe. §9.4 forward-points to this as the canonical synthesis paper (IEEE TNNLS, arXiv:2003.09671)."
+  - type: "paper"
+    title: "PAC-Bayesian Model Averaging"
+    authors: "McAllester"
+    year: 1999
+    url: "https://doi.org/10.1145/307400.307435"
+    note: "Original PAC-Bayes bound. §11.2 cites this for the KL-as-complexity-penalty parallel to the IB rate term (COLT 1999: 164–170)."
+  - type: "paper"
+    title: "Calibrating Noise to Sensitivity in Private Data Analysis"
+    authors: "Dwork, McSherry, Nissim & Smith"
+    year: 2006
+    url: "https://doi.org/10.1007/11681878_14"
+    note: "Foundational differential privacy paper. §10.3 contrasts DP's worst-case guarantees with IB-privacy's average-case bound (TCC 2006: 265–284)."
+  - type: "paper"
+    title: "PAC-Bayesian Supervised Classification: The Thermodynamics of Statistical Learning"
+    authors: "Catoni"
+    year: 2007
+    url: "https://arxiv.org/abs/0712.0248"
+    note: "Tightened PAC-Bayes bounds. §11.2 cites this alongside McAllester 1999 for the modern PAC-Bayes view (IMS Lecture Notes 56, arXiv:0712.0248)."
+  - type: "paper"
+    title: "Auto-Encoding Variational Bayes"
+    authors: "Kingma & Welling"
+    year: 2014
+    url: "https://arxiv.org/abs/1312.6114"
+    note: "The VAE paper. §8.3 reuses the reparametrization trick from this paper to make VIB stochastic-gradient trainable (ICLR 2014)."
+  - type: "paper"
+    title: "Controlling Bias in Adaptive Data Analysis Using Information Theory"
+    authors: "Russo & Zou"
+    year: 2016
+    url: "https://proceedings.mlr.press/v51/russo16.html"
+    note: "MI-based generalization bound. §11.2 quotes the sub-Gaussian-loss bound √(2σ² I(S;A) / n) as the structural twin of the PAC-Bayes complexity penalty (AISTATS 2016: 1232–1240)."
+  - type: "paper"
+    title: "β-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework"
+    authors: "Higgins, Matthey, Pal, Burgess, Glorot, Botvinick, Mohamed & Lerchner"
+    year: 2017
+    url: "https://openreview.net/forum?id=Sy2fzU9gl"
+    note: "β-VAE as a structural twin of VIB. §10.1 notes that β-VAE's β is the same Lagrange multiplier as VIB's β (ICLR 2017)."
+  - type: "paper"
+    title: "Information-Theoretic Analysis of Generalization Capability of Learning Algorithms"
+    authors: "Xu & Raginsky"
+    year: 2017
+    url: "https://papers.nips.cc/paper/2017/hash/ad71c82b22f4f65b9398f76d8be4c615-Abstract.html"
+    note: "Refined I(S;A) generalization bound. §11.2 cites this with Russo–Zou as the cleanest information-theoretic generalization guarantee (NeurIPS 2017: 2521–2530)."
+  - type: "paper"
+    title: "Mutual Information Neural Estimation"
+    authors: "Belghazi, Baratin, Rajeswar, Ozair, Bengio, Courville & Hjelm"
+    year: 2018
+    url: "https://proceedings.mlr.press/v80/belghazi18a.html"
+    note: "MINE — neural MI estimation via Donsker–Varadhan. §12.2 lists this among variational MI estimators with discussion of when it's reliable (ICML 2018: 531–540)."
+  - type: "paper"
+    title: "Invariant Representations without Adversarial Training"
+    authors: "Moyer, Gao, Brekelmans, Galstyan & Ver Steeg"
+    year: 2018
+    url: "https://papers.nips.cc/paper/2018/hash/415185ea244ea2b2bedeb0449b926802-Abstract.html"
+    note: "Fair-IB Lagrangian with explicit I(T;S) leakage penalty. §10.2 derives the three-axis trade-off from this paper (NeurIPS 2018: 9084–9093)."
+  - type: "paper"
+    title: "Representation Learning with Contrastive Predictive Coding"
+    authors: "van den Oord, Li & Vinyals"
+    year: 2018
+    url: "https://arxiv.org/abs/1807.03748"
+    note: "InfoNCE — the loss behind modern self-supervised learning. §11.3 derives the MI lower bound log K − L_InfoNCE that contrastive methods are implicitly maximizing (arXiv:1807.03748)."
+  - type: "paper"
+    title: "Task2Vec: Task Embedding for Meta-Learning"
+    authors: "Achille, Lam, Tewari, Ravichandran, Maji, Fowlkes, Soatto & Perona"
+    year: 2019
+    url: "https://doi.org/10.1109/ICCV.2019.00653"
+    note: "IB-style task representations for meta-learning. §12.3 forward-points to this as a deeper-encoder application family (ICCV 2019: 6430–6439)."
+  - type: "paper"
+    title: "A Theoretical Analysis of Contrastive Unsupervised Representation Learning"
+    authors: "Saunshi, Plevrakis, Arora, Khodak & Khandeparkar"
+    year: 2019
+    url: "https://proceedings.mlr.press/v97/saunshi19a.html"
+    note: "Generalization theory for contrastive learning. §11.3 closes the loop between InfoNCE-as-IB-predictiveness and PAC-Bayes-style bounds (ICML 2019: 5628–5637)."
+  - type: "paper"
+    title: "An Operational Approach to Information Leakage"
+    authors: "Issa, Wagner & Kamath"
+    year: 2020
+    url: "https://doi.org/10.1109/TIT.2019.2962804"
+    note: "Operational interpretation of I(T;S) as expected log-ratio gain of an adversary. §10.3 cites this for the privacy-leakage operational reading (IEEE Trans. Info. Theory 66: 1625–1657)."
+  - type: "paper"
+    title: "Contrastive Multiview Coding"
+    authors: "Tian, Krishnan & Isola"
+    year: 2020
+    url: "https://doi.org/10.1007/978-3-030-58621-8_45"
+    note: "Multi-view contrastive learning as MI maximization. §11.3 mentions this as the natural multi-view generalization of InfoNCE-as-IB-predictiveness (ECCV 2020: 776–794)."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import Figure from '../../components/ui/Figure.astro';
+import IBPlaneExplorer from '../../components/viz/IBPlaneExplorer.tsx';
+import GaussianIBCurveSchematic from '../../components/viz/GaussianIBCurveSchematic.tsx';
+import T3IBCurveTracer from '../../components/viz/T3IBCurveTracer.tsx';
+import ClusterBifurcationCascade from '../../components/viz/ClusterBifurcationCascade.tsx';
+import GaussianIBCurveExplorer from '../../components/viz/GaussianIBCurveExplorer.tsx';
+import DimensionAllocationExplorer from '../../components/viz/DimensionAllocationExplorer.tsx';
+import VIBvsIBSandbox from '../../components/viz/VIBvsIBSandbox.tsx';
+import RateDistortionVsIB from '../../components/viz/RateDistortionVsIB.tsx';
+
+## 1. What problem does the information bottleneck solve?
+
+### 1.1 Predictive but compact: the trade-off as a design principle
+
+Representations sit between raw data and downstream tasks. A useful representation does two opposed things at once: it throws away what the task doesn't need (so we aren't swamped by noise), and it keeps what the task does need (so we can still answer the question). The information bottleneck principle formalizes exactly that opposition as a single optimization problem.
+
+The setup names three random variables. The input $X$ is whatever the world hands us — a document, an image, a sensor trace. The target $Y$ is whatever we ultimately care about — a topic label, a class, a downstream measurement. The representation $T$ is the compressed object we want to learn, and we require $T$ to be a (possibly stochastic) function of $X$ alone. Formally, $T$ is conditionally independent of $Y$ given $X$:
+
+$$Y \;\to\; X \;\to\; T,$$
+
+which is the Markov chain we'll be working inside for the rest of the topic. Concretely, $T$'s distribution is fully specified by an *encoder* $p(t \mid x)$ — the only knob the IB principle gets to turn.
+
+Two strategies fail immediately. If we set $T = X$, the encoder is the identity; we have compressed nothing and we have learned nothing. If we set $T$ to a constant, the encoder throws everything away; we have compressed perfectly and we have predicted nothing. Useful representations live in between, and the IB principle picks the trade-off explicitly via the Lagrangian
+
+$$\mathcal{L}_\beta\bigl(p(t\mid x)\bigr) \;=\; I(X;T) \;-\; \beta\, I(T;Y), \qquad \beta > 0. \quad\quad (1.1)$$
+
+The first term is the *cost of remembering*: how much information about $X$ leaks through the encoder. The second is the *value of predicting*: how much information about $Y$ the representation $T$ retains. The single scalar $\beta$ shifts where we want to land between the two failure modes. As $\beta \to 0$, only compression matters and the minimizer collapses to a constant. As $\beta \to \infty$, only prediction matters and the minimizer recovers the lossless representation. Everything interesting happens in between, on the *IB curve* — the Pareto frontier in the $(I(X;T),\, I(T;Y))$ plane traced out as $\beta$ sweeps.
+
+We will rederive every piece of this picture over the next eleven sections. For now, it is enough to know that we have a single-parameter family of optimization problems and that the parameter has an interpretable meaning: $\beta$ is the bit-for-bit exchange rate between compression and prediction.
+
+### 1.2 A motivating vignette: clustering documents by topic
+
+The original Tishby–Pereira–Bialek paper grounds the principle in document clustering, which is still the cleanest first example. Imagine eight documents drawn from two hidden topics — call them "sports" and "finance." Each document $x \in \{0,1,\ldots,7\}$ is summarized by a word-count signature, and the topic label $y \in \{0,1\}$ is what a downstream task cares about. A representation $T$ is a (soft) clustering: the encoder $p(t \mid x)$ says how strongly document $x$ is assigned to cluster $t$.
+
+We give every document equal mass and arrange the topic structure as cleanly as possible: documents $0$ through $3$ come from topic $0$, documents $4$ through $7$ from topic $1$. The joint distribution $p(x,y)$ then has uniform mass $1/8$ on its eight-point support, and the marginals come out to $p(x) = 1/8$ for every document and $p(y) = 1/2$ for each topic. Quick consequences:
+
+$$H(X) = \log_2 8 = 3, \qquad H(Y) = \log_2 2 = 1, \qquad I(X;Y) = H(Y) = 1.$$
+
+The last equality uses that $Y$ is a deterministic function of $X$ on this construction, so $H(Y\mid X) = 0$ and $I(X;Y) = H(Y) - H(Y\mid X) = 1$.
+
+Three reference clusterings stake out the corners of the IB plane:
+
+| Clustering | $I(X;T)$ | $I(T;Y)$ | What it does |
+|---|---|---|---|
+| $T = \text{const}$ | $0$ | $0$ | Full compression. All documents in one cluster — predictiveness destroyed. |
+| $T = Y$ | $1$ | $1$ | Topic-aligned. Two clusters, one per topic — minimum compression that still captures all of $Y$. |
+| $T = X$ | $3$ | $1$ | Identity. Eight clusters, one per document — zero compression, but no additional predictiveness over $T = Y$. |
+
+The third row is the punchline: keeping all three bits of $X$ buys exactly the same one bit of $Y$-information as keeping only the one bit that says "which topic." Compressing $X$ from three bits down to one bit is therefore *free* on this construction — the extra two bits of $X$ are pure noise from $Y$'s point of view. The IB curve, traced over $\beta$, will recover this fact algorithmically without being told what $Y$ is in advance. We come back to this same eight-document table in §5 when we run the discrete IB algorithm on it.
+
+<Figure
+  src="/images/topics/information-bottleneck/01_ib_plane_five_clusterings.png"
+  alt="Five reference clusterings on the 8-document toy plotted in the IB plane"
+  caption="Five reference clusterings on the eight-document, two-topic toy, plotted by their (I(X;T), I(T;Y)) coordinates in bits. The diagonal I(T;Y) ≤ I(X;T) is a hard upper bound (data-processing inequality); the dashed horizontal at I(X;Y) = 1 bit is the DPI ceiling. T = X (3, 1) and the 4-cluster topic-pure pairs (2, 1) both sit on the ceiling, but T = Y (1, 1) achieves it at the smallest possible I(X;T). The mis-aligned 2-cluster split shows that compression alone is not enough — its (1, 0) coordinate keeps one bit of X but throws away the predictively useful one."
+/>
+
+<IBPlaneExplorer client:visible />
+
+### 1.3 Why mutual information is the right currency
+
+Why measure "informativeness" with mutual information rather than (say) classification accuracy, correlation, or one of the many divergences floating around in the ML literature? Four reasons make MI the natural choice for both axes of the IB plane.
+
+**Invariance to relabeling.** $I(X;T)$ depends only on the joint distribution $p(x,t)$, not on how cluster names are assigned. Two clusterings that partition $X$ identically have the same mutual information regardless of whether we call the clusters "$\{0,1\}$" or "$\{\text{sports}, \text{finance}\}$." Compression should count statistical structure, not labels, and MI does this by construction.
+
+**A coding interpretation.** Shannon's source-coding theorem (the foundation we lean on from [Shannon entropy](/topics/shannon-entropy)) tells us that $I(X;T)$ is, asymptotically, the average number of bits per sample needed to communicate $T$ to a receiver who already knows $X$. So $I(X;T)$ has a literal units interpretation — bits. The compression term in the IB Lagrangian carries a *cost* in the same currency as the predictiveness term.
+
+**A clean entropy decomposition.** Writing $H(X) = I(X;T) + H(X \mid T)$ splits the entropy of $X$ into "the bits about $X$ captured by $T$" and "the bits about $X$ lost in $T$." Maximizing $I(X;T)$ is exactly minimizing what we lose; minimizing $I(X;T)$ is exactly maximizing what we throw away. The IB Lagrangian is asking us to throw away what is irrelevant and to keep what is relevant, both measured in the same units.
+
+**The data-processing inequality.** For any Markov chain $T \leftarrow X \to Y$,
+
+$$I(T;Y) \;\le\; I(X;Y). \quad\quad (1.2)$$
+
+No matter what encoder we cook up from $X$, the representation $T$ cannot predict $Y$ better than $X$ itself can. This places a hard ceiling on the predictiveness side of the IB plane: the IB curve is bounded above by the constant $I(X;Y)$. It also tells us when compression is *genuinely free*. If $I(X;Y) \ll H(X)$ — that is, if $X$ has lots of bits unrelated to $Y$ — then there is plenty of room to compress without paying anything in predictiveness. Our document-clustering toy has $H(X) = 3$ and $I(X;Y) = 1$, so two of the three bits in $X$ are pure noise from $Y$'s standpoint, and the IB algorithm will discard them as $\beta$ varies.
+
+These four properties together — invariance, units, decomposition, the DPI ceiling — make $I(X;T)$ and $I(T;Y)$ the natural axes of the trade-off. The IB Lagrangian is, in a real sense, the most parsimonious functional you can write that respects all four.
+
+### 1.4 Roadmap and what's not in scope
+
+The topic covers three substantive arcs.
+
+**Discrete IB (Tishby–Pereira–Bialek 1999), §§3–5.** We derive the stationarity conditions on $\mathcal{L}_\beta$ by variational calculus on the encoder, obtain the three coupled updates for $p(t\mid x)$, $p(t)$, and $p(y\mid t)$, prove convergence of the iterative algorithm via a Lyapunov argument inherited from the Blahut–Arimoto algorithm in [rate-distortion theory](/topics/rate-distortion), and run the algorithm on the eight-document toy to trace out the IB curve.
+
+**Gaussian IB (Chechik–Globerson–Tishby–Weiss 2005), §§6–7.** When $(X,Y)$ are jointly Gaussian, the IB problem has a closed-form solution: the optimal encoder is linear-plus-Gaussian-noise, and the optimal projection directions are the canonical-correlation directions of $\Sigma_X^{-1/2}\, \Sigma_{X\mid Y}\, \Sigma_X^{-1/2}$. The IB curve becomes piecewise-analytic, with phase transitions at critical $\beta_c$ values where new directions activate. This is the analytical sandbox where every quantity is exactly computable.
+
+**Variational IB and the deep-learning lift, §§8–10.** The Alemi–Fischer–Dillon–Murphy 2017 variational lower bound on $-\mathcal{L}_\beta$ makes the IB Lagrangian tractable for encoders that are too high-dimensional to enumerate, including neural-network encoders. We will derive the bound, work through the reparametrization trick, and exercise the construction on a closed-form linear-Gaussian VIB sandbox. Then we take the deep-learning controversy head-on: Tishby–Zaslavsky 2015 and Shwartz-Ziv–Tishby 2017 argued that deep networks generically traverse a "fitting then compression" trajectory in the information plane; Saxe et al. 2018 showed that the compression phase disappears when the activation is ReLU instead of tanh, and may have been an artifact of how MI was estimated. We will present both sides faithfully.
+
+**Connections and limits, §§11–12.** IB is mathematically adjacent to several other principles: rate-distortion (the closest parent — same Lagrangian template, different distortion), PAC-Bayes (which uses a KL term as a complexity penalty, structurally analogous to the $I(X;T)$ term), and InfoNCE in contrastive learning (which is provably an MI lower bound, so contrastive methods are implicitly doing IB-style optimization). We close with computational notes — `logsumexp` stability, plug-in MI estimator pitfalls — and a list of honest limits.
+
+What we are *not* doing. We are not training a deep VIB on real image data; the under-60-second CPU runtime budget rules it out, and Alemi et al.'s MNIST numbers will be discussed but not reproduced. We are not adjudicating the deep-learning debate; we will present the controversy faithfully and let the reader form their own view. We are not building a full rate-distortion theory from scratch; that lives in [rate-distortion](/topics/rate-distortion), and we'll cite forward to it at the relevant point in §11.
+
+## 2. The information bottleneck Lagrangian
+
+### 2.1 The setting and the Markov chain
+
+Let $X$ be the input random variable, $Y$ the target, and $T$ the learned representation. We assume the joint distribution $p(x, y)$ is given. In §3 the iterative algorithm will use this distribution directly; in §12.2 we'll discuss how to estimate it from a finite sample. The triple $(X, Y, T)$ satisfies the Markov property
+
+$$Y \;\to\; X \;\to\; T,$$
+
+equivalent to the conditional-independence statement $T \perp Y \mid X$. In words: $T$ is allowed to depend on $X$ only through $X$ itself, never directly through $Y$. This is exactly what it means for $T$ to be a (possibly randomized) function of $X$.
+
+The single degree of freedom in the problem is the *encoder*
+
+$$p(t \mid x), \qquad t \in \mathcal{T}.$$
+
+We are free to choose the alphabet $\mathcal{T}$, including its cardinality. For the discrete IB of §§3–5 we take $|\mathcal{T}| = k$ for some user-specified $k$; for the Gaussian IB of §§6–7 we take $\mathcal{T} = \mathbb{R}^d$; for the variational IB of §§8–10 the alphabet is whatever the variational family supports.
+
+Three derived distributions matter, and the IB algorithm of §3 will turn out to update exactly these three:
+
+$$p(t) \;=\; \sum_x p(x)\,p(t \mid x), \qquad p(x \mid t) \;=\; \frac{p(x)\,p(t \mid x)}{p(t)}, \qquad p(y \mid t) \;=\; \sum_x p(y \mid x)\,p(x \mid t). \quad\quad (2.1)$$
+
+The first is the cluster marginal. The second is the cluster-conditional distribution of $X$, by Bayes. The third is the cluster-conditional distribution of $Y$, computed using the Markov property $p(y \mid x, t) = p(y \mid x)$ — the encoder's job is to forward whatever it knows about $X$, not to invent anything new about $Y$.
+
+### 2.2 The variational problem
+
+The IB problem has two equivalent forms, and it pays to be precise about both.
+
+**The constrained form.** Fix a target predictiveness level $I_Y^* \in [0, I(X;Y)]$. The problem is
+
+$$\min_{p(t \mid x)} \; I(X; T) \quad \text{subject to} \quad I(T; Y) \ge I_Y^*, \quad \sum_t p(t \mid x) = 1 \; \forall x. \quad\quad (2.2)$$
+
+We want the most compressed representation whose predictiveness is at least $I_Y^*$. Sweeping $I_Y^*$ across its allowed range traces out the IB curve.
+
+**The Lagrangian form.** Introduce a Lagrange multiplier $\beta \ge 0$ for the predictiveness constraint and, for now, handle the normalization constraints implicitly. The Lagrangian we will use from §3 onward is
+
+$$\mathcal{F}_\beta(p(t \mid x)) \;=\; I(X; T) \;-\; \beta\, I(T; Y), \qquad \text{minimized over normalized encoders.} \quad\quad (2.3)$$
+
+The Lagrangian form is a relaxation: for each $\beta$, the minimizer of $\mathcal{F}_\beta$ also solves (2.2) for *some* value of $I_Y^*$ (namely the value $I(T;Y)$ achieved by the minimizer), and the two forms generate the same Pareto frontier. We work with the Lagrangian form because its stationarity conditions differentiate cleanly — see §3.2.
+
+A subtlety worth flagging now: the Lagrangian relaxation can miss points on the IB curve where the curve has a corner (i.e., where the right-hand and left-hand slopes disagree). At such points, no single $\beta$ produces that operating point as a Lagrangian minimum — only an open interval of $\beta$ values does, and the achievable point sits "between" the two corner branches. This will matter in §7 when we discuss Gaussian-IB phase transitions, where the curve has exactly such corners.
+
+### 2.3 The IB curve in the information plane
+
+Define the *IB curve* as the value function of (2.2):
+
+$$I_Y^*(R) \;:=\; \sup_{p(t \mid x)} \Bigl\{\, I(T; Y) \;:\; I(X; T) \le R \,\Bigr\}, \qquad R \in [0, \infty). \quad\quad (2.4)$$
+
+This is the upper Pareto boundary of the achievable region in the $(I(X;T), I(T;Y))$ plane — every operating point sits on or below it.
+
+<TheoremBlock type="theorem" number={1} title="IB-curve shape">
+$I_Y^*$ is non-decreasing, concave, and bounded above by $I(X; Y)$, with equality $I_Y^*(R) = I(X; Y)$ achieved for all $R$ large enough to support a sufficient statistic for $Y$ in $X$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+*Monotonicity.* Immediate: enlarging the constraint $I(X;T) \le R$ enlarges the feasible set, so the supremum cannot decrease.
+
+*Concavity by time-sharing.* Fix $R_1, R_2 \ge 0$ and $\alpha \in (0, 1)$. Let $\epsilon > 0$ and pick encoders $p_1(t \mid x)$ over an alphabet $\mathcal{T}_1$ and $p_2(t \mid x)$ over an alphabet $\mathcal{T}_2$ satisfying
+
+$$I(X; T_i) \le R_i, \qquad I(T_i; Y) \ge I_Y^*(R_i) - \epsilon, \qquad i = 1, 2,$$
+
+where $T_i$ is the representation produced by encoder $p_i$. By relabeling we may assume $\mathcal{T}_1 \cap \mathcal{T}_2 = \emptyset$.
+
+Now introduce a Bernoulli switch $S \sim \mathrm{Bern}(\alpha)$, drawn *independently* of everything else, and define the *time-shared* representation
+
+$$T_\alpha \;=\; \begin{cases} T_1 & \text{if } S = 1,\\ T_2 & \text{if } S = 0,\end{cases}$$
+
+which corresponds to the encoder $p_\alpha(t \mid x) = \alpha\, p_1(t \mid x)\, \mathbf{1}\{t \in \mathcal{T}_1\} + (1 - \alpha)\, p_2(t \mid x)\, \mathbf{1}\{t \in \mathcal{T}_2\}$. Because the codomains are disjoint, $S$ is recoverable from $T_\alpha$, so $H(S \mid T_\alpha) = 0$.
+
+*Compression side.* Using $H(S \mid T_\alpha) = 0$ and the chain rule,
+
+$$I(X; T_\alpha) \;=\; I(X; T_\alpha, S) \;=\; \underbrace{I(X; S)}_{= 0} \,+\, I(X; T_\alpha \mid S) \;=\; \alpha\, I(X; T_1) \,+\, (1 - \alpha)\, I(X; T_2),$$
+
+where $I(X; S) = 0$ because $S$ is independent of $X$, and the conditional MI splits because conditional on $S = s$, the representation $T_\alpha$ is exactly $T_s$. Hence $I(X; T_\alpha) \le \alpha R_1 + (1 - \alpha) R_2$.
+
+*Prediction side.* By the same argument,
+
+$$I(T_\alpha; Y) \;=\; I(T_\alpha, S; Y) \;=\; \underbrace{I(S; Y)}_{= 0} \,+\, I(T_\alpha; Y \mid S) \;=\; \alpha\, I(T_1; Y) \,+\, (1 - \alpha)\, I(T_2; Y),$$
+
+which is at least $\alpha\, I_Y^*(R_1) + (1 - \alpha)\, I_Y^*(R_2) - \epsilon$.
+
+Hence $T_\alpha$ is a feasible encoder for the constraint level $\alpha R_1 + (1 - \alpha) R_2$, with predictiveness at least $\alpha\, I_Y^*(R_1) + (1 - \alpha)\, I_Y^*(R_2) - \epsilon$. Therefore
+
+$$I_Y^*\bigl(\alpha R_1 + (1 - \alpha) R_2\bigr) \;\ge\; \alpha\, I_Y^*(R_1) + (1 - \alpha)\, I_Y^*(R_2) - \epsilon.$$
+
+Letting $\epsilon \to 0$ gives concavity.
+
+*The ceiling.* The data-processing inequality applied to the Markov chain $Y \to X \to T$ gives $I(T; Y) \le I(X; Y)$ for every encoder, so $I_Y^*(R) \le I(X; Y)$ for all $R$. Equality is achieved at any $R \ge R^\dagger$, where $R^\dagger$ is the rate needed to encode a minimal sufficient statistic for $Y$ in $X$. When such a statistic exists with finite alphabet, $R^\dagger$ is finite; otherwise the equality is achieved only in the limit $R \to \infty$.
+</TheoremBlock>
+
+The IB curve is therefore a concave non-decreasing curve starting at the origin, climbing as $R$ grows, and saturating at $I(X; Y)$ once we can afford to encode a sufficient statistic. Past saturation, additional compression budget is wasted on bits of $X$ that don't help with $Y$. The whole geometric content of the IB principle lives in the shape of this curve.
+
+### 2.4 What β controls
+
+The Lagrange multiplier $\beta$ in $\mathcal{F}_\beta$ admits a clean geometric reading: it is the *reciprocal of the tangent slope* of the IB curve at the operating point.
+
+Suppose $p^*(t \mid x)$ minimizes $\mathcal{F}_\beta$ and achieves the point $(R^*, I_Y^*)$ on the IB curve, with $I_Y^* = I_Y^*(R^*)$. By the KKT conditions for problem (2.2), $\beta$ is the dual variable for the predictiveness constraint, and where the curve is differentiable the tangent at $(R^*, I_Y^*)$ has slope $1/\beta$:
+
+$$\left.\frac{d I_Y^*}{d R}\right|_{R = R^*} \;=\; \frac{1}{\beta}. \quad\quad (2.5)$$
+
+This identity organizes the $\beta$ knob into three regimes.
+
+**Small β (large slope, near origin).** The compression term dominates the Lagrangian. In the limit $\beta \to 0^+$, the optimum collapses to $R^* = 0$ and $T = \text{const}$.
+
+**Large β (small slope, near saturation).** The predictiveness term dominates. As $\beta \to \infty$, the optimum recovers a minimal sufficient statistic: $I_Y^* = I(X; Y)$ at the smallest $R$ that supports it.
+
+**The critical β_c.** Between these regimes sits a sharp threshold. Let $\sigma_0 := \lim_{R \to 0^+} dI_Y^*/dR$ be the initial slope of the IB curve at the origin. For $\beta < 1/\sigma_0$, every nontrivial encoder achieves $\mathcal{F}_\beta > 0$, so the optimum is the trivial $T = \text{const}$. At $\beta_c := 1/\sigma_0$, a nontrivial branch of solutions emerges. For the discrete IB, $\beta_c$ depends on $p(x, y)$ and is generally found numerically by sweeping $\beta$. For the Gaussian IB, $\sigma_0$ equals the largest eigenvalue $\lambda_1$ of a canonical-correlation matrix, so $\beta_c = 1/\lambda_1$ — this is the first of several phase transitions worked out in §7.
+
+A concrete preview makes the picture tangible. The scalar-Gaussian case ($X, Y \in \mathbb{R}$ jointly Gaussian with correlation $\rho$) admits the closed-form IB curve
+
+$$I_Y^*(R) \;=\; -\tfrac{1}{2}\log_2\bigl(1 - \rho^2\,(1 - 2^{-2R})\bigr),$$
+
+saturating at the predictiveness ceiling $I(X;Y) = -\tfrac{1}{2}\log_2(1 - \rho^2)$. The threshold value $\beta_c = 1/\rho^2$ is the value below which the trivial encoder is optimal. At $\rho = 0.8$, $\beta_c = 1.5625$, and the three tangent operating points referenced by the figure below land at $(0.254, 0.152)$ bits for $\beta = 1.8$, $(1.208, 0.529)$ bits for $\beta = 4$, and $(2.145, 0.674)$ bits for $\beta = 12$ — each with tangent slope $1/\beta$, confirming the KKT identity (2.5). We derive this scalar-Gaussian result formally in §6 and §7; the figure previews the general shape.
+
+<Figure
+  src="/images/topics/information-bottleneck/02_gaussian_ib_curve_schematic.png"
+  alt="Scalar-Gaussian IB curves at four correlations, plus tangent lines at three β operating points"
+  caption="Left: scalar-Gaussian IB curves I_Y*(R) = −½ log₂(1 − ρ²(1 − 2⁻²ᴿ)) for ρ ∈ {0.35, 0.55, 0.80, 0.95}; saturation at I(X;Y) = −½ log₂(1 − ρ²) shown as dotted horizontals. The diagonal I(T;Y) ≤ I(X;T) (dashed gray) is the DPI ceiling. Right: the ρ = 0.8 curve with three tangent lines at β ∈ {1.8, 4, 12}; the slope at each operating point is 1/β by the KKT identity (2.5). The critical β_c = 1/ρ² = 1.5625 is the value below which the trivial T = const is optimal."
+/>
+
+<GaussianIBCurveSchematic client:visible />
+
+This figure previews a result derived formally in §6 (the Gaussian closed form), framed for §2 as a concrete example that makes the curve shape and the $\beta$-as-slope interpretation tangible.
+
+## 3. The IB fixed-point equations
+
+### 3.1 Stationarity conditions on the Lagrangian
+
+We are looking for encoders $p^*(t \mid x)$ that minimize the Lagrangian
+
+$$\mathcal{F}_\beta\bigl(p(t \mid x)\bigr) \;=\; I(X; T) - \beta\, I(T; Y) \quad\quad (3.1)$$
+
+subject to the normalization constraints $\sum_t p(t \mid x) = 1$ for every $x$. Augmenting with multipliers $\mu(x)$ gives the full Lagrangian
+
+$$\mathcal{L}_\beta \;=\; I(X; T) - \beta\, I(T; Y) + \sum_x \mu(x)\left[\sum_t p(t \mid x) - 1\right]. \quad\quad (3.2)$$
+
+At a stationary point we need $\partial \mathcal{L}_\beta / \partial p(t \mid x) = 0$ for every $(x, t)$ with $p(x) > 0$, together with the normalization constraint.
+
+<TheoremBlock type="theorem" number={2} title="IB stationarity condition">
+At any stationary point of $\mathcal{F}_\beta$ over normalized encoders,
+
+$$p(t \mid x) \;=\; \frac{p(t)}{Z(x, \beta)}\,\exp\!\Bigl[-\beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\big\|\, p(y \mid t)\bigr)\Bigr], \quad\quad (3.3)$$
+
+where $p(t) = \sum_x p(x)\, p(t \mid x)$ is the cluster marginal, $p(y \mid t) = \sum_x p(y \mid x)\, p(x \mid t)$ is the cluster-conditional target, and
+
+$$Z(x, \beta) \;=\; \sum_{t} p(t)\, \exp\!\Bigl[-\beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\big\|\, p(y \mid t)\bigr)\Bigr] \quad\quad (3.4)$$
+
+is the per-input normalization.
+</TheoremBlock>
+
+Equation (3.3) is the central formula of discrete IB. Read it as a soft-assignment rule: input $x$ is assigned to cluster $t$ with probability proportional to the cluster's prior $p(t)$ times the exponential of $-\beta$ times the KL between the *true* target distribution at $x$, namely $p(y \mid x)$, and the *cluster-conditional* target distribution, $p(y \mid t)$. Two clusters whose target distributions are close to $p(y \mid x)$ both attract $x$; the one whose target distribution is closer wins more probability. The bandwidth of "closer wins" is set by $\beta$ — at small $\beta$ assignments are diffuse; at large $\beta$ each input goes almost entirely to its closest cluster.
+
+The two other quantities $p(t)$ and $p(y \mid t)$ are not independent free parameters — they are determined by $p(t \mid x)$ through (2.1). So (3.3) is really a self-consistency equation: the encoder $p(t \mid x)$ defines the marginal and the decoder, which in turn feed back into the right-hand side. We will turn this self-consistency into the iterative algorithm in §3.3.
+
+### 3.2 Derivation via variational calculus
+
+We compute the two partial derivatives that show up in (3.2). Throughout we adopt the convention that $\log$ is the natural log (the conversion to bits is a global factor of $1/\ln 2$ that drops out of the stationarity condition).
+
+<TheoremBlock type="proof">
+*Partial derivative of $I(X; T)$.* Write
+
+$$I(X; T) \;=\; -\sum_{t'} p(t') \log p(t') + \sum_{x', t'} p(x')\, p(t' \mid x')\, \log p(t' \mid x'). \quad\quad (3.5)$$
+
+The first piece depends on $p(t \mid x)$ only through $p(t) = \sum_{x'} p(x') p(t \mid x')$, with $\partial p(t')/\partial p(t \mid x) = p(x)\,\delta_{t, t'}$. Differentiating $-p(t) \log p(t)$ with respect to $p(t)$ gives $-\log p(t) - 1$, so the chain-rule contribution is $-\bigl(\log p(t) + 1\bigr)\, p(x)$. The second piece depends explicitly on $p(t \mid x)$ at $(x', t') = (x, t)$, giving $p(x)\bigl(\log p(t \mid x) + 1\bigr)$. The two $+1$'s cancel:
+
+$$\frac{\partial I(X; T)}{\partial p(t \mid x)} \;=\; p(x)\bigl[\log p(t \mid x) - \log p(t)\bigr]. \quad\quad (3.6)$$
+
+*Partial derivative of $I(T; Y)$.* Using $p(t, y) = \sum_{x'} p(x', y)\, p(t \mid x')$, write
+
+$$I(T; Y) \;=\; \sum_{x', t', y} p(x', y)\, p(t' \mid x')\, \log p(y \mid t') \;+\; H(Y), \quad\quad (3.7)$$
+
+where the $H(Y)$ term is constant in $p(t \mid x)$ and drops out. The remaining sum depends on $p(t \mid x)$ both *explicitly* (through the $p(t' \mid x')$ factor at $(x', t') = (x, t)$) and *implicitly* (through every $p(y \mid t')$, which is itself a function of $p(t \mid x)$).
+
+*Explicit contribution.* Direct: $p(x, y)\, \log p(y \mid t)$, summed over $y$, gives $p(x) \sum_y p(y \mid x)\, \log p(y \mid t)$.
+
+*Implicit contribution.* From $p(y \mid t') = \bigl(\sum_{x'} p(x', y)\, p(t \mid x')\bigr) / p(t')$ a short calculation gives
+
+$$\frac{\partial p(y \mid t')}{\partial p(t \mid x)} \;=\; \delta_{t, t'} \cdot \frac{p(x)}{p(t)}\,\bigl[p(y \mid x) - p(y \mid t)\bigr]. \quad\quad (3.8)$$
+
+The implicit contribution to $\partial I(T;Y) / \partial p(t \mid x)$ is then
+
+$$\sum_{x', t', y} p(x', y)\, p(t' \mid x')\, \frac{1}{p(y \mid t')}\, \frac{\partial p(y \mid t')}{\partial p(t \mid x)} \;=\; p(x) \sum_y \bigl[p(y \mid x) - p(y \mid t)\bigr] \;=\; 0. \quad\quad (3.9)$$
+
+So the implicit term vanishes identically — both summands have $\sum_y p(y \mid \cdot) = 1$ and the difference cancels. This is the key simplification of the derivation, and we verify it numerically below. We are left with
+
+$$\frac{\partial I(T; Y)}{\partial p(t \mid x)} \;=\; p(x) \sum_y p(y \mid x)\, \log p(y \mid t). \quad\quad (3.10)$$
+
+*Assembling the KKT condition.* Differentiating (3.2) and setting the result to zero:
+
+$$p(x)\bigl[\log p(t \mid x) - \log p(t)\bigr] - \beta\, p(x) \sum_y p(y \mid x)\, \log p(y \mid t) + \mu(x) \;=\; 0. \quad\quad (3.11)$$
+
+Dividing through by $p(x) > 0$ and using
+
+$$\sum_y p(y \mid x)\, \log p(y \mid t) \;=\; -D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p(y \mid t)\bigr) - H(Y \mid X = x),$$
+
+we obtain
+
+$$\log p(t \mid x) \;=\; \log p(t) - \beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p(y \mid t)\bigr) \;+\; \bigl[\text{terms independent of } t\bigr]. \quad\quad (3.12)$$
+
+The $t$-independent terms ($\beta H(Y \mid X = x)$ and $\mu(x) / p(x)$) are absorbed into the normalization $Z(x, \beta)$. Exponentiating and using $\sum_t p(t \mid x) = 1$ produces (3.3) and (3.4).
+</TheoremBlock>
+
+The implicit-term-vanishes identity (3.9) expresses a structural feature of the IB problem: $p(y \mid t)$, viewed as a function of the encoder, is the "Bayes-optimal" estimate of $Y$ given $T = t$ averaged over the encoder's induced distribution on $X$, so the gradient of any quantity computed from $p(y \mid t)$ that is "evaluated at its own optimal estimate" picks up no first-order correction. This is the same observation that makes EM monotone and that makes the IB algorithm Blahut–Arimoto-style monotone, which we'll prove in §4.
+
+<TheoremBlock type="remark" title="Numerical check of (3.9)">
+The notebook (cell 13) verifies (3.9) by comparing the analytical gradient $\partial I(T;Y) / \partial p(t \mid x)$ — using only the explicit contribution (3.10) — against a finite-difference reference of the full $I(T;Y)$ on a random soft encoder with $k = 3$ clusters and $n_{\text{docs}} = 8$. The maximum and mean absolute differences both come out to $8.66 \times 10^{-2}$, the finite-difference truncation error at step size $10^{-3}$ — the implicit term contributes nothing detectable, consistent with the identity. If the implicit term were nonzero, the discrepancy would grow with the step size; instead it shrinks, the signature of pure $O(h^2)$ truncation error.
+</TheoremBlock>
+
+### 3.3 The three coupled updates
+
+A stationary point of $\mathcal{F}_\beta$ must satisfy three coupled self-consistency equations:
+
+$$
+\begin{aligned}
+p(t \mid x) &\;=\; \frac{p(t)}{Z(x, \beta)}\, \exp\!\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, p(y \mid t))\bigr], \\[4pt]
+p(t) &\;=\; \sum_x p(x)\, p(t \mid x), \\[4pt]
+p(y \mid t) &\;=\; \frac{1}{p(t)} \sum_x p(y \mid x)\, p(x)\, p(t \mid x).
+\end{aligned}
+\quad\quad (3.13)
+$$
+
+These are the **IB equations**. The natural way to attack a coupled fixed-point system like (3.13) is alternating substitution: hold two of the three quantities fixed, update the third, repeat. Concretely, fix some initial encoder $p^{(0)}(t \mid x)$ and iterate
+
+$$
+\begin{aligned}
+p^{(n)}(t) &\;=\; \sum_x p(x)\, p^{(n)}(t \mid x), \\[2pt]
+p^{(n)}(y \mid t) &\;=\; \frac{1}{p^{(n)}(t)} \sum_x p(y \mid x)\, p(x)\, p^{(n)}(t \mid x), \\[2pt]
+p^{(n+1)}(t \mid x) &\;=\; \frac{p^{(n)}(t)}{Z^{(n)}(x, \beta)}\, \exp\!\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, p^{(n)}(y \mid t))\bigr].
+\end{aligned}
+\quad\quad (3.14)
+$$
+
+This is the **iterative IB algorithm** (Tishby, Pereira, and Bialek 1999). §4 proves that the algorithm decreases $\mathcal{F}_\beta$ monotonically and converges to a stationary point of (3.13); §5 runs it on the eight-document toy.
+
+Three structural features of (3.13):
+
+**Labeling invariance.** Permuting the cluster labels in $T$ leaves the IB equations invariant. Two clusters $t, t'$ with the same prior $p(t) = p(t')$ and the same conditional $p(y \mid t) = p(y \mid t')$ are *indistinguishable* — under (3.13) they will receive identical assignment probabilities from every $x$. This is the source of the bifurcation pattern in §5: clusters that are degenerate at low $\beta$ split into distinct clusters as $\beta$ crosses a phase-transition value.
+
+**The trivial fixed point.** Setting $p(t \mid x) = q(t)$ (any $x$-independent distribution) makes the right-hand side of the first equation independent of $x$ as well. So the trivial encoder is always a fixed point — it is the unique fixed point for $\beta < \beta_c$, and loses stability at $\beta = \beta_c$.
+
+**The implicit data dependence.** The IB equations involve $p(y \mid x)$, $p(x)$, and $p(x, y)$ only — they don't use any external "distortion function." This is the structural feature that distinguishes IB from rate-distortion (see §3.4).
+
+### 3.4 Why these are a Blahut–Arimoto cousin
+
+The IB iteration (3.14) inherits its template from the **Blahut–Arimoto algorithm** for computing rate-distortion functions (covered in [rate-distortion theory](/topics/rate-distortion)). The BA algorithm minimizes the rate-distortion Lagrangian
+
+$$\mathcal{F}_s^{\mathrm{RD}}\bigl(p(\hat x \mid x)\bigr) \;=\; I(X; \hat X) + s\, \mathbb{E}\bigl[d(X, \hat X)\bigr], \qquad s > 0, \quad\quad (3.15)$$
+
+with stationarity condition
+
+$$p(\hat x \mid x) \;=\; \frac{p(\hat x)}{Z^{\mathrm{RD}}(x, s)}\, \exp\!\bigl[-s\, d(x, \hat x)\bigr]. \quad\quad (3.16)$$
+
+Compare side-by-side with the IB condition (3.3):
+
+$$p(t \mid x) \;=\; \frac{p(t)}{Z(x, \beta)}\, \exp\!\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, p(y \mid t))\bigr].$$
+
+Structurally identical. The role of the rate-distortion distortion $d(x, \hat x)$ is played in IB by
+
+$$d_{\mathrm{IB}}(x, t) \;=\; D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p(y \mid t)\bigr), \quad\quad (3.17)$$
+
+which we may call the *predictive distortion* — a measure of how badly the cluster-conditional $p(y \mid t)$ approximates the true conditional $p(y \mid x)$. Two clusters are "close" in the IB sense if they make similar predictions about $Y$, not if they look similar in input space. Compression is therefore *task-aligned*: it preserves bits useful for predicting $Y$ and discards everything else.
+
+There is one crucial difference between IB and rate-distortion, however, which is the key technical reason IB is harder. In rate-distortion, the distortion $d(x, \hat x)$ is *given as input* — fixed before the algorithm starts. In IB, the predictive distortion $d_{\mathrm{IB}}(x, t)$ depends on $p(y \mid t)$, which depends on the encoder $p(t \mid x)$, which depends on the predictive distortion. The "distortion" emerges from the iteration itself. As a consequence:
+
+- The rate-distortion Lagrangian $\mathcal{F}_s^{\mathrm{RD}}$ is *convex* in $p(\hat x \mid x)$ for fixed distortion, so BA converges to the global minimum.
+- The IB Lagrangian $\mathcal{F}_\beta$ is *not convex* in $p(t \mid x)$, so the IB iteration converges only to a local stationary point — generally to one of many.
+
+This non-convexity has consequences we'll feel in §5: running the IB iteration with different random initializations finds different stationary points, and the *global* IB curve has to be traced by either (a) running many restarts at each $\beta$ and keeping the best, or (b) using $\beta$-annealing — solving at small $\beta$ first and warm-starting at the next $\beta$.
+
+Despite the non-convexity, the IB iteration enjoys a clean monotonicity property — $\mathcal{F}_\beta$ decreases at every step — and convergence to a stationary point. We prove both in §4.
+
+## 4. Convergence of the IB updates
+
+### 4.1 The Lagrangian decreases at every step
+
+The IB iteration (3.14) updates the encoder by a non-trivial coupled rule, so monotone decrease of $\mathcal{F}_\beta$ is not obvious from the update form alone. The clean proof goes through a wider three-argument functional — the same Csiszár–Tusnády construction that gives convergence of Blahut–Arimoto for rate-distortion and of EM for likelihood maximization.
+
+**Setup: the auxiliary functional.** Treat the encoder $p(t \mid x)$, the cluster marginal $q(t)$, and the cluster decoder $r(y \mid t)$ as *independent* arguments. Define
+
+$$F\bigl[p, q, r\bigr] \;:=\; \sum_{x, t} p(x)\, p(t \mid x)\, \log \frac{p(t \mid x)}{q(t)} \;+\; \beta \sum_{x, t} p(x)\, p(t \mid x)\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, r(y \mid t)\bigr). \quad\quad (4.1)$$
+
+The first sum looks like $I(X; T)$ but uses the auxiliary $q$ in the denominator. The second looks like the expected KL "predictive distortion" but uses the auxiliary $r$ as the cluster decoder. Both reduce to their actual-quantity versions when $q$ and $r$ equal the encoder's induced marginal and decoder respectively.
+
+<TheoremBlock type="lemma" number={1} title="F relates to the IB Lagrangian">
+For every normalized encoder $p$ and every $q, r$,
+
+$$F\bigl[p, q, r\bigr] \;=\; \mathcal{F}_\beta(p) + \beta\, I(X; Y) + D_{\mathrm{KL}}\bigl(p(t) \,\|\, q(t)\bigr) + \beta\, \mathbb{E}_{t \sim p(t)}\!\Bigl[D_{\mathrm{KL}}\bigl(p(y \mid t) \,\|\, r(y \mid t)\bigr)\Bigr]. \quad\quad (4.2)$$
+
+In particular, $F[p, q, r] \ge \mathcal{F}_\beta(p) + \beta\, I(X; Y)$, with equality iff $q(t) = p(t)$ and $r(y \mid t) = p(y \mid t)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Splitting the logarithm in the first sum of (4.1):
+
+$$\sum_{x, t} p(x)\, p(t \mid x)\, \log \frac{p(t \mid x)}{q(t)} \;=\; I(X; T) + D_{\mathrm{KL}}(p(t) \,\|\, q(t)).$$
+
+For the second sum, expand the KL and use $\sum_x p(x, y)\, p(t \mid x) = p(t, y)$ together with $\sum_y p(t, y)\, \log r(y \mid t) = -p(t)\bigl[H(p(y \mid t)) + D_{\mathrm{KL}}(p(y \mid t) \,\|\, r(y \mid t))\bigr]$:
+
+$$\beta \sum_{x, t} p(x)\, p(t \mid x)\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, r(y \mid t)\bigr) \;=\; \beta\bigl[I(X; Y) - I(T; Y)\bigr] + \beta\, \mathbb{E}_t\bigl[D_{\mathrm{KL}}(p(y \mid t) \,\|\, r(y \mid t))\bigr].$$
+
+Adding the two contributions yields (4.2). The two KL terms are non-negative, with simultaneous equality iff $q = p(t)$ and $r = p(y \mid t)$.
+</TheoremBlock>
+
+<TheoremBlock type="lemma" number={2} title="IB iteration is alternating minimization on F">
+For fixed $q, r$, the minimizer of $p \mapsto F[p, q, r]$ over normalized encoders is
+
+$$p^*(t \mid x) \;=\; \frac{q(t)}{Z(x, \beta)}\, \exp\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, r(y \mid t))\bigr]. \quad\quad (4.3)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+With $q, r$ fixed, $F$ is a sum of $|X|$ independent per-$x$ problems. Each per-$x$ problem is convex in $p(\cdot \mid x)$. Differentiating with multiplier $\mu(x)$ for normalization and setting the result to zero gives (4.3) after absorbing $t$-independent terms into the normalization.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="Monotone decrease">
+Let $\{p^{(n)}\}$ be the IB iterates produced by (3.14), and $\mathcal{F}_\beta^{(n)} := \mathcal{F}_\beta(p^{(n)})$. Then for every $n \ge 0$,
+
+$$\mathcal{F}_\beta^{(n+1)} \;\le\; \mathcal{F}_\beta^{(n)}, \quad\quad (4.4)$$
+
+with equality iff $p^{(n)}$ is a fixed point of (3.13).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $q^{(n)} := p^{(n)}(t)$ and $r^{(n)} := p^{(n)}(y \mid t)$. By Lemma 1 with $q = q^{(n)}$, $r = r^{(n)}$ (the equality case),
+
+$$F[p^{(n)}, q^{(n)}, r^{(n)}] \;=\; \mathcal{F}_\beta(p^{(n)}) + \beta\, I(X; Y).$$
+
+The next iterate $p^{(n+1)}$ minimizes $p \mapsto F[p, q^{(n)}, r^{(n)}]$ by Lemma 2, so
+
+$$F[p^{(n+1)}, q^{(n)}, r^{(n)}] \;\le\; F[p^{(n)}, q^{(n)}, r^{(n)}].$$
+
+By Lemma 1 (inequality direction) with $p = p^{(n+1)}$,
+
+$$F[p^{(n+1)}, q^{(n)}, r^{(n)}] \;\ge\; \mathcal{F}_\beta(p^{(n+1)}) + \beta\, I(X; Y).$$
+
+Chaining gives $\mathcal{F}_\beta^{(n+1)} \le \mathcal{F}_\beta^{(n)}$. Equality requires both inequalities to be tight, which happens iff $p^{(n)}$ is already a fixed point.
+</TheoremBlock>
+
+The construction is worth lingering on: $F[p, q, r]$ is a *Lyapunov-with-slack* — it equals $\mathcal{F}_\beta(p)$ plus two KL-divergence penalties that vanish precisely when $q$ and $r$ are the encoder's induced quantities. The IB iteration alternately tightens the slack and minimizes the loosened objective. This Csiszár–Tusnády pattern proves Blahut–Arimoto, EM, and CAVI convergence — IB specializes it to the predictive-KL distortion.
+
+### 4.2 Boundedness and limit-point existence
+
+**Boundedness of $\mathcal{F}_\beta^{(n)}$.** $I(X; T) \ge 0$ and $I(T; Y) \le I(X; Y)$ by DPI, so
+
+$$\mathcal{F}_\beta(p) \;\ge\; -\beta\, I(X; Y). \quad\quad (4.5)$$
+
+Monotone decrease plus a lower bound implies the sequence $\mathcal{F}_\beta^{(n)}$ converges to some limit $\mathcal{F}_\beta^{(\infty)}$.
+
+**Compactness.** Iterates $p^{(n)}(t \mid x)$ live in the compact product of simplices $\prod_x \Delta^{|\mathcal{T}|-1}$. By Bolzano–Weierstrass, every subsequence has a convergent sub-subsequence.
+
+**Limit points are fixed points.** The IB update map $\mathcal{T}_{\mathrm{IB}}$ is continuous on the simplex interior. If $p^{(n_k)} \to p^*$, then $\mathcal{T}_{\mathrm{IB}}(p^{(n_k)}) \to \mathcal{T}_{\mathrm{IB}}(p^*)$. By the equality case of Theorem 3, $p^* = \mathcal{T}_{\mathrm{IB}}(p^*)$.
+
+<TheoremBlock type="theorem" number={4} title="Convergence to a fixed point">
+Every limit point of the IB iteration is a fixed point of (3.13), and the sequence of Lagrangian values $\mathcal{F}_\beta^{(n)}$ converges.
+</TheoremBlock>
+
+### 4.3 What the algorithm converges to: stationary, not global
+
+Theorems 3 and 4 give stationary-point convergence, not global-minimum convergence. Three observations.
+
+**Trivial vs nontrivial fixed points.** The encoder $p(t \mid x) = q(t)$ (any $x$-independent distribution) is always a fixed point. For $\beta < \beta_c$ it is the unique fixed point and the global minimum. For $\beta > \beta_c$ the trivial fixed point becomes a saddle: small perturbations grow under iteration.
+
+**Symmetry-broken fixed points.** Multiple equivalent solutions exist by cluster-label permutation — all give the same $\mathcal{F}_\beta$ value but trip up direct iterate comparisons.
+
+**Genuinely distinct local minima.** Beyond labeling, the IB landscape can have multiple genuinely distinct stationary points at different $\mathcal{F}_\beta$ values. Random initialization picks between basins essentially at random.
+
+The numerical experiment in Figure 3 illustrates this: five random initializations at $\beta = 5$, $k = 4$ on the eight-document toy land at slightly different $\mathcal{F}_\beta$ values — some runs find the optimum, others get stuck.
+
+<Figure
+  src="/images/topics/information-bottleneck/03_ib_convergence_traces.png"
+  alt="Convergence traces of F_β from five random initializations on the 8-document toy at β = 5"
+  caption="Left: 𝓕_β traced over 60 iterations from 5 random initializations on the eight-document toy at β = 5, k = 4. Every trace decreases monotonically (Theorem 3); four runs converge to the global optimum 𝓕_β* = −4 ln 2 ≈ −2.7726 nats, one run gets stuck in a suboptimal local minimum. Right: per-step decrement 𝓕_β(p^(n−1)) − 𝓕_β(p^(n)) on the same runs, on a symlog axis. Each value is ≥ 0 (Theorem 3); the symlog axis shows the magnitude collapsing toward machine precision as the iteration converges."
+/>
+
+### 4.4 The non-convexity hazard and annealing in β
+
+Two practical remedies for the non-convexity exposed in Figure 3.
+
+**Random restarts.** At each $\beta$ of interest, run the iteration from $M$ random initializations and keep the lowest $\mathcal{F}_\beta$ at convergence. Embarrassingly parallel. The failure mode is high $M$ — when the landscape has many basins, $M$ must scale with the number of basins.
+
+**β-annealing.** Solve at a small $\beta_0$ first (where the landscape is convex, trivial encoder is the unique fixed point), then incrementally raise $\beta$, *warm-starting* each new $\beta$ from the previous $\beta$'s converged encoder. The IB curve is continuous in $\beta$, so neighboring $\beta$ values have neighboring optimal encoders. Annealing traces a smooth path along the IB curve.
+
+Annealing has a structural benefit beyond non-convexity: it makes the *cluster bifurcations* explicit. At small $\beta$, all clusters collapse onto the trivial fixed point. As $\beta$ crosses $\beta_c$, two clusters split apart. At larger $\beta$ thresholds, further splits occur — each phase transition activates an additional cluster. The annealing trace through the IB plane traces out the *staircase* of phase transitions that §5 makes visible for the discrete toy and §7 for the Gaussian closed form.
+
+§5 implements both strategies on the eight-document toy and traces the full IB curve.
+
+## 5. The discrete IB in practice
+
+### 5.1 Initialization and random restarts
+
+§4 left us with an algorithm that decreases $\mathcal{F}_\beta$ monotonically and converges to *a* fixed point — without guaranteeing the *best* fixed point. Three practical choices fill in the operational picture.
+
+**Encoder initialization.** The IB iteration is a self-map on the simplex product $\prod_x \Delta^{|\mathcal{T}|-1}$. We start from a random softmax draw:
+
+$$p^{(0)}(t \mid x) \;=\; \frac{\exp\bigl(W_{x t}\bigr)}{\sum_{t'} \exp\bigl(W_{x t'}\bigr)}, \qquad W_{x t} \sim \mathcal{N}(0, \sigma^2). \quad\quad (5.1)$$
+
+Small $\sigma$ (say $\sigma \in [0.05, 0.5]$) yields a *near-trivial* initial encoder. The random-softmax form is easier to control numerically than near-uniform perturbations, and it keeps every cluster nonempty at initialization so that no $p^{(0)}(t) = 0$ propagates a $\log 0$ through the first update.
+
+**The escape-from-saddle problem.** At any $\beta > \beta_c$, the trivial encoder $p(t \mid x) = q(t)$ is a *saddle point* of $\mathcal{F}_\beta$. An iterate that lands too close to it can take many iterations to escape. With $\sigma = 0$ exactly, the iteration is stationary and never moves. Always use $\sigma > 0$.
+
+**Random restarts.** At each $\beta$ of interest, run from $M$ independent initializations and keep the lowest $\mathcal{F}_\beta$ at convergence. For small toys $M = 5$ to $20$ suffices.
+
+**β-annealing.** Solve at a small starting $\beta_0$ first, then incrementally increase $\beta$, *warm-starting* each new $\beta$ from the previous $\beta$'s converged encoder. Two practical wrinkles: (i) at each $\beta$ step, add a tiny random perturbation to the warm-start encoder to break exact saddle-point degeneracy, and (ii) the $\beta$ grid should be log-spaced and dense near suspected phase transitions to resolve their location.
+
+From §5.3 onward: anneal forward across $\beta$ as the primary strategy, with random-restart sanity checks at selected $\beta$ to confirm we haven't missed a lower-$\mathcal{F}_\beta$ branch.
+
+### 5.2 A worked example on the eight-document toy
+
+Before sweeping $\beta$, exhibit the algorithm on the running eight-document toy from §1.2 at fixed $\beta = 5$. Since $\beta_c = 1$ for this toy, $\beta = 5$ sits well past the first transition. With $k = 4$ clusters and random-softmax initialization at $\sigma = 0.5$, the iteration converges in roughly 17 iterations.
+
+The trajectory has a characteristic shape: in the first few iterations, $\mathcal{F}_\beta$ drops sharply as the encoder finds the topic-aligned partition; over the next dozen iterations, $\mathcal{F}_\beta$ creeps toward its limit while the two "spare" clusters merge with the two topic clusters. By iteration 30, the per-step decrement is at machine precision.
+
+The converged encoder uses only $\approx 2$ effective clusters (out of the 4 allocated), with the two spare clusters bleeding into the active ones. The converged $(I(X;T), I(T;Y))$ equals $(\ln 2, \ln 2) \approx (0.693, 0.693)$ nats — exactly the optimum achieved by the $T = Y$ encoder. The optimum $\mathcal{F}_\beta^* = (1 - \beta) \ln 2 = -4 \ln 2 \approx -2.7726$ nats matches the value found by four of the five seeds in Figure 3 (one seed gets stuck in a suboptimal local minimum that uses one cluster's worth of effective capacity inefficiently).
+
+### 5.3 Tracing the IB curve by sweeping β
+
+The eight-document toy has only one phase transition because $H(Y) = 1$ bit caps the staircase. For a multi-transition example we introduce a *richer toy* — call it **T3** for "three-topic graded purity":
+
+Six documents in three topics, with $p(x)$ uniform. Conditional $p(y \mid x)$ varies by document pair:
+
+- Docs 0, 1: $p(y \mid x) = (0.85,\, 0.10,\, 0.05)$ — very topic-0 pure.
+- Docs 2, 3: $p(y \mid x) = (0.10,\, 0.85,\, 0.05)$ — very topic-1 pure.
+- Docs 4, 5: $p(y \mid x) = (0.15,\, 0.15,\, 0.70)$ — moderately topic-2 pure.
+
+Three distinct conditional distributions, with the first two highly distinguishable (purity 0.85) and the third moderately distinct from the others (purity 0.70). For this construction the numerical values are $H(Y) = 1.088$ nats, $H(Y \mid X) = 0.618$ nats, hence $I(X;Y) = 0.470$ nats $(= 0.678$ bits$)$.
+
+Setting $k = 4$ (one spare cluster to confirm self-disabling), we sweep $\beta$ across 40 log-spaced values in $[0.3,\, 100]$, annealing forward with warm-starts. The result is plotted in Figure 4: the IB curve in the $(I(X;T), I(T;Y))$ plane (left), and the same data plotted as $I(X;T)$ and $I(T;Y)$ vs $\beta$ (right). The plane plot shows the smooth, concave curve from origin to saturation; the $\beta$ plot exposes the two phase transitions as visible steepness changes — the first around $\beta \approx 4$ where the encoder starts to differentiate, and the second around $\beta \approx 11$ where the third cluster activates.
+
+The saturation point of the curve sits at $(R^\dagger, I(X;Y)) = (\log 3,\, 0.470)$ nats $= (1.099,\, 0.470)$ nats, since 3 clusters suffice to encode a minimal sufficient statistic.
+
+Two consistency checks. Random restarts at $\beta \in \{2,\, 5,\, 15\}$ confirm the annealing trace is the global optimum: 10 random initializations at each $\beta$ converge to within machine precision of the annealing value.
+
+<Figure
+  src="/images/topics/information-bottleneck/04_t3_ib_curve.png"
+  alt="IB curve on the T3 toy traced by annealing across 40 log-spaced β values"
+  caption="Left: IB curve traced by annealing across 40 log-spaced β values on the T3 toy. The DPI ceiling I(X;Y) = 0.470 nats appears as a dashed horizontal; the saturation rate R† = log 3 = 1.099 nats appears as a dotted vertical. Random-restart points at β ∈ {2, 5, 15} (10 restarts each) confirm the annealing trace is the global optimum. Right: the same data plotted as I(X;T) and I(T;Y) vs β on a log axis. The two phase transitions appear as visible steepness changes in I(T;Y)."
+/>
+
+<T3IBCurveTracer client:visible />
+
+### 5.4 Reading the trajectory: how clusters split with β
+
+The IB curve in the left panel of Figure 4 is concave and continuous — phase transitions are *invisible* in that view. They become visible in two derived quantities, which we plot in Figure 5.
+
+**The effective cluster count.** Define the perplexity of the cluster marginal:
+
+$$K_{\mathrm{eff}}(\beta) \;:=\; \exp\bigl(H(p(t))\bigr) \;=\; \exp\!\Bigl(-\!\sum_t p(t)\, \log p(t)\Bigr). \quad\quad (5.2)$$
+
+This is the "effective number of clusters" — equal to $k$ when $T$ is uniform over all $k$ clusters, equal to $1$ when $T$ collapses to a single cluster, and continuously interpolating in between when the cluster marginal is non-uniform. As $\beta$ grows, $K_{\mathrm{eff}}$ traces out a *staircase*: flat plateaus where the cluster structure is stable, separated by rapid climbs at the phase transitions where new clusters activate.
+
+**Cluster bifurcations as heatmaps.** The right panel of Figure 5 shows the encoder $p(t \mid x)$ at four representative $\beta$ values, sampled to span the cluster-count regimes: pre-first-transition ($K_{\mathrm{eff}} \approx 1$), between transitions ($K_{\mathrm{eff}} \approx 2$), post-second-transition ($K_{\mathrm{eff}} \approx 3$), and at large $\beta$ (sharp assignments). Reading across the panels: at small $\beta$ all six documents are assigned to roughly the same cluster. At intermediate $\beta$, the encoder splits into two clusters separating docs 4–5 from the rest. At larger $\beta$, the topic-0 and topic-1 pairs separate. At very large $\beta$, the assignments are nearly one-hot — three discrete clusters, one per topic-pair.
+
+Two structural observations. First, the *order* of bifurcations is not arbitrary: the first split separates the documents whose conditional distributions are most divergent. The cheapest predictive bit to encode first is the one that distinguishes the largest-divergence groups. Second, the *fourth* cluster we allocated self-disables: across all $\beta$, one cluster carries near-zero marginal probability $p(t) \approx 0$. IB uses only as many clusters as the structure of $p(y \mid x)$ supports.
+
+The staircase pattern is the discrete analog of the *phase transitions* we will see in closed form for Gaussian IB in §7, where each canonical-correlation direction activates at a specific $\beta_c$ value determined by the spectrum.
+
+<Figure
+  src="/images/topics/information-bottleneck/05_t3_bifurcation_cascade.png"
+  alt="K_eff staircase and encoder-heatmap snapshots across the T3 β sweep"
+  caption="Left: K_eff(β) = exp(H(p(t))) across the annealing sweep on T3, on a log-β axis. Horizontal guides at K_eff = 1, 2, 3. The staircase pattern climbs from ≈ 1 to ≈ 2 at the first phase transition (β ≈ 4) and to ≈ 3 at the second (β ≈ 11). The fourth (spare) cluster never activates. Right: encoder p(t | x) heatmaps at four selected β values, one per K_eff regime — each subpanel a 6 × 4 grid of cells with shading proportional to p(t | x)."
+/>
+
+<ClusterBifurcationCascade client:visible />
+
+## 6. The Gaussian information bottleneck
+
+### 6.1 The jointly-Gaussian setting and why it admits closed form
+
+Through §5 the IB picture is operationally complete but every quantity is numerical. Switching to a *jointly-Gaussian* setting — the Chechik–Globerson–Tishby–Weiss 2005 setting — replaces iteration with matrix calculus. The Gaussian IB has a closed-form optimal encoder, an explicit expression for the IB curve as a piecewise-analytic function of $\beta$, exact locations for the phase transitions in terms of a spectrum, and a clean geometric reading via canonical-correlation analysis.
+
+**The setup.** Let $X \in \mathbb{R}^p$ and $Y \in \mathbb{R}^q$ be zero-mean jointly Gaussian random vectors with covariance structure
+
+$$\Sigma_X = \mathbb{E}[X X^\top], \qquad \Sigma_Y = \mathbb{E}[Y Y^\top], \qquad \Sigma_{XY} = \mathbb{E}[X Y^\top] \in \mathbb{R}^{p \times q}. \quad\quad (6.1)$$
+
+We assume $\Sigma_X, \Sigma_Y$ are positive definite. The conditional covariance of $X$ given $Y$ has the Schur-complement form
+
+$$\Sigma_{X \mid Y} \;=\; \Sigma_X - \Sigma_{XY}\, \Sigma_Y^{-1}\, \Sigma_{YX}, \quad\quad (6.2)$$
+
+and $\Sigma_{X \mid Y} \preceq \Sigma_X$ in the positive-semidefinite order. The representation $T$ takes values in $\mathbb{R}^d$, where the dimension $d$ is determined from the spectrum below.
+
+**Why closed form is available.** Two facts make the IB Lagrangian collapse to a covariance computation.
+
+*Gaussian mutual information.* For jointly Gaussian $(U, V)$,
+
+$$I(U; V) \;=\; \tfrac{1}{2} \log \frac{|\Sigma_U|}{|\Sigma_{U \mid V}|}. \quad\quad (6.3)$$
+
+Mutual information depends only on second moments.
+
+*Linear-Gaussian preserves Gaussianity.* If $T = A X + \xi$ where $A$ is deterministic and $\xi$ is Gaussian noise independent of $X$, then the joint $(X, T)$ and $(T, Y)$ are also jointly Gaussian. Restricting the encoder to be linear plus Gaussian noise makes the Lagrangian a function of the deterministic parameters $(A, \Sigma_\xi)$ alone.
+
+### 6.2 The optimal encoder is linear plus Gaussian noise
+
+<TheoremBlock type="theorem" number={5} title="Linear-Gaussian optimality (Chechik et al. 2005)">
+Let $(X, Y)$ be zero-mean jointly Gaussian. The minimizer of the IB Lagrangian $\mathcal{F}_\beta$ over all encoders $p(t \mid x)$ producing a $d$-dimensional representation $T \in \mathbb{R}^d$ is of the form
+
+$$T \;=\; A\, X + \xi, \qquad \xi \sim \mathcal{N}(0,\, \Sigma_\xi), \qquad \xi \perp X, \quad\quad (6.4)$$
+
+for some $A \in \mathbb{R}^{d \times p}$ and $\Sigma_\xi \in \mathbb{R}^{d \times d}$ positive semi-definite. Equivalently, the optimal encoder is the Gaussian conditional
+
+$$p^*(t \mid x) \;=\; \mathcal{N}\bigl(t;\, A\, x,\, \Sigma_\xi\bigr). \quad\quad (6.5)$$
+</TheoremBlock>
+
+The rigorous proof is in Chechik et al. 2005 (Theorem 1), with an entropy-power-inequality refinement in Painsky and Tishby 2017 that handles the equality cases more carefully. The intuition: for jointly-Gaussian $(X, Y)$, the predictive distortion $D_{\mathrm{KL}}(p(y \mid x) \,\|\, p(y \mid t))$ from (3.3) is the KL between two Gaussians when $T$ is also Gaussian, and that KL depends only on second moments of $(X, T, Y)$. The linear-Gaussian family *spans* the second-moment space, so the optimum lies in that family.
+
+**The parameterization.** Standard formulas for Gaussian MI give:
+
+$$\Sigma_T \;=\; A\, \Sigma_X\, A^\top + \Sigma_\xi, \qquad \Sigma_{T \mid X} \;=\; \Sigma_\xi, \qquad \Sigma_{T \mid Y} \;=\; A\, \Sigma_{X \mid Y}\, A^\top + \Sigma_\xi. \quad\quad (6.6)$$
+
+$$I(X; T) \;=\; \tfrac{1}{2} \log \frac{|A \Sigma_X A^\top + \Sigma_\xi|}{|\Sigma_\xi|}, \qquad I(T; Y) \;=\; \tfrac{1}{2} \log \frac{|A \Sigma_X A^\top + \Sigma_\xi|}{|A \Sigma_{X \mid Y} A^\top + \Sigma_\xi|}. \quad\quad (6.7)$$
+
+Combining and rearranging,
+
+$$\mathcal{F}_\beta(A, \Sigma_\xi) \;=\; \frac{1 - \beta}{2}\, \log \bigl|A \Sigma_X A^\top + \Sigma_\xi\bigr| \;+\; \frac{\beta}{2}\, \log \bigl|A \Sigma_{X \mid Y} A^\top + \Sigma_\xi\bigr| \;-\; \frac{1}{2}\, \log |\Sigma_\xi|. \quad\quad (6.8)$$
+
+**Gauge freedom.** The Lagrangian (6.8) is invariant under invertible linear transformations of $T$. To remove the gauge we normalize the noise covariance:
+
+$$\Sigma_\xi \;=\; I_d. \quad\quad (6.9)$$
+
+The remaining optimization is over $A \in \mathbb{R}^{d \times p}$ alone:
+
+$$\mathcal{F}_\beta(A) \;=\; \frac{1 - \beta}{2}\, \log \bigl|A \Sigma_X A^\top + I\bigr| \;+\; \frac{\beta}{2}\, \log \bigl|A \Sigma_{X \mid Y} A^\top + I\bigr|. \quad\quad (6.10)$$
+
+### 6.3 Reduction to a generalized eigenproblem
+
+For symmetric $\Sigma$,
+
+$$\nabla_A \log\bigl|A \Sigma A^\top + I\bigr| \;=\; 2\,(A \Sigma A^\top + I)^{-1}\, A\, \Sigma. \quad\quad (6.11)$$
+
+Setting $\nabla_A \mathcal{F}_\beta(A) = 0$ gives
+
+$$(1 - \beta)\,(A \Sigma_X A^\top + I)^{-1}\, A\, \Sigma_X \;+\; \beta\,(A \Sigma_{X \mid Y} A^\top + I)^{-1}\, A\, \Sigma_{X \mid Y} \;=\; 0. \quad\quad (6.12)$$
+
+**The diagonalization ansatz.** Define
+
+$$M \;:=\; \Sigma_{X \mid Y}\, \Sigma_X^{-1} \;\in\; \mathbb{R}^{p \times p}. \quad\quad (6.13)$$
+
+$M$ has eigenvalues $\lambda_1 \le \lambda_2 \le \cdots \le \lambda_p$ in $(0, 1]$ (positive because $\Sigma_{X \mid Y}$ is PSD; at most $1$ because $\Sigma_{X \mid Y} \preceq \Sigma_X$). The right eigenvectors $v_i$ satisfy $\Sigma_{X \mid Y} v_i = \lambda_i \Sigma_X v_i$. Normalize in the $\Sigma_X$-inner-product: $v_i^\top \Sigma_X v_j = \delta_{ij}$.
+
+**Ansatz.** Take
+
+$$A \;=\; \mathrm{diag}(\alpha_1, \ldots, \alpha_d)\; V^\top, \qquad V = [v_1\; v_2\; \cdots\; v_d]. \quad\quad (6.14)$$
+
+Plugging into (6.10), both $A \Sigma_X A^\top$ and $A \Sigma_{X \mid Y} A^\top$ become diagonal, and the Lagrangian decouples across directions:
+
+$$\mathcal{F}_\beta(\alpha_1, \ldots, \alpha_d) \;=\; \sum_{i=1}^d \biggl[\frac{1 - \beta}{2}\, \log(1 + \alpha_i^2) \;+\; \frac{\beta}{2}\, \log(1 + \alpha_i^2 \lambda_i)\biggr]. \quad\quad (6.15)$$
+
+Setting $u_i := \alpha_i^2$ and $\partial \mathcal{F}_\beta / \partial u_i = 0$,
+
+$$u_i^* \;=\; \alpha_i^{*\,2} \;=\; \frac{\beta(1 - \lambda_i) - 1}{\lambda_i}, \quad\quad (6.16)$$
+
+*provided* the right-hand side is non-negative — i.e., $\beta > 1/(1 - \lambda_i)$. Otherwise the directional minimum is at $\alpha_i^* = 0$ and direction $i$ is *inactive*.
+
+**Ansatz optimality.** Is the diagonal-in-eigenbasis form (6.14) optimal among all $A$? Yes — by the von Neumann trace inequality applied to the simultaneous diagonalization of $\Sigma_X$ and $\Sigma_{X \mid Y}$ in the $\Sigma_X$-inner-product basis $\{v_i\}$. See Chechik et al. 2005 (Lemma 3.2) for the detailed argument.
+
+**Summary.** The optimal Gaussian-IB encoder at $\beta$ is
+
+$$A^*_\beta \;=\; \mathrm{diag}(\alpha_1^*, \ldots, \alpha_d^*)\, V_d^\top, \qquad \alpha_i^{*\,2} \;=\; \max\!\biggl(0,\; \frac{\beta(1 - \lambda_i) - 1}{\lambda_i}\biggr), \quad\quad (6.17)$$
+
+where $V_d$ holds the $d$ smallest-eigenvalue eigenvectors of $M$. Each direction switches on at the critical
+
+$$\beta_{c,\, i} \;=\; \frac{1}{1 - \lambda_i}. \quad\quad (6.18)$$
+
+### 6.4 Reading the canonical-correlation spectrum
+
+The eigenvalues $\lambda_i$ of $M = \Sigma_{X \mid Y}\, \Sigma_X^{-1}$ measure the fraction of $X$'s variance *unexplained* by $Y$. $\lambda_i \to 1$ means direction $v_i$ is uncorrelated with $Y$; $\lambda_i \to 0$ means direction $v_i$ is strongly determined by $Y$.
+
+**Canonical correlations.** The eigenvalues of $M$ are related to the *canonical correlations* between $X$ and $Y$:
+
+$$\lambda_i \;=\; 1 - \rho_i^2, \quad\quad (6.19)$$
+
+where $\rho_1 \ge \rho_2 \ge \cdots$ are the canonical correlations (sorted descending), with $\rho_i \in [0, 1]$. Substituting into (6.18):
+
+$$\beta_{c,\, i} \;=\; \frac{1}{\rho_i^2}. \quad\quad (6.20)$$
+
+The IB phase transitions happen at the reciprocals of the squared canonical correlations, in order of decreasing $\rho_i$. The most-correlated direction activates first; $\rho_i = 0$ directions never activate. The IB algorithm finds *exactly* the CCA directions, in order of statistical informativeness — the same projections Hotelling 1936 derived from a correlation-maximization argument, here motivated by predictive compression instead.
+
+**The 4-D toy.** We build a synthetic 4-D jointly-Gaussian example with designed canonical correlations $\rho = (0.95,\, 0.70,\, 0.30,\, 0)$. Each $\rho_i$ encodes a different "informativeness regime." The phase-transition staircase comes out:
+
+- $\beta < 1.108$: trivial encoder, $T = \text{const}$.
+- $1.108 < \beta < 2.041$: one active direction $(\rho_1 = 0.95)$.
+- $2.041 < \beta < 11.111$: two active directions.
+- $\beta > 11.111$: three active directions; the fourth never activates.
+
+The total $I(X;Y) = -\tfrac{1}{2}\sum_i \log(1 - \rho_i^2) = 1.548$ nats. A Monte Carlo verification with $n = 50{,}000$ samples recovers the canonical correlations to within $|\hat\rho - \rho| \le 0.0023$.
+
+<Figure
+  src="/images/topics/information-bottleneck/06_gaussian_spectrum.png"
+  alt="Bar charts of ρ² vs λ side-by-side and β_c thresholds for the 4-D Gaussian toy"
+  caption="Left: bar chart of the canonical-correlation spectrum — ρ_i² and λ_i = 1 − ρ_i² side by side for the four designed correlations. Visual confirmation that ρ_i² + λ_i = 1. Right: horizontal bar chart of β_{c,i} = 1/ρ_i² on a log axis. Direction 1 activates at β_{c,1} ≈ 1.11; direction 2 at ≈ 2.04; direction 3 at ≈ 11.11. Direction 4 (ρ_4 = 0) has β_{c,4} = ∞ — never activates."
+/>
+
+## 7. Phase transitions on the Gaussian IB curve
+
+### 7.1 Critical β values determined by the spectrum
+
+From §6, the optimal Gaussian-IB encoder at parameter $\beta$ is given by (6.17) with thresholds $\beta_{c, i} = 1/(1 - \lambda_i) = 1/\rho_i^2$. Sorting eigenvalues ascending gives an ordered sequence
+
+$$\beta_{c,\, 1} \;<\; \beta_{c,\, 2} \;<\; \cdots \;<\; \beta_{c,\, r}, \quad\quad (7.1)$$
+
+where $r = \mathrm{rank}(\Sigma_{XY})$. Directions with $\rho_i = 0$ never activate.
+
+**The first phase transition is at $\beta_{c, 1}$, not at $\beta = 1$.** For general jointly Gaussian $(X, Y)$, the first transition is the inverse of the largest *squared canonical correlation*, which is in $(0, 1]$. So $\beta_{c, 1} \ge 1$ always, with equality iff $X$ and $Y$ share a perfectly correlated direction.
+
+**The activation order is by canonical correlation, not by the original coordinates.** The CCA directions $v_i$ are linear combinations of the original components of $X$; they need not align with any coordinate axis. The IB principle is *coordinate-free*: it sees only the second-moment structure of $(X, Y)$, expressed through $\rho_1, \rho_2, \ldots$.
+
+### 7.2 Closed-form curve and the C¹-but-not-C² distinction
+
+Plugging (6.17) into (6.7) uses two algebraic identities:
+
+$$1 + \alpha_i^{*\,2} \;=\; \frac{(\beta - 1)(1 - \lambda_i)}{\lambda_i}, \qquad 1 + \alpha_i^{*\,2}\, \lambda_i \;=\; \beta\,(1 - \lambda_i). \quad\quad (7.2)$$
+
+For each active direction $i$:
+
+$$I(X; T_\beta)_i \;=\; \tfrac{1}{2} \log \!\biggl(\frac{(\beta - 1)(1 - \lambda_i)}{\lambda_i}\biggr), \quad\quad (7.3)$$
+
+$$I(T_\beta; Y)_i \;=\; \tfrac{1}{2} \log \!\biggl(\frac{\beta - 1}{\beta\, \lambda_i}\biggr). \quad\quad (7.4)$$
+
+Summing over all active directions $i$ at parameter $\beta$:
+
+$$I(X; T_\beta) \;=\; \frac{1}{2} \sum_{i:\, \beta > \beta_{c,\, i}} \log\!\biggl(\frac{(\beta - 1)(1 - \lambda_i)}{\lambda_i}\biggr), \qquad I(T_\beta; Y) \;=\; \frac{1}{2} \sum_{i:\, \beta > \beta_{c,\, i}} \log\!\biggl(\frac{\beta - 1}{\beta\, \lambda_i}\biggr). \quad\quad (7.5)$$
+
+The IB curve is **piecewise analytic in $\beta$**: across each open interval $(\beta_{c,\, k},\, \beta_{c,\, k+1})$, exactly $k$ directions are active. At each phase transition, the activating direction contributes zero exactly at the threshold, so the curve is continuous in $\beta$.
+
+**The slope $dI(T;Y) / dI(X;T) = 1/\beta$ at every interior point.** Differentiating (7.3) and (7.4):
+
+$$\frac{dI(X; T_\beta)_i}{d\beta} \;=\; \frac{1}{2\,(\beta - 1)}, \qquad \frac{dI(T_\beta; Y)_i}{d\beta} \;=\; \frac{1}{2\,\beta\,(\beta - 1)}. \quad\quad (7.6)$$
+
+The ratio is $1/\beta$ per direction. Summing over $k$ active directions multiplies both by $k$, leaving the ratio unchanged. The IB curve has tangent slope $1/\beta$ at every interior point, recovering (2.5).
+
+**Curvature jumps at each phase transition.** From the chain rule and (7.6),
+
+$$\frac{d^2 I(T;Y)}{d I(X;T)^2} \;=\; -\frac{2\,(\beta - 1)}{k\,\beta^2}. \quad\quad (7.7)$$
+
+At each $\beta_{c,\, k+1}$, the curvature magnitude *decreases* by a factor of $k/(k+1)$ — the curve becomes *less curved* when a new direction activates. The IB curve is $C^1$ but not $C^2$: the tangent is everywhere continuous (slope $1/\beta$ on both sides of each transition), but the curvature jumps. This is why phase transitions are invisible in a smooth-looking plot of $I(T;Y)$ against $I(X;T)$ yet very visible in the $\beta$-parameterization: in the IB plane they show up only as a faint curvature change, while in the $\beta$-plot they are sharp kinks in the activation timing.
+
+**Saturation.** As $\beta \to \infty$, $I(T_\beta; Y)_i$ saturates at $-\tfrac{1}{2}\, \log \lambda_i$ per active direction. Total:
+
+$$\lim_{\beta \to \infty} I(T_\beta; Y) \;=\; -\frac{1}{2} \sum_{i:\, \rho_i > 0} \log \lambda_i \;=\; -\frac{1}{2} \log \frac{|\Sigma_{X \mid Y}|}{|\Sigma_X|} \;=\; I(X; Y), \quad\quad (7.8)$$
+
+recovering the DPI ceiling exactly.
+
+### 7.3 Dimension allocation: how each new direction turns on
+
+The closed form decomposes $I(X; T_\beta)$ and $I(T_\beta; Y)$ by canonical-correlation direction, and that decomposition is plotted as a stacked area in Figure 8.
+
+**Activation is staged.** Below $\beta_{c,\, 1}$, all bands are flat at zero. At each $\beta_{c,\, i}$, direction $i$'s band starts climbing from zero.
+
+**Within an active region, contributions are unequal.** For two simultaneously-active directions $i, j$:
+
+$$I(T;Y)_i \;-\; I(T;Y)_j \;=\; \tfrac{1}{2}\, \log(\lambda_j / \lambda_i),$$
+
+constant in $\beta$ once both are active. The IB doesn't rebalance — it adds new directions while preserving the existing ordering between them.
+
+**Most-correlated direction dominates.** For the 4-D toy:
+
+- Direction 1 $(\rho_1 = 0.95)$: saturation $-\tfrac{1}{2}\log(0.0975) \approx 1.164$ nats — 75.2% of $I(X;Y)$.
+- Direction 2 $(\rho_2 = 0.70)$: $\approx 0.337$ nats — 21.8%.
+- Direction 3 $(\rho_3 = 0.30)$: $\approx 0.047$ nats — 3.0%.
+- Direction 4: 0 (never activates).
+
+This is the Gaussian-IB analog of "dominant principal component" in PCA, with one substantive difference: PCA ranks directions by $X$-variance; Gaussian IB ranks them by predictiveness of $Y$.
+
+<Figure
+  src="/images/topics/information-bottleneck/08_dimension_allocation.png"
+  alt="Stacked-area decomposition of I(X;T) and I(T;Y) by CCA direction across the β sweep"
+  caption="Per-direction contributions to I(X;T) (left) and I(T;Y) (right) across the β sweep on the 4-D toy, as stacked-area plots. Each colored band is one canonical-correlation direction's contribution; phase-transition vertical lines mark β_{c,i}. The right panel's total saturates at I(X;Y) = 1.548 nats (dashed horizontal). The fourth direction's band is always empty — ρ_4 = 0 means β_{c,4} = ∞."
+/>
+
+<DimensionAllocationExplorer client:visible />
+
+### 7.4 Numerical verification on a 4-D toy
+
+We check (7.3)–(7.5) by Monte Carlo. Protocol:
+
+1. Sample $(X, Y)$ from the joint Gaussian designed in §6.4.
+2. For each $\beta \in \{1.5,\, 2.5,\, 5.0,\, 15.0\}$, construct $A^*_\beta$ and sample $T = A^*_\beta X + \xi$.
+3. Compute empirical $I(X; T)$ and $I(T; Y)$ using the Gaussian-MI formula on the empirical covariances.
+4. Compare to the closed-form values from (7.5).
+
+The four β land in different active-direction regimes — β = 1.5 (one active direction), 2.5 (two), 5.0 (two), 15.0 (three). Closed-form values, in nats:
+
+| β | I(X;T) (cf) | I(T;Y) (cf) |
+|---|---|---|
+| 1.5  | 0.7661 | 0.6146 |
+| 2.5  | 1.4981 | 0.9898 |
+| 5.0  | 2.4789 | 1.2775 |
+| 15.0 | 3.8944 | 1.4443 |
+
+At $n_{\text{MC}} = 20{,}000$ samples, agreement is within $O(1/\sqrt{n}) \approx 10^{-2}$ nats — confirming both the encoder construction and (7.5) at once. The notebook prints the side-by-side comparison; max-abs-difference across the four β is below $6 \times 10^{-3}$ nats.
+
+<Figure
+  src="/images/topics/information-bottleneck/07_gaussian_ib_curve.png"
+  alt="Closed-form Gaussian IB curve on the 4-D toy with phase-transition markers and MC verification"
+  caption="Left: closed-form Gaussian IB curve on the 4-D toy in the (I(X;T), I(T;Y)) plane. Three phase-transition operating points marked at β_{c,1}, β_{c,2}, β_{c,3}. The curve is C¹ — tangent continuous at each transition (slope 1/β everywhere) — but C² fails (curvature drops by factor k/(k+1) at each transition). Right: I(X;T) and I(T;Y) as functions of β on a log axis. Phase transitions appear as kinks in the β-parameterization."
+/>
+
+<GaussianIBCurveExplorer client:visible />
+
+## 8. Variational IB and the deep-learning lift
+
+### 8.1 Why direct IB doesn't scale to high-dimensional encoders
+
+The §3 IB algorithm has two requirements that limit its reach in practice. First, every iteration uses the conditional $p(y \mid x)$ at every $x$ — that means we need the *whole joint distribution* $p(x, y)$ as input. Second, the encoder $p(t \mid x)$ is represented explicitly for every $x$. Both requirements break down when $X$ is high-dimensional continuous data.
+
+We need two structural changes. First, *amortize* the encoder: instead of storing $p(t \mid x)$ for every $x$, parameterize it by a neural network $p_\theta(t \mid x)$ whose parameters $\theta$ are *shared* across $x$. Second, *upper-bound the intractable terms* in the IB Lagrangian by quantities estimable from samples.
+
+This is what Alemi, Fischer, Dillon, and Murphy did in 2017, building on Achille and Soatto (information dropout), Kingma and Welling (VAE), and Tishby–Zaslavsky. The result, *Variational Information Bottleneck* (VIB), is the workhorse of the IB-in-deep-learning literature.
+
+### 8.2 The Alemi–Fischer–Dillon–Murphy 2017 variational bound
+
+**Upper bound on $I(X; T)$.** For any auxiliary distribution $q(t)$ over $\mathcal{T}$,
+
+$$I(X; T) \;=\; \mathbb{E}_x\bigl[D_{\mathrm{KL}}(p(t \mid x) \,\|\, q(t))\bigr] \;-\; D_{\mathrm{KL}}(p(t) \,\|\, q(t)) \;\le\; \mathbb{E}_x\bigl[D_{\mathrm{KL}}(p(t \mid x) \,\|\, q(t))\bigr], \quad\quad (8.1)$$
+
+with equality iff $q(t) = p(t)$. The practical choice — for tractability and for connecting to the VAE — is $q(t) = \mathcal{N}(0, I)$.
+
+**Lower bound on $I(T; Y)$.** For any auxiliary $r(y \mid t)$,
+
+$$I(T; Y) \;\ge\; \mathbb{E}_{(t, y)}\bigl[\log r(y \mid t)\bigr] \;+\; H(Y), \quad\quad (8.2)$$
+
+with equality iff $r(y \mid t) = p(y \mid t)$.
+
+**Combining.** The VIB upper bound on $\mathcal{F}_\beta$ (absorbing constants) is
+
+$$\mathcal{L}_{\mathrm{VIB}}\bigl(p_\theta, q, r_\phi\bigr) \;:=\; \mathbb{E}_x\bigl[D_{\mathrm{KL}}(p_\theta(t \mid x) \,\|\, q(t))\bigr] \;-\; \beta\, \mathbb{E}_{(x, y, t)}\bigl[\log r_\phi(y \mid t)\bigr]. \quad\quad (8.3)$$
+
+Compare to (3.1): same two-term structure (rate $+ \beta$-weighted distortion), but each term is now a *bound* rather than the exact MI.
+
+**Connection to the ELBO.** Equation (8.3) is structurally identical to the negative variational evidence lower bound for a *supervised* latent-variable model: encoder $p_\theta(t \mid x)$, prior $q(t)$, decoder $r_\phi(y \mid t)$. **VIB is VAE with the targets switched** — instead of reconstructing $X$, predict $Y$. This identification (Alemi et al. 2017, §3) unlocked the full deep-learning toolkit for IB.
+
+**When is the bound tight?** With $q$ free: $q = p(t)$. With $r$ free: $r = p(y \mid t)$. In practice $q$ is fixed at $\mathcal{N}(0, I)$, so the bound is *strictly* loose. The gap is $D_{\mathrm{KL}}(p_\theta(t) \,\|\, q(t))$ — the KL between the encoder's induced marginal and the chosen prior. This becomes a regularization that pulls the encoder toward producing a Gaussian-marginal $T$.
+
+### 8.3 Amortized encoders and the reparametrization trick
+
+**Diagonal-Gaussian amortized encoder.** Parameterize
+
+$$p_\theta(t \mid x) \;=\; \mathcal{N}\bigl(t;\, \mu_\theta(x),\, \mathrm{diag}\bigl(\sigma_\theta^2(x)\bigr)\bigr), \quad\quad (8.4)$$
+
+with $\mu_\theta(x), \sigma_\theta(x) \in \mathbb{R}^d$ neural-network outputs sharing parameters across all $x$.
+
+**Reparametrization (Kingma and Welling 2014).** Sampling $t \sim p_\theta(t \mid x)$ is differentiable in $\theta$ via
+
+$$t \;=\; \mu_\theta(x) \,+\, \sigma_\theta(x) \odot \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I). \quad\quad (8.5)$$
+
+Stochasticity lives in $\epsilon$, independent of $\theta$ — gradients pass straight through.
+
+**Minibatch SGD.** For dataset $\{(x_n, y_n)\}_{n=1}^N$,
+
+$$\widehat{\mathcal{L}}_{\mathrm{VIB}}(\theta, \phi) \;=\; \frac{1}{N} \sum_{n=1}^N \Bigl[D_{\mathrm{KL}}(p_\theta(t \mid x_n) \,\|\, q(t)) \;-\; \beta\, \mathbb{E}_{\epsilon}[\log r_\phi(y_n \mid \mu_\theta(x_n) + \sigma_\theta(x_n) \odot \epsilon)]\Bigr]. \quad\quad (8.6)$$
+
+The VIB training loop is almost identical to a VAE training loop, with one substitution: the decoder predicts $Y$ from $T$ instead of $X$ from $T$. Code-wise, switching from VAE to VIB is a one-line change.
+
+### 8.4 A closed-form linear-Gaussian VIB sandbox
+
+To pull the VIB framework off the SGD treadmill, restrict to the *linear-Gaussian* case: jointly Gaussian $(X, Y)$ from §6 setup, Gaussian encoder $p_\theta(t \mid x) = \mathcal{N}(A x, \Sigma_\xi)$, fixed Gaussian prior $q(t) = \mathcal{N}(0, I)$, and Gaussian decoder $r_\phi(y \mid t) = \mathcal{N}(B t, \Sigma_\eta)$.
+
+**Closed-form objective.** Expanding (8.3):
+
+$$\mathcal{L}_{\mathrm{VIB}}(A, \Sigma_\xi, B, \Sigma_\eta) \;=\; \tfrac{1}{2}\bigl[\mathrm{tr}(\Sigma_T) - \log|\Sigma_\xi| - d\bigr] \;+\; \tfrac{\beta}{2}\, \mathrm{NLL}(B, \Sigma_\eta;\, A, \Sigma_\xi), \quad\quad (8.7)$$
+
+where $\Sigma_T = A \Sigma_X A^\top + \Sigma_\xi$. The optimal decoder is $B^* = \Sigma_{YX}\, A^\top\, \Sigma_T^{-1}$ and $\Sigma_\eta^* = \Sigma_{Y \mid T}$. After this inner optimization,
+
+$$\mathcal{L}_{\mathrm{VIB}}^*(A, \Sigma_\xi) \;=\; \underbrace{\tfrac{1}{2}\bigl[\mathrm{tr}(\Sigma_T) - \log|\Sigma_\xi| - d\bigr]}_{\text{rate (upper bound on } I(X;T) \text{)}} \;+\; \underbrace{\tfrac{\beta}{2}\, \log\bigl|\Sigma_Y - \Sigma_{YX}\, A^\top\, \Sigma_T^{-1}\, A\, \Sigma_{XY}\bigr|}_{\text{distortion (lower bound on } -I(T;Y) \text{)}}. \quad\quad (8.8)$$
+
+**Gap to the true IB Lagrangian.** The rate term overshoots $I(X; T)$ by exactly
+
+$$D_{\mathrm{KL}}\bigl(\mathcal{N}(0,\, \Sigma_T) \,\|\, \mathcal{N}(0,\, I)\bigr), \quad\quad (8.9)$$
+
+the KL from the encoder's induced marginal to the unit-Gaussian prior. The gap vanishes only when $\Sigma_T = I$, which is generally not the IB optimum's marginal.
+
+**Numerical experiment.** Optimize (8.8) over $(A, \Sigma_\xi)$ at 40 log-spaced $\beta$ on the 4-D toy from §6.4 with L-BFGS-B and $\beta$-annealing warm-starts. At each $\beta$, compute the *actual* $(I(X;T), I(T;Y))$ using §6's closed-form Gaussian MI formulas — this evaluates the bound's tightness, not its self-consistency.
+
+The result: VIB trajectory traces a curve that stays *inside* (below and right of) the true IB curve, with the gap visible across all $\beta$. At small $\beta$ the gap is small (both near origin); at intermediate $\beta$ the gap is largest; at large $\beta$ both saturate at $I(T;Y) = I(X;Y)$.
+
+<Figure
+  src="/images/topics/information-bottleneck/09_vib_vs_ib.png"
+  alt="VIB trajectory inside the closed-form Gaussian IB curve, plus the predictiveness gap"
+  caption="Left: linear-Gaussian VIB trajectory traced across 40 β values on the 4-D toy, against the closed-form IB curve from §7. The VIB optimum sits strictly inside the IB curve at every β. Right: the predictiveness gap I(T;Y)_IB − I(T;Y)_VIB as a function of β on a log axis — small near the origin, peaks at intermediate β, decays to zero at saturation."
+/>
+
+<VIBvsIBSandbox client:visible />
+
+## 9. The fitting and compression controversy
+
+### 9.1 The Tishby–Zaslavsky and Shwartz-Ziv–Tishby claim
+
+The most-discussed application of the IB principle in deep learning has been a *descriptive* one: the claim that deep networks, when trained by SGD, traverse a characteristic trajectory in the information plane that explains why they generalize. Tishby and Zaslavsky proposed this picture in 2015; Shwartz-Ziv and Tishby formalized and experimentally documented it in 2017.
+
+For a feedforward classifier with hidden layers $T_1, T_2, \ldots, T_L$, estimate $I(X; T_l)$ and $I(T_l; Y)$ from the training data each epoch and plot trajectories. Shwartz-Ziv and Tishby (on tanh-activated networks) observed every layer's trajectory tracing *two phases*:
+
+**The fitting phase.** Early in training, $I(X; T_l)$ and $I(T_l; Y)$ both grow. Diagonal climb in the IB plane.
+
+**The compression phase.** Later in training, $I(T_l; Y)$ stays high while $I(X; T_l)$ *decreases*. Leftward bend in the plane. Interpretation: late-phase SGD performs a diffusion in weight space that compresses the representations.
+
+Three claims rode this picture:
+
+1. **Compression is generic.** Predicted for any deep classifier trained by SGD.
+2. **Compression explains generalization.** Late SGD performs implicit IB-style regularization.
+3. **Deep nets implicitly do IB.** Slogan packaging of (1) + (2).
+
+The picture was provocative, visually compelling, and immediately influential. It also turned out to be contested.
+
+### 9.2 The information-plane visualization
+
+Setting aside the interpretive claims, the visualization — $(I(X; T_l),\, I(T_l; Y))$ over training — is a legitimate tool. Its catch is that computing it requires an MI estimator for high-dimensional continuous $T$.
+
+**Binning.** Discretize $T$, plug-in. Sensitive to bin width and saturating activations.
+
+**$k$-NN-based** (Kraskov–Stögbauer–Grassberger 2004). Principled, slow, biased in high dimensions.
+
+**Parametric / variational.** Fit a model. Tractable when correctly specified; biased when not.
+
+The choice of estimator can change the qualitative shape of the trajectory. This is the methodological wedge that Saxe et al. drove into the original picture.
+
+### 9.3 Saxe et al. 2018: tanh vs ReLU and the compression artifact
+
+Saxe, Bansal, Dapello, Advani, Kolchinsky, Tracey, and Cox (ICLR 2018) ran the experiment with two variations the original work hadn't probed.
+
+**Activation function.** Shwartz-Ziv–Tishby used tanh; Saxe et al. replicated with ReLU. With tanh, compression appeared; **with ReLU, the compression phase disappeared.** $I(X; T_l)$ grew monotonically throughout. Same architecture, same training, same dataset — qualitatively different trajectories depending on activation.
+
+**MI estimator artifact.** Tanh activations saturate near $\pm 1$. During training, activation values cluster into the boundary bins. The binning estimator interprets this as information loss even though no real information has been lost. With ReLU (no saturation), no such clustering.
+
+**Analytical sandbox.** Saxe et al. analyzed *linear* networks where MI is computable in closed form. In the linear-Gaussian setting, SGD shows no compression phase. This was the cleanest evidence that compression is not intrinsic to SGD on deep nets.
+
+**Their conclusion.** The compression phase in the original experiments is *artifactual* — an interaction between tanh's saturation and the binning estimator. Switch to ReLU or to closed-form MI, and the phase disappears. The two-phase trajectory is not a generic feature of SGD on deep networks.
+
+A short demonstration of the analytical case appears in Figure 10. We run gradient descent on the closed-form linear-Gaussian VIB objective from §8 at fixed $\beta = 5$, track the trajectory using the exact Gaussian MI formulas (no estimator), and observe: $I(X; T)$ and $I(T; Y)$ both grow monotonically. There is no compression phase. The "compression delta" — peak $I(X;T)$ minus final $I(X;T)$ — comes out to $0.0000$ nats on this run.
+
+<Figure
+  src="/images/topics/information-bottleneck/10_information_plane_trajectory.png"
+  alt="Gradient-descent trajectory under linear-Gaussian VIB at β=5: no compression phase"
+  caption="Left: gradient-descent trajectory on the closed-form linear-Gaussian VIB at fixed β = 5 on the 4-D toy, plotted in the information plane. Each point is one GD step (n = 400 total); color encodes step index. The trajectory traces from the trivial encoder (start) toward the VIB optimum (converged), staying inside the §7 IB curve. Right: I(X;T) and I(T;Y) as functions of GD step. Both grow monotonically — no compression phase. The annotated compression delta (peak I(X;T) − final) is essentially zero."
+/>
+
+### 9.4 What the controversy leaves intact (and what it doesn't)
+
+What did *not* survive Saxe et al. 2018 and the work that followed:
+
+- The claim that compression is a *generic* feature of SGD on deep networks.
+- The claim that compression *explains* deep-network generalization.
+- The packaging "deep learning is information bottleneck."
+
+What *did* survive:
+
+- **The information plane as a visualization tool.** Plotting $(I(X; T_l), I(T_l; Y))$ over training remains useful for understanding what a network's hidden representations are doing, with the caveat that the MI estimator matters.
+- **VIB as a regularizer.** Alemi et al.'s MNIST experiments showed measurable robustness gains against adversarial examples, independent of any descriptive claim about implicit IB in unmodified SGD.
+- **The fitting phase.** Uncontroversially observed by everyone.
+- **Compression as an inducible phenomenon.** Saturating activations, stochastic noise injection (Achille and Soatto's Information Dropout), explicit IB regularization (VIB) — all produce compression on purpose. Not automatic, but a useful design choice.
+
+Goldfeld, van den Berg, Greenewald, Melnyk, Nguyen, Kingsbury, and Polyanskiy (NeurIPS 2019) showed that compression is closely tied to *entropic regularization* of the activations — either via discretization, or via injected noise. Compression observed in the information plane is real when it appears, but it appears as a consequence of specific structural choices, not as a universal SGD phenomenon.
+
+**Honest assessment.** The IB principle is most useful held as a *prescriptive* Lagrangian rather than a *descriptive* theory of deep learning. The prescriptive reading (VIB, Information Dropout) is well-founded and has measurable benefits. The descriptive reading (deep nets implicitly do IB) was overreached and has been substantially walked back. The framework is sharp in its proper domain — clear $X$, clear $Y$, the need for a compressed $T$ that retains predictiveness — and weaker the further one pushes it past that domain.
+
+## 10. IB beyond compression-vs-prediction
+
+The IB Lagrangian's two-term structure generalizes naturally to multi-term variants by adding mutual-information quantities with their own Lagrange multipliers. Three application stories illustrate this modularity.
+
+### 10.1 Information dropout and the emergence of invariance
+
+Achille and Soatto (2018) implement VIB via a *multiplicative-noise* injection on activations:
+
+$$T \;=\; f(W X) \,\odot\, \exp(Z), \qquad Z \sim \mathcal{N}\bigl(0,\, \sigma_\theta^2(X)\bigr), \quad\quad (10.1)$$
+
+with $\sigma_\theta(X)$ a learned, input-dependent noise scale. For ReLU activations, (10.1) implements a log-normal noise on the positive part of $T$. The objective is the VIB Lagrangian (8.3) with a log-normal prior.
+
+**The invariance claim.** A representation $T$ is *invariant* to a nuisance factor $N$ when $T \perp N \mid Y$. Achille and Soatto show that minimizing the VIB Lagrangian with sufficient $\beta$ produces representations whose $X$-content is *exactly* the part of $X$ that predicts $Y$. Nuisances are squeezed out by the compression term. Invariance is a consequence of IB compression, not an extra ingredient.
+
+**The disentanglement claim.** Under information dropout, components of $T$ become approximately independent conditional on $Y$, more sharply at higher $\beta$. The IB Lagrangian's $\beta$ is, structurally, the $\beta$-VAE's $\beta$ (Higgins et al. 2017) — they are the same quantity in different applications.
+
+**What the framing buys.** Information dropout gives a *one-line architectural change* (multiplicative noise on activations) that implements VIB-style regularization. The IB principle used *prescriptively* — as a design tool — produces invariance and partial disentanglement automatically.
+
+### 10.2 IB framings of fair representation learning
+
+Moyer, Gao, Brekelmans, Galstyan, and Ver Steeg (2018) cast fair representation learning as a generalized IB problem with an explicit sensitive-attribute penalty.
+
+**Setup.** $X$ is the input, $Y$ the prediction target, $S$ a sensitive attribute. The goal: $T$ that predicts $Y$ well, contains minimal info about $S$, and stays compact about $X$. The fair-IB Lagrangian:
+
+$$\mathcal{L}_{\mathrm{fair}}\bigl(p(t \mid x)\bigr) \;=\; \underbrace{I(X; T)}_{\text{rate}} \;-\; \underbrace{\beta_Y\, I(T; Y)}_{\text{utility}} \;+\; \underbrace{\beta_S\, I(T; S)}_{\text{leakage}}, \quad\quad (10.2)$$
+
+with two Lagrange multipliers controlling utility and leakage. The Pareto frontier sweeps a *three-axis trade-off*.
+
+**Variational treatment.** Each MI term gets a variational bound following §8: upper bound on $I(X;T)$ via $\mathbb{E}[D_{\mathrm{KL}}(p(t \mid x) \,\|\, q(t))]$, lower bound on $I(T;Y)$ via an auxiliary decoder $r_Y$, upper bound on $I(T;S)$ via a *second* auxiliary decoder $r_S$. End-to-end trainable by SGD.
+
+**Comparison to adversarial fair-rep.** The pre-Moyer-et-al. approach was adversarial: learn $T$ alongside a discriminator $D_S$, train $T$ to fool $D_S$. Minimax, GAN-style, training instability. The IB approach bounds $I(T;S)$ directly via its variational form — single-level minimization, no minimax. Empirically (UCI Adult, Heritage Health), IB matches or beats adversarial fair-rep with more stable training.
+
+**What the framing buys.** Each new constraint is one variational term plus one $\beta$. Single-level optimization, end-to-end differentiable.
+
+### 10.3 IB framings of privacy and the utility–leakage trade-off
+
+Replace the sensitive attribute $S$ with *all of the information we want to protect*:
+
+$$\mathcal{L}_{\mathrm{priv}}\bigl(p(t \mid x)\bigr) \;=\; -\, I(T; Y) \;+\; \beta_S\, I(T; S), \quad\quad (10.3)$$
+
+(or with $X$ in the leakage slot for full anonymization).
+
+**Connection to differential privacy.** DP gives worst-case guarantees (bounded $\log p(T \mid D)/p(T \mid D')$ for adjacent datasets); IB-privacy gives average-case guarantees (bounded $I(T; X)$ or $I(T; S)$). DP is stronger and has composition theorems; IB-privacy is more flexible — it produces a Pareto frontier rather than a single budget.
+
+**Operational interpretation.** Issa, Wagner, and Kamath (2020) showed that $I(T; S)$ has a clean operational meaning: it is the expected log-ratio by which a Bayesian adversary's posterior on $S$ improves after observing $T$. Minimizing $I(T; S)$ is literally minimizing the expected information gain an adversary obtains.
+
+**Practical use cases.** Federated learning, synthetic data generation, selective-attribute privacy. The deep-learning machinery (VIB encoders, decoders, reparametrization) transfers directly.
+
+**A unifying observation.** Each application here is one instance of a multi-term IB Lagrangian:
+
+| Application | Rate | Predictiveness | Other |
+|---|---|---|---|
+| Standard IB / VIB | $I(X;T)$ | $\beta\, I(T;Y)$ | — |
+| Information dropout | $I(X;T)$ via mult. noise | $\beta\, I(T;Y)$ | — |
+| Fair-rep (Moyer et al.) | $I(X;T)$ | $\beta_Y\, I(T;Y)$ | $\beta_S\, I(T;S)$ leakage |
+| Privacy | $I(X;T)$ anonymization | $\beta\, I(T;Y)$ utility | $\beta_S\, I(T;S)$ leakage |
+
+§11 places this template in its broader context.
+
+## 11. Connections to other principles
+
+### 11.1 IB and rate-distortion: the same Lagrangian template
+
+The classical rate-distortion Lagrangian for source $X$ with distortion $d$:
+
+$$\mathcal{F}_s^{\mathrm{RD}}\bigl(p(\hat x \mid x)\bigr) \;=\; I(X; \widehat{X}) \;+\; s\, \mathbb{E}\bigl[d(X, \widehat{X})\bigr], \qquad s \ge 0. \quad\quad (11.1)$$
+
+The IB Lagrangian rewritten:
+
+$$\mathcal{F}_\beta\bigl(p(t \mid x)\bigr) \;=\; I(X; T) \;+\; \beta\, \bigl[I(X;Y) - I(T;Y)\bigr] \;-\; \beta\, I(X;Y). \quad\quad (11.2)$$
+
+IB is rate-distortion with the **predictive distortion**:
+
+$$d_{\mathrm{IB}}(X, T) \;=\; D_{\mathrm{KL}}\bigl(p(y \mid X) \,\|\, p(y \mid T)\bigr), \qquad \mathbb{E}[d_{\mathrm{IB}}(X, T)] \;=\; I(X;Y) - I(T;Y). \quad\quad (11.3)$$
+
+**Where they differ.** RD's distortion is *fixed before the algorithm runs*. IB's distortion *depends on the encoder iterate* through the induced $p(y \mid t)$. Two consequences:
+
+1. RD Lagrangian is convex in $p(\hat x \mid x)$ for fixed distortion → BA converges globally. IB is not convex → BA finds local stationary points.
+2. R(D) admits closed forms. Gaussian RD has $R(D) = \tfrac{1}{2} \log(\sigma^2 / D)$. Gaussian IB has a closed-form curve (§7) with a different distortion. Both curves are convex-decreasing.
+
+Side-by-side numerical comparison at common rates and $\rho = 0.9$:
+
+| R (nats) | RD: $D = e^{-2R}$ | IB: $D_{\mathrm{pred}}$ |
+|---|---|---|
+| 0.20 | 0.6703 | 0.6750 |
+| 0.50 | 0.3679 | 0.4716 |
+| 1.00 | 0.1353 | 0.2277 |
+| 2.00 | 0.0183 | 0.0376 |
+
+The IB distortion is larger at every rate — the price of using a self-emergent distortion that depends on $Y$ rather than a fixed Euclidean one.
+
+<Figure
+  src="/images/topics/information-bottleneck/11_rd_vs_ib.png"
+  alt="Side-by-side Gaussian R(D) and Gaussian IB R(D_pred) at ρ = 0.9"
+  caption="Left: the Gaussian rate-distortion function R(D) = ½ log(1/D) for scalar source X ~ N(0, 1) with squared-error distortion. Convex decreasing in (D, R). The Lagrangian 𝓕_s^RD is annotated. Right: the Gaussian IB function R(D_pred) at ρ = 0.9, where D_pred = I(X;Y) − I(T;Y). Convex decreasing, structurally identical shape, with the IB Lagrangian 𝓕_β annotated. The substantive difference: RD's distortion is fixed externally; IB's depends on the encoder iterate."
+/>
+
+<RateDistortionVsIB client:visible />
+
+The full rate-distortion theory is developed in [rate-distortion](/topics/rate-distortion); §11.1 here just makes the structural parallel explicit.
+
+### 11.2 IB and PAC-Bayes: KL as a complexity penalty
+
+PAC-Bayes (McAllester 1999; Catoni 2007) bounds generalization for stochastic learners. With probability $\ge 1 - \delta$ over draws of training set $S$:
+
+$$\mathbb{E}_{h \sim Q}\bigl[L(h)\bigr] \;\le\; \mathbb{E}_{h \sim Q}\bigl[\widehat{L}_S(h)\bigr] \;+\; \sqrt{\frac{D_{\mathrm{KL}}(Q \,\|\, P) + \log(1 / \delta)}{2 n}}, \quad\quad (11.4)$$
+
+where $Q$ is the data-conditional posterior and $P$ is a data-independent prior. The KL term is a complexity penalty.
+
+**Structural parallel with IB.** The IB rate $I(X; T) = \mathbb{E}_x[D_{\mathrm{KL}}(p(t \mid x) \,\|\, p(t))]$ is a KL between a data-conditional encoder and its marginal. PAC-Bayes's $D_{\mathrm{KL}}(Q \,\|\, P)$ is structurally analogous.
+
+**Russo–Zou / Xu–Raginsky.** Russo and Zou (2016) and Xu and Raginsky (2017) gave a tight information-theoretic generalization bound: for stochastic algorithm $p(S, A)$ with sub-Gaussian loss,
+
+$$\bigl|\mathbb{E}\bigl[L(A) - \widehat{L}_S(A)\bigr]\bigr| \;\le\; \sqrt{\frac{2\, \sigma^2\, I(S; A)}{n}}. \quad\quad (11.5)$$
+
+The generalization gap is bounded by the *mutual information between training set and learned hypothesis*.
+
+**The unifying picture.** A stochastic learning rule whose output depends only weakly on the input (in MI/KL terms) generalizes well. IB says the same thing for stochastic encoders. Same arithmetic, three framings. For VIB: bounding $I(X; T)$ during training literally controls a generalization gap, in the Russo–Zou–Xu–Raginsky sense.
+
+### 11.3 IB and InfoNCE / contrastive learning
+
+InfoNCE (van den Oord, Li, and Vinyals 2018) is the loss behind modern self-supervised representation learning. For positive pairs $(x_i, y_i)$ and $K - 1$ negatives,
+
+$$\mathcal{L}_{\mathrm{InfoNCE}}(\theta) \;=\; -\, \mathbb{E}\!\left[\log \frac{e^{f_\theta(x_i, y_i)}}{\frac{1}{K}\sum_{j = 1}^K e^{f_\theta(x_i, y_j)}}\right]. \quad\quad (11.6)$$
+
+**The MI lower bound.** For the optimal-discriminator score,
+
+$$I(X; Y) \;\ge\; \log K \;-\; \mathcal{L}_{\mathrm{InfoNCE}}(\theta^*). \quad\quad (11.7)$$
+
+Minimizing InfoNCE *maximizes a tractable lower bound on $I(X; Y)$*. Modern contrastive methods scale $K$ aggressively (SimCLR: 8192-sample batches; MoCo: even larger via momentum queues) to tighten this bound.
+
+**Connection to IB.** Casting contrastive in IB notation: $X$ first view, $Y$ second view, $T = g_\theta(X)$ the representation. Contrastive learning maximizes a lower bound on $I(T; Y)$ — the predictiveness term in the IB Lagrangian.
+
+What is missing: the *compression term* $I(X; T)$. Contrastive learning has no explicit rate penalty. The compression that emerges comes from the *limited capacity of the representation* (typically 128–256-dim projection heads). The bottleneck is structural rather than information-theoretic.
+
+This makes contrastive learning a *partial IB* — the predictiveness half with architectural compression. Saunshi et al. (2019) closed the loop, showing that contrastive learning produces representations with downstream-classification generalization bounds structurally similar to PAC-Bayes-style bounds.
+
+### 11.4 IB and the minimal sufficient statistic
+
+The classical notion of *sufficient statistic* (Fisher 1922; Lehmann–Scheffé 1950) is the statistical-inference grandparent of IB.
+
+**Classical definition.** A statistic $T = T(X)$ is *sufficient* for $Y$ given $X$ if $p(x \mid t)$ does not depend on $Y$ — equivalently, $I(T; Y) = I(X; Y)$. A statistic is *minimal sufficient* if it is sufficient and is a function of every other sufficient statistic.
+
+**The classical concept is binary.** Sufficient or not. No continuous "how sufficient" scale.
+
+**IB makes sufficiency continuous.** As $\beta \to \infty$, the IB optimum approaches the minimal sufficient statistic: $\lim_{\beta \to \infty} I(T_\beta^*; Y) = I(X; Y)$, and among sufficient statistics, the IB $\beta = \infty$ optimum has the smallest $I(X; T)$. The IB problem at finite $\beta$ is the *lossy version of the classical sufficient-statistic problem*, with $\beta$ as the lossiness knob.
+
+This generalizes-the-classical the same way rate-distortion generalizes Shannon source coding:
+
+| Classical | Modern lossy version |
+|---|---|
+| Shannon source coding (lossless) | Rate-distortion |
+| Sufficient statistic (classical) | Information bottleneck |
+
+**Exponential-family sufficiency.** For exponential-family $p(y \mid x) = h(y) \exp(\eta(x)^\top T_0(y) - A(\eta(x)))$, the natural parameter $\eta(X)$ is a finite-dimensional sufficient statistic. IB applied to such families produces finite-dimensional representations — the algorithm rediscovers the exponential-family structure. In the Gaussian case (§6), this is exact: the IB optimum at $\beta = \infty$ recovers the canonical-correlation projection, which is the linear-Gaussian minimal sufficient statistic.
+
+**The lineage.**
+
+| Year | Contribution | Author(s) |
+|---|---|---|
+| 1922 | Sufficient statistics | Fisher |
+| 1948 | Mutual information / source coding | Shannon |
+| 1950 | Minimal sufficient statistics | Lehmann, Scheffé |
+| 1959 | Rate-distortion theory | Shannon |
+| 1972 | Blahut–Arimoto algorithm | Blahut; Arimoto (independently) |
+| 1999 | Information bottleneck | Tishby, Pereira, Bialek |
+| 2005 | Gaussian IB | Chechik, Globerson, Tishby, Weiss |
+| 2017 | Variational IB | Alemi, Fischer, Dillon, Murphy |
+
+IB is, in this lineage, a 1999 modern reframing of a 1922 classical idea via Shannon's information theory.
+
+## 12. Computational notes and honest limits
+
+### 12.1 Numerical stability of the IB updates
+
+The IB iteration involves three operations that lose precision in standard float64, especially at large $\beta$. Implementing in log-space throughout is the fix.
+
+**Issue 1: the exponential.** (3.3) involves $\exp(-\beta\, D_{\mathrm{KL}})$ which underflows when $\beta\, D_{\mathrm{KL}} > 700$. Use log-space:
+
+$$\log p^{(n+1)}(t \mid x) \;=\; \log p^{(n)}(t) - \beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p^{(n)}(y \mid t)\bigr) - \log Z(x, \beta), \quad\quad (12.1)$$
+
+with $\log Z(x, \beta) = \mathrm{logsumexp}_t[\log p^{(n)}(t) - \beta\, D_{\mathrm{KL}}]$ via `scipy.special.logsumexp` (or a hand-rolled max-stable version in TS).
+
+**Issue 2: zero-probability components.** Extinct clusters during annealing have $p(t) = 0$; $\log 0 = -\infty$ propagates NaN. Clip: $\log p(t) \to \log \max(p(t),\, 10^{-300})$.
+
+**Issue 3: KL with vanishing summand.** Use `scipy.special.rel_entr(p, q)` instead of computing $p \log(p / q)$ by hand. `rel_entr` returns $0$ when $p = 0$ and $+\infty$ when $p > 0,\, q = 0$.
+
+**Issue 4: convergence test.** Compare $\mathcal{F}_\beta$ values, not encoders. Encoder distance is misleading near phase transitions where the cluster labeling can flip. Use relative-decrement $|\mathcal{F}_\beta^{(n)} - \mathcal{F}_\beta^{(n+1)}| < \epsilon \cdot |\mathcal{F}_\beta^{(n)}|$.
+
+**Implementation rule.** Track $\log p(t \mid x), \log p(t), \log p(y \mid t)$ throughout. Carry out KLs, normalizations, marginalizations in log-space. Convert to probabilities only at final output. This is what the §5 viz components do — see `T3IBCurveTracer.tsx` and `ClusterBifurcationCascade.tsx` in the source.
+
+### 12.2 Estimating MI on continuous data: plug-in pitfalls
+
+The discrete IB algorithm assumed access to the joint $p(x, y)$. For continuous high-dimensional data — images, text, audio — we have samples. Every estimator has pathologies.
+
+**Binning (plug-in).** Bias: positive (Roulston 1999) and bin-count-dependent. The Saxe et al. 2018 critique of Shwartz-Ziv–Tishby (§9.3) hinged on this — tanh saturation clusters activations into bins, dropping binned MI without any real information loss.
+
+**$k$-NN (Kraskov–Stögbauer–Grassberger 2004).** $O(N \log N)$ per estimate; substantial negative bias in high dimensions (Belghazi et al. 2018); sensitive to $k$.
+
+**Variational bounds.** MINE (Belghazi et al. 2018), InfoNCE (van den Oord et al. 2018). Training-time friendly, differentiable, scalable. Tightness depends on critic capacity; reliably tracks *changes* in MI; *absolute* values biased.
+
+**Recommendation.**
+
+| Task | Estimator |
+|---|---|
+| Exploratory analysis, small data | $k$-NN |
+| Training-time optimization (VIB and descendants) | Variational bounds |
+| Descriptive claims about a network's information plane | Be very careful — see Goldfeld et al. 2019 for guidance |
+
+### 12.3 Within-formalML siblings and forward pointers
+
+**Direct prerequisites.**
+
+- [Shannon entropy](/topics/shannon-entropy) — entropy, MI, source-coding interpretation.
+- [KL divergence](/topics/kl-divergence) — Pinsker, log-sum, conditioning identities.
+- [Rate-distortion theory](/topics/rate-distortion) — closest parent. BA-algorithm template inherited.
+
+**Soft prerequisites and structural cousins.**
+
+- [Variational inference](/topics/variational-inference) — §8.2's bound is the same construction as the VAE ELBO.
+- [Representation learning](/topics/representation-learning) — the geometric / contrastive counterpoint to IB.
+- [PAC-Bayes bounds](/topics/pac-bayes-bounds) — the generalization-bound family that IB's rate term parallels.
+
+**Forward pointers.**
+
+- [Bayesian neural networks](/topics/bayesian-neural-networks) — VIB as supervised Bayesian deep learning.
+- [Density-ratio estimation](/topics/density-ratio-estimation) — InfoNCE = noise-contrastive density-ratio estimator.
+- [Normalizing flows](/topics/normalizing-flows) — natural deeper-encoder family for VIB.
+- [Meta-learning](/topics/meta-learning) — IB-style task representations (Achille et al. 2019).
+
+### 12.4 Honest limits — what IB doesn't tell you
+
+**1. IB doesn't predict generalization in deep nets.** The §9 controversy. The original "deep learning is IB" framing did not survive Saxe et al. Used *prescriptively* (VIB, Information Dropout), the framework has measurable transfer and robustness benefits; *descriptively*, it does not explain what SGD on unmodified networks is doing.
+
+**2. IB doesn't tell you the optimal $\beta$ a priori.** The Lagrange multiplier is application-dependent. No general procedure to pick "the right $\beta$" from data alone. In practice: cross-validate downstream performance, or target a specific rate or predictiveness.
+
+**3. IB requires either the joint $p(x, y)$ or a viable variational bound.** For finite high-dim samples, neither is unproblematic. VIB's bounds are loose by design — the encoder's induced marginal is forced toward the prior, a deviation from the true IB optimum (§8.4 exhibited this on the Gaussian sandbox).
+
+**4. Non-uniqueness.** Labeling degeneracy and genuinely distinct basins. Annealing helps; doesn't eliminate. See Figure 3 for an explicit example on the 8-document toy.
+
+**5. The compression-prediction framing isn't always the right one.** Transfer learning across many tasks, pure self-supervised learning, learned-loss problems all push outside strict IB. Sometimes multi-constraint IB (§10) is the answer; sometimes a different framework.
+
+**6. Sample-complexity guarantees are weak.** Russo–Zou / Xu–Raginsky (§11.2) gives MI-based generalization bounds, rarely tight in practice. VIB models typically outperform the bound; the gap is active research (Achille and Soatto 2018).
+
+**A closing thought.** The IB principle is most useful held as a *prescriptive Lagrangian* rather than a *descriptive theory* of deep learning. It compresses, it predicts, and it has clean closed-form structure in the Gaussian setting that anchors intuition for general cases. Within its domain — clear $X$, clear $Y$, the need for a compressed $T$ that retains predictiveness — the IB and its variational descendants are sharp tools.

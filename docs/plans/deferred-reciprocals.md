@@ -12,6 +12,22 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Proof 3 (Holm) is an induction on the number of rejections $r$. The base case $r = 1$ reduces to Bonferroni; the inductive step uses the threshold $\alpha/(m - r + 1)$ on the remaining $m - r + 1$ …_
 
+## When `formalcalculus/lagrange-multipliers` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/information-bottleneck** declares `formalcalculusPrereqs` → `lagrange-multipliers` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _KKT conditions for the constrained IB problem (§2.2, §3) and the matrix-calculus version for Gaussian IB (§6.3) both depend on the Lagrange-multiplier framework introduced in this prereq, including…_
+
+## When `formalcalculus/matrix-calculus` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/information-bottleneck** declares `formalcalculusPrereqs` → `matrix-calculus` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The gradient of log|A Σ Aᵀ + I| with respect to A — used in §6.3 to derive the closed-form Gaussian IB encoder and the generalized-eigenproblem reduction — is a matrix-calculus identity that needs …_
+
 ## When `formalml/always-valid-inference` ships
 
 Add the reciprocal pointer back to:
@@ -51,14 +67,6 @@ Add the reciprocal pointer back to:
 - **formalStatistics/multiple-testing-and-false-discovery** declares `formalmlConnections` → `high-dimensional-testing-knockoffs` (connections)
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Barber–Candès (2015) knockoffs framework is a direct descendent of BH: it constructs synthetic 'knockoff' features, computes test statistics per feature, and applies a BH-like step-up. The $\al…_
-
-## When `formalml/information-bottleneck` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/sufficient-statistics** declares `formalmlConnections` → `information-bottleneck` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The information bottleneck method finds a compressed representation $T$ of the data $X$ that preserves information about a target $Y$. In the special case $\theta = Y$ and $T$ is the sufficient sta…_
 
 ## When `formalml/kernel-methods` ships
 
@@ -116,6 +124,22 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Huber and Tukey M-estimators are the foundation of modern robust regression. The breakdown point and influence function quantify resistance to outliers. Huber loss is used routinely in ML for regre…_
 
+## When `formalstatistics/canonical-correlation-analysis` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/information-bottleneck** declares `formalstatisticsPrereqs` → `canonical-correlation-analysis` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _CCA directions are exactly the IB-optimal projection directions for jointly Gaussian (X, Y). §6 derives the equivalence through the diagonalization ansatz; §7 shows the resulting phase transitions …_
+
+## When `formalstatistics/conditional-expectation-and-distributions` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/information-bottleneck** declares `formalstatisticsPrereqs` → `conditional-expectation-and-distributions` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Markov chain Y → X → T at the foundation of the IB setting is a conditional-independence statement (T ⟂ Y | X). The sufficient-statistic framing in §11.4 inherits its formalism from the conditi…_
+
 ## When `formalstatistics/covariance-correlation` ships
 
 Add the reciprocal pointer back to:
@@ -142,6 +166,14 @@ Add the reciprocal pointer back to:
 - **formalCalculus/eigenvalues-eigenvectors** declares `formalstatisticsConnections` → `mahalanobis-distance` (connections)
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The Mahalanobis distance d(x, y) = √((x − y)ᵀ Σ⁻¹ (x − y)) is the Euclidean distance in the basis where Σ becomes the identity — the whitening transformation Σ^(−1/2) is constructed by the spectral…_
+
+## When `formalstatistics/mutual-information-and-divergences` ships
+
+Add the reciprocal pointer back to:
+
+- **formalML/information-bottleneck** declares `formalstatisticsPrereqs` → `mutual-information-and-divergences` (prereqs)
+  - Reciprocal field on the new topic: `formalmlConnections`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Foundational definitions of mutual information, conditional MI, and KL divergence used throughout this topic — the IB Lagrangian's two terms are both mutual information quantities, and the §3 stati…_
 
 ## When `formalstatistics/principal-components-analysis` ships
 
