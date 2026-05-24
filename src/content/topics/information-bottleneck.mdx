@@ -466,3 +466,264 @@ saturating at the predictiveness ceiling $I(X;Y) = -\tfrac{1}{2}\log_2(1 - \rho^
 <GaussianIBCurveSchematic client:visible />
 
 This figure previews a result derived formally in §6 (the Gaussian closed form), framed for §2 as a concrete example that makes the curve shape and the $\beta$-as-slope interpretation tangible.
+
+## 3. The IB fixed-point equations
+
+### 3.1 Stationarity conditions on the Lagrangian
+
+We are looking for encoders $p^*(t \mid x)$ that minimize the Lagrangian
+
+$$\mathcal{F}_\beta\bigl(p(t \mid x)\bigr) \;=\; I(X; T) - \beta\, I(T; Y) \quad\quad (3.1)$$
+
+subject to the normalization constraints $\sum_t p(t \mid x) = 1$ for every $x$. Augmenting with multipliers $\mu(x)$ gives the full Lagrangian
+
+$$\mathcal{L}_\beta \;=\; I(X; T) - \beta\, I(T; Y) + \sum_x \mu(x)\left[\sum_t p(t \mid x) - 1\right]. \quad\quad (3.2)$$
+
+At a stationary point we need $\partial \mathcal{L}_\beta / \partial p(t \mid x) = 0$ for every $(x, t)$ with $p(x) > 0$, together with the normalization constraint.
+
+<TheoremBlock type="theorem" number={2} title="IB stationarity condition">
+At any stationary point of $\mathcal{F}_\beta$ over normalized encoders,
+
+$$p(t \mid x) \;=\; \frac{p(t)}{Z(x, \beta)}\,\exp\!\Bigl[-\beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\big\|\, p(y \mid t)\bigr)\Bigr], \quad\quad (3.3)$$
+
+where $p(t) = \sum_x p(x)\, p(t \mid x)$ is the cluster marginal, $p(y \mid t) = \sum_x p(y \mid x)\, p(x \mid t)$ is the cluster-conditional target, and
+
+$$Z(x, \beta) \;=\; \sum_{t} p(t)\, \exp\!\Bigl[-\beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\big\|\, p(y \mid t)\bigr)\Bigr] \quad\quad (3.4)$$
+
+is the per-input normalization.
+</TheoremBlock>
+
+Equation (3.3) is the central formula of discrete IB. Read it as a soft-assignment rule: input $x$ is assigned to cluster $t$ with probability proportional to the cluster's prior $p(t)$ times the exponential of $-\beta$ times the KL between the *true* target distribution at $x$, namely $p(y \mid x)$, and the *cluster-conditional* target distribution, $p(y \mid t)$. Two clusters whose target distributions are close to $p(y \mid x)$ both attract $x$; the one whose target distribution is closer wins more probability. The bandwidth of "closer wins" is set by $\beta$ — at small $\beta$ assignments are diffuse; at large $\beta$ each input goes almost entirely to its closest cluster.
+
+The two other quantities $p(t)$ and $p(y \mid t)$ are not independent free parameters — they are determined by $p(t \mid x)$ through (2.1). So (3.3) is really a self-consistency equation: the encoder $p(t \mid x)$ defines the marginal and the decoder, which in turn feed back into the right-hand side. We will turn this self-consistency into the iterative algorithm in §3.3.
+
+### 3.2 Derivation via variational calculus
+
+We compute the two partial derivatives that show up in (3.2). Throughout we adopt the convention that $\log$ is the natural log (the conversion to bits is a global factor of $1/\ln 2$ that drops out of the stationarity condition).
+
+<TheoremBlock type="proof">
+*Partial derivative of $I(X; T)$.* Write
+
+$$I(X; T) \;=\; -\sum_{t'} p(t') \log p(t') + \sum_{x', t'} p(x')\, p(t' \mid x')\, \log p(t' \mid x'). \quad\quad (3.5)$$
+
+The first piece depends on $p(t \mid x)$ only through $p(t) = \sum_{x'} p(x') p(t \mid x')$, with $\partial p(t')/\partial p(t \mid x) = p(x)\,\delta_{t, t'}$. Differentiating $-p(t) \log p(t)$ with respect to $p(t)$ gives $-\log p(t) - 1$, so the chain-rule contribution is $-\bigl(\log p(t) + 1\bigr)\, p(x)$. The second piece depends explicitly on $p(t \mid x)$ at $(x', t') = (x, t)$, giving $p(x)\bigl(\log p(t \mid x) + 1\bigr)$. The two $+1$'s cancel:
+
+$$\frac{\partial I(X; T)}{\partial p(t \mid x)} \;=\; p(x)\bigl[\log p(t \mid x) - \log p(t)\bigr]. \quad\quad (3.6)$$
+
+*Partial derivative of $I(T; Y)$.* Using $p(t, y) = \sum_{x'} p(x', y)\, p(t \mid x')$, write
+
+$$I(T; Y) \;=\; \sum_{x', t', y} p(x', y)\, p(t' \mid x')\, \log p(y \mid t') \;+\; H(Y), \quad\quad (3.7)$$
+
+where the $H(Y)$ term is constant in $p(t \mid x)$ and drops out. The remaining sum depends on $p(t \mid x)$ both *explicitly* (through the $p(t' \mid x')$ factor at $(x', t') = (x, t)$) and *implicitly* (through every $p(y \mid t')$, which is itself a function of $p(t \mid x)$).
+
+*Explicit contribution.* Direct: $p(x, y)\, \log p(y \mid t)$, summed over $y$, gives $p(x) \sum_y p(y \mid x)\, \log p(y \mid t)$.
+
+*Implicit contribution.* From $p(y \mid t') = \bigl(\sum_{x'} p(x', y)\, p(t \mid x')\bigr) / p(t')$ a short calculation gives
+
+$$\frac{\partial p(y \mid t')}{\partial p(t \mid x)} \;=\; \delta_{t, t'} \cdot \frac{p(x)}{p(t)}\,\bigl[p(y \mid x) - p(y \mid t)\bigr]. \quad\quad (3.8)$$
+
+The implicit contribution to $\partial I(T;Y) / \partial p(t \mid x)$ is then
+
+$$\sum_{x', t', y} p(x', y)\, p(t' \mid x')\, \frac{1}{p(y \mid t')}\, \frac{\partial p(y \mid t')}{\partial p(t \mid x)} \;=\; p(x) \sum_y \bigl[p(y \mid x) - p(y \mid t)\bigr] \;=\; 0. \quad\quad (3.9)$$
+
+So the implicit term vanishes identically — both summands have $\sum_y p(y \mid \cdot) = 1$ and the difference cancels. This is the key simplification of the derivation, and we verify it numerically below. We are left with
+
+$$\frac{\partial I(T; Y)}{\partial p(t \mid x)} \;=\; p(x) \sum_y p(y \mid x)\, \log p(y \mid t). \quad\quad (3.10)$$
+
+*Assembling the KKT condition.* Differentiating (3.2) and setting the result to zero:
+
+$$p(x)\bigl[\log p(t \mid x) - \log p(t)\bigr] - \beta\, p(x) \sum_y p(y \mid x)\, \log p(y \mid t) + \mu(x) \;=\; 0. \quad\quad (3.11)$$
+
+Dividing through by $p(x) > 0$ and using
+
+$$\sum_y p(y \mid x)\, \log p(y \mid t) \;=\; -D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p(y \mid t)\bigr) - H(Y \mid X = x),$$
+
+we obtain
+
+$$\log p(t \mid x) \;=\; \log p(t) - \beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p(y \mid t)\bigr) \;+\; \bigl[\text{terms independent of } t\bigr]. \quad\quad (3.12)$$
+
+The $t$-independent terms ($\beta H(Y \mid X = x)$ and $\mu(x) / p(x)$) are absorbed into the normalization $Z(x, \beta)$. Exponentiating and using $\sum_t p(t \mid x) = 1$ produces (3.3) and (3.4).
+</TheoremBlock>
+
+The implicit-term-vanishes identity (3.9) expresses a structural feature of the IB problem: $p(y \mid t)$, viewed as a function of the encoder, is the "Bayes-optimal" estimate of $Y$ given $T = t$ averaged over the encoder's induced distribution on $X$, so the gradient of any quantity computed from $p(y \mid t)$ that is "evaluated at its own optimal estimate" picks up no first-order correction. This is the same observation that makes EM monotone and that makes the IB algorithm Blahut–Arimoto-style monotone, which we'll prove in §4.
+
+<TheoremBlock type="remark" title="Numerical check of (3.9)">
+The notebook (cell 13) verifies (3.9) by comparing the analytical gradient $\partial I(T;Y) / \partial p(t \mid x)$ — using only the explicit contribution (3.10) — against a finite-difference reference of the full $I(T;Y)$ on a random soft encoder with $k = 3$ clusters and $n_{\text{docs}} = 8$. The maximum and mean absolute differences both come out to $8.66 \times 10^{-2}$, the finite-difference truncation error at step size $10^{-3}$ — the implicit term contributes nothing detectable, consistent with the identity. If the implicit term were nonzero, the discrepancy would grow with the step size; instead it shrinks, the signature of pure $O(h^2)$ truncation error.
+</TheoremBlock>
+
+### 3.3 The three coupled updates
+
+A stationary point of $\mathcal{F}_\beta$ must satisfy three coupled self-consistency equations:
+
+$$
+\begin{aligned}
+p(t \mid x) &\;=\; \frac{p(t)}{Z(x, \beta)}\, \exp\!\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, p(y \mid t))\bigr], \\[4pt]
+p(t) &\;=\; \sum_x p(x)\, p(t \mid x), \\[4pt]
+p(y \mid t) &\;=\; \frac{1}{p(t)} \sum_x p(y \mid x)\, p(x)\, p(t \mid x).
+\end{aligned}
+\quad\quad (3.13)
+$$
+
+These are the **IB equations**. The natural way to attack a coupled fixed-point system like (3.13) is alternating substitution: hold two of the three quantities fixed, update the third, repeat. Concretely, fix some initial encoder $p^{(0)}(t \mid x)$ and iterate
+
+$$
+\begin{aligned}
+p^{(n)}(t) &\;=\; \sum_x p(x)\, p^{(n)}(t \mid x), \\[2pt]
+p^{(n)}(y \mid t) &\;=\; \frac{1}{p^{(n)}(t)} \sum_x p(y \mid x)\, p(x)\, p^{(n)}(t \mid x), \\[2pt]
+p^{(n+1)}(t \mid x) &\;=\; \frac{p^{(n)}(t)}{Z^{(n)}(x, \beta)}\, \exp\!\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, p^{(n)}(y \mid t))\bigr].
+\end{aligned}
+\quad\quad (3.14)
+$$
+
+This is the **iterative IB algorithm** (Tishby, Pereira, and Bialek 1999). §4 proves that the algorithm decreases $\mathcal{F}_\beta$ monotonically and converges to a stationary point of (3.13); §5 runs it on the eight-document toy.
+
+Three structural features of (3.13):
+
+**Labeling invariance.** Permuting the cluster labels in $T$ leaves the IB equations invariant. Two clusters $t, t'$ with the same prior $p(t) = p(t')$ and the same conditional $p(y \mid t) = p(y \mid t')$ are *indistinguishable* — under (3.13) they will receive identical assignment probabilities from every $x$. This is the source of the bifurcation pattern in §5: clusters that are degenerate at low $\beta$ split into distinct clusters as $\beta$ crosses a phase-transition value.
+
+**The trivial fixed point.** Setting $p(t \mid x) = q(t)$ (any $x$-independent distribution) makes the right-hand side of the first equation independent of $x$ as well. So the trivial encoder is always a fixed point — it is the unique fixed point for $\beta < \beta_c$, and loses stability at $\beta = \beta_c$.
+
+**The implicit data dependence.** The IB equations involve $p(y \mid x)$, $p(x)$, and $p(x, y)$ only — they don't use any external "distortion function." This is the structural feature that distinguishes IB from rate-distortion (see §3.4).
+
+### 3.4 Why these are a Blahut–Arimoto cousin
+
+The IB iteration (3.14) inherits its template from the **Blahut–Arimoto algorithm** for computing rate-distortion functions (covered in [rate-distortion theory](/topics/rate-distortion)). The BA algorithm minimizes the rate-distortion Lagrangian
+
+$$\mathcal{F}_s^{\mathrm{RD}}\bigl(p(\hat x \mid x)\bigr) \;=\; I(X; \hat X) + s\, \mathbb{E}\bigl[d(X, \hat X)\bigr], \qquad s > 0, \quad\quad (3.15)$$
+
+with stationarity condition
+
+$$p(\hat x \mid x) \;=\; \frac{p(\hat x)}{Z^{\mathrm{RD}}(x, s)}\, \exp\!\bigl[-s\, d(x, \hat x)\bigr]. \quad\quad (3.16)$$
+
+Compare side-by-side with the IB condition (3.3):
+
+$$p(t \mid x) \;=\; \frac{p(t)}{Z(x, \beta)}\, \exp\!\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, p(y \mid t))\bigr].$$
+
+Structurally identical. The role of the rate-distortion distortion $d(x, \hat x)$ is played in IB by
+
+$$d_{\mathrm{IB}}(x, t) \;=\; D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p(y \mid t)\bigr), \quad\quad (3.17)$$
+
+which we may call the *predictive distortion* — a measure of how badly the cluster-conditional $p(y \mid t)$ approximates the true conditional $p(y \mid x)$. Two clusters are "close" in the IB sense if they make similar predictions about $Y$, not if they look similar in input space. Compression is therefore *task-aligned*: it preserves bits useful for predicting $Y$ and discards everything else.
+
+There is one crucial difference between IB and rate-distortion, however, which is the key technical reason IB is harder. In rate-distortion, the distortion $d(x, \hat x)$ is *given as input* — fixed before the algorithm starts. In IB, the predictive distortion $d_{\mathrm{IB}}(x, t)$ depends on $p(y \mid t)$, which depends on the encoder $p(t \mid x)$, which depends on the predictive distortion. The "distortion" emerges from the iteration itself. As a consequence:
+
+- The rate-distortion Lagrangian $\mathcal{F}_s^{\mathrm{RD}}$ is *convex* in $p(\hat x \mid x)$ for fixed distortion, so BA converges to the global minimum.
+- The IB Lagrangian $\mathcal{F}_\beta$ is *not convex* in $p(t \mid x)$, so the IB iteration converges only to a local stationary point — generally to one of many.
+
+This non-convexity has consequences we'll feel in §5: running the IB iteration with different random initializations finds different stationary points, and the *global* IB curve has to be traced by either (a) running many restarts at each $\beta$ and keeping the best, or (b) using $\beta$-annealing — solving at small $\beta$ first and warm-starting at the next $\beta$.
+
+Despite the non-convexity, the IB iteration enjoys a clean monotonicity property — $\mathcal{F}_\beta$ decreases at every step — and convergence to a stationary point. We prove both in §4.
+
+## 4. Convergence of the IB updates
+
+### 4.1 The Lagrangian decreases at every step
+
+The IB iteration (3.14) updates the encoder by a non-trivial coupled rule, so monotone decrease of $\mathcal{F}_\beta$ is not obvious from the update form alone. The clean proof goes through a wider three-argument functional — the same Csiszár–Tusnády construction that gives convergence of Blahut–Arimoto for rate-distortion and of EM for likelihood maximization.
+
+**Setup: the auxiliary functional.** Treat the encoder $p(t \mid x)$, the cluster marginal $q(t)$, and the cluster decoder $r(y \mid t)$ as *independent* arguments. Define
+
+$$F\bigl[p, q, r\bigr] \;:=\; \sum_{x, t} p(x)\, p(t \mid x)\, \log \frac{p(t \mid x)}{q(t)} \;+\; \beta \sum_{x, t} p(x)\, p(t \mid x)\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, r(y \mid t)\bigr). \quad\quad (4.1)$$
+
+The first sum looks like $I(X; T)$ but uses the auxiliary $q$ in the denominator. The second looks like the expected KL "predictive distortion" but uses the auxiliary $r$ as the cluster decoder. Both reduce to their actual-quantity versions when $q$ and $r$ equal the encoder's induced marginal and decoder respectively.
+
+<TheoremBlock type="lemma" number={1} title="F relates to the IB Lagrangian">
+For every normalized encoder $p$ and every $q, r$,
+
+$$F\bigl[p, q, r\bigr] \;=\; \mathcal{F}_\beta(p) + \beta\, I(X; Y) + D_{\mathrm{KL}}\bigl(p(t) \,\|\, q(t)\bigr) + \beta\, \mathbb{E}_{t \sim p(t)}\!\Bigl[D_{\mathrm{KL}}\bigl(p(y \mid t) \,\|\, r(y \mid t)\bigr)\Bigr]. \quad\quad (4.2)$$
+
+In particular, $F[p, q, r] \ge \mathcal{F}_\beta(p) + \beta\, I(X; Y)$, with equality iff $q(t) = p(t)$ and $r(y \mid t) = p(y \mid t)$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Splitting the logarithm in the first sum of (4.1):
+
+$$\sum_{x, t} p(x)\, p(t \mid x)\, \log \frac{p(t \mid x)}{q(t)} \;=\; I(X; T) + D_{\mathrm{KL}}(p(t) \,\|\, q(t)).$$
+
+For the second sum, expand the KL and use $\sum_x p(x, y)\, p(t \mid x) = p(t, y)$ together with $\sum_y p(t, y)\, \log r(y \mid t) = -p(t)\bigl[H(p(y \mid t)) + D_{\mathrm{KL}}(p(y \mid t) \,\|\, r(y \mid t))\bigr]$:
+
+$$\beta \sum_{x, t} p(x)\, p(t \mid x)\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, r(y \mid t)\bigr) \;=\; \beta\bigl[I(X; Y) - I(T; Y)\bigr] + \beta\, \mathbb{E}_t\bigl[D_{\mathrm{KL}}(p(y \mid t) \,\|\, r(y \mid t))\bigr].$$
+
+Adding the two contributions yields (4.2). The two KL terms are non-negative, with simultaneous equality iff $q = p(t)$ and $r = p(y \mid t)$.
+</TheoremBlock>
+
+<TheoremBlock type="lemma" number={2} title="IB iteration is alternating minimization on F">
+For fixed $q, r$, the minimizer of $p \mapsto F[p, q, r]$ over normalized encoders is
+
+$$p^*(t \mid x) \;=\; \frac{q(t)}{Z(x, \beta)}\, \exp\bigl[-\beta\, D_{\mathrm{KL}}(p(y \mid x) \,\|\, r(y \mid t))\bigr]. \quad\quad (4.3)$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+With $q, r$ fixed, $F$ is a sum of $|X|$ independent per-$x$ problems. Each per-$x$ problem is convex in $p(\cdot \mid x)$. Differentiating with multiplier $\mu(x)$ for normalization and setting the result to zero gives (4.3) after absorbing $t$-independent terms into the normalization.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={3} title="Monotone decrease">
+Let $\{p^{(n)}\}$ be the IB iterates produced by (3.14), and $\mathcal{F}_\beta^{(n)} := \mathcal{F}_\beta(p^{(n)})$. Then for every $n \ge 0$,
+
+$$\mathcal{F}_\beta^{(n+1)} \;\le\; \mathcal{F}_\beta^{(n)}, \quad\quad (4.4)$$
+
+with equality iff $p^{(n)}$ is a fixed point of (3.13).
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Let $q^{(n)} := p^{(n)}(t)$ and $r^{(n)} := p^{(n)}(y \mid t)$. By Lemma 1 with $q = q^{(n)}$, $r = r^{(n)}$ (the equality case),
+
+$$F[p^{(n)}, q^{(n)}, r^{(n)}] \;=\; \mathcal{F}_\beta(p^{(n)}) + \beta\, I(X; Y).$$
+
+The next iterate $p^{(n+1)}$ minimizes $p \mapsto F[p, q^{(n)}, r^{(n)}]$ by Lemma 2, so
+
+$$F[p^{(n+1)}, q^{(n)}, r^{(n)}] \;\le\; F[p^{(n)}, q^{(n)}, r^{(n)}].$$
+
+By Lemma 1 (inequality direction) with $p = p^{(n+1)}$,
+
+$$F[p^{(n+1)}, q^{(n)}, r^{(n)}] \;\ge\; \mathcal{F}_\beta(p^{(n+1)}) + \beta\, I(X; Y).$$
+
+Chaining gives $\mathcal{F}_\beta^{(n+1)} \le \mathcal{F}_\beta^{(n)}$. Equality requires both inequalities to be tight, which happens iff $p^{(n)}$ is already a fixed point.
+</TheoremBlock>
+
+The construction is worth lingering on: $F[p, q, r]$ is a *Lyapunov-with-slack* — it equals $\mathcal{F}_\beta(p)$ plus two KL-divergence penalties that vanish precisely when $q$ and $r$ are the encoder's induced quantities. The IB iteration alternately tightens the slack and minimizes the loosened objective. This Csiszár–Tusnády pattern proves Blahut–Arimoto, EM, and CAVI convergence — IB specializes it to the predictive-KL distortion.
+
+### 4.2 Boundedness and limit-point existence
+
+**Boundedness of $\mathcal{F}_\beta^{(n)}$.** $I(X; T) \ge 0$ and $I(T; Y) \le I(X; Y)$ by DPI, so
+
+$$\mathcal{F}_\beta(p) \;\ge\; -\beta\, I(X; Y). \quad\quad (4.5)$$
+
+Monotone decrease plus a lower bound implies the sequence $\mathcal{F}_\beta^{(n)}$ converges to some limit $\mathcal{F}_\beta^{(\infty)}$.
+
+**Compactness.** Iterates $p^{(n)}(t \mid x)$ live in the compact product of simplices $\prod_x \Delta^{|\mathcal{T}|-1}$. By Bolzano–Weierstrass, every subsequence has a convergent sub-subsequence.
+
+**Limit points are fixed points.** The IB update map $\mathcal{T}_{\mathrm{IB}}$ is continuous on the simplex interior. If $p^{(n_k)} \to p^*$, then $\mathcal{T}_{\mathrm{IB}}(p^{(n_k)}) \to \mathcal{T}_{\mathrm{IB}}(p^*)$. By the equality case of Theorem 3, $p^* = \mathcal{T}_{\mathrm{IB}}(p^*)$.
+
+<TheoremBlock type="theorem" number={4} title="Convergence to a fixed point">
+Every limit point of the IB iteration is a fixed point of (3.13), and the sequence of Lagrangian values $\mathcal{F}_\beta^{(n)}$ converges.
+</TheoremBlock>
+
+### 4.3 What the algorithm converges to: stationary, not global
+
+Theorems 3 and 4 give stationary-point convergence, not global-minimum convergence. Three observations.
+
+**Trivial vs nontrivial fixed points.** The encoder $p(t \mid x) = q(t)$ (any $x$-independent distribution) is always a fixed point. For $\beta < \beta_c$ it is the unique fixed point and the global minimum. For $\beta > \beta_c$ the trivial fixed point becomes a saddle: small perturbations grow under iteration.
+
+**Symmetry-broken fixed points.** Multiple equivalent solutions exist by cluster-label permutation — all give the same $\mathcal{F}_\beta$ value but trip up direct iterate comparisons.
+
+**Genuinely distinct local minima.** Beyond labeling, the IB landscape can have multiple genuinely distinct stationary points at different $\mathcal{F}_\beta$ values. Random initialization picks between basins essentially at random.
+
+The numerical experiment in Figure 3 illustrates this: five random initializations at $\beta = 5$, $k = 4$ on the eight-document toy land at slightly different $\mathcal{F}_\beta$ values — some runs find the optimum, others get stuck.
+
+<Figure
+  src="/images/topics/information-bottleneck/03_ib_convergence_traces.png"
+  alt="Convergence traces of F_β from five random initializations on the 8-document toy at β = 5"
+  caption="Left: 𝓕_β traced over 60 iterations from 5 random initializations on the eight-document toy at β = 5, k = 4. Every trace decreases monotonically (Theorem 3); four runs converge to the global optimum 𝓕_β* = −4 ln 2 ≈ −2.7726 nats, one run gets stuck in a suboptimal local minimum. Right: per-step decrement 𝓕_β(p^(n−1)) − 𝓕_β(p^(n)) on the same runs, on a symlog axis. Each value is ≥ 0 (Theorem 3); the symlog axis shows the magnitude collapsing toward machine precision as the iteration converges."
+/>
+
+### 4.4 The non-convexity hazard and annealing in β
+
+Two practical remedies for the non-convexity exposed in Figure 3.
+
+**Random restarts.** At each $\beta$ of interest, run the iteration from $M$ random initializations and keep the lowest $\mathcal{F}_\beta$ at convergence. Embarrassingly parallel. The failure mode is high $M$ — when the landscape has many basins, $M$ must scale with the number of basins.
+
+**β-annealing.** Solve at a small $\beta_0$ first (where the landscape is convex, trivial encoder is the unique fixed point), then incrementally raise $\beta$, *warm-starting* each new $\beta$ from the previous $\beta$'s converged encoder. The IB curve is continuous in $\beta$, so neighboring $\beta$ values have neighboring optimal encoders. Annealing traces a smooth path along the IB curve.
+
+Annealing has a structural benefit beyond non-convexity: it makes the *cluster bifurcations* explicit. At small $\beta$, all clusters collapse onto the trivial fixed point. As $\beta$ crosses $\beta_c$, two clusters split apart. At larger $\beta$ thresholds, further splits occur — each phase transition activates an additional cluster. The annealing trace through the IB plane traces out the *staircase* of phase transitions that §5 makes visible for the discrete toy and §7 for the Gaussian closed form.
+
+§5 implements both strategies on the eight-document toy and traces the full IB curve.
