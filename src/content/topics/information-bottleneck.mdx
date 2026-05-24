@@ -264,6 +264,8 @@ import TheoremBlock from '../../components/ui/TheoremBlock.astro';
 import Figure from '../../components/ui/Figure.astro';
 import IBPlaneExplorer from '../../components/viz/IBPlaneExplorer.tsx';
 import GaussianIBCurveSchematic from '../../components/viz/GaussianIBCurveSchematic.tsx';
+import T3IBCurveTracer from '../../components/viz/T3IBCurveTracer.tsx';
+import ClusterBifurcationCascade from '../../components/viz/ClusterBifurcationCascade.tsx';
 
 ## 1. What problem does the information bottleneck solve?
 
@@ -727,3 +729,81 @@ Two practical remedies for the non-convexity exposed in Figure 3.
 Annealing has a structural benefit beyond non-convexity: it makes the *cluster bifurcations* explicit. At small $\beta$, all clusters collapse onto the trivial fixed point. As $\beta$ crosses $\beta_c$, two clusters split apart. At larger $\beta$ thresholds, further splits occur — each phase transition activates an additional cluster. The annealing trace through the IB plane traces out the *staircase* of phase transitions that §5 makes visible for the discrete toy and §7 for the Gaussian closed form.
 
 §5 implements both strategies on the eight-document toy and traces the full IB curve.
+
+## 5. The discrete IB in practice
+
+### 5.1 Initialization and random restarts
+
+§4 left us with an algorithm that decreases $\mathcal{F}_\beta$ monotonically and converges to *a* fixed point — without guaranteeing the *best* fixed point. Three practical choices fill in the operational picture.
+
+**Encoder initialization.** The IB iteration is a self-map on the simplex product $\prod_x \Delta^{|\mathcal{T}|-1}$. We start from a random softmax draw:
+
+$$p^{(0)}(t \mid x) \;=\; \frac{\exp\bigl(W_{x t}\bigr)}{\sum_{t'} \exp\bigl(W_{x t'}\bigr)}, \qquad W_{x t} \sim \mathcal{N}(0, \sigma^2). \quad\quad (5.1)$$
+
+Small $\sigma$ (say $\sigma \in [0.05, 0.5]$) yields a *near-trivial* initial encoder. The random-softmax form is easier to control numerically than near-uniform perturbations, and it keeps every cluster nonempty at initialization so that no $p^{(0)}(t) = 0$ propagates a $\log 0$ through the first update.
+
+**The escape-from-saddle problem.** At any $\beta > \beta_c$, the trivial encoder $p(t \mid x) = q(t)$ is a *saddle point* of $\mathcal{F}_\beta$. An iterate that lands too close to it can take many iterations to escape. With $\sigma = 0$ exactly, the iteration is stationary and never moves. Always use $\sigma > 0$.
+
+**Random restarts.** At each $\beta$ of interest, run from $M$ independent initializations and keep the lowest $\mathcal{F}_\beta$ at convergence. For small toys $M = 5$ to $20$ suffices.
+
+**β-annealing.** Solve at a small starting $\beta_0$ first, then incrementally increase $\beta$, *warm-starting* each new $\beta$ from the previous $\beta$'s converged encoder. Two practical wrinkles: (i) at each $\beta$ step, add a tiny random perturbation to the warm-start encoder to break exact saddle-point degeneracy, and (ii) the $\beta$ grid should be log-spaced and dense near suspected phase transitions to resolve their location.
+
+From §5.3 onward: anneal forward across $\beta$ as the primary strategy, with random-restart sanity checks at selected $\beta$ to confirm we haven't missed a lower-$\mathcal{F}_\beta$ branch.
+
+### 5.2 A worked example on the eight-document toy
+
+Before sweeping $\beta$, exhibit the algorithm on the running eight-document toy from §1.2 at fixed $\beta = 5$. Since $\beta_c = 1$ for this toy, $\beta = 5$ sits well past the first transition. With $k = 4$ clusters and random-softmax initialization at $\sigma = 0.5$, the iteration converges in roughly 17 iterations.
+
+The trajectory has a characteristic shape: in the first few iterations, $\mathcal{F}_\beta$ drops sharply as the encoder finds the topic-aligned partition; over the next dozen iterations, $\mathcal{F}_\beta$ creeps toward its limit while the two "spare" clusters merge with the two topic clusters. By iteration 30, the per-step decrement is at machine precision.
+
+The converged encoder uses only $\approx 2$ effective clusters (out of the 4 allocated), with the two spare clusters bleeding into the active ones. The converged $(I(X;T), I(T;Y))$ equals $(\ln 2, \ln 2) \approx (0.693, 0.693)$ nats — exactly the optimum achieved by the $T = Y$ encoder. The optimum $\mathcal{F}_\beta^* = (1 - \beta) \ln 2 = -4 \ln 2 \approx -2.7726$ nats matches the value found by four of the five seeds in Figure 3 (one seed gets stuck in a suboptimal local minimum that uses one cluster's worth of effective capacity inefficiently).
+
+### 5.3 Tracing the IB curve by sweeping β
+
+The eight-document toy has only one phase transition because $H(Y) = 1$ bit caps the staircase. For a multi-transition example we introduce a *richer toy* — call it **T3** for "three-topic graded purity":
+
+Six documents in three topics, with $p(x)$ uniform. Conditional $p(y \mid x)$ varies by document pair:
+
+- Docs 0, 1: $p(y \mid x) = (0.85,\, 0.10,\, 0.05)$ — very topic-0 pure.
+- Docs 2, 3: $p(y \mid x) = (0.10,\, 0.85,\, 0.05)$ — very topic-1 pure.
+- Docs 4, 5: $p(y \mid x) = (0.15,\, 0.15,\, 0.70)$ — moderately topic-2 pure.
+
+Three distinct conditional distributions, with the first two highly distinguishable (purity 0.85) and the third moderately distinct from the others (purity 0.70). For this construction the numerical values are $H(Y) = 1.088$ nats, $H(Y \mid X) = 0.618$ nats, hence $I(X;Y) = 0.470$ nats $(= 0.678$ bits$)$.
+
+Setting $k = 4$ (one spare cluster to confirm self-disabling), we sweep $\beta$ across 40 log-spaced values in $[0.3,\, 100]$, annealing forward with warm-starts. The result is plotted in Figure 4: the IB curve in the $(I(X;T), I(T;Y))$ plane (left), and the same data plotted as $I(X;T)$ and $I(T;Y)$ vs $\beta$ (right). The plane plot shows the smooth, concave curve from origin to saturation; the $\beta$ plot exposes the two phase transitions as visible steepness changes — the first around $\beta \approx 4$ where the encoder starts to differentiate, and the second around $\beta \approx 11$ where the third cluster activates.
+
+The saturation point of the curve sits at $(R^\dagger, I(X;Y)) = (\log 3,\, 0.470)$ nats $= (1.099,\, 0.470)$ nats, since 3 clusters suffice to encode a minimal sufficient statistic.
+
+Two consistency checks. Random restarts at $\beta \in \{2,\, 5,\, 15\}$ confirm the annealing trace is the global optimum: 10 random initializations at each $\beta$ converge to within machine precision of the annealing value.
+
+<Figure
+  src="/images/topics/information-bottleneck/04_t3_ib_curve.png"
+  alt="IB curve on the T3 toy traced by annealing across 40 log-spaced β values"
+  caption="Left: IB curve traced by annealing across 40 log-spaced β values on the T3 toy. The DPI ceiling I(X;Y) = 0.470 nats appears as a dashed horizontal; the saturation rate R† = log 3 = 1.099 nats appears as a dotted vertical. Random-restart points at β ∈ {2, 5, 15} (10 restarts each) confirm the annealing trace is the global optimum. Right: the same data plotted as I(X;T) and I(T;Y) vs β on a log axis. The two phase transitions appear as visible steepness changes in I(T;Y)."
+/>
+
+<T3IBCurveTracer client:visible />
+
+### 5.4 Reading the trajectory: how clusters split with β
+
+The IB curve in the left panel of Figure 4 is concave and continuous — phase transitions are *invisible* in that view. They become visible in two derived quantities, which we plot in Figure 5.
+
+**The effective cluster count.** Define the perplexity of the cluster marginal:
+
+$$K_{\mathrm{eff}}(\beta) \;:=\; \exp\bigl(H(p(t))\bigr) \;=\; \exp\!\Bigl(-\!\sum_t p(t)\, \log p(t)\Bigr). \quad\quad (5.2)$$
+
+This is the "effective number of clusters" — equal to $k$ when $T$ is uniform over all $k$ clusters, equal to $1$ when $T$ collapses to a single cluster, and continuously interpolating in between when the cluster marginal is non-uniform. As $\beta$ grows, $K_{\mathrm{eff}}$ traces out a *staircase*: flat plateaus where the cluster structure is stable, separated by rapid climbs at the phase transitions where new clusters activate.
+
+**Cluster bifurcations as heatmaps.** The right panel of Figure 5 shows the encoder $p(t \mid x)$ at four representative $\beta$ values, sampled to span the cluster-count regimes: pre-first-transition ($K_{\mathrm{eff}} \approx 1$), between transitions ($K_{\mathrm{eff}} \approx 2$), post-second-transition ($K_{\mathrm{eff}} \approx 3$), and at large $\beta$ (sharp assignments). Reading across the panels: at small $\beta$ all six documents are assigned to roughly the same cluster. At intermediate $\beta$, the encoder splits into two clusters separating docs 4–5 from the rest. At larger $\beta$, the topic-0 and topic-1 pairs separate. At very large $\beta$, the assignments are nearly one-hot — three discrete clusters, one per topic-pair.
+
+Two structural observations. First, the *order* of bifurcations is not arbitrary: the first split separates the documents whose conditional distributions are most divergent. The cheapest predictive bit to encode first is the one that distinguishes the largest-divergence groups. Second, the *fourth* cluster we allocated self-disables: across all $\beta$, one cluster carries near-zero marginal probability $p(t) \approx 0$. IB uses only as many clusters as the structure of $p(y \mid x)$ supports.
+
+The staircase pattern is the discrete analog of the *phase transitions* we will see in closed form for Gaussian IB in §7, where each canonical-correlation direction activates at a specific $\beta_c$ value determined by the spectrum.
+
+<Figure
+  src="/images/topics/information-bottleneck/05_t3_bifurcation_cascade.png"
+  alt="K_eff staircase and encoder-heatmap snapshots across the T3 β sweep"
+  caption="Left: K_eff(β) = exp(H(p(t))) across the annealing sweep on T3, on a log-β axis. Horizontal guides at K_eff = 1, 2, 3. The staircase pattern climbs from ≈ 1 to ≈ 2 at the first phase transition (β ≈ 4) and to ≈ 3 at the second (β ≈ 11). The fourth (spare) cluster never activates. Right: encoder p(t | x) heatmaps at four selected β values, one per K_eff regime — each subpanel a 6 × 4 grid of cells with shading proportional to p(t | x)."
+/>
+
+<ClusterBifurcationCascade client:visible />
