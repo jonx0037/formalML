@@ -24,6 +24,10 @@ formalcalculusPrereqs:
   - topic: "matrix-calculus"
     site: "formalcalculus"
     relationship: "The gradient of log|A Σ Aᵀ + I| with respect to A — used in §6.3 to derive the closed-form Gaussian IB encoder and the generalized-eigenproblem reduction — is a matrix-calculus identity that needs the chain rule for log-determinants."
+formalstatisticsConnections:
+  - topic: "sufficient-statistics"
+    site: "formalstatistics"
+    relationship: "The IB optimum at β → ∞ recovers the classical minimal-sufficient-statistic notion — §11.4 makes this concrete. Conversely, IB at finite β is the *lossy* generalization of sufficiency, the same way rate-distortion generalizes Shannon source coding. The prereq's exponential-family sufficiency apparatus is what makes the Gaussian-IB closed form in §6 land on the canonical-correlation projections."
 tags:
   - "information-theory"
   - "representation-learning"
@@ -269,6 +273,7 @@ import ClusterBifurcationCascade from '../../components/viz/ClusterBifurcationCa
 import GaussianIBCurveExplorer from '../../components/viz/GaussianIBCurveExplorer.tsx';
 import DimensionAllocationExplorer from '../../components/viz/DimensionAllocationExplorer.tsx';
 import VIBvsIBSandbox from '../../components/viz/VIBvsIBSandbox.tsx';
+import RateDistortionVsIB from '../../components/viz/RateDistortionVsIB.tsx';
 
 ## 1. What problem does the information bottleneck solve?
 
@@ -1199,3 +1204,249 @@ What *did* survive:
 Goldfeld, van den Berg, Greenewald, Melnyk, Nguyen, Kingsbury, and Polyanskiy (NeurIPS 2019) showed that compression is closely tied to *entropic regularization* of the activations — either via discretization, or via injected noise. Compression observed in the information plane is real when it appears, but it appears as a consequence of specific structural choices, not as a universal SGD phenomenon.
 
 **Honest assessment.** The IB principle is most useful held as a *prescriptive* Lagrangian rather than a *descriptive* theory of deep learning. The prescriptive reading (VIB, Information Dropout) is well-founded and has measurable benefits. The descriptive reading (deep nets implicitly do IB) was overreached and has been substantially walked back. The framework is sharp in its proper domain — clear $X$, clear $Y$, the need for a compressed $T$ that retains predictiveness — and weaker the further one pushes it past that domain.
+
+## 10. IB beyond compression-vs-prediction
+
+The IB Lagrangian's two-term structure generalizes naturally to multi-term variants by adding mutual-information quantities with their own Lagrange multipliers. Three application stories illustrate this modularity.
+
+### 10.1 Information dropout and the emergence of invariance
+
+Achille and Soatto (2018) implement VIB via a *multiplicative-noise* injection on activations:
+
+$$T \;=\; f(W X) \,\odot\, \exp(Z), \qquad Z \sim \mathcal{N}\bigl(0,\, \sigma_\theta^2(X)\bigr), \quad\quad (10.1)$$
+
+with $\sigma_\theta(X)$ a learned, input-dependent noise scale. For ReLU activations, (10.1) implements a log-normal noise on the positive part of $T$. The objective is the VIB Lagrangian (8.3) with a log-normal prior.
+
+**The invariance claim.** A representation $T$ is *invariant* to a nuisance factor $N$ when $T \perp N \mid Y$. Achille and Soatto show that minimizing the VIB Lagrangian with sufficient $\beta$ produces representations whose $X$-content is *exactly* the part of $X$ that predicts $Y$. Nuisances are squeezed out by the compression term. Invariance is a consequence of IB compression, not an extra ingredient.
+
+**The disentanglement claim.** Under information dropout, components of $T$ become approximately independent conditional on $Y$, more sharply at higher $\beta$. The IB Lagrangian's $\beta$ is, structurally, the $\beta$-VAE's $\beta$ (Higgins et al. 2017) — they are the same quantity in different applications.
+
+**What the framing buys.** Information dropout gives a *one-line architectural change* (multiplicative noise on activations) that implements VIB-style regularization. The IB principle used *prescriptively* — as a design tool — produces invariance and partial disentanglement automatically.
+
+### 10.2 IB framings of fair representation learning
+
+Moyer, Gao, Brekelmans, Galstyan, and Ver Steeg (2018) cast fair representation learning as a generalized IB problem with an explicit sensitive-attribute penalty.
+
+**Setup.** $X$ is the input, $Y$ the prediction target, $S$ a sensitive attribute. The goal: $T$ that predicts $Y$ well, contains minimal info about $S$, and stays compact about $X$. The fair-IB Lagrangian:
+
+$$\mathcal{L}_{\mathrm{fair}}\bigl(p(t \mid x)\bigr) \;=\; \underbrace{I(X; T)}_{\text{rate}} \;-\; \underbrace{\beta_Y\, I(T; Y)}_{\text{utility}} \;+\; \underbrace{\beta_S\, I(T; S)}_{\text{leakage}}, \quad\quad (10.2)$$
+
+with two Lagrange multipliers controlling utility and leakage. The Pareto frontier sweeps a *three-axis trade-off*.
+
+**Variational treatment.** Each MI term gets a variational bound following §8: upper bound on $I(X;T)$ via $\mathbb{E}[D_{\mathrm{KL}}(p(t \mid x) \,\|\, q(t))]$, lower bound on $I(T;Y)$ via an auxiliary decoder $r_Y$, upper bound on $I(T;S)$ via a *second* auxiliary decoder $r_S$. End-to-end trainable by SGD.
+
+**Comparison to adversarial fair-rep.** The pre-Moyer-et-al. approach was adversarial: learn $T$ alongside a discriminator $D_S$, train $T$ to fool $D_S$. Minimax, GAN-style, training instability. The IB approach bounds $I(T;S)$ directly via its variational form — single-level minimization, no minimax. Empirically (UCI Adult, Heritage Health), IB matches or beats adversarial fair-rep with more stable training.
+
+**What the framing buys.** Each new constraint is one variational term plus one $\beta$. Single-level optimization, end-to-end differentiable.
+
+### 10.3 IB framings of privacy and the utility–leakage trade-off
+
+Replace the sensitive attribute $S$ with *all of the information we want to protect*:
+
+$$\mathcal{L}_{\mathrm{priv}}\bigl(p(t \mid x)\bigr) \;=\; -\, I(T; Y) \;+\; \beta_S\, I(T; S), \quad\quad (10.3)$$
+
+(or with $X$ in the leakage slot for full anonymization).
+
+**Connection to differential privacy.** DP gives worst-case guarantees (bounded $\log p(T \mid D)/p(T \mid D')$ for adjacent datasets); IB-privacy gives average-case guarantees (bounded $I(T; X)$ or $I(T; S)$). DP is stronger and has composition theorems; IB-privacy is more flexible — it produces a Pareto frontier rather than a single budget.
+
+**Operational interpretation.** Issa, Wagner, and Kamath (2020) showed that $I(T; S)$ has a clean operational meaning: it is the expected log-ratio by which a Bayesian adversary's posterior on $S$ improves after observing $T$. Minimizing $I(T; S)$ is literally minimizing the expected information gain an adversary obtains.
+
+**Practical use cases.** Federated learning, synthetic data generation, selective-attribute privacy. The deep-learning machinery (VIB encoders, decoders, reparametrization) transfers directly.
+
+**A unifying observation.** Each application here is one instance of a multi-term IB Lagrangian:
+
+| Application | Rate | Predictiveness | Other |
+|---|---|---|---|
+| Standard IB / VIB | $I(X;T)$ | $\beta\, I(T;Y)$ | — |
+| Information dropout | $I(X;T)$ via mult. noise | $\beta\, I(T;Y)$ | — |
+| Fair-rep (Moyer et al.) | $I(X;T)$ | $\beta_Y\, I(T;Y)$ | $\beta_S\, I(T;S)$ leakage |
+| Privacy | $I(X;T)$ anonymization | $\beta\, I(T;Y)$ utility | $\beta_S\, I(T;S)$ leakage |
+
+§11 places this template in its broader context.
+
+## 11. Connections to other principles
+
+### 11.1 IB and rate-distortion: the same Lagrangian template
+
+The classical rate-distortion Lagrangian for source $X$ with distortion $d$:
+
+$$\mathcal{F}_s^{\mathrm{RD}}\bigl(p(\hat x \mid x)\bigr) \;=\; I(X; \widehat{X}) \;+\; s\, \mathbb{E}\bigl[d(X, \widehat{X})\bigr], \qquad s \ge 0. \quad\quad (11.1)$$
+
+The IB Lagrangian rewritten:
+
+$$\mathcal{F}_\beta\bigl(p(t \mid x)\bigr) \;=\; I(X; T) \;+\; \beta\, \bigl[I(X;Y) - I(T;Y)\bigr] \;-\; \beta\, I(X;Y). \quad\quad (11.2)$$
+
+IB is rate-distortion with the **predictive distortion**:
+
+$$d_{\mathrm{IB}}(X, T) \;=\; D_{\mathrm{KL}}\bigl(p(y \mid X) \,\|\, p(y \mid T)\bigr), \qquad \mathbb{E}[d_{\mathrm{IB}}(X, T)] \;=\; I(X;Y) - I(T;Y). \quad\quad (11.3)$$
+
+**Where they differ.** RD's distortion is *fixed before the algorithm runs*. IB's distortion *depends on the encoder iterate* through the induced $p(y \mid t)$. Two consequences:
+
+1. RD Lagrangian is convex in $p(\hat x \mid x)$ for fixed distortion → BA converges globally. IB is not convex → BA finds local stationary points.
+2. R(D) admits closed forms. Gaussian RD has $R(D) = \tfrac{1}{2} \log(\sigma^2 / D)$. Gaussian IB has a closed-form curve (§7) with a different distortion. Both curves are convex-decreasing.
+
+Side-by-side numerical comparison at common rates and $\rho = 0.9$:
+
+| R (nats) | RD: $D = e^{-2R}$ | IB: $D_{\mathrm{pred}}$ |
+|---|---|---|
+| 0.20 | 0.6703 | 0.6750 |
+| 0.50 | 0.3679 | 0.4716 |
+| 1.00 | 0.1353 | 0.2277 |
+| 2.00 | 0.0183 | 0.0376 |
+
+The IB distortion is larger at every rate — the price of using a self-emergent distortion that depends on $Y$ rather than a fixed Euclidean one.
+
+<Figure
+  src="/images/topics/information-bottleneck/11_rd_vs_ib.png"
+  alt="Side-by-side Gaussian R(D) and Gaussian IB R(D_pred) at ρ = 0.9"
+  caption="Left: the Gaussian rate-distortion function R(D) = ½ log(1/D) for scalar source X ~ N(0, 1) with squared-error distortion. Convex decreasing in (D, R). The Lagrangian 𝓕_s^RD is annotated. Right: the Gaussian IB function R(D_pred) at ρ = 0.9, where D_pred = I(X;Y) − I(T;Y). Convex decreasing, structurally identical shape, with the IB Lagrangian 𝓕_β annotated. The substantive difference: RD's distortion is fixed externally; IB's depends on the encoder iterate."
+/>
+
+<RateDistortionVsIB client:visible />
+
+The full rate-distortion theory is developed in [rate-distortion](/topics/rate-distortion); §11.1 here just makes the structural parallel explicit.
+
+### 11.2 IB and PAC-Bayes: KL as a complexity penalty
+
+PAC-Bayes (McAllester 1999; Catoni 2007) bounds generalization for stochastic learners. With probability $\ge 1 - \delta$ over draws of training set $S$:
+
+$$\mathbb{E}_{h \sim Q}\bigl[L(h)\bigr] \;\le\; \mathbb{E}_{h \sim Q}\bigl[\widehat{L}_S(h)\bigr] \;+\; \sqrt{\frac{D_{\mathrm{KL}}(Q \,\|\, P) + \log(1 / \delta)}{2 n}}, \quad\quad (11.4)$$
+
+where $Q$ is the data-conditional posterior and $P$ is a data-independent prior. The KL term is a complexity penalty.
+
+**Structural parallel with IB.** The IB rate $I(X; T) = \mathbb{E}_x[D_{\mathrm{KL}}(p(t \mid x) \,\|\, p(t))]$ is a KL between a data-conditional encoder and its marginal. PAC-Bayes's $D_{\mathrm{KL}}(Q \,\|\, P)$ is structurally analogous.
+
+**Russo–Zou / Xu–Raginsky.** Russo and Zou (2016) and Xu and Raginsky (2017) gave a tight information-theoretic generalization bound: for stochastic algorithm $p(S, A)$ with sub-Gaussian loss,
+
+$$\bigl|\mathbb{E}\bigl[L(A) - \widehat{L}_S(A)\bigr]\bigr| \;\le\; \sqrt{\frac{2\, \sigma^2\, I(S; A)}{n}}. \quad\quad (11.5)$$
+
+The generalization gap is bounded by the *mutual information between training set and learned hypothesis*.
+
+**The unifying picture.** A stochastic learning rule whose output depends only weakly on the input (in MI/KL terms) generalizes well. IB says the same thing for stochastic encoders. Same arithmetic, three framings. For VIB: bounding $I(X; T)$ during training literally controls a generalization gap, in the Russo–Zou–Xu–Raginsky sense.
+
+### 11.3 IB and InfoNCE / contrastive learning
+
+InfoNCE (van den Oord, Li, and Vinyals 2018) is the loss behind modern self-supervised representation learning. For positive pairs $(x_i, y_i)$ and $K - 1$ negatives,
+
+$$\mathcal{L}_{\mathrm{InfoNCE}}(\theta) \;=\; -\, \mathbb{E}\!\left[\log \frac{e^{f_\theta(x_i, y_i)}}{\frac{1}{K}\sum_{j = 1}^K e^{f_\theta(x_i, y_j)}}\right]. \quad\quad (11.6)$$
+
+**The MI lower bound.** For the optimal-discriminator score,
+
+$$I(X; Y) \;\ge\; \log K \;-\; \mathcal{L}_{\mathrm{InfoNCE}}(\theta^*). \quad\quad (11.7)$$
+
+Minimizing InfoNCE *maximizes a tractable lower bound on $I(X; Y)$*. Modern contrastive methods scale $K$ aggressively (SimCLR: 8192-sample batches; MoCo: even larger via momentum queues) to tighten this bound.
+
+**Connection to IB.** Casting contrastive in IB notation: $X$ first view, $Y$ second view, $T = g_\theta(X)$ the representation. Contrastive learning maximizes a lower bound on $I(T; Y)$ — the predictiveness term in the IB Lagrangian.
+
+What is missing: the *compression term* $I(X; T)$. Contrastive learning has no explicit rate penalty. The compression that emerges comes from the *limited capacity of the representation* (typically 128–256-dim projection heads). The bottleneck is structural rather than information-theoretic.
+
+This makes contrastive learning a *partial IB* — the predictiveness half with architectural compression. Saunshi et al. (2019) closed the loop, showing that contrastive learning produces representations with downstream-classification generalization bounds structurally similar to PAC-Bayes-style bounds.
+
+### 11.4 IB and the minimal sufficient statistic
+
+The classical notion of *sufficient statistic* (Fisher 1922; Lehmann–Scheffé 1950) is the statistical-inference grandparent of IB.
+
+**Classical definition.** A statistic $T = T(X)$ is *sufficient* for $Y$ given $X$ if $p(x \mid t)$ does not depend on $Y$ — equivalently, $I(T; Y) = I(X; Y)$. A statistic is *minimal sufficient* if it is sufficient and is a function of every other sufficient statistic.
+
+**The classical concept is binary.** Sufficient or not. No continuous "how sufficient" scale.
+
+**IB makes sufficiency continuous.** As $\beta \to \infty$, the IB optimum approaches the minimal sufficient statistic: $\lim_{\beta \to \infty} I(T_\beta^*; Y) = I(X; Y)$, and among sufficient statistics, the IB $\beta = \infty$ optimum has the smallest $I(X; T)$. The IB problem at finite $\beta$ is the *lossy version of the classical sufficient-statistic problem*, with $\beta$ as the lossiness knob.
+
+This generalizes-the-classical the same way rate-distortion generalizes Shannon source coding:
+
+| Classical | Modern lossy version |
+|---|---|
+| Shannon source coding (lossless) | Rate-distortion |
+| Sufficient statistic (classical) | Information bottleneck |
+
+**Exponential-family sufficiency.** For exponential-family $p(y \mid x) = h(y) \exp(\eta(x)^\top T_0(y) - A(\eta(x)))$, the natural parameter $\eta(X)$ is a finite-dimensional sufficient statistic. IB applied to such families produces finite-dimensional representations — the algorithm rediscovers the exponential-family structure. In the Gaussian case (§6), this is exact: the IB optimum at $\beta = \infty$ recovers the canonical-correlation projection, which is the linear-Gaussian minimal sufficient statistic.
+
+**The lineage.**
+
+| Year | Contribution | Author(s) |
+|---|---|---|
+| 1922 | Sufficient statistics | Fisher |
+| 1948 | Mutual information / source coding | Shannon |
+| 1950 | Minimal sufficient statistics | Lehmann, Scheffé |
+| 1959 | Rate-distortion theory | Shannon |
+| 1972 | Blahut–Arimoto algorithm | Blahut; Arimoto (independently) |
+| 1999 | Information bottleneck | Tishby, Pereira, Bialek |
+| 2005 | Gaussian IB | Chechik, Globerson, Tishby, Weiss |
+| 2017 | Variational IB | Alemi, Fischer, Dillon, Murphy |
+
+IB is, in this lineage, a 1999 modern reframing of a 1922 classical idea via Shannon's information theory.
+
+## 12. Computational notes and honest limits
+
+### 12.1 Numerical stability of the IB updates
+
+The IB iteration involves three operations that lose precision in standard float64, especially at large $\beta$. Implementing in log-space throughout is the fix.
+
+**Issue 1: the exponential.** (3.3) involves $\exp(-\beta\, D_{\mathrm{KL}})$ which underflows when $\beta\, D_{\mathrm{KL}} > 700$. Use log-space:
+
+$$\log p^{(n+1)}(t \mid x) \;=\; \log p^{(n)}(t) - \beta\, D_{\mathrm{KL}}\bigl(p(y \mid x) \,\|\, p^{(n)}(y \mid t)\bigr) - \log Z(x, \beta), \quad\quad (12.1)$$
+
+with $\log Z(x, \beta) = \mathrm{logsumexp}_t[\log p^{(n)}(t) - \beta\, D_{\mathrm{KL}}]$ via `scipy.special.logsumexp` (or a hand-rolled max-stable version in TS).
+
+**Issue 2: zero-probability components.** Extinct clusters during annealing have $p(t) = 0$; $\log 0 = -\infty$ propagates NaN. Clip: $\log p(t) \to \log \max(p(t),\, 10^{-300})$.
+
+**Issue 3: KL with vanishing summand.** Use `scipy.special.rel_entr(p, q)` instead of computing $p \log(p / q)$ by hand. `rel_entr` returns $0$ when $p = 0$ and $+\infty$ when $p > 0,\, q = 0$.
+
+**Issue 4: convergence test.** Compare $\mathcal{F}_\beta$ values, not encoders. Encoder distance is misleading near phase transitions where the cluster labeling can flip. Use relative-decrement $|\mathcal{F}_\beta^{(n)} - \mathcal{F}_\beta^{(n+1)}| < \epsilon \cdot |\mathcal{F}_\beta^{(n)}|$.
+
+**Implementation rule.** Track $\log p(t \mid x), \log p(t), \log p(y \mid t)$ throughout. Carry out KLs, normalizations, marginalizations in log-space. Convert to probabilities only at final output. This is what the §5 viz components do — see `T3IBCurveTracer.tsx` and `ClusterBifurcationCascade.tsx` in the source.
+
+### 12.2 Estimating MI on continuous data: plug-in pitfalls
+
+The discrete IB algorithm assumed access to the joint $p(x, y)$. For continuous high-dimensional data — images, text, audio — we have samples. Every estimator has pathologies.
+
+**Binning (plug-in).** Bias: positive (Roulston 1999) and bin-count-dependent. The Saxe et al. 2018 critique of Shwartz-Ziv–Tishby (§9.3) hinged on this — tanh saturation clusters activations into bins, dropping binned MI without any real information loss.
+
+**$k$-NN (Kraskov–Stögbauer–Grassberger 2004).** $O(N \log N)$ per estimate; substantial negative bias in high dimensions (Belghazi et al. 2018); sensitive to $k$.
+
+**Variational bounds.** MINE (Belghazi et al. 2018), InfoNCE (van den Oord et al. 2018). Training-time friendly, differentiable, scalable. Tightness depends on critic capacity; reliably tracks *changes* in MI; *absolute* values biased.
+
+**Recommendation.**
+
+| Task | Estimator |
+|---|---|
+| Exploratory analysis, small data | $k$-NN |
+| Training-time optimization (VIB and descendants) | Variational bounds |
+| Descriptive claims about a network's information plane | Be very careful — see Goldfeld et al. 2019 for guidance |
+
+### 12.3 Within-formalML siblings and forward pointers
+
+**Direct prerequisites.**
+
+- [Shannon entropy](/topics/shannon-entropy) — entropy, MI, source-coding interpretation.
+- [KL divergence](/topics/kl-divergence) — Pinsker, log-sum, conditioning identities.
+- [Rate-distortion theory](/topics/rate-distortion) — closest parent. BA-algorithm template inherited.
+
+**Soft prerequisites and structural cousins.**
+
+- [Variational inference](/topics/variational-inference) — §8.2's bound is the same construction as the VAE ELBO.
+- [Representation learning](/topics/representation-learning) — the geometric / contrastive counterpoint to IB.
+- [PAC-Bayes bounds](/topics/pac-bayes-bounds) — the generalization-bound family that IB's rate term parallels.
+
+**Forward pointers.**
+
+- [Bayesian neural networks](/topics/bayesian-neural-networks) — VIB as supervised Bayesian deep learning.
+- [Density-ratio estimation](/topics/density-ratio-estimation) — InfoNCE = noise-contrastive density-ratio estimator.
+- [Normalizing flows](/topics/normalizing-flows) — natural deeper-encoder family for VIB.
+- [Meta-learning](/topics/meta-learning) — IB-style task representations (Achille et al. 2019).
+
+### 12.4 Honest limits — what IB doesn't tell you
+
+**1. IB doesn't predict generalization in deep nets.** The §9 controversy. The original "deep learning is IB" framing did not survive Saxe et al. Used *prescriptively* (VIB, Information Dropout), the framework has measurable transfer and robustness benefits; *descriptively*, it does not explain what SGD on unmodified networks is doing.
+
+**2. IB doesn't tell you the optimal $\beta$ a priori.** The Lagrange multiplier is application-dependent. No general procedure to pick "the right $\beta$" from data alone. In practice: cross-validate downstream performance, or target a specific rate or predictiveness.
+
+**3. IB requires either the joint $p(x, y)$ or a viable variational bound.** For finite high-dim samples, neither is unproblematic. VIB's bounds are loose by design — the encoder's induced marginal is forced toward the prior, a deviation from the true IB optimum (§8.4 exhibited this on the Gaussian sandbox).
+
+**4. Non-uniqueness.** Labeling degeneracy and genuinely distinct basins. Annealing helps; doesn't eliminate. See Figure 3 for an explicit example on the 8-document toy.
+
+**5. The compression-prediction framing isn't always the right one.** Transfer learning across many tasks, pure self-supervised learning, learned-loss problems all push outside strict IB. Sometimes multi-constraint IB (§10) is the answer; sometimes a different framework.
+
+**6. Sample-complexity guarantees are weak.** Russo–Zou / Xu–Raginsky (§11.2) gives MI-based generalization bounds, rarely tight in practice. VIB models typically outperform the bound; the gap is active research (Achille and Soatto 2018).
+
+**A closing thought.** The IB principle is most useful held as a *prescriptive Lagrangian* rather than a *descriptive theory* of deep learning. It compresses, it predicts, and it has clean closed-form structure in the Gaussian setting that anchors intuition for general cases. Within its domain — clear $X$, clear $Y$, the need for a compressed $T$ that retains predictiveness — the IB and its variational descendants are sharp tools.
