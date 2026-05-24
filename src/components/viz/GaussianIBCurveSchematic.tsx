@@ -115,13 +115,6 @@ export default function GaussianIBCurveSchematic() {
 
       // For each preset rho, sample the curve and the ceiling.
       const Rs = d3.range(0, 4.05, 0.02);
-      const lineGen = d3
-        .line<number>()
-        .x((R) => xScale(R))
-        .y((R, _i, arr) => {
-          // arr is the same Rs; we close over the current rho via map below
-          return yScale(0);
-        });
 
       RHO_PRESETS.forEach((rhoPreset) => {
         const ymax = -0.5 * Math.log2(1 - rhoPreset * rhoPreset);
@@ -159,8 +152,6 @@ export default function GaussianIBCurveSchematic() {
           .attr('opacity', rhoPreset === rho ? 1.0 : 0.55)
           .text(`ρ = ${rhoPreset.toFixed(2)}`);
       });
-      // Use line generator to silence unused-var
-      void lineGen;
     },
     [panelW, panelH, rho],
   );

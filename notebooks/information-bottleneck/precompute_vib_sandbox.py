@@ -39,8 +39,7 @@ def vib_objective(params, beta, Sigma_X, Sigma_Y, Sigma_XY, p):
     Sigma_xi = np.diag(sigma2)
     Sigma_T = A @ Sigma_X @ A.T + Sigma_xi
     rate = 0.5 * (np.trace(Sigma_T) - 2.0 * np.sum(log_sigma) - p)
-    Sigma_T_inv = np.linalg.inv(Sigma_T)
-    Sigma_Y_cond_T = Sigma_Y - Sigma_XY.T @ A.T @ Sigma_T_inv @ A @ Sigma_XY
+    Sigma_Y_cond_T = Sigma_Y - Sigma_XY.T @ A.T @ np.linalg.solve(Sigma_T, A @ Sigma_XY)
     _, logdet = np.linalg.slogdet(Sigma_Y_cond_T)
     distortion = 0.5 * logdet
     return rate + beta * distortion
