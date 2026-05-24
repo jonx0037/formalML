@@ -268,6 +268,7 @@ import T3IBCurveTracer from '../../components/viz/T3IBCurveTracer.tsx';
 import ClusterBifurcationCascade from '../../components/viz/ClusterBifurcationCascade.tsx';
 import GaussianIBCurveExplorer from '../../components/viz/GaussianIBCurveExplorer.tsx';
 import DimensionAllocationExplorer from '../../components/viz/DimensionAllocationExplorer.tsx';
+import VIBvsIBSandbox from '../../components/viz/VIBvsIBSandbox.tsx';
 
 ## 1. What problem does the information bottleneck solve?
 
@@ -1043,3 +1044,158 @@ At $n_{\text{MC}} = 20{,}000$ samples, agreement is within $O(1/\sqrt{n}) \appro
 />
 
 <GaussianIBCurveExplorer client:visible />
+
+## 8. Variational IB and the deep-learning lift
+
+### 8.1 Why direct IB doesn't scale to high-dimensional encoders
+
+The §3 IB algorithm has two requirements that limit its reach in practice. First, every iteration uses the conditional $p(y \mid x)$ at every $x$ — that means we need the *whole joint distribution* $p(x, y)$ as input. Second, the encoder $p(t \mid x)$ is represented explicitly for every $x$. Both requirements break down when $X$ is high-dimensional continuous data.
+
+We need two structural changes. First, *amortize* the encoder: instead of storing $p(t \mid x)$ for every $x$, parameterize it by a neural network $p_\theta(t \mid x)$ whose parameters $\theta$ are *shared* across $x$. Second, *upper-bound the intractable terms* in the IB Lagrangian by quantities estimable from samples.
+
+This is what Alemi, Fischer, Dillon, and Murphy did in 2017, building on Achille and Soatto (information dropout), Kingma and Welling (VAE), and Tishby–Zaslavsky. The result, *Variational Information Bottleneck* (VIB), is the workhorse of the IB-in-deep-learning literature.
+
+### 8.2 The Alemi–Fischer–Dillon–Murphy 2017 variational bound
+
+**Upper bound on $I(X; T)$.** For any auxiliary distribution $q(t)$ over $\mathcal{T}$,
+
+$$I(X; T) \;=\; \mathbb{E}_x\bigl[D_{\mathrm{KL}}(p(t \mid x) \,\|\, q(t))\bigr] \;-\; D_{\mathrm{KL}}(p(t) \,\|\, q(t)) \;\le\; \mathbb{E}_x\bigl[D_{\mathrm{KL}}(p(t \mid x) \,\|\, q(t))\bigr], \quad\quad (8.1)$$
+
+with equality iff $q(t) = p(t)$. The practical choice — for tractability and for connecting to the VAE — is $q(t) = \mathcal{N}(0, I)$.
+
+**Lower bound on $I(T; Y)$.** For any auxiliary $r(y \mid t)$,
+
+$$I(T; Y) \;\ge\; \mathbb{E}_{(t, y)}\bigl[\log r(y \mid t)\bigr] \;+\; H(Y), \quad\quad (8.2)$$
+
+with equality iff $r(y \mid t) = p(y \mid t)$.
+
+**Combining.** The VIB upper bound on $\mathcal{F}_\beta$ (absorbing constants) is
+
+$$\mathcal{L}_{\mathrm{VIB}}\bigl(p_\theta, q, r_\phi\bigr) \;:=\; \mathbb{E}_x\bigl[D_{\mathrm{KL}}(p_\theta(t \mid x) \,\|\, q(t))\bigr] \;-\; \beta\, \mathbb{E}_{(x, y, t)}\bigl[\log r_\phi(y \mid t)\bigr]. \quad\quad (8.3)$$
+
+Compare to (3.1): same two-term structure (rate $+ \beta$-weighted distortion), but each term is now a *bound* rather than the exact MI.
+
+**Connection to the ELBO.** Equation (8.3) is structurally identical to the negative variational evidence lower bound for a *supervised* latent-variable model: encoder $p_\theta(t \mid x)$, prior $q(t)$, decoder $r_\phi(y \mid t)$. **VIB is VAE with the targets switched** — instead of reconstructing $X$, predict $Y$. This identification (Alemi et al. 2017, §3) unlocked the full deep-learning toolkit for IB.
+
+**When is the bound tight?** With $q$ free: $q = p(t)$. With $r$ free: $r = p(y \mid t)$. In practice $q$ is fixed at $\mathcal{N}(0, I)$, so the bound is *strictly* loose. The gap is $D_{\mathrm{KL}}(p_\theta(t) \,\|\, q(t))$ — the KL between the encoder's induced marginal and the chosen prior. This becomes a regularization that pulls the encoder toward producing a Gaussian-marginal $T$.
+
+### 8.3 Amortized encoders and the reparametrization trick
+
+**Diagonal-Gaussian amortized encoder.** Parameterize
+
+$$p_\theta(t \mid x) \;=\; \mathcal{N}\bigl(t;\, \mu_\theta(x),\, \mathrm{diag}\bigl(\sigma_\theta^2(x)\bigr)\bigr), \quad\quad (8.4)$$
+
+with $\mu_\theta(x), \sigma_\theta(x) \in \mathbb{R}^d$ neural-network outputs sharing parameters across all $x$.
+
+**Reparametrization (Kingma and Welling 2014).** Sampling $t \sim p_\theta(t \mid x)$ is differentiable in $\theta$ via
+
+$$t \;=\; \mu_\theta(x) \,+\, \sigma_\theta(x) \odot \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I). \quad\quad (8.5)$$
+
+Stochasticity lives in $\epsilon$, independent of $\theta$ — gradients pass straight through.
+
+**Minibatch SGD.** For dataset $\{(x_n, y_n)\}_{n=1}^N$,
+
+$$\widehat{\mathcal{L}}_{\mathrm{VIB}}(\theta, \phi) \;=\; \frac{1}{N} \sum_{n=1}^N \Bigl[D_{\mathrm{KL}}(p_\theta(t \mid x_n) \,\|\, q(t)) \;-\; \beta\, \mathbb{E}_{\epsilon}[\log r_\phi(y_n \mid \mu_\theta(x_n) + \sigma_\theta(x_n) \odot \epsilon)]\Bigr]. \quad\quad (8.6)$$
+
+The VIB training loop is almost identical to a VAE training loop, with one substitution: the decoder predicts $Y$ from $T$ instead of $X$ from $T$. Code-wise, switching from VAE to VIB is a one-line change.
+
+### 8.4 A closed-form linear-Gaussian VIB sandbox
+
+To pull the VIB framework off the SGD treadmill, restrict to the *linear-Gaussian* case: jointly Gaussian $(X, Y)$ from §6 setup, Gaussian encoder $p_\theta(t \mid x) = \mathcal{N}(A x, \Sigma_\xi)$, fixed Gaussian prior $q(t) = \mathcal{N}(0, I)$, and Gaussian decoder $r_\phi(y \mid t) = \mathcal{N}(B t, \Sigma_\eta)$.
+
+**Closed-form objective.** Expanding (8.3):
+
+$$\mathcal{L}_{\mathrm{VIB}}(A, \Sigma_\xi, B, \Sigma_\eta) \;=\; \tfrac{1}{2}\bigl[\mathrm{tr}(\Sigma_T) - \log|\Sigma_\xi| - d\bigr] \;+\; \tfrac{\beta}{2}\, \mathrm{NLL}(B, \Sigma_\eta;\, A, \Sigma_\xi), \quad\quad (8.7)$$
+
+where $\Sigma_T = A \Sigma_X A^\top + \Sigma_\xi$. The optimal decoder is $B^* = \Sigma_{YX}\, A^\top\, \Sigma_T^{-1}$ and $\Sigma_\eta^* = \Sigma_{Y \mid T}$. After this inner optimization,
+
+$$\mathcal{L}_{\mathrm{VIB}}^*(A, \Sigma_\xi) \;=\; \underbrace{\tfrac{1}{2}\bigl[\mathrm{tr}(\Sigma_T) - \log|\Sigma_\xi| - d\bigr]}_{\text{rate (upper bound on } I(X;T) \text{)}} \;+\; \underbrace{\tfrac{\beta}{2}\, \log\bigl|\Sigma_Y - \Sigma_{YX}\, A^\top\, \Sigma_T^{-1}\, A\, \Sigma_{XY}\bigr|}_{\text{distortion (lower bound on } -I(T;Y) \text{)}}. \quad\quad (8.8)$$
+
+**Gap to the true IB Lagrangian.** The rate term overshoots $I(X; T)$ by exactly
+
+$$D_{\mathrm{KL}}\bigl(\mathcal{N}(0,\, \Sigma_T) \,\|\, \mathcal{N}(0,\, I)\bigr), \quad\quad (8.9)$$
+
+the KL from the encoder's induced marginal to the unit-Gaussian prior. The gap vanishes only when $\Sigma_T = I$, which is generally not the IB optimum's marginal.
+
+**Numerical experiment.** Optimize (8.8) over $(A, \Sigma_\xi)$ at 40 log-spaced $\beta$ on the 4-D toy from §6.4 with L-BFGS-B and $\beta$-annealing warm-starts. At each $\beta$, compute the *actual* $(I(X;T), I(T;Y))$ using §6's closed-form Gaussian MI formulas — this evaluates the bound's tightness, not its self-consistency.
+
+The result: VIB trajectory traces a curve that stays *inside* (below and right of) the true IB curve, with the gap visible across all $\beta$. At small $\beta$ the gap is small (both near origin); at intermediate $\beta$ the gap is largest; at large $\beta$ both saturate at $I(T;Y) = I(X;Y)$.
+
+<Figure
+  src="/images/topics/information-bottleneck/09_vib_vs_ib.png"
+  alt="VIB trajectory inside the closed-form Gaussian IB curve, plus the predictiveness gap"
+  caption="Left: linear-Gaussian VIB trajectory traced across 40 β values on the 4-D toy, against the closed-form IB curve from §7. The VIB optimum sits strictly inside the IB curve at every β. Right: the predictiveness gap I(T;Y)_IB − I(T;Y)_VIB as a function of β on a log axis — small near the origin, peaks at intermediate β, decays to zero at saturation."
+/>
+
+<VIBvsIBSandbox client:visible />
+
+## 9. The fitting and compression controversy
+
+### 9.1 The Tishby–Zaslavsky and Shwartz-Ziv–Tishby claim
+
+The most-discussed application of the IB principle in deep learning has been a *descriptive* one: the claim that deep networks, when trained by SGD, traverse a characteristic trajectory in the information plane that explains why they generalize. Tishby and Zaslavsky proposed this picture in 2015; Shwartz-Ziv and Tishby formalized and experimentally documented it in 2017.
+
+For a feedforward classifier with hidden layers $T_1, T_2, \ldots, T_L$, estimate $I(X; T_l)$ and $I(T_l; Y)$ from the training data each epoch and plot trajectories. Shwartz-Ziv and Tishby (on tanh-activated networks) observed every layer's trajectory tracing *two phases*:
+
+**The fitting phase.** Early in training, $I(X; T_l)$ and $I(T_l; Y)$ both grow. Diagonal climb in the IB plane.
+
+**The compression phase.** Later in training, $I(T_l; Y)$ stays high while $I(X; T_l)$ *decreases*. Leftward bend in the plane. Interpretation: late-phase SGD performs a diffusion in weight space that compresses the representations.
+
+Three claims rode this picture:
+
+1. **Compression is generic.** Predicted for any deep classifier trained by SGD.
+2. **Compression explains generalization.** Late SGD performs implicit IB-style regularization.
+3. **Deep nets implicitly do IB.** Slogan packaging of (1) + (2).
+
+The picture was provocative, visually compelling, and immediately influential. It also turned out to be contested.
+
+### 9.2 The information-plane visualization
+
+Setting aside the interpretive claims, the visualization — $(I(X; T_l),\, I(T_l; Y))$ over training — is a legitimate tool. Its catch is that computing it requires an MI estimator for high-dimensional continuous $T$.
+
+**Binning.** Discretize $T$, plug-in. Sensitive to bin width and saturating activations.
+
+**$k$-NN-based** (Kraskov–Stögbauer–Grassberger 2004). Principled, slow, biased in high dimensions.
+
+**Parametric / variational.** Fit a model. Tractable when correctly specified; biased when not.
+
+The choice of estimator can change the qualitative shape of the trajectory. This is the methodological wedge that Saxe et al. drove into the original picture.
+
+### 9.3 Saxe et al. 2018: tanh vs ReLU and the compression artifact
+
+Saxe, Bansal, Dapello, Advani, Kolchinsky, Tracey, and Cox (ICLR 2018) ran the experiment with two variations the original work hadn't probed.
+
+**Activation function.** Shwartz-Ziv–Tishby used tanh; Saxe et al. replicated with ReLU. With tanh, compression appeared; **with ReLU, the compression phase disappeared.** $I(X; T_l)$ grew monotonically throughout. Same architecture, same training, same dataset — qualitatively different trajectories depending on activation.
+
+**MI estimator artifact.** Tanh activations saturate near $\pm 1$. During training, activation values cluster into the boundary bins. The binning estimator interprets this as information loss even though no real information has been lost. With ReLU (no saturation), no such clustering.
+
+**Analytical sandbox.** Saxe et al. analyzed *linear* networks where MI is computable in closed form. In the linear-Gaussian setting, SGD shows no compression phase. This was the cleanest evidence that compression is not intrinsic to SGD on deep nets.
+
+**Their conclusion.** The compression phase in the original experiments is *artifactual* — an interaction between tanh's saturation and the binning estimator. Switch to ReLU or to closed-form MI, and the phase disappears. The two-phase trajectory is not a generic feature of SGD on deep networks.
+
+A short demonstration of the analytical case appears in Figure 10. We run gradient descent on the closed-form linear-Gaussian VIB objective from §8 at fixed $\beta = 5$, track the trajectory using the exact Gaussian MI formulas (no estimator), and observe: $I(X; T)$ and $I(T; Y)$ both grow monotonically. There is no compression phase. The "compression delta" — peak $I(X;T)$ minus final $I(X;T)$ — comes out to $0.0000$ nats on this run.
+
+<Figure
+  src="/images/topics/information-bottleneck/10_information_plane_trajectory.png"
+  alt="Gradient-descent trajectory under linear-Gaussian VIB at β=5: no compression phase"
+  caption="Left: gradient-descent trajectory on the closed-form linear-Gaussian VIB at fixed β = 5 on the 4-D toy, plotted in the information plane. Each point is one GD step (n = 400 total); color encodes step index. The trajectory traces from the trivial encoder (start) toward the VIB optimum (converged), staying inside the §7 IB curve. Right: I(X;T) and I(T;Y) as functions of GD step. Both grow monotonically — no compression phase. The annotated compression delta (peak I(X;T) − final) is essentially zero."
+/>
+
+### 9.4 What the controversy leaves intact (and what it doesn't)
+
+What did *not* survive Saxe et al. 2018 and the work that followed:
+
+- The claim that compression is a *generic* feature of SGD on deep networks.
+- The claim that compression *explains* deep-network generalization.
+- The packaging "deep learning is information bottleneck."
+
+What *did* survive:
+
+- **The information plane as a visualization tool.** Plotting $(I(X; T_l), I(T_l; Y))$ over training remains useful for understanding what a network's hidden representations are doing, with the caveat that the MI estimator matters.
+- **VIB as a regularizer.** Alemi et al.'s MNIST experiments showed measurable robustness gains against adversarial examples, independent of any descriptive claim about implicit IB in unmodified SGD.
+- **The fitting phase.** Uncontroversially observed by everyone.
+- **Compression as an inducible phenomenon.** Saturating activations, stochastic noise injection (Achille and Soatto's Information Dropout), explicit IB regularization (VIB) — all produce compression on purpose. Not automatic, but a useful design choice.
+
+Goldfeld, van den Berg, Greenewald, Melnyk, Nguyen, Kingsbury, and Polyanskiy (NeurIPS 2019) showed that compression is closely tied to *entropic regularization* of the activations — either via discretization, or via injected noise. Compression observed in the information plane is real when it appears, but it appears as a consequence of specific structural choices, not as a universal SGD phenomenon.
+
+**Honest assessment.** The IB principle is most useful held as a *prescriptive* Lagrangian rather than a *descriptive* theory of deep learning. The prescriptive reading (VIB, Information Dropout) is well-founded and has measurable benefits. The descriptive reading (deep nets implicitly do IB) was overreached and has been substantially walked back. The framework is sharp in its proper domain — clear $X$, clear $Y$, the need for a compressed $T$ that retains predictiveness — and weaker the further one pushes it past that domain.
