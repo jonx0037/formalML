@@ -121,7 +121,7 @@ export default function BHFDRReview() {
         .attr('cx', (k) => x(k + 1))
         .attr('cy', (k) => y(Math.max(result.pvals[k], 1e-6)))
         .attr('r', 1.6)
-        .attr('fill', (k) => (result.isNull[k] ? 'var(--color-text-secondary)' : 'var(--color-accent)'))
+        .style('fill', (k) => (result.isNull[k] ? 'var(--color-text-secondary)' : 'var(--color-accent)'))
         .attr('opacity', 0.7);
 
       // BH line kq/m
@@ -129,7 +129,7 @@ export default function BHFDRReview() {
         .line<number>()
         .x((k) => x(k))
         .y((k) => y(Math.max((k * Q) / M, 1e-6)));
-      g.append('path').datum(d3.range(1, RANK_MAX + 1) as unknown as number[]).attr('d', bhLine).attr('fill', 'none').style('stroke', '#2e8b57').attr('stroke-width', 1.6);
+      g.append('path').datum(d3.range(1, RANK_MAX + 1) as unknown as number[]).attr('d', bhLine).attr('fill', 'none').attr('stroke', '#2e8b57').attr('stroke-width', 1.6);
 
       // Storey line
       const qStorey = Q / Math.min(1, result.piHat);
@@ -137,10 +137,10 @@ export default function BHFDRReview() {
         .line<number>()
         .x((k) => x(k))
         .y((k) => y(Math.max((k * qStorey) / M, 1e-6)));
-      g.append('path').datum(d3.range(1, RANK_MAX + 1) as unknown as number[]).attr('d', storeyLine).attr('fill', 'none').style('stroke', '#1d4ed8').attr('stroke-width', 1.6);
+      g.append('path').datum(d3.range(1, RANK_MAX + 1) as unknown as number[]).attr('d', storeyLine).attr('fill', 'none').attr('stroke', '#1d4ed8').attr('stroke-width', 1.6);
 
       // Bonferroni horizontal
-      g.append('line').attr('x1', 0).attr('x2', iw).attr('y1', y(Q / M)).attr('y2', y(Q / M)).style('stroke', '#dc2626').attr('stroke-width', 1.4).attr('stroke-dasharray', '3 3');
+      g.append('line').attr('x1', 0).attr('x2', iw).attr('y1', y(Q / M)).attr('y2', y(Q / M)).attr('stroke', '#dc2626').attr('stroke-width', 1.4).attr('stroke-dasharray', '3 3');
 
       // rejection markers
       const procs = [
@@ -150,7 +150,7 @@ export default function BHFDRReview() {
       ];
       for (const p of procs) {
         if (p.r > 0) {
-          g.append('line').attr('x1', x(p.r)).attr('x2', x(p.r)).attr('y1', y(1e-5)).attr('y2', y(1)).style('stroke', p.color).attr('stroke-dasharray', '2 4').attr('opacity', 0.6);
+          g.append('line').attr('x1', x(p.r)).attr('x2', x(p.r)).attr('y1', y(1e-5)).attr('y2', y(1)).attr('stroke', p.color).attr('stroke-dasharray', '2 4').attr('opacity', 0.6);
         }
       }
 

@@ -74,7 +74,7 @@ export default function TruncatedGaussianPivot() {
       g.append('path')
         .datum(tnPoints as unknown as number[])
         .attr('d', area)
-        .attr('fill', 'var(--color-accent)')
+        .style('fill', 'var(--color-accent)')
         .attr('opacity', 0.22);
       const lineTn = d3
         .line<number>()

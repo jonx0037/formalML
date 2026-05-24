@@ -193,7 +193,7 @@ export default function LORDWealthProcess() {
       for (const p of PROCEDURES) {
         const snap = result[p.key];
         const line = d3.line<number>().x((i) => x(i)).y((i) => y(snap.wealth[i]));
-        g.append('path').datum(d3.range(0, T + 1) as unknown as number[]).attr('d', line).attr('fill', 'none').style('stroke', p.color).attr('stroke-width', 1.2).attr('opacity', 0.9);
+        g.append('path').datum(d3.range(0, T + 1) as unknown as number[]).attr('d', line).attr('fill', 'none').attr('stroke', p.color).attr('stroke-width', 1.2).attr('opacity', 0.9);
         // rejection markers
         g.selectAll(`circle.${p.key}`).data(snap.rejections).enter().append('circle').attr('cx', (d) => x(d)).attr('cy', (d) => y(snap.wealth[d + 1])).attr('r', 2.5).attr('fill', p.color).attr('opacity', 0.8);
       }
@@ -222,7 +222,7 @@ export default function LORDWealthProcess() {
       for (const p of PROCEDURES) {
         const snap = result[p.key];
         const line = d3.line<number>().x((i) => x(i)).y((i) => y(Math.min(snap.cumulativeFdp[i], 0.3)));
-        g.append('path').datum(d3.range(0, T + 1) as unknown as number[]).attr('d', line).attr('fill', 'none').style('stroke', p.color).attr('stroke-width', 1.4).attr('opacity', 0.85);
+        g.append('path').datum(d3.range(0, T + 1) as unknown as number[]).attr('d', line).attr('fill', 'none').attr('stroke', p.color).attr('stroke-width', 1.4).attr('opacity', 0.85);
       }
 
       g.append('g').attr('transform', `translate(0,${ih})`).call(d3.axisBottom(x).ticks(6)).selectAll('text').style('fill', 'var(--color-text)');

@@ -17,16 +17,9 @@ const LOCKED = {
 
 // Heuristic coverage model: predicted Wald coverage at rate ratio r = s_0 log(p) / sqrt(n).
 // Calibrated to the locked (r ≈ 2.65, coverage = 0.886 averaged across signal+null) anchor.
-// Reads: bias-to-SE ratio grows linearly in r, coverage = 1 - 2 Φ(-z_α/2 + δ).
-function predictedCoverage(r: number): number {
-  const z = 1.96;
-  const delta = 0.155 * Math.max(0, r - 0.4); // small intercept so r ≈ 0 gives near-nominal
-  return Math.max(0, Math.min(1, 2 * (normalCdf(z - delta) - 0.5) * 2 - (2 * (normalCdf(z - delta) - 0.5) - 1) * 0 + (1 - (1 - 2 * normalCdf(-z + delta)))) - 0); // placeholder, recompute below
-}
-
+// CI = b̂ ± z·SE; under bias δ·SE, coverage = Φ(z - δ) + Φ(z + δ) − 1.
 function coverageAt(r: number): number {
   const z = 1.96;
-  // CI = b̂ ± z·SE; under bias δ·SE, coverage = Φ(z - δ) - Φ(-z - δ) = Φ(z-δ) + Φ(z+δ) - 1.
   const delta = 0.155 * Math.max(0, r - 0.4);
   return normalCdf(z - delta) + normalCdf(z + delta) - 1;
 }
@@ -83,7 +76,7 @@ export default function DebiasedLassoCI() {
         .attr('y', (b) => y(b.length / zs.length / ((b.x1 ?? 0) - (b.x0 ?? 1))))
         .attr('width', (b) => Math.max(0, x(b.x1 ?? 0) - x(b.x0 ?? 0) - 1))
         .attr('height', (b) => ih - y(b.length / zs.length / ((b.x1 ?? 0) - (b.x0 ?? 1))))
-        .attr('fill', 'var(--color-accent)')
+        .style('fill', 'var(--color-accent)')
         .attr('opacity', 0.55);
 
       // overlay N(0,1)

@@ -63,7 +63,7 @@ export default function OnlineFDRMC() {
         if (!active[p.name]) continue;
         const rows = rowsFor(p.name);
         const line = d3.line<Row>().x((r) => x(r.t)).y((r) => y(r.eFdp));
-        g.append('path').datum(rows).attr('d', line).attr('fill', 'none').style('stroke', p.color).attr('stroke-width', 1.6);
+        g.append('path').datum(rows).attr('d', line).attr('fill', 'none').attr('stroke', p.color).attr('stroke-width', 1.6);
         for (const r of rows) {
           g.append('circle').attr('cx', x(r.t)).attr('cy', y(r.eFdp)).attr('r', r.t === highlightT ? 5 : 3).attr('fill', p.color);
         }
@@ -92,7 +92,7 @@ export default function OnlineFDRMC() {
         if (!active[p.name]) continue;
         const rows = rowsFor(p.name);
         const line = d3.line<Row>().x((r) => x(r.t)).y((r) => y(r.eRej));
-        g.append('path').datum(rows).attr('d', line).attr('fill', 'none').style('stroke', p.color).attr('stroke-width', 1.6);
+        g.append('path').datum(rows).attr('d', line).attr('fill', 'none').attr('stroke', p.color).attr('stroke-width', 1.6);
         for (const r of rows) {
           g.append('circle').attr('cx', x(r.t)).attr('cy', y(r.eRej)).attr('r', r.t === highlightT ? 5 : 3).attr('fill', p.color);
         }

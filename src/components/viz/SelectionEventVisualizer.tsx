@@ -48,12 +48,18 @@ function makeToy(): Toy {
 }
 
 // Cyclic coordinate-descent lasso for math objective 1/2 ||y - Xβ||² + λ||β||₁.
-function lassoFit(toy: Toy, y: Float64Array, lambda: number): { S: number[]; z: number[] } {
+// `beta` and `r` are caller-owned scratch buffers reset on entry — hoisting
+// them out of the GRID_N² fit loop is what keeps slider-commit interactive.
+function lassoFit(
+  toy: Toy,
+  y: Float64Array,
+  lambda: number,
+  beta: Float64Array,
+  r: Float64Array,
+): { S: number[]; z: number[] } {
   const { X, colNorm2 } = toy;
-  const beta = new Float64Array(P);
-  // Maintain residual r = y - Xβ
-  const r = new Float64Array(N);
-  for (let i = 0; i < N; i++) r[i] = y[i];
+  beta.fill(0);
+  r.set(y);
 
   const MAX_ITER = 80;
   const TOL = 1e-4;
@@ -135,6 +141,8 @@ function buildGrid(toy: Toy, lambda: number, signalIdx: number, nullIdx: number)
   for (let i = 0; i < N; i++) v2[i] /= v2n;
 
   const perturbed = new Float64Array(N);
+  const betaScratch = new Float64Array(P);
+  const rScratch = new Float64Array(N);
   const outcomes: string[] = new Array(GRID_N * GRID_N);
   const uniqueOrdered: string[] = [];
   const seen = new Set<string>();
@@ -143,7 +151,7 @@ function buildGrid(toy: Toy, lambda: number, signalIdx: number, nullIdx: number)
     for (let gj = 0; gj < GRID_N; gj++) {
       const b = -B_MAX + (2 * B_MAX * gj) / (GRID_N - 1);
       for (let i = 0; i < N; i++) perturbed[i] = toy.y[i] + a * v1[i] + b * v2[i];
-      const out = lassoFit(toy, perturbed, lambda);
+      const out = lassoFit(toy, perturbed, lambda, betaScratch, rScratch);
       const key = outcomeKey(out);
       outcomes[gi * GRID_N + gj] = key;
       if (!seen.has(key)) {

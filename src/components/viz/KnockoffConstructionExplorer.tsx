@@ -57,7 +57,7 @@ export default function KnockoffConstructionExplorer() {
       g.append('path').datum(sweep as unknown as number[]).attr('d', line).attr('fill', 'none').style('stroke', 'var(--color-accent)').attr('stroke-width', 1.8);
 
       // anchor points
-      for (const r of ROWS) g.append('circle').attr('cx', x(r.rho)).attr('cy', y(r.sEqui)).attr('r', 3).attr('fill', 'var(--color-accent)');
+      for (const r of ROWS) g.append('circle').attr('cx', x(r.rho)).attr('cy', y(r.sEqui)).attr('r', 3).style('fill', 'var(--color-accent)');
 
       // saturation line at s = 1
       g.append('line').attr('x1', 0).attr('x2', iw).attr('y1', y(1)).attr('y2', y(1)).style('stroke', 'var(--color-text)').attr('stroke-dasharray', '4 3').attr('opacity', 0.4);
@@ -86,13 +86,13 @@ export default function KnockoffConstructionExplorer() {
       const y = d3.scaleLinear().domain([0, 1.05]).range([ih, 0]);
 
       // nominal q = 0.10 reference line
-      g.append('line').attr('x1', 0).attr('x2', iw).attr('y1', y(0.1)).attr('y2', y(0.1)).style('stroke', '#dc2626').attr('stroke-dasharray', '3 3').attr('opacity', 0.6);
-      g.append('text').attr('x', iw - 4).attr('y', y(0.1) + 12).attr('text-anchor', 'end').style('fill', '#dc2626').style('font-size', '0.68rem').text('nominal q = 0.10');
+      g.append('line').attr('x1', 0).attr('x2', iw).attr('y1', y(0.1)).attr('y2', y(0.1)).attr('stroke', '#dc2626').attr('stroke-dasharray', '3 3').attr('opacity', 0.6);
+      g.append('text').attr('x', iw - 4).attr('y', y(0.1) + 12).attr('text-anchor', 'end').attr('fill', '#dc2626').style('font-size', '0.68rem').text('nominal q = 0.10');
 
       // FDP curve
       const sweep = d3.range(0, 0.81, 0.02);
       const fdpLine = d3.line<number>().x((rv) => x(rv)).y((rv) => y(interp(rv, 'fdp')));
-      g.append('path').datum(sweep as unknown as number[]).attr('d', fdpLine).attr('fill', 'none').style('stroke', '#dc2626').attr('stroke-width', 1.6).attr('opacity', 0.85);
+      g.append('path').datum(sweep as unknown as number[]).attr('d', fdpLine).attr('fill', 'none').attr('stroke', '#dc2626').attr('stroke-width', 1.6).attr('opacity', 0.85);
 
       // power curve
       const pwLine = d3.line<number>().x((rv) => x(rv)).y((rv) => y(interp(rv, 'power')));
@@ -101,7 +101,7 @@ export default function KnockoffConstructionExplorer() {
       // anchors
       for (const r of ROWS) {
         g.append('circle').attr('cx', x(r.rho)).attr('cy', y(r.fdp)).attr('r', 3).attr('fill', '#dc2626');
-        g.append('circle').attr('cx', x(r.rho)).attr('cy', y(r.power)).attr('r', 3).attr('fill', 'var(--color-accent)');
+        g.append('circle').attr('cx', x(r.rho)).attr('cy', y(r.power)).attr('r', 3).style('fill', 'var(--color-accent)');
       }
 
       // current marker

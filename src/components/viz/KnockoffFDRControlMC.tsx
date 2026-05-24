@@ -71,7 +71,7 @@ export default function KnockoffFDRControlMC() {
       // anchor MC points with error bars
       for (const a of anchors) {
         g.append('line').attr('x1', x(a.q)).attr('x2', x(a.q)).attr('y1', y(Math.min(0.3, a.fdp + a.sdFdp / Math.sqrt(100)))).attr('y2', y(Math.max(0, a.fdp - a.sdFdp / Math.sqrt(100)))).style('stroke', 'var(--color-accent)').attr('stroke-width', 1.5).attr('opacity', 0.6);
-        g.append('circle').attr('cx', x(a.q)).attr('cy', y(a.fdp)).attr('r', 4).attr('fill', 'var(--color-accent)');
+        g.append('circle').attr('cx', x(a.q)).attr('cy', y(a.fdp)).attr('r', 4).style('fill', 'var(--color-accent)');
       }
       // smooth curve through anchors
       const sweep = d3.range(0.05, 0.301, 0.01);
@@ -102,7 +102,7 @@ export default function KnockoffFDRControlMC() {
       const y = d3.scaleLinear().domain([0, 1]).range([ih, 0]);
 
       for (const a of anchors) {
-        g.append('circle').attr('cx', x(a.q)).attr('cy', y(a.power)).attr('r', 4).attr('fill', 'var(--color-accent)');
+        g.append('circle').attr('cx', x(a.q)).attr('cy', y(a.power)).attr('r', 4).style('fill', 'var(--color-accent)');
       }
       const sweep = d3.range(0.05, 0.301, 0.01);
       const line = d3.line<number>().x((qv) => x(qv)).y((qv) => y(interp(anchors, qv, 'power')));

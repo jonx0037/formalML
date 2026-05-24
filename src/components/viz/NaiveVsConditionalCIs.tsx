@@ -60,7 +60,7 @@ export default function NaiveVsConditionalCIs() {
             .attr('y', y(row.coverage))
             .attr('width', x1.bandwidth())
             .attr('height', ih - y(row.coverage))
-            .attr('fill', PROC_COLOR[proc])
+            .style('fill', PROC_COLOR[proc])
             .attr('opacity', 0.85);
           groupG
             .append('text')
@@ -138,7 +138,7 @@ export default function NaiveVsConditionalCIs() {
           .attr('stroke-width', 2.5)
           .attr('opacity', 0.85);
         // median point
-        g.append('circle').attr('cx', x(stat.median)).attr('cy', yMid).attr('r', 5).attr('fill', fill);
+        g.append('circle').attr('cx', x(stat.median)).attr('cy', yMid).attr('r', 5).style('fill', fill);
         // infinite-CI tag
         if (stat.infFrac > 0) {
           g.append('text')
