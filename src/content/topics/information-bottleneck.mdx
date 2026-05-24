@@ -266,6 +266,8 @@ import IBPlaneExplorer from '../../components/viz/IBPlaneExplorer.tsx';
 import GaussianIBCurveSchematic from '../../components/viz/GaussianIBCurveSchematic.tsx';
 import T3IBCurveTracer from '../../components/viz/T3IBCurveTracer.tsx';
 import ClusterBifurcationCascade from '../../components/viz/ClusterBifurcationCascade.tsx';
+import GaussianIBCurveExplorer from '../../components/viz/GaussianIBCurveExplorer.tsx';
+import DimensionAllocationExplorer from '../../components/viz/DimensionAllocationExplorer.tsx';
 
 ## 1. What problem does the information bottleneck solve?
 
@@ -807,3 +809,237 @@ The staircase pattern is the discrete analog of the *phase transitions* we will 
 />
 
 <ClusterBifurcationCascade client:visible />
+
+## 6. The Gaussian information bottleneck
+
+### 6.1 The jointly-Gaussian setting and why it admits closed form
+
+Through §5 the IB picture is operationally complete but every quantity is numerical. Switching to a *jointly-Gaussian* setting — the Chechik–Globerson–Tishby–Weiss 2005 setting — replaces iteration with matrix calculus. The Gaussian IB has a closed-form optimal encoder, an explicit expression for the IB curve as a piecewise-analytic function of $\beta$, exact locations for the phase transitions in terms of a spectrum, and a clean geometric reading via canonical-correlation analysis.
+
+**The setup.** Let $X \in \mathbb{R}^p$ and $Y \in \mathbb{R}^q$ be zero-mean jointly Gaussian random vectors with covariance structure
+
+$$\Sigma_X = \mathbb{E}[X X^\top], \qquad \Sigma_Y = \mathbb{E}[Y Y^\top], \qquad \Sigma_{XY} = \mathbb{E}[X Y^\top] \in \mathbb{R}^{p \times q}. \quad\quad (6.1)$$
+
+We assume $\Sigma_X, \Sigma_Y$ are positive definite. The conditional covariance of $X$ given $Y$ has the Schur-complement form
+
+$$\Sigma_{X \mid Y} \;=\; \Sigma_X - \Sigma_{XY}\, \Sigma_Y^{-1}\, \Sigma_{YX}, \quad\quad (6.2)$$
+
+and $\Sigma_{X \mid Y} \preceq \Sigma_X$ in the positive-semidefinite order. The representation $T$ takes values in $\mathbb{R}^d$, where the dimension $d$ is determined from the spectrum below.
+
+**Why closed form is available.** Two facts make the IB Lagrangian collapse to a covariance computation.
+
+*Gaussian mutual information.* For jointly Gaussian $(U, V)$,
+
+$$I(U; V) \;=\; \tfrac{1}{2} \log \frac{|\Sigma_U|}{|\Sigma_{U \mid V}|}. \quad\quad (6.3)$$
+
+Mutual information depends only on second moments.
+
+*Linear-Gaussian preserves Gaussianity.* If $T = A X + \xi$ where $A$ is deterministic and $\xi$ is Gaussian noise independent of $X$, then the joint $(X, T)$ and $(T, Y)$ are also jointly Gaussian. Restricting the encoder to be linear plus Gaussian noise makes the Lagrangian a function of the deterministic parameters $(A, \Sigma_\xi)$ alone.
+
+### 6.2 The optimal encoder is linear plus Gaussian noise
+
+<TheoremBlock type="theorem" number={5} title="Linear-Gaussian optimality (Chechik et al. 2005)">
+Let $(X, Y)$ be zero-mean jointly Gaussian. The minimizer of the IB Lagrangian $\mathcal{F}_\beta$ over all encoders $p(t \mid x)$ producing a $d$-dimensional representation $T \in \mathbb{R}^d$ is of the form
+
+$$T \;=\; A\, X + \xi, \qquad \xi \sim \mathcal{N}(0,\, \Sigma_\xi), \qquad \xi \perp X, \quad\quad (6.4)$$
+
+for some $A \in \mathbb{R}^{d \times p}$ and $\Sigma_\xi \in \mathbb{R}^{d \times d}$ positive semi-definite. Equivalently, the optimal encoder is the Gaussian conditional
+
+$$p^*(t \mid x) \;=\; \mathcal{N}\bigl(t;\, A\, x,\, \Sigma_\xi\bigr). \quad\quad (6.5)$$
+</TheoremBlock>
+
+The rigorous proof is in Chechik et al. 2005 (Theorem 1), with an entropy-power-inequality refinement in Painsky and Tishby 2017 that handles the equality cases more carefully. The intuition: for jointly-Gaussian $(X, Y)$, the predictive distortion $D_{\mathrm{KL}}(p(y \mid x) \,\|\, p(y \mid t))$ from (3.3) is the KL between two Gaussians when $T$ is also Gaussian, and that KL depends only on second moments of $(X, T, Y)$. The linear-Gaussian family *spans* the second-moment space, so the optimum lies in that family.
+
+**The parameterization.** Standard formulas for Gaussian MI give:
+
+$$\Sigma_T \;=\; A\, \Sigma_X\, A^\top + \Sigma_\xi, \qquad \Sigma_{T \mid X} \;=\; \Sigma_\xi, \qquad \Sigma_{T \mid Y} \;=\; A\, \Sigma_{X \mid Y}\, A^\top + \Sigma_\xi. \quad\quad (6.6)$$
+
+$$I(X; T) \;=\; \tfrac{1}{2} \log \frac{|A \Sigma_X A^\top + \Sigma_\xi|}{|\Sigma_\xi|}, \qquad I(T; Y) \;=\; \tfrac{1}{2} \log \frac{|A \Sigma_X A^\top + \Sigma_\xi|}{|A \Sigma_{X \mid Y} A^\top + \Sigma_\xi|}. \quad\quad (6.7)$$
+
+Combining and rearranging,
+
+$$\mathcal{F}_\beta(A, \Sigma_\xi) \;=\; \frac{1 - \beta}{2}\, \log \bigl|A \Sigma_X A^\top + \Sigma_\xi\bigr| \;+\; \frac{\beta}{2}\, \log \bigl|A \Sigma_{X \mid Y} A^\top + \Sigma_\xi\bigr| \;-\; \frac{1}{2}\, \log |\Sigma_\xi|. \quad\quad (6.8)$$
+
+**Gauge freedom.** The Lagrangian (6.8) is invariant under invertible linear transformations of $T$. To remove the gauge we normalize the noise covariance:
+
+$$\Sigma_\xi \;=\; I_d. \quad\quad (6.9)$$
+
+The remaining optimization is over $A \in \mathbb{R}^{d \times p}$ alone:
+
+$$\mathcal{F}_\beta(A) \;=\; \frac{1 - \beta}{2}\, \log \bigl|A \Sigma_X A^\top + I\bigr| \;+\; \frac{\beta}{2}\, \log \bigl|A \Sigma_{X \mid Y} A^\top + I\bigr|. \quad\quad (6.10)$$
+
+### 6.3 Reduction to a generalized eigenproblem
+
+For symmetric $\Sigma$,
+
+$$\nabla_A \log\bigl|A \Sigma A^\top + I\bigr| \;=\; 2\,(A \Sigma A^\top + I)^{-1}\, A\, \Sigma. \quad\quad (6.11)$$
+
+Setting $\nabla_A \mathcal{F}_\beta(A) = 0$ gives
+
+$$(1 - \beta)\,(A \Sigma_X A^\top + I)^{-1}\, A\, \Sigma_X \;+\; \beta\,(A \Sigma_{X \mid Y} A^\top + I)^{-1}\, A\, \Sigma_{X \mid Y} \;=\; 0. \quad\quad (6.12)$$
+
+**The diagonalization ansatz.** Define
+
+$$M \;:=\; \Sigma_{X \mid Y}\, \Sigma_X^{-1} \;\in\; \mathbb{R}^{p \times p}. \quad\quad (6.13)$$
+
+$M$ has eigenvalues $\lambda_1 \le \lambda_2 \le \cdots \le \lambda_p$ in $(0, 1]$ (positive because $\Sigma_{X \mid Y}$ is PSD; at most $1$ because $\Sigma_{X \mid Y} \preceq \Sigma_X$). The right eigenvectors $v_i$ satisfy $\Sigma_{X \mid Y} v_i = \lambda_i \Sigma_X v_i$. Normalize in the $\Sigma_X$-inner-product: $v_i^\top \Sigma_X v_j = \delta_{ij}$.
+
+**Ansatz.** Take
+
+$$A \;=\; \mathrm{diag}(\alpha_1, \ldots, \alpha_d)\; V^\top, \qquad V = [v_1\; v_2\; \cdots\; v_d]. \quad\quad (6.14)$$
+
+Plugging into (6.10), both $A \Sigma_X A^\top$ and $A \Sigma_{X \mid Y} A^\top$ become diagonal, and the Lagrangian decouples across directions:
+
+$$\mathcal{F}_\beta(\alpha_1, \ldots, \alpha_d) \;=\; \sum_{i=1}^d \biggl[\frac{1 - \beta}{2}\, \log(1 + \alpha_i^2) \;+\; \frac{\beta}{2}\, \log(1 + \alpha_i^2 \lambda_i)\biggr]. \quad\quad (6.15)$$
+
+Setting $u_i := \alpha_i^2$ and $\partial \mathcal{F}_\beta / \partial u_i = 0$,
+
+$$u_i^* \;=\; \alpha_i^{*\,2} \;=\; \frac{\beta(1 - \lambda_i) - 1}{\lambda_i}, \quad\quad (6.16)$$
+
+*provided* the right-hand side is non-negative — i.e., $\beta > 1/(1 - \lambda_i)$. Otherwise the directional minimum is at $\alpha_i^* = 0$ and direction $i$ is *inactive*.
+
+**Ansatz optimality.** Is the diagonal-in-eigenbasis form (6.14) optimal among all $A$? Yes — by the von Neumann trace inequality applied to the simultaneous diagonalization of $\Sigma_X$ and $\Sigma_{X \mid Y}$ in the $\Sigma_X$-inner-product basis $\{v_i\}$. See Chechik et al. 2005 (Lemma 3.2) for the detailed argument.
+
+**Summary.** The optimal Gaussian-IB encoder at $\beta$ is
+
+$$A^*_\beta \;=\; \mathrm{diag}(\alpha_1^*, \ldots, \alpha_d^*)\, V_d^\top, \qquad \alpha_i^{*\,2} \;=\; \max\!\biggl(0,\; \frac{\beta(1 - \lambda_i) - 1}{\lambda_i}\biggr), \quad\quad (6.17)$$
+
+where $V_d$ holds the $d$ smallest-eigenvalue eigenvectors of $M$. Each direction switches on at the critical
+
+$$\beta_{c,\, i} \;=\; \frac{1}{1 - \lambda_i}. \quad\quad (6.18)$$
+
+### 6.4 Reading the canonical-correlation spectrum
+
+The eigenvalues $\lambda_i$ of $M = \Sigma_{X \mid Y}\, \Sigma_X^{-1}$ measure the fraction of $X$'s variance *unexplained* by $Y$. $\lambda_i \to 1$ means direction $v_i$ is uncorrelated with $Y$; $\lambda_i \to 0$ means direction $v_i$ is strongly determined by $Y$.
+
+**Canonical correlations.** The eigenvalues of $M$ are related to the *canonical correlations* between $X$ and $Y$:
+
+$$\lambda_i \;=\; 1 - \rho_i^2, \quad\quad (6.19)$$
+
+where $\rho_1 \ge \rho_2 \ge \cdots$ are the canonical correlations (sorted descending), with $\rho_i \in [0, 1]$. Substituting into (6.18):
+
+$$\beta_{c,\, i} \;=\; \frac{1}{\rho_i^2}. \quad\quad (6.20)$$
+
+The IB phase transitions happen at the reciprocals of the squared canonical correlations, in order of decreasing $\rho_i$. The most-correlated direction activates first; $\rho_i = 0$ directions never activate. The IB algorithm finds *exactly* the CCA directions, in order of statistical informativeness — the same projections Hotelling 1936 derived from a correlation-maximization argument, here motivated by predictive compression instead.
+
+**The 4-D toy.** We build a synthetic 4-D jointly-Gaussian example with designed canonical correlations $\rho = (0.95,\, 0.70,\, 0.30,\, 0)$. Each $\rho_i$ encodes a different "informativeness regime." The phase-transition staircase comes out:
+
+- $\beta < 1.108$: trivial encoder, $T = \text{const}$.
+- $1.108 < \beta < 2.041$: one active direction $(\rho_1 = 0.95)$.
+- $2.041 < \beta < 11.111$: two active directions.
+- $\beta > 11.111$: three active directions; the fourth never activates.
+
+The total $I(X;Y) = -\tfrac{1}{2}\sum_i \log(1 - \rho_i^2) = 1.548$ nats. A Monte Carlo verification with $n = 50{,}000$ samples recovers the canonical correlations to within $|\hat\rho - \rho| \le 0.0023$.
+
+<Figure
+  src="/images/topics/information-bottleneck/06_gaussian_spectrum.png"
+  alt="Bar charts of ρ² vs λ side-by-side and β_c thresholds for the 4-D Gaussian toy"
+  caption="Left: bar chart of the canonical-correlation spectrum — ρ_i² and λ_i = 1 − ρ_i² side by side for the four designed correlations. Visual confirmation that ρ_i² + λ_i = 1. Right: horizontal bar chart of β_{c,i} = 1/ρ_i² on a log axis. Direction 1 activates at β_{c,1} ≈ 1.11; direction 2 at ≈ 2.04; direction 3 at ≈ 11.11. Direction 4 (ρ_4 = 0) has β_{c,4} = ∞ — never activates."
+/>
+
+## 7. Phase transitions on the Gaussian IB curve
+
+### 7.1 Critical β values determined by the spectrum
+
+From §6, the optimal Gaussian-IB encoder at parameter $\beta$ is given by (6.17) with thresholds $\beta_{c, i} = 1/(1 - \lambda_i) = 1/\rho_i^2$. Sorting eigenvalues ascending gives an ordered sequence
+
+$$\beta_{c,\, 1} \;<\; \beta_{c,\, 2} \;<\; \cdots \;<\; \beta_{c,\, r}, \quad\quad (7.1)$$
+
+where $r = \mathrm{rank}(\Sigma_{XY})$. Directions with $\rho_i = 0$ never activate.
+
+**The first phase transition is at $\beta_{c, 1}$, not at $\beta = 1$.** For general jointly Gaussian $(X, Y)$, the first transition is the inverse of the largest *squared canonical correlation*, which is in $(0, 1]$. So $\beta_{c, 1} \ge 1$ always, with equality iff $X$ and $Y$ share a perfectly correlated direction.
+
+**The activation order is by canonical correlation, not by the original coordinates.** The CCA directions $v_i$ are linear combinations of the original components of $X$; they need not align with any coordinate axis. The IB principle is *coordinate-free*: it sees only the second-moment structure of $(X, Y)$, expressed through $\rho_1, \rho_2, \ldots$.
+
+### 7.2 Closed-form curve and the C¹-but-not-C² distinction
+
+Plugging (6.17) into (6.7) uses two algebraic identities:
+
+$$1 + \alpha_i^{*\,2} \;=\; \frac{(\beta - 1)(1 - \lambda_i)}{\lambda_i}, \qquad 1 + \alpha_i^{*\,2}\, \lambda_i \;=\; \beta\,(1 - \lambda_i). \quad\quad (7.2)$$
+
+For each active direction $i$:
+
+$$I(X; T_\beta)_i \;=\; \tfrac{1}{2} \log \!\biggl(\frac{(\beta - 1)(1 - \lambda_i)}{\lambda_i}\biggr), \quad\quad (7.3)$$
+
+$$I(T_\beta; Y)_i \;=\; \tfrac{1}{2} \log \!\biggl(\frac{\beta - 1}{\beta\, \lambda_i}\biggr). \quad\quad (7.4)$$
+
+Summing over all active directions $i$ at parameter $\beta$:
+
+$$I(X; T_\beta) \;=\; \frac{1}{2} \sum_{i:\, \beta > \beta_{c,\, i}} \log\!\biggl(\frac{(\beta - 1)(1 - \lambda_i)}{\lambda_i}\biggr), \qquad I(T_\beta; Y) \;=\; \frac{1}{2} \sum_{i:\, \beta > \beta_{c,\, i}} \log\!\biggl(\frac{\beta - 1}{\beta\, \lambda_i}\biggr). \quad\quad (7.5)$$
+
+The IB curve is **piecewise analytic in $\beta$**: across each open interval $(\beta_{c,\, k},\, \beta_{c,\, k+1})$, exactly $k$ directions are active. At each phase transition, the activating direction contributes zero exactly at the threshold, so the curve is continuous in $\beta$.
+
+**The slope $dI(T;Y) / dI(X;T) = 1/\beta$ at every interior point.** Differentiating (7.3) and (7.4):
+
+$$\frac{dI(X; T_\beta)_i}{d\beta} \;=\; \frac{1}{2\,(\beta - 1)}, \qquad \frac{dI(T_\beta; Y)_i}{d\beta} \;=\; \frac{1}{2\,\beta\,(\beta - 1)}. \quad\quad (7.6)$$
+
+The ratio is $1/\beta$ per direction. Summing over $k$ active directions multiplies both by $k$, leaving the ratio unchanged. The IB curve has tangent slope $1/\beta$ at every interior point, recovering (2.5).
+
+**Curvature jumps at each phase transition.** From the chain rule and (7.6),
+
+$$\frac{d^2 I(T;Y)}{d I(X;T)^2} \;=\; -\frac{2\,(\beta - 1)}{k\,\beta^2}. \quad\quad (7.7)$$
+
+At each $\beta_{c,\, k+1}$, the curvature magnitude *decreases* by a factor of $k/(k+1)$ — the curve becomes *less curved* when a new direction activates. The IB curve is $C^1$ but not $C^2$: the tangent is everywhere continuous (slope $1/\beta$ on both sides of each transition), but the curvature jumps. This is why phase transitions are invisible in a smooth-looking plot of $I(T;Y)$ against $I(X;T)$ yet very visible in the $\beta$-parameterization: in the IB plane they show up only as a faint curvature change, while in the $\beta$-plot they are sharp kinks in the activation timing.
+
+**Saturation.** As $\beta \to \infty$, $I(T_\beta; Y)_i$ saturates at $-\tfrac{1}{2}\, \log \lambda_i$ per active direction. Total:
+
+$$\lim_{\beta \to \infty} I(T_\beta; Y) \;=\; -\frac{1}{2} \sum_{i:\, \rho_i > 0} \log \lambda_i \;=\; -\frac{1}{2} \log \frac{|\Sigma_{X \mid Y}|}{|\Sigma_X|} \;=\; I(X; Y), \quad\quad (7.8)$$
+
+recovering the DPI ceiling exactly.
+
+### 7.3 Dimension allocation: how each new direction turns on
+
+The closed form decomposes $I(X; T_\beta)$ and $I(T_\beta; Y)$ by canonical-correlation direction, and that decomposition is plotted as a stacked area in Figure 8.
+
+**Activation is staged.** Below $\beta_{c,\, 1}$, all bands are flat at zero. At each $\beta_{c,\, i}$, direction $i$'s band starts climbing from zero.
+
+**Within an active region, contributions are unequal.** For two simultaneously-active directions $i, j$:
+
+$$I(T;Y)_i \;-\; I(T;Y)_j \;=\; \tfrac{1}{2}\, \log(\lambda_j / \lambda_i),$$
+
+constant in $\beta$ once both are active. The IB doesn't rebalance — it adds new directions while preserving the existing ordering between them.
+
+**Most-correlated direction dominates.** For the 4-D toy:
+
+- Direction 1 $(\rho_1 = 0.95)$: saturation $-\tfrac{1}{2}\log(0.0975) \approx 1.164$ nats — 75.2% of $I(X;Y)$.
+- Direction 2 $(\rho_2 = 0.70)$: $\approx 0.337$ nats — 21.8%.
+- Direction 3 $(\rho_3 = 0.30)$: $\approx 0.047$ nats — 3.0%.
+- Direction 4: 0 (never activates).
+
+This is the Gaussian-IB analog of "dominant principal component" in PCA, with one substantive difference: PCA ranks directions by $X$-variance; Gaussian IB ranks them by predictiveness of $Y$.
+
+<Figure
+  src="/images/topics/information-bottleneck/08_dimension_allocation.png"
+  alt="Stacked-area decomposition of I(X;T) and I(T;Y) by CCA direction across the β sweep"
+  caption="Per-direction contributions to I(X;T) (left) and I(T;Y) (right) across the β sweep on the 4-D toy, as stacked-area plots. Each colored band is one canonical-correlation direction's contribution; phase-transition vertical lines mark β_{c,i}. The right panel's total saturates at I(X;Y) = 1.548 nats (dashed horizontal). The fourth direction's band is always empty — ρ_4 = 0 means β_{c,4} = ∞."
+/>
+
+<DimensionAllocationExplorer client:visible />
+
+### 7.4 Numerical verification on a 4-D toy
+
+We check (7.3)–(7.5) by Monte Carlo. Protocol:
+
+1. Sample $(X, Y)$ from the joint Gaussian designed in §6.4.
+2. For each $\beta \in \{1.5,\, 2.5,\, 5.0,\, 15.0\}$, construct $A^*_\beta$ and sample $T = A^*_\beta X + \xi$.
+3. Compute empirical $I(X; T)$ and $I(T; Y)$ using the Gaussian-MI formula on the empirical covariances.
+4. Compare to the closed-form values from (7.5).
+
+The four β land in different active-direction regimes — β = 1.5 (one active direction), 2.5 (two), 5.0 (two), 15.0 (three). Closed-form values, in nats:
+
+| β | I(X;T) (cf) | I(T;Y) (cf) |
+|---|---|---|
+| 1.5  | 0.7661 | 0.6146 |
+| 2.5  | 1.4981 | 0.9898 |
+| 5.0  | 2.4789 | 1.2775 |
+| 15.0 | 3.8944 | 1.4443 |
+
+At $n_{\text{MC}} = 20{,}000$ samples, agreement is within $O(1/\sqrt{n}) \approx 10^{-2}$ nats — confirming both the encoder construction and (7.5) at once. The notebook prints the side-by-side comparison; max-abs-difference across the four β is below $6 \times 10^{-3}$ nats.
+
+<Figure
+  src="/images/topics/information-bottleneck/07_gaussian_ib_curve.png"
+  alt="Closed-form Gaussian IB curve on the 4-D toy with phase-transition markers and MC verification"
+  caption="Left: closed-form Gaussian IB curve on the 4-D toy in the (I(X;T), I(T;Y)) plane. Three phase-transition operating points marked at β_{c,1}, β_{c,2}, β_{c,3}. The curve is C¹ — tangent continuous at each transition (slope 1/β everywhere) — but C² fails (curvature drops by factor k/(k+1) at each transition). Right: I(X;T) and I(T;Y) as functions of β on a log axis. Phase transitions appear as kinks in the β-parameterization."
+/>
+
+<GaussianIBCurveExplorer client:visible />
