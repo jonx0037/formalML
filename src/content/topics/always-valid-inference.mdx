@@ -296,6 +296,8 @@ import BettingGameExplorer from '../../components/viz/BettingGameExplorer.tsx';
 import EmpiricalBernsteinVsBetaMixture from '../../components/viz/EmpiricalBernsteinVsBetaMixture.tsx';
 import EProcessCatalogue from '../../components/viz/EProcessCatalogue.tsx';
 import CalibrationRoundTrip from '../../components/viz/CalibrationRoundTrip.tsx';
+import GROAndKellyExplorer from '../../components/viz/GROAndKellyExplorer.tsx';
+import UniversalPortfolioRegret from '../../components/viz/UniversalPortfolioRegret.tsx';
 
 ## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
 
@@ -1256,4 +1258,162 @@ Proof in Vovk and Wang (2021, §2). Examples include the *Vovk family* $f_\kappa
   src="/images/topics/always-valid-inference/14_vovk_wang_calibrators.png"
   alt="Two-panel: histogram of P = min(1, 1/E) from null e-values vs uniform reference; e-value distributions from Vovk-1/2, Vovk-1/3, Shafer-log calibrators applied to uniform null p-values."
   caption="Notebook Figure 14. The calibration round-trip. Left: P = min(1, 1/E) under H_0 has a distribution stochastically dominating Uniform(0,1) — valid p-values. Right: Vovk-1/2, Vovk-1/3, and Shafer-log calibrators applied to uniform p-values produce e-value distributions with E[E] = 1 (Theorem 8.9)."
+/>
+
+## 9. Growth-rate optimality, the Kelly connection, and universal e-processes
+
+§8 named the e-process and showed every anytime-valid test is one. But it didn't say which e-process is the *right* one. This section provides the optimality theory. The key concept is *growth-rate optimality* (GRO): the e-process that maximizes expected log-growth under the alternative is the *fastest-detecting* anytime-valid procedure. For simple-vs-simple, the GRO e-process is Wald's likelihood ratio, and its growth rate equals the KL divergence — closing the loop from §3.4 to a sharp theorem. The same criterion has a 70-year-old gambling interpretation (Kelly 1956). For composite alternatives, *universal e-processes* match the alternative's KL up to logarithmic regret, generalizing Cover's (1991) universal portfolios.
+
+### 9.1 GRO — definition and the optimization problem
+
+<TheoremBlock type="definition" number={9.1} title="Growth rate of an e-process">
+
+For e-process $(E_n)$ and alternative $H_1$,
+
+$$
+G_{H_1}(E) \;=\; \lim_{n \to \infty}\, \frac{1}{n}\, \mathbb{E}_{H_1}[\log E_n]. \qquad\qquad (9.1)
+$$
+
+</TheoremBlock>
+
+For i.i.d. data and multiplicative-product e-processes $E_n = \prod \xi_i$, $G_{H_1}(E) = \mathbb{E}_{H_1}[\log \xi_1]$.
+
+<TheoremBlock type="definition" number={9.2} title="Growth-rate-optimal e-process (Grünwald and Koolen 2022; Shafer 2021)">
+
+Let $\mathcal{E}_{H_0}$ denote the set of all e-processes for $H_0$. The *GRO e-process* for testing $H_0$ against $H_1$ is
+
+$$
+E^{\mathrm{GRO}} \;=\; \mathop{\mathrm{arg\,max}}_{E \in \mathcal{E}_{H_0}}\, G_{H_1}(E). \qquad\qquad (9.2)
+$$
+
+</TheoremBlock>
+
+Why log-growth, not raw growth? $\mathbb{E}_{H_1}[E_n]$ has no upper bound (aggressive bets give arbitrary mean growth). But by LLN, $E_n \approx \exp(n \cdot G_{H_1}(E))$ almost surely under $H_1$ — maximizing log-growth corresponds to maximizing the *typical* detection rate.
+
+### 9.2 KL divergence as the optimal growth rate
+
+<TheoremBlock type="theorem" number={9.3} title="GRO theorem for simple-vs-simple">
+
+For $H_0: f_0$, $H_1: f_1$ with $f_0, f_1$ mutually absolutely continuous, $\Lambda_n = \prod f_1(X_i)/f_0(X_i)$ is GRO with $G_{H_1}(\Lambda) = \mathrm{KL}(f_1 \,\|\, f_0)$. For any other e-process $E$, $G_{H_1}(E) \leq \mathrm{KL}(f_1 \,\|\, f_0)$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+**Step 1:** $\Lambda_n$ is an e-process by Lemma 3.1.
+
+**Step 2:** $\mathbb{E}_{H_1}[\log \Lambda_n] = n \cdot \mathbb{E}_{X \sim f_1}[\log(f_1/f_0)] = n \cdot \mathrm{KL}(f_1 \,\|\, f_0)$.
+
+**Step 3:** For any e-process $E$ with $\mathbb{E}_{H_0}[E_n] \leq 1$, by Jensen (concavity of $\log$):
+
+$$
+\mathbb{E}_{H_1}[\log(E_n / \Lambda_n)] \leq \log \mathbb{E}_{H_1}[E_n / \Lambda_n].
+$$
+
+The Radon–Nikodym derivative $d\mathbb{P}_{H_1}^{\otimes n} / d\mathbb{P}_{H_0}^{\otimes n} = \Lambda_n$, so
+
+$$
+\mathbb{E}_{H_1}[E_n / \Lambda_n] = \int (E_n / \Lambda_n) \prod f_1\, dx = \int E_n \prod f_0\, dx = \mathbb{E}_{H_0}[E_n] \leq 1.
+$$
+
+Hence $\mathbb{E}_{H_1}[\log E_n] \leq \mathbb{E}_{H_1}[\log \Lambda_n] = n \cdot \mathrm{KL}(f_1 \,\|\, f_0)$.
+
+</TheoremBlock>
+
+The same KL divergence governs *fixed-$n$* Chernoff exponents (Neyman–Pearson, Stein's lemma) and *anytime-valid* growth rates. The LR achieves both simultaneously.
+
+**Operational consequence.** Expected stopping time of the GRO rejection rule:
+
+$$
+\mathbb{E}_{H_1}[\tau] \;\approx\; \frac{\log(1/\alpha)}{\mathrm{KL}(f_1 \,\|\, f_0)}. \qquad\qquad (9.4)
+$$
+
+This is the §3.2 SPRT efficiency calculation reinterpreted: the SPRT achieves the minimum stopping time because the LR is GRO. The Wald–Wolfowitz theorem (§3.3) is the same statement in classical-statistics language.
+
+### 9.3 The betting interpretation
+
+Kelly's setup: a gambler with bankroll $W_0$. At each round, $K$ outcomes with true probabilities $p_i$ and "fair" odds $o_i = 1/q_i$. Per-round log-growth at portfolio $b$:
+
+$$
+\mathbb{E}[\log(W_1/W_0)] \;=\; \sum_i p_i \log(b_i / q_i) \;=\; \mathrm{KL}(p \,\|\, q) - \mathrm{KL}(p \,\|\, b). \qquad\qquad (9.5)
+$$
+
+Maximizing over $b$ gives the Kelly bet $b_i^\star = p_i$ — *bet proportional to true probability*.
+
+<TheoremBlock type="theorem" number={9.4} title="Kelly 1956 — optimal gambling growth rate">
+
+The Kelly bet $b^\star = p$ achieves $G^\star = \mathrm{KL}(p \,\|\, q)$, the maximum expected log-growth.
+
+</TheoremBlock>
+
+**The bridge.** Theorem 9.4 and Theorem 9.3 say the same thing in different languages:
+
+| Anytime-valid testing                             | Kelly gambling                       |
+| :------------------------------------------------ | :----------------------------------- |
+| Null $H_0: f_0$                                   | Bookmaker's odds $q$                 |
+| Alternative $H_1: f_1$                            | True probabilities $p$               |
+| e-process with $\mathbb{E}_{H_0}[E] \leq 1$       | Wealth process at fair odds          |
+| GRO e-process (LR)                                | Kelly bet ($b = p$)                  |
+| $G^\star = \mathrm{KL}(f_1 \,\|\, f_0)$           | $G^\star = \mathrm{KL}(p \,\|\, q)$  |
+
+*An e-process for $H_0$ is the wealth of a gambler placing fair bets at the odds implied by $H_0$.* This is the *test by betting* perspective of Shafer (2021) and the *game-theoretic probability* program of Shafer and Vovk (2019).
+
+**Empirical Kelly and the §6 betting wealth.** For Bernoulli with null $\mu_0$ and unknown alternative, the *exact* Kelly bet (solving (9.2) for simple Bernoulli alternatives) is
+
+$$
+\lambda^\star(\mu_1) \;=\; \frac{\mu_1 - \mu_0}{\mu_0 (1 - \mu_0)}, \qquad\qquad (9.7)
+$$
+
+with Kelly growth rate equal to the binary KL: $\mathrm{kl}(\mu_1 \,\|\, \mu_0)$. The empirical Kelly substitutes $\bar X_{n-1}$ for $\mu_1$ — the predictable plug-in rule (6.5).
+
+<TheoremBlock type="example" number={9} title="Bernoulli Kelly explicit">
+
+$\mu_0 = 0.5, \mu_1 = 0.6$: $\lambda^\star = 0.1/0.25 = 0.4$. Kelly rate $= \mathrm{kl}(0.6 \| 0.5) = 0.02014$. Expected detection time at $\alpha = 0.05$: $\log(20)/0.02014 \approx 149$ — matches §6 simulation.
+
+</TheoremBlock>
+
+**A note on over-betting.** The §9 simulation also evaluates $\lambda = 1.0$ (over-aggressive). For Bernoulli$(0.6)$ vs Bernoulli$(0.5)$, $\lambda = 1$ gives expected log-growth $0.6 \log 1.5 + 0.4 \log 0.5 \approx 0.243 - 0.277 = -0.034$ — **negative**. Over-betting beyond Kelly's optimum is strictly worse than not betting at all; this is the Kelly criterion's most counterintuitive consequence: under-aggressive ($\lambda < \lambda^\star$) only loses efficiency, but over-aggressive ($\lambda > 2\lambda^\star$ for symmetric Bernoulli) actually *loses wealth*.
+
+<GROAndKellyExplorer client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/15_gro_growth_race.png"
+  alt="Log e-process trajectories under H_1 for GRO Kelly LR (steep upward), empirical Kelly (slightly less steep), universal mixture (slightly less still), and the mis-tuned λ=1.0 bet (drifting DOWN)."
+  caption="Notebook Figure 15. GRO growth-rate race under H_1: Bern(0.6) testing μ = 0.5. GRO Kelly LR (red) hits the threshold fastest; empirical Kelly and universal mixture are close behind. The over-aggressive λ = 1.0 bet (orange) drifts DOWN under H_1 — over-betting is worse than not betting (notebook printout: G_emp = −0.0348 per step, −172.86% of GRO)."
+/>
+
+### 9.4 Universal portfolios as universal e-processes
+
+The GRO theorem assumes a known alternative. In practice the alternative is composite; no single e-process can be GRO simultaneously for every $f \in H_1$.
+
+Cover (1991) addressed this for portfolio selection. Cover's *universal portfolio* achieves $\log S_n^{\mathrm{Cover}} \geq \log S_n^\star - O(K \log n)$ uniformly over all return sequences.
+
+**Translation to e-processes.** Replace "stock returns" with "per-observation betting wealth ratios." The construction becomes the *Robbins-mixture e-process*
+
+$$
+E_n^{\mathrm{univ}} \;=\; \int_\Theta E_n(\theta)\, d\pi(\theta). \qquad\qquad (9.10)
+$$
+
+<TheoremBlock type="theorem" number={9.5} title="Universal e-process (mixture form, informal)">
+
+Under regularity conditions on $(\Theta, \pi)$, for any $\theta^\star \in \Theta$,
+
+$$
+\mathbb{E}_{H_1(\theta^\star)}[\log E_n^{\mathrm{univ}}] \;\geq\; \mathbb{E}_{H_1(\theta^\star)}[\log E_n(\theta^\star)] - O(\dim \Theta \cdot \log n). \qquad\qquad (9.11)
+$$
+
+</TheoremBlock>
+
+Proof via Laplace approximation. Full development in Cover (1991), Barron and Hengartner (1998), Grünwald and Koolen (2022, §4).
+
+**Structural significance.** Universal e-processes generalize *universal source codes* (Cover and Thomas 2006, ch. 13) from information theory. A universal source code achieves the entropy rate of any source in a class up to $O(\log n / n)$ overhead per symbol; a universal e-process achieves the KL-growth rate of any alternative in a class up to $O(\log n / n)$ overhead per observation. The MDL principle (Grünwald 2007) recognizes both as instances of one principle.
+
+For the practitioner: universal e-processes give *honest, anytime-valid inference* for composite alternatives without requiring parametric likelihood specification or prior. The cost is $O((\dim \Theta) \log n / n)$ regret — at $n = 10^6$ and $\dim \Theta = 1$, $\approx 14$ extra observations on top of the GRO oracle's expected $\log(1/\alpha)/\mathrm{KL}$.
+
+<UniversalPortfolioRegret client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/16_universal_portfolio_regret.png"
+  alt="Log-scale regret plot: log E_n^univ − log E_n(μ_1) growing like log n across three μ_1 values."
+  caption="Notebook Figure 16. Universal-portfolio regret on Bern(μ_1) streams testing H_0: μ = 0.5. The regret log E_n^univ − log E_n(μ_1) scales as O(log n) (Theorem 9.5) — modest cost for not knowing the alternative."
 />
