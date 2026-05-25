@@ -117,6 +117,24 @@ export function singleLambdaSGHW(
 }
 
 // -----------------------------------------------------------------------------
+// Sub-exponential confidence-sequence half-width (5.9):
+//   HW(n, ν, c, δ) = ν √(2 log(√n / δ) / n) + c log(1/δ) / n
+// The first term is the sub-Gaussian-like main; the second is the tail
+// correction. Setting c = 0 recovers sub-Gaussian. Used for Poisson, χ², etc.
+// -----------------------------------------------------------------------------
+
+export function subExponentialHW(
+  n: number,
+  nu: number,
+  c: number,
+  delta: number,
+): number {
+  const main = nu * Math.sqrt((2 * Math.log(Math.sqrt(n) / delta)) / n);
+  const corr = (c * Math.log(1 / delta)) / n;
+  return main + corr;
+}
+
+// -----------------------------------------------------------------------------
 // Gaussian-mixture (Robbins) confidence-sequence half-width — Theorem 4.2.
 //   HW_mix(n, ρ², σ, δ) = √( (2(1 + n ρ² σ²) / (n² ρ²)) · log(√(1 + n ρ² σ²) / δ) )
 // -----------------------------------------------------------------------------
@@ -140,4 +158,114 @@ export function gaussianMixtureHW(
 export function lilHW(n: number, sigma = 1): number {
   if (n < 16) return 0;
   return sigma * Math.sqrt((2 * Math.log(Math.log(n))) / n);
+}
+
+// -----------------------------------------------------------------------------
+// Binary KL: kl(p || q) = p log(p/q) + (1-p) log((1-p)/(1-q)).
+// Returns NaN if p or q are outside (0, 1).
+// -----------------------------------------------------------------------------
+
+export function binaryKL(p: number, q: number): number {
+  if (p <= 0 || p >= 1 || q <= 0 || q >= 1) return NaN;
+  return p * Math.log(p / q) + (1 - p) * Math.log((1 - p) / (1 - q));
+}
+
+// -----------------------------------------------------------------------------
+// log Γ(x) — Lanczos approximation, accurate to ~1e-14 for x > 0.5.
+// Reflection for x < 0.5: log Γ(x) = log(π) − log(sin(πx)) − log Γ(1 − x).
+// -----------------------------------------------------------------------------
+
+export function lgamma(x: number): number {
+  if (x < 0.5) {
+    // reflection
+    return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  }
+  // Lanczos coefficients (g = 7, n = 9)
+  const g = 7;
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  const xm = x - 1;
+  let a = c[0];
+  for (let i = 1; i < 9; i++) a += c[i] / (xm + i);
+  const t = xm + g + 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (xm + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+// log B(a, b) = log Γ(a) + log Γ(b) − log Γ(a+b).
+export function betaln(a: number, b: number): number {
+  return lgamma(a) + lgamma(b) - lgamma(a + b);
+}
+
+// -----------------------------------------------------------------------------
+// Beta-mixture e-value for the sub-Bernoulli construction at hypothesized
+// mean μ, given S_n = sum and n trials. The Beta(a, b) prior on the
+// Bernoulli parameter induces the marginal-likelihood ratio (5.14):
+//   log E_n = log B(a+S_n, b+n−S_n) − log B(a, b) − S_n log μ − (n−S_n) log(1−μ)
+// Uniform prior is the default (a = b = 1).
+// -----------------------------------------------------------------------------
+
+export function logBetaMixtureEvalue(
+  S_n: number,
+  n: number,
+  mu: number,
+  a = 1,
+  b = 1,
+): number {
+  if (mu <= 0 || mu >= 1) return NaN;
+  const num = betaln(a + S_n, b + n - S_n) - betaln(a, b);
+  const den = S_n * Math.log(mu) + (n - S_n) * Math.log(1 - mu);
+  return num - den;
+}
+
+// -----------------------------------------------------------------------------
+// PrPl-EB asymptotic half-width — √(2 σ̂² log(2/δ) / n). Used as a comparator
+// to the sub-Bernoulli Beta-mixture in §6.
+// -----------------------------------------------------------------------------
+
+export function prplEbHW(n: number, sigmaHatSq: number, delta: number): number {
+  return Math.sqrt((2 * sigmaHatSq * Math.log(2 / delta)) / n);
+}
+
+// -----------------------------------------------------------------------------
+// Sub-Bernoulli Beta-mixture CS endpoints at expected mean μ_obs and δ.
+// Returns [lo, hi] such that logBetaMixtureEvalue(n*μ_obs, n, μ') ≤ log(1/δ)
+// for μ' ∈ [lo, hi]. Uses bisection. For visualization at "expected
+// trajectory" S_n = n·μ_obs.
+// -----------------------------------------------------------------------------
+
+export function subBernoulliCSEndpoints(
+  n: number,
+  muObs: number,
+  delta: number,
+  a = 1,
+  b = 1,
+  tol = 1e-5,
+): [number, number] {
+  const S = n * muObs;
+  const logT = Math.log(1 / delta);
+  // f(μ) = logBetaMixtureEvalue(S, n, μ) − logT. f(μ_obs) is minimum
+  // (negative); endpoints are where f(μ) = 0.
+  const f = (mu: number): number => logBetaMixtureEvalue(S, n, mu, a, b) - logT;
+  // bisect on (0, μ_obs)
+  let lo = 1e-6;
+  let hi = muObs;
+  if (f(lo) <= 0 && f(hi) <= 0) return [0, 1]; // CS spans all — no real bound
+  while (hi - lo > tol) {
+    const mid = 0.5 * (lo + hi);
+    if (f(mid) >= 0) lo = mid;
+    else hi = mid;
+  }
+  const left = 0.5 * (lo + hi);
+  lo = muObs;
+  hi = 1 - 1e-6;
+  while (hi - lo > tol) {
+    const mid = 0.5 * (lo + hi);
+    if (f(mid) >= 0) hi = mid;
+    else lo = mid;
+  }
+  const right = 0.5 * (lo + hi);
+  return [left, right];
 }

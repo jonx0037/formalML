@@ -290,6 +290,8 @@ import SPRTTrajectoryExplorer from '../../components/viz/SPRTTrajectoryExplorer.
 import SPRTvsFixedNEfficiency from '../../components/viz/SPRTvsFixedNEfficiency.tsx';
 import SingleLambdaVsMixtureEnvelope from '../../components/viz/SingleLambdaVsMixtureEnvelope.tsx';
 import MixtureCSFixesPeeking from '../../components/viz/MixtureCSFixesPeeking.tsx';
+import BoundaryAtlasBrowser from '../../components/viz/BoundaryAtlasBrowser.tsx';
+import EmpiricalCoverageAcrossClasses from '../../components/viz/EmpiricalCoverageAcrossClasses.tsx';
 
 ## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
 
@@ -823,3 +825,141 @@ For practical horizons ($n \leq 10^6$), the Gaussian-mixture's $\sqrt{2}$–$3\t
   alt="Side-by-side empirical false-rejection rate vs n_max — the fixed-n band climbs past 60%, while the Gaussian-mixture CS stays flat below δ = 0.05."
   caption="Notebook Figure 8. The mixture CS closes the loop on §1's peeking demonstration. Under the same aggressive-analyst stopping rule, the fixed-n band's empirical false-rejection rate climbs past 60% by n_max = 10,000 (left, anytime-invalid), while the Gaussian-mixture CS (4.4) stays flat at ≈ 0.03 — below the nominal δ = 0.05 for the full horizon (right, anytime-valid)."
 />
+
+## 5. The Howard–Ramdas–McAuliffe–Sekhon boundary atlas
+
+§§2–4 built one confidence sequence — the sub-Gaussian Robbins mixture. The systematic observation of Howard, Ramdas, McAuliffe, and Sekhon (2020), the paper that systematized the modern field, is that *every fixed-$n$ Chernoff bound has a time-uniform analogue*. This section catalogues the three boundary classes that cover essentially every applied use of AVI: *sub-Gaussian*, *sub-exponential*, *sub-Bernoulli*.
+
+### 5.1 The Wald–Doob exponential supermartingale
+
+For i.i.d. $X_i$ with $\mathbb{E}[X_1] = \mu$, define the centered CGF $\psi(\lambda) = \log \mathbb{E}[e^{\lambda(X_1 - \mu)}]$. The *Wald–Doob exponential martingale* is
+
+$$
+M_n(\lambda) \;=\; \exp\!\left(\lambda (S_n - n\mu) - n\, \psi(\lambda)\right), \qquad M_0(\lambda) = 1. \qquad\qquad (5.2)
+$$
+
+<TheoremBlock type="lemma" number={5.1} title="Sub-class supermartingale">
+
+Let $\tilde\psi: I \to \mathbb{R}$ upper-bound $\psi$ on an interval $I \ni 0$: $\psi(\lambda) \leq \tilde\psi(\lambda)$. Then $\tilde M_n(\lambda) = \exp(\lambda(S_n - n\mu) - n \tilde\psi(\lambda))$ is a nonnegative supermartingale with $\mathbb{E}[\tilde M_n(\lambda)] \leq 1$ for every $\lambda \in I$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+Nonnegativity is immediate. One-step ratio:
+
+$$
+\mathbb{E}[\tilde M_{n+1}/\tilde M_n \mid \mathcal{F}_n] = \mathbb{E}[e^{\lambda(X_{n+1} - \mu)}] \cdot e^{-\tilde\psi(\lambda)} = e^{\psi(\lambda) - \tilde\psi(\lambda)} \leq 1
+$$
+
+since $\psi(\lambda) \leq \tilde\psi(\lambda)$.
+
+</TheoremBlock>
+
+**Recipe.** Pick a distribution class → choose $\tilde\psi$ → build $\tilde M_n(\lambda)$ → mix over $\lambda$ → apply Ville → invert.
+
+### 5.2 Sub-Gaussian boundaries
+
+For sub-Gaussian variance proxy $\sigma^2$, $\tilde\psi_{\mathrm{sG}}(\lambda) = \lambda^2 \sigma^2 / 2$ for all $\lambda \in \mathbb{R}$. The single-$\lambda$ boundary is a *straight line* in the $(n, S_n)$ plane with intercept $\log(1/\delta)/\lambda$ and slope $\lambda \sigma^2 / 2$. The Robbins mixture (4.4) sits along the lower envelope of all these lines, at the cost of a $\sqrt{\log n / \log\log n}$ excess over LIL. This is the *baseline* anytime-valid boundary.
+
+### 5.3 Sub-exponential boundaries via Bernstein tilting
+
+Sub-Gaussian excludes Poisson, $\chi^2$, exponential. The next-most-permissive class is *sub-exponential*.
+
+<TheoremBlock type="definition" number={5.2} title="Sub-exponential">
+
+A random variable $X$ with mean $\mu$ is *sub-exponential with parameters $(\nu^2, c)$* if
+
+$$
+\psi_X(\lambda) \;\leq\; \tilde\psi_{\mathrm{sE}}(\lambda) \;:=\; \frac{\lambda^2 \nu^2}{2 \,(1 - c |\lambda|)} \qquad \text{for all } |\lambda| < 1/c. \qquad\qquad (5.7)
+$$
+
+</TheoremBlock>
+
+$\nu^2$ is the variance scale, $c$ controls exponential-tail behavior. Setting $c = 0$ recovers sub-Gaussian.
+
+**Examples.** Centered Poisson$(\lambda)$ is sub-exponential with $\nu^2 = \lambda, c = 1$; centered $\chi^2_d$ has $\nu^2 = 4d, c = 4$; centered Exponential(1) has $\nu^2 = 1, c = 1$.
+
+The time-uniform Bennett-mixture CS has asymptotic form
+
+$$
+C_n^{\mathrm{sE-mix}} \;=\; \bar X_n \;\pm\; \underbrace{\nu \sqrt{\frac{2 \log(\sqrt{n}/\delta)}{n}}}_{\text{sub-Gaussian-like main}} \;\pm\; \underbrace{\frac{c \log(1/\delta)}{n}}_{\text{tail correction}}. \qquad\qquad (5.9)
+$$
+
+For $n \geq 100 \cdot c^2 / \nu^2$, the tail correction is negligible.
+
+<TheoremBlock type="example" number={5} title="Poisson CS">
+
+$X_i \overset{\text{iid}}{\sim} \mathrm{Poisson}(\mu)$: $\nu^2 = \mu, c = 1$. $C_n \approx \bar X_n \pm \sqrt{2 \bar X_n \log(\sqrt{n}/\delta)/n} \pm \log(1/\delta)/n$ — the anytime-valid analogue of the Wald rate-ratio CI.
+
+</TheoremBlock>
+
+### 5.4 Sub-Bernoulli boundaries via the binary KL function
+
+For bounded $X \in [0, 1]$ with mean $\mu$, the *Bernoulli MGF* gives a tighter bound than worst-case sub-Gaussian $\sigma^2 = 1/4$.
+
+<TheoremBlock type="lemma" number={5.3} title="Bernoulli MGF bound">
+
+If $X \in [0,1]$ with $\mathbb{E}[X] = \mu$,
+
+$$
+\mathbb{E}\!\left[e^{\lambda X}\right] \;\leq\; (1 - \mu) + \mu e^\lambda, \qquad\qquad (5.10)
+$$
+
+with equality iff $X$ is Bernoulli$(\mu)$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+$f(x) = e^{\lambda x}$ is convex. For $x \in [0,1]$, $e^{\lambda x} \leq (1-x) e^0 + x e^\lambda$. Take expectation.
+
+</TheoremBlock>
+
+Taking logs: $\psi_X(\lambda) \leq \log((1-\mu) + \mu e^\lambda) - \lambda \mu$. The fixed-$n$ Chernoff bound under this MGF is $\mathbb{P}(\bar X_n \geq \mu + \epsilon) \leq \exp(-n \cdot \mathrm{kl}(\mu + \epsilon \,\|\, \mu))$ where $\mathrm{kl}(p \| q) = p \log(p/q) + (1-p)\log((1-p)/(1-q))$ is the *binary KL function*. This is *tighter* than sub-Gaussian Hoeffding (which uses $\sigma^2 = 1/4$); the asymmetry of binary KL near $\mu = 0$ or $\mu = 1$ captures the rare-event regime correctly.
+
+The Wald–Doob supermartingale is $\tilde M_n^{\mathrm{sB}}(\lambda, \mu) = e^{\lambda S_n} / [(1-\mu) + \mu e^\lambda]^n$, a martingale under Bernoulli$(\mu)$. Mixing in the Bayesian-updated $p$-parametrization with $p \sim \mathrm{Beta}(a, b)$ gives the *Beta-binomial marginal likelihood ratio*
+
+$$
+M_n^{\mathrm{sB-mix}}(\mu \,;\, a, b) \;=\; \frac{B(a + S_n, b + n - S_n) / B(a, b)}{\mu^{S_n} (1 - \mu)^{n - S_n}}. \qquad\qquad (5.14)
+$$
+
+The CS is the set of $\mu$ where $M_n^{\mathrm{sB-mix}}(\mu) < 1/\delta$ — *implicit*, computed by bisection.
+
+<TheoremBlock type="example" number={6} title="A/B test for conversion lift">
+
+$n = 1000, \bar X_n = 0.05, \delta = 0.05$: sub-Gaussian Hoeffding gives $\pm 0.043$ (relative half-width 86%, useless). Sub-Bernoulli mixture CS gives $\pm 0.018$ (relative half-width 36%). The sub-Bernoulli adapts to $\mu \approx 0.05$ via the asymmetric KL.
+
+</TheoremBlock>
+
+<BoundaryAtlasBrowser client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/09_boundary_atlas.png"
+  alt="Log-log plot of fixed-n, sub-Gaussian, sub-exponential (Poisson), and sub-Bernoulli boundary half-widths, with LIL reference."
+  caption="Notebook Figure 9. The boundary atlas — fixed-n Hoeffding (dotted gray, anytime-invalid), sub-Gaussian Gaussian-mixture (4.4), sub-exponential Bennett mixture (5.9) for Poisson(1), and sub-Bernoulli Beta-mixture (5.14) at μ = 0.05, all at δ = 0.05. The LIL rate σ√(2 log log n / n) is the asymptotic floor."
+/>
+
+### 5.5 Numerical comparison with fixed-$n$ Hoeffding
+
+Setup: $X_i \overset{\text{iid}}{\sim} \mathcal{N}(0, 1)$, $\delta = 0.05$, $\rho^2 = 1$. Fixed-$n$ Hoeffding: $\sqrt{2 \log(2/\delta)/n}$.
+
+| $n$ | Fixed-$n$ Hoeffding | Sub-Gaussian mix (4.4) | Ratio | Sub-Bern. mix @ $\bar X = 0.05$ | Ratio |
+|------:|-----:|-----:|-----:|-----:|-----:|
+| $10^2$ | $0.272$ | $0.327$ | $1.20\times$ | $0.106$ | $0.39\times$ |
+| $10^3$ | $0.086$ | $0.114$ | $1.32\times$ | $0.029$ | $0.34\times$ |
+| $10^4$ | $0.027$ | $0.039$ | $1.44\times$ | $0.009$ | $0.34\times$ |
+| $10^5$ | $0.0086$ | $0.0132$ | $1.54\times$ | $0.003$ | $0.35\times$ |
+| $10^6$ | $0.0027$ | $0.00445$ | $1.64\times$ | $0.001$ | $0.36\times$ |
+
+The sub-Gaussian mixture is $1.20$–$1.64\times$ wider than fixed-$n$ Hoeffding — the cost of anytime-validity. Sample-size cost is $\approx 1.5$–$3\times$. The sub-Bernoulli at low conversion rates is *tighter* than fixed-$n$ Hoeffding via the binary KL.
+
+<EmpiricalCoverageAcrossClasses client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/10_empirical_coverage.png"
+  alt="Three-panel empirical false-rejection rate under aggressive stopping for sub-Gaussian, Poisson, and Bernoulli streams; fixed-n climbs high, mixture stays below δ."
+  caption="Notebook Figure 10. Empirical coverage across three distribution classes. The fixed-n band's false-rejection rate climbs above δ under aggressive stopping in all three regimes; the corresponding mixture CS (sub-Gaussian, Bennett, Beta-mixture) keeps it bounded by δ uniformly."
+/>
+
+**Practitioner verdict.** For bounded $[0,1]$ data, **sub-Bernoulli by default**. For sub-Gaussian data, **Robbins mixture (4.4)**. For Poisson/$\chi^2$/exponential, **Bennett mixture (5.9)** with $c$ correction (negligible for $n \gg c^2/\nu^2$).
