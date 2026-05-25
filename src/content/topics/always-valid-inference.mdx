@@ -286,6 +286,8 @@ import OptionalStoppingFailureExplorer from '../../components/viz/OptionalStoppi
 import LILPreviewBands from '../../components/viz/LILPreviewBands.tsx';
 import VilleInequalityExplorer from '../../components/viz/VilleInequalityExplorer.tsx';
 import MixingTrickPreview from '../../components/viz/MixingTrickPreview.tsx';
+import SPRTTrajectoryExplorer from '../../components/viz/SPRTTrajectoryExplorer.tsx';
+import SPRTvsFixedNEfficiency from '../../components/viz/SPRTvsFixedNEfficiency.tsx';
 
 ## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
 
@@ -590,3 +592,145 @@ We close by validating the recipe numerically. Under $H_0: \mu = 0$, $M_n^{\math
   alt="Empirical sup-crossing probability vs n under H_0 (stays below δ, validating Ville) and under H_1 (climbs to 1, demonstrating power)."
   caption="Notebook Figure 4. Validating Ville's recipe — the empirical sup-crossing probability stays below δ = 0.05 under H_0 (left, the type-I error guarantee) and climbs to ≈ 1 under H_1 (right, the power story)."
 />
+
+## 3. The sequential probability ratio test (SPRT)
+
+§2's recipe is more easily appreciated through its first historical instance: Abraham Wald's *sequential probability ratio test*, developed at Columbia's Statistical Research Group in 1943 for wartime munitions inspection and declassified in Wald (1945, 1947). The SPRT is the prototype anytime-valid procedure — its statistic is a martingale under the null, Ville's inequality gives the type-I error guarantee, and Wald's identity gives the expected stopping time. The whole modern theory of e-processes is, structurally, the SPRT's likelihood ratio reinterpreted as a betting wealth and generalized beyond simple-vs-simple testing.
+
+### 3.1 Wald's likelihood-ratio martingale
+
+The SPRT addresses the *simple-vs-simple* hypothesis test $H_0: X_i \sim f_0$ vs $H_1: X_i \sim f_1$ for known densities. Wald's central object is the *likelihood ratio*
+
+$$
+\Lambda_n \;=\; \prod_{i=1}^n \frac{f_1(X_i)}{f_0(X_i)}, \qquad \Lambda_0 = 1. \qquad\qquad (3.1)
+$$
+
+Read $\Lambda_n$ as the betting odds in favor of $H_1$ after seeing $X_1, \ldots, X_n$. The logarithm turns this into a sum, $\log \Lambda_n = \sum Z_i$ with $Z_i = \log(f_1(X_i)/f_0(X_i))$.
+
+<TheoremBlock type="lemma" number={3.1} title="Likelihood-ratio martingale">
+
+Let $f_0, f_1$ be densities with respect to $\mu$, with $f_0 > 0$ on the support of $f_1$. For i.i.d. $X_i \sim f_0$ and $\mathcal{F}_n = \sigma(X_1, \ldots, X_n)$, $(\Lambda_n)_{n \geq 0}$ is a nonnegative martingale with $\mathbb{E}_{H_0}[\Lambda_n] = 1$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+Nonnegativity is automatic. For the martingale property,
+
+$$
+\mathbb{E}_{H_0}[\Lambda_{n+1} \mid \mathcal{F}_n] = \Lambda_n \cdot \int \frac{f_1(x)}{f_0(x)} f_0(x)\, d\mu(x) = \Lambda_n \cdot \int f_1(x)\, d\mu(x) = \Lambda_n.
+$$
+
+Induction with $\mathbb{E}_{H_0}[\Lambda_0] = 1$ closes the argument.
+
+</TheoremBlock>
+
+That this is a *martingale* (equality, not inequality) is the cleanest possible setup for the time-uniform lift.
+
+<TheoremBlock type="example" number={3} title="Gaussian mean shift">
+
+For $f_0 = \mathcal{N}(\mu_0, \sigma^2)$ and $f_1 = \mathcal{N}(\mu_1, \sigma^2)$,
+
+$$
+Z_i \;=\; \frac{\mu_1 - \mu_0}{\sigma^2}\!\left(X_i - \frac{\mu_0 + \mu_1}{2}\right). \qquad\qquad (3.2)
+$$
+
+Under $H_0$, $\mathbb{E}_{H_0}[Z_i] = -\mathrm{KL}(f_0 \,\|\, f_1) < 0$. Under $H_1$, $\mathbb{E}_{H_1}[Z_i] = +\mathrm{KL}(f_1 \,\|\, f_0) > 0$.
+
+</TheoremBlock>
+
+The SPRT chooses two thresholds $0 < B < 1 < A$ and defines
+
+$$
+\tau \;=\; \inf\{\, n \geq 1 : \Lambda_n \geq A \text{ or } \Lambda_n \leq B \,\}, \qquad\qquad (3.3)
+$$
+
+with decision: reject $H_0$ if $\Lambda_\tau \geq A$, accept $H_0$ if $\Lambda_\tau \leq B$.
+
+<SPRTTrajectoryExplorer client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/05_sprt_trajectories.png"
+  alt="Log likelihood ratio trajectories under H_0 (blue, drifting down) and H_1 (red, drifting up), with horizontal boundaries at log A and log B; stopped paths marked with terminal dots."
+  caption="Notebook Figure 5. SPRT trajectories under both hypotheses (μ_0 = 0, μ_1 = 0.3, σ = 1, α = β = 0.05) — log Λ_n drifts in opposite directions under H_0 and H_1, hitting the Wald boundaries log A ≈ 2.94 and log B ≈ -2.94 at the stopping time τ."
+/>
+
+### 3.2 Boundary-crossing analysis and Wald's identity
+
+**Type-I error.** By Lemma 3.1 and Ville (Theorem 2.3),
+
+$$
+\alpha \;=\; \mathbb{P}_{H_0}(\text{reject}) \;\leq\; \mathbb{P}_{H_0}\!\left(\sup_n \Lambda_n \geq A\right) \;\leq\; \frac{1}{A}. \qquad\qquad (3.4)
+$$
+
+**Type-II error.** The dual process $1/\Lambda_n$ is a nonnegative martingale under $H_1$. Ville again:
+
+$$
+\beta \;=\; \mathbb{P}_{H_1}(\text{accept}) \;\leq\; B. \qquad\qquad (3.5)
+$$
+
+Setting $A = 1/\alpha$ and $B = \beta$ controls both errors. Wald's tighter approximation:
+
+$$
+A^{\text{Wald}} = (1 - \beta)/\alpha, \qquad B^{\text{Wald}} = \beta/(1 - \alpha). \qquad\qquad (3.6)
+$$
+
+<TheoremBlock type="theorem" number={3.2} title="Wald's identity">
+
+Let $Z_1, Z_2, \ldots$ be i.i.d. with $\mathbb{E}|Z_1| < \infty$, and $\tau$ a stopping time with $\mathbb{E}[\tau] < \infty$. Then
+
+$$
+\mathbb{E}\!\left[\sum_{i=1}^\tau Z_i\right] \;=\; \mathbb{E}[\tau] \cdot \mathbb{E}[Z_1]. \qquad\qquad (3.7)
+$$
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+The centered random walk $M_n = S_n - n \mathbb{E}[Z_1]$ is a martingale. Apply Doob's optional-stopping theorem to $\tau \wedge N$: $\mathbb{E}[S_{\tau \wedge N}] = \mathbb{E}[\tau \wedge N] \cdot \mathbb{E}[Z_1]$. Under the integrability hypothesis, dominated convergence extends to $N \to \infty$.
+
+</TheoremBlock>
+
+Under no-overshoot, $\log \Lambda_\tau \approx \alpha \log A + (1-\alpha) \log B$ under $H_0$, giving
+
+$$
+\mathbb{E}_{H_0}[\tau] \;\approx\; \frac{\alpha \log A + (1-\alpha)\log B}{-\mathrm{KL}(f_0 \,\|\, f_1)}, \qquad\qquad (3.8)
+$$
+
+and analogously $\mathbb{E}_{H_1}[\tau] \approx [(1-\beta) \log A + \beta \log B]/\mathrm{KL}(f_1 \,\|\, f_0)$.
+
+<TheoremBlock type="example" number={4} title="Gaussian SPRT — the efficiency win">
+
+$\mu_0 = 0, \mu_1 = 0.3, \sigma = 1, \alpha = \beta = 0.05$: $\mathrm{KL} = 0.045$, $\log A \approx 2.94$, $\log B \approx -2.94$. Plugging in, Wald's identity gives $\mathbb{E}_{H_0}[\tau] \approx 59$, with empirical mean $\approx 64$ across $B = 5{,}000$ Monte Carlo replicates. The fixed-$n$ Neyman–Pearson test at the same operating point needs $n_{\text{NP}} \approx 120$ — the SPRT detects in about half the samples.
+
+</TheoremBlock>
+
+<SPRTvsFixedNEfficiency client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/06_sprt_efficiency.png"
+  alt="Bar chart comparing SPRT expected stopping time E[τ] against the fixed-n Neyman–Pearson sample size n_NP across effect sizes; SPRT is consistently ~50% of n_NP."
+  caption="Notebook Figure 6. The Wald–Wolfowitz efficiency win — SPRT's expected stopping time is uniformly ~50% of the fixed-n Neyman–Pearson sample size across effect sizes from |μ_1 − μ_0|/σ = 0.1 to 1.0, at α = β = 0.05."
+/>
+
+### 3.3 SPRT minimax optimality (Wald–Wolfowitz)
+
+<TheoremBlock type="theorem" number={3.3} title="Wald–Wolfowitz (1948)">
+
+Among all sequential tests with type-I error $\leq \alpha$, type-II error $\leq \beta$, and finite expected stopping times, the SPRT achieves the minimum $\mathbb{E}_{H_0}[\tau]$ and $\mathbb{E}_{H_1}[\tau]$ *simultaneously*.
+
+</TheoremBlock>
+
+*Proof sketch.* Place a Bayes prior $\pi$ on $\{H_0, H_1\}$ plus per-observation sampling cost $c$. The Bayes-optimal test, by dynamic programming on the posterior $\pi_n = \pi \Lambda_n / (\pi \Lambda_n + (1-\pi))$, depends only on whether $\pi_n$ exits a fixed interval — exactly the SPRT structure. Every SPRT corresponds to a Bayes-optimal test for some prior. Full development in Wald and Wolfowitz (1948), Lehmann and Romano (2005, ch. 4), Siegmund (1985, ch. II).
+
+The simultaneous-minimization claim is remarkable: no procedure does better under one hypothesis without doing worse under the other. The 50% efficiency win of Example 4 is the *best possible* gain.
+
+**Caveat about scope.** Theorem 3.3 covers simple-vs-simple. For composite alternatives, no single LR adapts to all — Robbins's mixtures (§4) and the betting / predictable-mixture constructions (§6) recover anytime-validity at the price of giving up the simple-vs-simple optimum.
+
+### 3.4 SPRT as the prototype e-process
+
+Under $H_0$, $\Lambda_n$ is a nonnegative martingale with $\mathbb{E}_{H_0}[\Lambda_n] = 1$. So $\mathbb{P}_{H_0}(\sup_n \Lambda_n \geq 1/\alpha) \leq \alpha$ by Ville. *The rejection rule "reject $H_0$ when $\Lambda_n \geq 1/\alpha$" is anytime-valid at level $\alpha$ — for every stopping rule.*
+
+This is the definition of an *e-process* (formalized in §8). The likelihood ratio is the prototype: a nonnegative process with unit expectation under the null, applied via Ville. Every modern anytime-valid construction inherits this structure.
+
+Under $H_1$, $\log \Lambda_n$ has linear positive drift $\mathrm{KL}(f_1 \,\|\, f_0)$ — the *largest possible* growth rate among nonnegative $H_0$-martingales. This is the *growth-rate-optimal* (GRO) property of Grünwald and Koolen (2022), formalized in §9. The Kelly-criterion betting interpretation (§6, §9) makes the identification precise: $\Lambda_n$ is the wealth of a gambler who knows $f_1/f_0$ exactly and bets log-optimally.
