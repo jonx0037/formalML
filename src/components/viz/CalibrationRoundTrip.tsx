@@ -7,11 +7,12 @@ import { mulberry32 } from './shared/always-valid-inference';
 // -----------------------------------------------------------------------------
 // Viz 8.2 — Calibration round-trip.
 //
-// (left) histogram of P = min(1, 1/E) from "betting-wealth-like" e-values
-//        under H_0 — looks ≥ Uniform(0,1) (valid p-values, Lemma 8.7).
-// (right) Histograms of three p-to-e calibrators applied to uniform p-values:
-//        Vovk-κ for two κ values, plus Shafer logarithmic. Means should
-//        equal 1 (Theorem 8.9).
+// (left)  histogram of P = min(1, 1/E) from null e-values (Vovk-κ applied to
+//         Uniform(0,1)) — Lemma 8.7 says this is a valid p-value, so it
+//         stochastically dominates Uniform(0,1).
+// (right) histograms of three p-to-e calibrators applied to the same uniform
+//         null p-values: Vovk-κ (slider), Vovk-1/3, Shafer logarithmic. All
+//         three have E[E] = 1 under H_0 (Theorem 8.9) — shown in the readout.
 // -----------------------------------------------------------------------------
 
 const SM_BREAKPOINT = 640;
@@ -34,21 +35,36 @@ function shaferCalibrator(p: number): number {
   return (1 - p + p * lp) / (p * lp * lp);
 }
 
-function simulate(kappa: number): { pSamples: number[]; eVovk: number[]; eVovk2: number[]; eShafer: number[]; meanVovk: number; meanVovk2: number; meanShafer: number } {
+interface CalibSim {
+  pRoundTrip: number[]; // P = min(1, 1/E) for e ~ Vovk-κ(Uniform)
+  eVovk: number[];
+  eVovk2: number[];
+  eShafer: number[];
+  meanVovk: number;
+  meanVovk2: number;
+  meanShafer: number;
+}
+
+function simulate(kappa: number): CalibSim {
   const rng = mulberry32(20261301);
   // Generate uniform null p-values
   const pSamples: number[] = [];
   for (let i = 0; i < N_SAMPLES; i++) pSamples.push(rng());
 
+  // Apply each calibrator to the same uniform sample (Theorem 8.9 round-trip).
   const eVovk: number[] = pSamples.map((p) => Math.min(vovkCalibrator(p, kappa), 1e6));
   const eVovk2: number[] = pSamples.map((p) => Math.min(vovkCalibrator(p, 1 / 3), 1e6));
   const eShafer: number[] = pSamples.map((p) => Math.min(shaferCalibrator(p), 1e6));
+
+  // Round-trip: take e ~ Vovk-κ(Uniform), invert via Lemma 8.7.
+  // P = min(1, 1/E) should look ≥ Uniform(0, 1) (valid p-value).
+  const pRoundTrip: number[] = eVovk.map((e) => Math.min(1, 1 / Math.max(e, 1e-12)));
 
   const meanVovk = eVovk.reduce((s, v) => s + v, 0) / N_SAMPLES;
   const meanVovk2 = eVovk2.reduce((s, v) => s + v, 0) / N_SAMPLES;
   const meanShafer = eShafer.reduce((s, v) => s + v, 0) / N_SAMPLES;
 
-  return { pSamples, eVovk, eVovk2, eShafer, meanVovk, meanVovk2, meanShafer };
+  return { pRoundTrip, eVovk, eVovk2, eShafer, meanVovk, meanVovk2, meanShafer };
 }
 
 function renderHistogram(
@@ -105,20 +121,70 @@ export default function CalibrationRoundTrip() {
   const panelW = isMobile ? w : Math.floor(w / 2) - 8;
 
   const leftRef = useD3<SVGSVGElement>(
-    (svg) => renderHistogram(svg, panelW, sim.pSamples, [0, 1], 'p ~ Uniform(0,1)', 'p-value histogram (null)'),
-    [sim, panelW],
-  );
-  const rightRef = useD3<SVGSVGElement>(
     (svg) =>
       renderHistogram(
         svg,
         panelW,
-        sim.eVovk,
-        [0, 5],
-        'e = f(p)',
-        `Vovk-κ calibrator (κ=${kappa.toFixed(2)}): E[e] ≈ ${sim.meanVovk.toFixed(3)}`,
-        [{ x: 1, label: 'E = 1', color: 'var(--color-accent)' }],
+        sim.pRoundTrip,
+        [0, 1],
+        'P = min(1, 1/E) — Lemma 8.7 round-trip',
+        `e→p round-trip from Vovk-κ e-values (κ=${kappa.toFixed(2)})`,
       ),
+    [sim, panelW, kappa],
+  );
+  // Plot three calibrator e-value distributions stacked on the right panel:
+  // Vovk-κ (slider), Vovk-1/3, Shafer logarithmic. All target E[E] = 1.
+  const rightRef = useD3<SVGSVGElement>(
+    (svg) => {
+      svg.selectAll('*').remove();
+      const innerW = panelW - MARGIN.left - MARGIN.right;
+      const innerH = PANEL_H - MARGIN.top - MARGIN.bottom;
+      if (innerW <= 0) return;
+      const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
+      const xScale = d3.scaleLinear().domain([0, 5]).range([0, innerW]).clamp(true);
+      const bins = (data: number[], color: string) => {
+        const filtered = data.filter((v) => v >= 0 && v <= 5);
+        return { bins: d3.bin().domain([0, 5]).thresholds(30)(filtered), color };
+      };
+      const series = [
+        bins(sim.eVovk, 'var(--color-accent)'),
+        bins(sim.eVovk2, '#7c3aed'),
+        bins(sim.eShafer, '#b45309'),
+      ];
+      const yMax = Math.max(...series.flatMap((s) => s.bins.map((b) => b.length))) * 1.1;
+      const yScale = d3.scaleLinear().domain([0, yMax]).range([innerH, 0]);
+      g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(xScale).ticks(5)).selectAll('text').style('fill', 'var(--color-text)');
+      g.append('g').call(d3.axisLeft(yScale).ticks(4)).selectAll('text').style('fill', 'var(--color-text)');
+
+      // Draw each calibrator's histogram as outlined steps (semi-transparent
+      // fills overlap legibly).
+      series.forEach((s) => {
+        g.append('g')
+          .selectAll('rect')
+          .data(s.bins)
+          .join('rect')
+          .attr('x', (d) => xScale(d.x0 ?? 0) + 1)
+          .attr('y', (d) => yScale(d.length))
+          .attr('width', (d) => Math.max(xScale(d.x1 ?? 0) - xScale(d.x0 ?? 0) - 1, 0))
+          .attr('height', (d) => innerH - yScale(d.length))
+          .style('fill', s.color)
+          .style('opacity', 0.45);
+      });
+
+      // E[E] = 1 reference
+      g.append('line').attr('x1', xScale(1)).attr('x2', xScale(1)).attr('y1', 0).attr('y2', innerH).style('stroke', 'var(--color-text)').attr('stroke-width', 1.2).attr('stroke-dasharray', '4 3');
+      g.append('text').attr('x', xScale(1) + 3).attr('y', 10).style('font-family', 'var(--font-mono)').style('font-size', '10px').style('fill', 'var(--color-text)').text('E[E] = 1');
+
+      // Legend
+      const labels = [`Vovk-κ (κ=${kappa.toFixed(2)})`, 'Vovk-1/3', 'Shafer log'];
+      series.forEach((s, i) => {
+        g.append('rect').attr('x', innerW - 130).attr('y', 12 + i * 14).attr('width', 12).attr('height', 12).style('fill', s.color).style('opacity', 0.55);
+        g.append('text').attr('x', innerW - 114).attr('y', 22 + i * 14).style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', 'var(--color-text)').text(labels[i]);
+      });
+
+      g.append('text').attr('x', 0).attr('y', -10).style('fill', 'var(--color-text)').style('font-family', 'var(--font-sans)').style('font-size', '12px').style('font-weight', 600).text('p→e: three calibrators on uniform null p-values');
+      g.append('text').attr('x', innerW / 2).attr('y', innerH + 28).attr('text-anchor', 'middle').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-sans)').style('font-size', '11px').text('e = f(p)');
+    },
     [sim, panelW, kappa],
   );
 

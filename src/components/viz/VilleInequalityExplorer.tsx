@@ -18,7 +18,6 @@ import { mulberry32, gaussianFrom } from './shared/always-valid-inference';
 // Annotation: λ* = μ_1/σ² and the GRO log-growth rate μ_1²/(2σ²).
 // -----------------------------------------------------------------------------
 
-const SM_BREAKPOINT = 640;
 const PANEL_H = 260;
 const MARGIN = { top: 28, right: 14, bottom: 38, left: 56 };
 const B_REPLICATES = 800;
@@ -104,7 +103,6 @@ export default function VilleInequalityExplorer() {
     [committedLambda, committedMu, committedNmax, delta],
   );
 
-  const isMobile = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
   const panelW = Math.max(280, Math.min(containerWidth || 720, 820));
 
   // KL log-growth at the current committed (λ, μ_1, σ=1):

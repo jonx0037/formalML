@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
@@ -69,7 +69,6 @@ const COLORS = ['#356fa3', '#0f6e56', '#c44545'];
 
 export default function UniversalPortfolioRegret() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const [delta, setDelta] = useState(0.05); // unused on plot but exposed
 
   const sim = useMemo(() => simulate(), []);
   const w = Math.max(280, Math.min(containerWidth || 720, 820));
@@ -83,8 +82,13 @@ export default function UniversalPortfolioRegret() {
       const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
       const xScale = d3.scaleLog().domain([1, N_MAX]).range([0, innerW]);
-      const allY = sim.regretByMu.flatMap((s) => s.regret);
-      const yMax = Math.max(...allY);
+      // d3.extent for safety — flattening 3 series of 5000 = 15k entries
+      // exceeds the Math.max(...) stack-overflow horizon (gemini PR #113).
+      let yMax = -Infinity;
+      for (const s of sim.regretByMu) {
+        for (const v of s.regret) if (v > yMax) yMax = v;
+      }
+      if (yMax === -Infinity) yMax = 1;
       const yScale = d3.scaleLinear().domain([0, yMax * 1.05]).range([innerH, 0]);
 
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(xScale).ticks(5, '~s')).selectAll('text').style('fill', 'var(--color-text)');

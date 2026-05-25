@@ -9,8 +9,16 @@ import { mulberry32, gaussianFrom } from './shared/always-valid-inference';
 //
 // Generate m = 5 correlated null p-values via Gaussian copula at pairwise
 // correlation ρ ∈ [0, 1], apply Vovk-1/2 calibrator to get e-values, then
-// plot empirical E_{H_0}[E^prod] and E_{H_0}[E^AM] vs ρ. The product climbs
-// past 1 once ρ > 0; the arithmetic mean stays at 1 (Theorem 10.1).
+// plot the empirical *truncated* mean of E^prod and the empirical mean of
+// E^AM vs ρ. The arithmetic mean stays at 1 (Theorem 10.1); the product's
+// truncated mean climbs past 1 once ρ > 0, demonstrating that product
+// merging is invalid without independence.
+//
+// Truncation: each replicate's E^prod is winsorized at 10⁶ before averaging
+// (otherwise ρ ≈ 1 produces 10¹⁵+ outliers that overwhelm B = 3000 samples'
+// MC noise). The truncation only biases DOWN the displayed curve — without
+// it, the upward trend is even more dramatic. Labels reflect "trunc. mean"
+// per copilot's PR #113 comment.
 // -----------------------------------------------------------------------------
 
 const M = 5;
@@ -118,7 +126,7 @@ export default function ProductBreaksUnderCorrelation() {
 
       // Legend
       g.append('text').attr('x', innerW - 4).attr('y', 12).attr('text-anchor', 'end').style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', COLOR_AM).text('E_{H_0}[E^AM]');
-      g.append('text').attr('x', innerW - 4).attr('y', 26).attr('text-anchor', 'end').style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', COLOR_PROD).text('E_{H_0}[E^prod] (m=5, Vovk-½)');
+      g.append('text').attr('x', innerW - 4).attr('y', 26).attr('text-anchor', 'end').style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', COLOR_PROD).text('trunc. mean of E^prod (m=5, Vovk-½, winsorized at 10⁶)');
 
       g.append('text').attr('x', innerW / 2).attr('y', innerH + 30).attr('text-anchor', 'middle').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-sans)').style('font-size', '11px').text('pairwise correlation ρ (Gaussian copula)');
       g.append('text').attr('x', -innerH / 2).attr('y', -44).attr('text-anchor', 'middle').attr('transform', 'rotate(-90)').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-sans)').style('font-size', '11px').text('E_{H_0}[merger] (log scale)');
@@ -138,7 +146,7 @@ export default function ProductBreaksUnderCorrelation() {
         </label>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--color-text-secondary)', padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: '4px' }}>
           At ρ = {highlightRho.toFixed(2)}: E[E^AM] = <strong style={{ color: COLOR_AM }}>{amAtRho.toFixed(3)}</strong>, E[E^prod] = <strong style={{ color: COLOR_PROD }}>{prodAtRho.toFixed(3)}</strong>.
-          {' '}AM ≤ 1 always (Theorem 10.1); product invalid for ρ &gt; 0.
+          {' '}AM ≤ 1 always (Theorem 10.1); the product's truncated mean already exceeds 1 for ρ &gt; 0 even after winsorization at 10⁶.
         </div>
       </div>
       <svg ref={svgRef} width={w} height={PANEL_H} style={{ maxWidth: '100%', display: 'block' }} />

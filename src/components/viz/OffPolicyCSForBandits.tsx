@@ -9,10 +9,12 @@ import { mulberry32 } from './shared/always-valid-inference';
 //
 // 5-arm Thompson bandit on Bernoulli rewards. Target policy = greedy
 // argmax. Behavior policy = Thompson posterior sample (changes with history).
-// CS via predictable betting wealth (11.2).
+// CS for V(π) via predictable betting wealth (11.2).
 //
-// Two panels: left = Thompson posterior arm-pick probabilities over time;
-// right = per-arm off-policy CS for V(π) values.
+// Two panels: left = cumulative per-arm pick frequency under Thompson
+// (a running average, NOT the per-step posterior probability — the
+// posterior would require integrating the Thompson sample which we don't
+// store). Right = off-policy CS for the target value V(π) via (11.2).
 // -----------------------------------------------------------------------------
 
 const SM_BREAKPOINT = 640;
@@ -64,23 +66,23 @@ function simulate(temp: number): Sim {
     let bestArm = 0;
     for (let a = 1; a < N_ARMS; a++) if (samples[a] > samples[bestArm]) bestArm = a;
 
-    // Target = greedy argmax
+    // Target policy π = greedy argmax (deterministic — picks the arm with
+    // highest true reward, which we know but the agent doesn't).
     const targetArm = TRUE_REWARDS.indexOf(Math.max(...TRUE_REWARDS));
-    // Behavior probability for picking bestArm:
-    // Approx: 1/N_ARMS + small bias toward Thompson-best (simplification).
-    // For valid IS weights we need µ(A|X) ≠ 0; use ε-greedy mix.
+    // Behavior policy µ = ε-greedy on the Thompson sample. P(µ picks bestArm)
+    // is (1 − ε) + ε/K; every other arm has P = ε/K.
     const eps = 0.1;
-    const muBest = (1 - eps) * 1 + eps / N_ARMS; // P(behavior picks bestArm)
-    const muOther = eps / N_ARMS;
-    const muProb = bestArm === targetArm ? 1 : 0; // π(target | bestArm == target?)
-    // Simplify: take reward, weight is π/µ where π = δ_{targetArm}, µ uses ε-greedy
+    const muBest = (1 - eps) + eps / N_ARMS;
+    // Sample reward
     const a = bestArm;
     const R = rng() < TRUE_REWARDS[a] ? 1 : 0;
     if (R === 1) S[a]++;
     else F[a]++;
 
     if (a === targetArm) {
-      const rho = 1 / (a === targetArm ? muBest : muOther); // IS weight
+      // π(a|x) = 1 when a = π(x), else 0. The IS weight π/µ is non-zero only
+      // when behavior agrees with target — and µ(bestArm=targetArm) = muBest.
+      const rho = 1 / muBest;
       const lambda = 0.05;
       logK_lo += Math.log1p(lambda * (rho * R - (TARGET_V - 0.05)));
       logK_hi += Math.log1p(-lambda * (rho * R - (TARGET_V + 0.05)));
@@ -158,7 +160,7 @@ export default function OffPolicyCSForBandits() {
         g.append('path').datum(sim.pickRates[a]).attr('d', line as never).style('fill', 'none').style('stroke', ARM_COLORS[a]).attr('stroke-width', 1.6);
         g.append('text').attr('x', innerW - 4).attr('y', 12 + a * 14).attr('text-anchor', 'end').style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', ARM_COLORS[a]).text(`arm ${a} (CTR=${TRUE_REWARDS[a]})`);
       }
-      g.append('text').attr('x', 0).attr('y', -10).style('fill', 'var(--color-text)').style('font-family', 'var(--font-sans)').style('font-size', '12px').style('font-weight', 600).text('Thompson sampling pick rate per arm');
+      g.append('text').attr('x', 0).attr('y', -10).style('fill', 'var(--color-text)').style('font-family', 'var(--font-sans)').style('font-size', '12px').style('font-weight', 600).text('Cumulative pick frequency per arm (Thompson behavior policy)');
     },
     [sim, panelW],
   );

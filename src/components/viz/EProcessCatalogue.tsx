@@ -78,13 +78,11 @@ function compute(muTrue: number, mu0: number, muMisspec: number, delta: number):
 
     // Fixed-n p-value under H_0: μ = μ_0
     // Normal approximation: z = (bar X_n − μ_0) / √(μ_0(1−μ_0)/n).
-    // Two-sided p = 2 (1 − Φ(|z|)).
+    // Two-sided p = 2 (1 − Φ(|z|)) = 1 − erf(|z|/√2).
     const meanN = S / n;
     const se = Math.sqrt(Math.max(mu0 * (1 - mu0) / n, 1e-12));
     const z = (meanN - mu0) / se;
-    // 1 − Φ(|z|) approximation: erfc(|z|/√2) / 2
-    const erfcAbsZ = 1 - erf(Math.abs(z) / Math.SQRT2);
-    const pTwoSided = Math.max(Math.min(erfcAbsZ, 1), 1e-300);
+    const pTwoSided = Math.max(Math.min(1 - erf(Math.abs(z) / Math.SQRT2), 1), 1e-300);
     const neglogP = -Math.log(pTwoSided);
 
     ng.push(n);
@@ -98,7 +96,7 @@ function compute(muTrue: number, mu0: number, muMisspec: number, delta: number):
   return { ng, walLR_correct, walLR_misspec, betaMix, prplEB, fixedNeglogP };
 }
 
-// Abramowitz–Stegun erf approximation (max error ~1.5e-7).
+// Abramowitz–Stegun erf approximation (max error ~1.5e-7). Standard 5-term form.
 function erf(x: number): number {
   const sign = x < 0 ? -1 : 1;
   const ax = Math.abs(x);
@@ -109,10 +107,8 @@ function erf(x: number): number {
   const a5 = 1.061405429;
   const p = 0.3275911;
   const t = 1 / (1 + p * ax);
-  const y = 1 - ((((a5 * t + a4) * t) + a3) * t + a2) * t * t * Math.exp(-ax * ax) - ((a5 * t + a4) * t * t * t * Math.exp(-ax * ax));
-  // simpler closed form:
-  const yClean = 1 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-ax * ax);
-  return sign * yClean;
+  const y = 1 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-ax * ax);
+  return sign * y;
 }
 
 export default function EProcessCatalogue() {
@@ -136,9 +132,20 @@ export default function EProcessCatalogue() {
       const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
       const xScale = d3.scaleLog().domain([1, N_MAX]).range([0, innerW]);
-      const allY = [...data.walLR_correct, ...data.walLR_misspec, ...data.betaMix, ...data.prplEB, ...data.fixedNeglogP];
-      const yMax = Math.max(Math.max(...allY), logThr + 2);
-      const yMin = Math.min(Math.min(...allY), -2);
+      // Per-series d3.extent — flattening 5 × 1000 = 5k entries with the
+      // Math.max(...) spread skirts the JS engine call-stack horizon
+      // (gemini PR #113).
+      let minVal = Infinity;
+      let maxVal = -Infinity;
+      const seriesArrays = [data.walLR_correct, data.walLR_misspec, data.betaMix, data.prplEB, data.fixedNeglogP];
+      for (const arr of seriesArrays) {
+        for (const v of arr) {
+          if (v < minVal) minVal = v;
+          if (v > maxVal) maxVal = v;
+        }
+      }
+      const yMax = Math.max(maxVal === -Infinity ? 0 : maxVal, logThr + 2);
+      const yMin = Math.min(minVal === Infinity ? 0 : minVal, -2);
       const yScale = d3.scaleLinear().domain([yMin, yMax]).range([innerH, 0]);
 
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(xScale).ticks(4, '~s')).selectAll('text').style('fill', 'var(--color-text)');

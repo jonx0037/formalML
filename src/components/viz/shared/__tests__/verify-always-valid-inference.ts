@@ -19,6 +19,7 @@ import {
   binaryKL,
   betaln,
   gaussianMixtureHW,
+  inverseNormalCDF,
   lgamma,
   lilHW,
   prplEbHW,
@@ -137,6 +138,28 @@ const [lo2, hi2] = subBernoulliCSEndpoints(10000, 0.05, 0.05);
 const hwSB2 = Math.max(0.05 - lo2, hi2 - 0.05);
 ok(hwSB2 > 0.003 && hwSB2 < 0.015, `subBernoulliCS shrinks at n=10^4, μ=0.05 (got ${hwSB2.toFixed(4)})`);
 ok(hwSB2 < hwSB, 'subBernoulliCS half-width is monotone-decreasing in n');
+
+// Edge case: at μ_obs = 0 the lower endpoint is forced to 0 but the upper
+// endpoint must still be bisected. Previously this returned [0, 1]
+// (gemini-code-assist flagged this on PR #113). Verify the upper endpoint
+// is a real finite bound, not 1.
+const [loZero, hiZero] = subBernoulliCSEndpoints(50, 0, 0.05);
+ok(loZero === 0, 'subBernoulliCS lower endpoint at μ_obs = 0 is 0');
+ok(hiZero > 0.01 && hiZero < 0.3, `subBernoulliCS upper endpoint at μ_obs = 0, n = 50 is in (0.01, 0.3) (got ${hiZero.toFixed(4)})`);
+
+// Mirror case at μ_obs ≈ 1: lower bound bisected, upper forced to 1.
+const [loOne, hiOne] = subBernoulliCSEndpoints(50, 1, 0.05);
+ok(hiOne === 1, 'subBernoulliCS upper endpoint at μ_obs = 1 is 1');
+ok(loOne > 0.7 && loOne < 0.99, `subBernoulliCS lower endpoint at μ_obs = 1, n = 50 is in (0.7, 0.99) (got ${loOne.toFixed(4)})`);
+
+// -----------------------------------------------------------------------------
+// 12. inverseNormalCDF — Acklam quantile. Cross-check with zHalf identity:
+// zHalf(δ) returns z s.t. P(Z >= z) = δ/2, i.e., Φ(z) = 1 − δ/2.
+// So inverseNormalCDF(1 − δ/2) === zHalf(δ).
+// -----------------------------------------------------------------------------
+approxEq(inverseNormalCDF(0.975), zHalf(0.05), 1e-10, 'inverseNormalCDF(0.975) = zHalf(0.05)');
+approxEq(inverseNormalCDF(0.95), zHalf(0.10), 1e-10, 'inverseNormalCDF(0.95) = zHalf(0.10)');
+approxEq(inverseNormalCDF(0.5), 0, 1e-10, 'inverseNormalCDF(0.5) = 0');
 
 // -----------------------------------------------------------------------------
 // 9. PrPl-EB asymptotic half-width — at σ̂² = 0.0475 (true Bernoulli(0.05)),

@@ -52,12 +52,19 @@ function simulate(mu1: number, nmax: number): Sim {
   const sumEmp = new Float64Array(nmax);
   const sumMistuned = new Float64Array(nmax);
   const sumUniv = new Float64Array(nmax);
+  // Universal mixture grid: 21 evenly spaced λ values in [−1, 1].
+  // Per-stream we maintain an array of log E_n(λ_i), then mix by log-sum-exp
+  // at each n. (Previously this was a single scalar — gemini-code-assist
+  // flagged the math as incorrect on PR #113.)
+  const UNIV_GRID_SIZE = 21;
+  const univGrid: number[] = [];
+  for (let i = 0; i < UNIV_GRID_SIZE; i++) univGrid.push(-1 + (2 * i) / (UNIV_GRID_SIZE - 1));
 
   for (let b = 0; b < N_PATHS; b++) {
     let logK = 0;
     let logE = 0;
     let logM = 0;
-    let logU = 0;
+    const logUniv = new Float64Array(UNIV_GRID_SIZE); // log E_n(λ_i), one per grid point
     let running = 0;
     let runningSq = 0;
     for (let n = 1; n <= nmax; n++) {
@@ -67,22 +74,23 @@ function simulate(mu1: number, nmax: number): Sim {
       // Kelly
       logK += Math.log1p(lambdaKelly * (x - MU0));
       // Empirical Kelly
-      const lambdaEmp = n > 1 ? clip((running - x) / (n - 1) - MU0, 0.5) * 4 : 0; // crude empirical
+      const lambdaEmp = n > 1 ? clip((running - x) / (n - 1) - MU0, 0.5) * 4 : 0;
       logE += Math.log1p(clip(lambdaEmp, 1.0) * (x - MU0));
       // Mis-tuned
       logM += Math.log1p(lambdaMistuned * (x - MU0));
-      // Universal: average over 21-point grid of λ in [-1, 1]; we just use
-      // logsumexp over λ-grid of log K_n(λ) − log 21.
-      // For demo, approximate via the average of three sample λs at
-      // {0.3 λ_kelly, λ_kelly, 0.7 λ_kelly}
-      const samples = [0.3 * lambdaKelly, lambdaKelly, 0.7 * lambdaKelly];
-      const incs = samples.map((s) => logU + Math.log1p(s * (x - MU0)));
-      const m = Math.max(...incs);
-      logU = m + Math.log(incs.reduce((s, v) => s + Math.exp(v - m), 0) / 3);
+      // Universal: per-grid increment, then log-sum-exp across the grid.
+      for (let i = 0; i < UNIV_GRID_SIZE; i++) {
+        logUniv[i] += Math.log1p(univGrid[i] * (x - MU0));
+      }
+      let lseMax = -Infinity;
+      for (let i = 0; i < UNIV_GRID_SIZE; i++) if (logUniv[i] > lseMax) lseMax = logUniv[i];
+      let lseSum = 0;
+      for (let i = 0; i < UNIV_GRID_SIZE; i++) lseSum += Math.exp(logUniv[i] - lseMax);
+      const logUnivAtN = lseMax + Math.log(lseSum / UNIV_GRID_SIZE);
       sumKelly[n - 1] += logK;
       sumEmp[n - 1] += logE;
       sumMistuned[n - 1] += logM;
-      sumUniv[n - 1] += logU;
+      sumUniv[n - 1] += logUnivAtN;
     }
   }
   const ng = Array.from({ length: nmax }, (_, i) => i + 1);
@@ -120,9 +128,17 @@ export default function GROAndKellyExplorer() {
       const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
       const xScale = d3.scaleLog().domain([1, nmax]).range([0, innerW]);
-      const allY = [...sim.kelly, ...sim.emp, ...sim.mistuned, ...sim.univ];
-      const yMin = Math.min(...allY) - 1;
-      const yMax = Math.max(...allY) + 1;
+      // Use d3.extent across each series instead of spread on a flattened
+      // array — at nmax = 2000 the flattened array has 8k entries, close to
+      // the Math.max(...) stack-overflow horizon (gemini PR #113).
+      const ext = sim.kelly
+        .concat(sim.emp, sim.mistuned, sim.univ)
+        .reduce<[number, number]>(
+          (acc, v) => [Math.min(acc[0], v), Math.max(acc[1], v)],
+          [Infinity, -Infinity],
+        );
+      const yMin = (ext[0] === Infinity ? 0 : ext[0]) - 1;
+      const yMax = (ext[1] === -Infinity ? 0 : ext[1]) + 1;
       const yScale = d3.scaleLinear().domain([yMin, yMax]).range([innerH, 0]);
 
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(xScale).ticks(5, '~s')).selectAll('text').style('fill', 'var(--color-text)');
