@@ -300,6 +300,9 @@ import GROAndKellyExplorer from '../../components/viz/GROAndKellyExplorer.tsx';
 import UniversalPortfolioRegret from '../../components/viz/UniversalPortfolioRegret.tsx';
 import MergingCalculator from '../../components/viz/MergingCalculator.tsx';
 import ProductBreaksUnderCorrelation from '../../components/viz/ProductBreaksUnderCorrelation.tsx';
+import ABTestDashboardMockup from '../../components/viz/ABTestDashboardMockup.tsx';
+import OffPolicyCSForBandits from '../../components/viz/OffPolicyCSForBandits.tsx';
+import BoundaryEvaluationRuntimeBenchmark from '../../components/viz/BoundaryEvaluationRuntimeBenchmark.tsx';
 
 ## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
 
@@ -1517,3 +1520,239 @@ Bonferroni is right when (i) tests are fixed-sample, (ii) $m$ is small, (iii) ex
 **Bandit / off-policy evaluation.** Adaptive sampling breaks standard CIs. Per-arm e-process CSs (Karampatziakis–Mineiro–Ramdas 2021) merged via AM give a global anytime-valid CS for the policy value.
 
 **Unifying message.** e-values let you merge across studies, segments, and time without paying the Bonferroni penalty.
+
+## 11. ML applications — A/B testing, bandits, and adaptive data
+
+This section closes the loop to practice. Every modern A/B-testing platform ships an anytime-valid CS as the default stopping criterion. Every contextual-bandit deployment that needs honest evaluation uses off-policy e-processes. The shift, between roughly 2017 and 2022, replaced the fixed-horizon Wald test that had been standard for two decades.
+
+### 11.1 Modern experimentation platforms
+
+The commercial A/B-testing market has standardized on anytime-valid methodology:
+
+| Platform | Anytime-valid construction | Reference |
+| :--- | :--- | :--- |
+| **Eppo** | Gaussian-mixture CS + PrPl-EB for binary | Eppo methodology docs |
+| **Statsig** | Sequential probability ratio test + mixture CS | Howard et al. (2020) |
+| **Optimizely "Stats Engine"** | Mixture sequential probability ratio test (mSPRT) | Johari, Pekelis, Walsh (2015); Johari et al. (2017) KDD |
+| **Microsoft EXP** | Sequential tests + mixture CS, internal use | Deng et al. (2016) DSAA |
+| **LinkedIn Experimentation** | mSPRT for binary, Gaussian-mixture for continuous | Xu et al. (2015) KDD |
+| **Netflix** | Anytime-valid linear models / sequential causal | Lindon, Ham, Tingley, Bojinov (2022) |
+| **VWO** | Bayesian sequential testing (posterior-CS) | VWO methodology docs |
+
+All seven platforms ran fixed-horizon $t$-tests as default in 2015. By 2022 all seven had transitioned to some form of anytime-valid reporting. The shift was driven by practitioner demand: analysts want to *look at the dashboard daily and make calls in real time*, and the fixed-horizon framework offered no honest way to do that. Johari, Koomen, Pekelis, and Walsh (2017) "Peeking at A/B tests" made the §1 peeking failure explicit.
+
+### 11.2 Anytime-valid stopping criteria in practice
+
+The operational pattern across platforms looks essentially identical.
+
+**Step 1 — Specify the metric and inferential target.** Lift in revenue per user, conversion rate, retention, etc. $H_0: \mathrm{lift} = 0$ (two-sided) or $H_0: \mathrm{lift} \leq 0$ (one-sided).
+
+**Step 2 — Choose the CS construction.** Continuous: sub-Gaussian Robbins mixture (4.4). Counts: sub-exponential Bennett mixture (5.9). Binary: sub-Bernoulli Beta-mixture (5.14) for $\bar X \approx 0.5$, PrPl-EB betting CS (6.6) for boundary means.
+
+**Step 3 — Pick the level and mixing parameter.** $\delta \in \{0.05, 0.01\}$. Mixing $\rho$ tuned for expected horizon $n^\star$.
+
+**Step 4 — Run and monitor.** CS updates as observations stream in. Three actions: continue, stop-and-ship (CS excludes null favorably), stop-and-abandon (CS narrow enough to declare practical equivalence).
+
+The crucial property: **the stopping rule does not need to be pre-specified.** Whether the analyst stops at $n = 100$ or $n = 10{,}000$, the type-I error guarantee holds.
+
+**Quantifying the cost.** §5.5 showed $\sim 1.5$–$3 \times$ sample-size cost vs fixed-$n$ at the same nominal width. Operationally: an experiment that "would have" reached $80\%$ power at $n = 5{,}000$ with fixed-horizon typically needs $n \in [7{,}500, 15{,}000]$ with anytime-valid CS *if run to the planned horizon*. Savings come from *not having to* — strong effects detected at a fraction of $n^\star$. Platforms report 20–40% reduction in average experiment duration vs fixed-horizon baseline.
+
+<ABTestDashboardMockup client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/18_ab_dashboard.png"
+  alt="Stylized A/B-test dashboard mockup showing lift estimate + anytime-valid CS over time, with the fixed-n band overlay for contrast."
+  caption="Notebook Figure 18. A stylized rendering of a modern experimentation platform's dashboard: lift estimate with the PrPl-EB anytime-valid CS (blue) vs the fixed-n band (red dashed). The platform's analysts can stop at any point — the CS guarantee survives."
+/>
+
+### 11.3 Off-policy confidence sequences for bandits
+
+Modern recommendation systems use *contextual bandits* with adaptive sampling — action probabilities depend on history. Standard i.i.d. analysis breaks.
+
+The standard OPE estimator:
+
+$$
+\hat V_n(\pi) \;=\; \frac{1}{n} \sum_{i=1}^n \rho_i R_i, \qquad \rho_i \;=\; \frac{\pi(A_i \mid X_i)}{\mu(A_i \mid X_i)}. \qquad\qquad (11.1)
+$$
+
+Karampatziakis, Mineiro, and Ramdas (2021) constructed anytime-valid CSs for $V(\pi)$:
+
+$$
+K_n^{\mathrm{OPE}}(V_0; \{\lambda_i\}) \;=\; \prod_{i=1}^n \left[1 + \lambda_i \cdot (\rho_i R_i - V_0)\right]. \qquad\qquad (11.2)
+$$
+
+By Theorem 6.4 + Ville, this is anytime-valid. **Works under arbitrary adaptive behavior policies $\mu$** — the behavior policy can depend on the entire history.
+
+<TheoremBlock type="example" number={11} title="Continuous-monitoring contextual bandit">
+
+News-recommendation system with 5-arm Thompson sampling bandit. Product team wants anytime-valid 95% CS for each arm's expected CTR. Using (11.2) with importance weights from Thompson's posterior, CS updates at each impression. After 100,000 impressions, CSs of width ≈ 0.02 around each arm — honest decisions about which arms to retire. The bandit's exploration probabilities changing in real time *does not* invalidate the CSs.
+
+</TheoremBlock>
+
+<OffPolicyCSForBandits client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/19_offpolicy_cs.png"
+  alt="Two-panel: Thompson sampling posteriors on left; per-arm off-policy CS via (11.2) on right."
+  caption="Notebook Figure 19. Off-policy CS for adaptive bandits — Thompson sampling generates arm-selection probabilities that depend on history (left), but the (11.2) off-policy CS (right) remains anytime-valid regardless. The bandit retires arms based on CSs that exclude the target value V_0."
+/>
+
+### 11.4 Causal-effect-under-policy-shift extensions
+
+Bibaut, Petersen, Vlassis, Dimakopoulou, and van der Laan (2021) "Sequential causal inference in a single world of connected units" handles time-evolving populations: treatments assigned over time (possibly adaptively), target causal estimand changes as population shifts, anytime-valid inference for the *current* estimand. Combines doubly-robust estimation (outcome models + propensity scores) with §6 betting-wealth machinery. Under standard rate conditions ($o_P(n^{-1/4})$ for nuisance), the CS is anytime-valid for time-varying causal estimands.
+
+Three increasingly difficult scenarios: (i) static treatment + outcome drift; (ii) static treatment + covariate drift; (iii) adaptive treatment policy. The third subsumes the bandit case and extends to confounders, IVs, and Athey–Imbens-style econometric extensions.
+
+### 11.5 Common pitfalls
+
+**Pitfall 1 — Treating fixed-$n$ CIs as "almost" anytime-valid.** Wrap fixed-$n$ Gaussian band in "stop after $n_{\min}$" rule. The §1.2 simulation: $n_{\min} = 100$, $n_{\max} = 10{,}000$, empirical false-rejection $\approx 65\%$ at $\delta = 0.05$. *Fixed-$n$ band is not anytime-valid for any $n_{\min}$.*
+
+**Pitfall 2 — Miscalibrating the mixing prior.** $\rho^\star = 1/(\sigma\sqrt{n^\star})$ gives tightest CS near $n^\star$. Fix: tune $\rho$ to *expected* stopping time, or use PrPl-EB (parameter-free, self-tunes).
+
+**Pitfall 3 — Confusing CS coverage with sample-mean accuracy.** CS is an interval estimate for the *population* parameter — not a prediction interval for the sample mean's future trajectory.
+
+**Pitfall 4 — Neglecting multi-test merging from §10.** $m = 10$ concurrent A/B tests at per-test $\delta = 0.05$ → family-wise error $\sim 0.40$ if naively interpreted. Right fix: arithmetic-mean merging (Theorem 10.1) for global test; e-LOND/e-LORD for FDR control.
+
+**Pitfall 5 — Reporting CS at horizon $n$ without context.** CS at single $n$ is wider than fixed-$n$ CI by $\sqrt{\log n / \log(1/\delta)}$. Report CS width with operational context — the CS *bought* the right to stop at any $n$, including much earlier if evidence accumulated quickly.
+
+Unifying message: anytime-validity is a *property of the inference procedure*, not a label slapped on a fixed-$n$ statistic.
+
+## 12. Computational notes
+
+Four implementation concerns recurred across §§3–11. Collected here as a reference.
+
+### 12.1 Numerical stability at large $n$
+
+**Always compute e-processes in log-space.** Betting wealth $K_n = \prod [1 + \lambda_i(X_i - \mu)]$ overflows Float64 ($\approx 10^{308}$) at $n \approx 200$ on well-separated data. Universal fix: `log_K_n = np.cumsum(np.log1p(lambdas * (X - mu)))` — stable to $n \approx 10^{9+}$.
+
+**Log-sum-exp for mixture e-processes.** $E_n^{\mathrm{mix}} = \sum_k \pi_k E_n^{(k)}$: shift by $m = \max_k \log E_n^{(k)}$ before exponentiating. `scipy.special.logsumexp`.
+
+**Cumulative-max for "ever-crossed" computations.** `np.maximum.accumulate(E_traj, axis=1)` for the running supremum in $O(n)$ vectorized time.
+
+**Positivity-preserving clip.** $|\lambda_i| < c/\max(\mu - a, b - \mu)$ for $c \in (0, 1)$. Standard $c = 0.5$.
+
+### 12.2 Closed-form vs Monte Carlo boundary evaluation
+
+**Closed-form** (sub-Gaussian (4.4), sub-exponential (5.9)): pre-compute boundary as function of $(n, \delta, \sigma, \rho)$. $O(1)$ per $n$. Right call for production A/B-testing.
+
+**Implicit + bisection** (sub-Bernoulli (5.14), PrPl-EB (6.6)): roots of $\log E_n(\mu) - \log(1/\delta) = 0$ via bisection. $O(\log(1/\epsilon))$ per $n$.
+
+**Streaming update pattern.** Maintain fixed grid of $K$ candidate $\mu$ values, update each in $O(1)$ per new observation. Per-observation cost $O(K)$.
+
+<BoundaryEvaluationRuntimeBenchmark client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/20_runtime_benchmark.png"
+  alt="Log-log runtime plot: closed-form O(1), implicit + bisection O(log(1/ε)), MC at B=1000 O(B·n), across n from 10^2 to 10^7."
+  caption="Notebook Figure 20. Boundary-evaluation runtime hierarchy — closed-form Gaussian mixture is O(1) per n (~10 μs), implicit Beta-mixture + bisection is O(log(1/ε)) per n (~5 ms), MC verification at B = 1000 is O(B·n) (~2 s at n = 10^5). Ratios: implicit ~500× closed-form, MC ~200,000× closed-form."
+/>
+
+### 12.3 Special-function inversions
+
+- **`scipy.special.betaln`** for sub-Bernoulli Beta-mixture (5.14). Overflow-safe.
+- **`scipy.special.lambertw(z, k=0).real`** for sub-exponential boundary equations $x + \alpha e^x = \beta$.
+- **Inverse binary KL via `brentq`** on $g(\mu) = \mathrm{kl}(\bar X_n \,\|\, \mu) - c/n$.
+- **`scipy.stats.norm.ppf(1 - \delta/2)`** for fixed-$n$ Gaussian quantile reference.
+
+### 12.4 Reproducibility
+
+**Use `np.random.default_rng(seed)`, not `np.random.seed()`.** Per-experiment RNG with explicit state.
+
+**Seed-locked verification.** Print MC summaries; numbers should reproduce exactly on fresh kernel run.
+
+**Numerical-determinism caveats.** Float arithmetic is bit-deterministic; parallel BLAS reductions may reorder summations ($\sim 10^{-12}$ variation in $\sim 10^4$-term sums). Below MC noise floor for these simulations.
+
+## 13. Connections and limits
+
+We close by situating AVI in the broader formalML landscape and surveying what the framework can't yet do.
+
+### 13.1 AVI vs PAC-Bayes — the same Ville step, two applications
+
+The most striking structural identity in this topic: AVI and [PAC-Bayes Bounds](/topics/pac-bayes-bounds) use the *same* supermartingale + Ville machinery for different applications.
+
+**PAC-Bayes:** with prior $P$ and posterior $Q$, the bound
+
+$$
+\Pr\!\left(\, \mathbb{E}_{h \sim Q}[L(h) - \hat L_n(h)] \;\geq\; \sqrt{\frac{\mathrm{KL}(Q \,\|\, P) + \log(1/\delta)}{n}} \,\right) \;\leq\; \delta
+$$
+
+via Donsker–Varadhan + Markov on an exponential PAC-Bayes supermartingale.
+
+**AVI:** with null $H_0$ and e-process $E_n$, the bound $\Pr(\sup_n E_n \geq 1/\delta) \leq \delta$ via Markov on Wald–Doob's supermartingale + GRO with rate $\mathrm{KL}(f_1 \,\|\, f_0)$.
+
+The two differ in *application*: PAC-Bayes is *generalization* (loss of a randomized predictor); AVI is *testing* (type-I error of a sequential test). The mathematical engine — Markov + supermartingale + KL change-of-measure via Donsker–Varadhan — is *identical*. The Donsker–Varadhan inequality is the central tool in both proofs:
+
+$$
+\log \mathbb{E}_Q[e^X] \;=\; \sup_{P \ll Q} \left\{\, \mathbb{E}_P[X] - \mathrm{KL}(P \,\|\, Q) \,\right\}.
+$$
+
+A reader who has done `pac-bayes-bounds` and this topic has met the same theorem twice. That unification is the central contribution of the game-theoretic probability program (Shafer and Vovk 2019).
+
+### 13.2 AVI vs selective inference — different conditioning events
+
+The structural cousin one track over is [Selective Inference](/topics/selective-inference) (T6). Both address the same family of practitioner failures with different conditioning.
+
+**Selective inference** handles *model-selection-induced peeking*. After lasso, condition on the polyhedral selection event $\{Ay \leq b\}$. Truncated-Gaussian pivot (Lee, Sun, Sun, Taylor 2016).
+
+**Always-valid inference** handles *time-induced peeking*. After A/B test, condition on stopping-time event $\{\tau \leq n\}$. Robbins mixture (§4) and PrPl-EB betting (§6).
+
+| Selective inference                             | Always-valid inference                                  |
+| :---------------------------------------------- | :------------------------------------------------------ |
+| Selection event Ay ≤ b (polyhedral)             | Stopping-time event τ ≤ n (data-adaptive)               |
+| Truncated-Gaussian pivot                        | Time-uniform Ville bound                                |
+| Conditional CI given selection                  | Anytime-valid CS over stopping rules                    |
+| Power loss as price of post-selection honesty   | Sample-size cost as price of optional-stopping honesty  |
+
+Complementary, not competing. A platform that runs an experiment, performs feature selection, and reports a CI should use *both*.
+
+### 13.3 The LIL lower bound and the constant gap
+
+The §1.3 preview promised LIL as the asymptotic floor. The formal Hartman–Wintner (1941) statement:
+
+$$
+\limsup_{n \to \infty}\, \frac{|S_n|}{\sqrt{2 n \sigma^2 \log\log n}} \;=\; 1 \qquad \text{almost surely.}
+$$
+
+Stopping-time lifting gives: *no $(1-\delta)$-confidence sequence can have half-width smaller than $\sigma\sqrt{2 \log\log n / n}$ for all $n$ simultaneously.* Proof via the LIL almost-sure envelope crossing any narrower-than-LIL band at some random stopping time.
+
+Asymptotic picture across the three regimes:
+- **Fixed-$n$ Hoeffding** (anytime-invalid): $\mathrm{HW}(n) \sim \sigma\sqrt{2 \log(2/\delta)/n}$ — pure $1/\sqrt{n}$.
+- **Gaussian-mixture CS** (4.4): $\sim \sigma\sqrt{2 \log n / n}$ — extra $\sqrt{\log n}$.
+- **PrPl-EB betting CS** (6.6, LIL-matching): $\sim \sigma\sqrt{2 \log\log n / n}$ — extra $\sqrt{\log\log n}$.
+- **LIL lower bound**: $\sim \sigma\sqrt{2 \log\log n / n}$ (the hard floor).
+
+At $n = 10^6$, $\log\log n \approx 2.62$; unavoidable cost over fixed-$n$ is $\sqrt{2.62} \approx 1.62\times$ in width, $\approx 2.6\times$ in sample size. PrPl-EB hits this exactly; Gaussian mixture pays an extra $\sqrt{\log n / \log\log n} \approx 2.3\times$ at $n = 10^6$ (total $\sim 3.7\times$ width, $\sim 14\times$ sample size). PrPl-EB is conjectured to be constant-optimal (Waudby-Smith and Ramdas 2024); formal proof open.
+
+### 13.4 Composite nulls, nuisance parameters, and the frontier
+
+The framework as developed handles *simple* and *parametric-composite* alternatives elegantly. Active frontier:
+
+**Composite nulls.** $H_0 = \{\mathbb{P}_\theta : \theta \in \Theta_0\}$ requires $\sup_{\theta \in \Theta_0} \mathbb{E}_\theta[E_n] \leq 1$. Grünwald, de Heide, Koolen (2024) "Safe testing" provides the framework. Larsson, Ramdas, Ruf (2024) give explicit constructions via online learning.
+
+**Nuisance parameters.** Doubly-robust estimators + betting machinery: Bibaut et al. (2021) for causal nuisance.
+
+**Continuous-time AVI.** Discrete-$n$ replaced by càdlàg supermartingales. Applications: high-frequency financial monitoring, physiological signal analysis.
+
+**Distribution-free / adversarial AVI.** Cutkosky and Mhammedi (2024) — anytime-valid bounds under no distributional assumption, only an "online learning expert" structure.
+
+**Bayesian–frequentist hybrids.** Variational posterior calibration via e-values: use Bayesian *prediction*, get frequentist *coverage*.
+
+**Multiple testing under arbitrary dependence.** Wang and Ramdas (2022) e-LOND and e-LORD — online FDR procedures using e-process arithmetic; strictly more powerful than p-value-based equivalents.
+
+### 13.5 Forward-pointers and the close
+
+**T6 [Causal Inference Methods](/topics/causal-inference-methods)** — doubly-robust + betting machinery (Bibaut et al. 2021) gives anytime-valid CIs for causal estimands under adaptive treatment.
+
+**T5 [Bayesian Inference](/topics/bayesian-inference)** — §4.2 Bayes–frequentist correspondence — Robbins mixtures *are* Bayesian marginal likelihoods, interpreted frequentistically via Ville. *Safe testing* formalizes this duality.
+
+**T5 [Variational Inference](/topics/variational-inference)** — e-value calibration of variational posteriors (Grünwald frontier).
+
+**T5 [Sequential Monte Carlo](/topics/sequential-monte-carlo)** — SMC importance-sampling weights have anytime-valid extensions via e-processes.
+
+**Closing.** The AVI framework is the answer to the §1.1 question: *how do we make honest inference under peeking?* The classical fixed-horizon framework gives no answer — the §1.2 simulation showed false-rejection climbing to $\sim 65\%$ under peeking. AVI replaces the fixed-horizon assumption with anytime-validity, at the modest cost of a $\sim 1.5$–$3\times$ sample-size widening. For modern data analysis — sequential A/B testing, multi-armed bandits, adaptive clinical trials, online causal inference, real-time monitoring of any kind — AVI is the right framework, and the e-process is the right primitive.
+
+The conceptual scaffolding is small enough to hold in one's head. *A nonnegative supermartingale with unit initial expectation, run through Ville's inequality.* That single object — built as a Wald likelihood ratio, a Robbins mixture, a sub-class Wald–Doob supermartingale, or a Waudby-Smith–Ramdas betting wealth — handles every anytime-valid construction. The frameworks that look distinct (PAC-Bayes, selective inference, online FDR, off-policy evaluation, safe testing) use the same machinery with different problem-specific decorations.
+
+What the practitioner gets is the *operational right to peek*. Dashboard checked at any cadence, experiment stopped at any sample size, decisions made based on current CS endpoints — all without inflating type-I error. The cost is $\sim 1.5\times$ the planned sample size at any single horizon, paid in exchange for the ability to *stop early when evidence is overwhelming*, which on average more than compensates. The platforms in §11.1 have all made this trade, and the §1 peeking analyst is no longer a problem to solve but a *user* whose intuitive workflow the framework was designed to support.
+
+The mathematical machinery has been with us since Wald (1945) and Robbins (1970). What changed in the 2020s is the recognition — across academia (Howard et al. 2020, Waudby-Smith and Ramdas 2024) and industry (Optimizely, Eppo, Statsig, et al.) — that anytime-validity is the *right default* for modern data analysis, and that the supermartingale + Ville machinery is the *right tool* for delivering it. This topic was written from inside that recognition.
