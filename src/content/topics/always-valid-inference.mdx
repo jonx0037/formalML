@@ -288,6 +288,8 @@ import VilleInequalityExplorer from '../../components/viz/VilleInequalityExplore
 import MixingTrickPreview from '../../components/viz/MixingTrickPreview.tsx';
 import SPRTTrajectoryExplorer from '../../components/viz/SPRTTrajectoryExplorer.tsx';
 import SPRTvsFixedNEfficiency from '../../components/viz/SPRTvsFixedNEfficiency.tsx';
+import SingleLambdaVsMixtureEnvelope from '../../components/viz/SingleLambdaVsMixtureEnvelope.tsx';
+import MixtureCSFixesPeeking from '../../components/viz/MixtureCSFixesPeeking.tsx';
 
 ## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
 
@@ -734,3 +736,90 @@ Under $H_0$, $\Lambda_n$ is a nonnegative martingale with $\mathbb{E}_{H_0}[\Lam
 This is the definition of an *e-process* (formalized in §8). The likelihood ratio is the prototype: a nonnegative process with unit expectation under the null, applied via Ville. Every modern anytime-valid construction inherits this structure.
 
 Under $H_1$, $\log \Lambda_n$ has linear positive drift $\mathrm{KL}(f_1 \,\|\, f_0)$ — the *largest possible* growth rate among nonnegative $H_0$-martingales. This is the *growth-rate-optimal* (GRO) property of Grünwald and Koolen (2022), formalized in §9. The Kelly-criterion betting interpretation (§6, §9) makes the identification precise: $\Lambda_n$ is the wealth of a gambler who knows $f_1/f_0$ exactly and bets log-optimally.
+
+## 4. Robbins' method of mixtures
+
+The SPRT works for simple-vs-simple but in practice the alternative is almost never a single distribution. The A/B-test analyst doesn't know whether the lift will be 0.1, 0.3, or 0.5 — only that it's some unknown $\mu \neq 0$. The single-$\lambda$ supermartingale of §2 is similarly fragile: tight at one sample size and one tilt, with the bound deteriorating rapidly away from those settings. Herbert Robbins (1970) proposed the structural fix — instead of choosing a single $\lambda$, *integrate over a prior $\pi(\lambda)$*. The mixed object inherits the supermartingale property from its constituents (by Fubini), and the resulting confidence sequence adapts simultaneously to every $\lambda$ in the support of $\pi$.
+
+### 4.1 Mixing over alternatives to adapt
+
+Two related problems motivate the mixing trick: *composite alternatives* (the SPRT of §3 requires a specific $f_1$; a misspecified $\mu_1$ accumulates evidence at the wrong rate) and *unknown sample size* (the fixed-$n$ → time-uniform recipe noted that single-$\lambda$ bounds are tight at one $n$ and loose elsewhere). The structural punchline: a single-$\lambda$ test is fragile in two senses, and the same fix — average over $\lambda$ — handles both.
+
+### 4.2 The Robbins–Siegmund mixture supermartingale
+
+Take a family $(M_n(\lambda))_{n \geq 0}$ of nonnegative supermartingales with $\mathbb{E}[M_0(\lambda)] = 1$ each. Choose a probability measure $\pi$ on $\Lambda$ — the *mixing prior*. Define
+
+$$
+M_n^{\mathrm{mix}} \;=\; \int_\Lambda M_n(\lambda)\, d\pi(\lambda). \qquad\qquad (4.1)
+$$
+
+<TheoremBlock type="theorem" number={4.1} title="Mixture supermartingale">
+
+Assume $(\lambda, \omega) \mapsto M_n(\lambda)(\omega)$ is jointly measurable, $M_n(\lambda) \geq 0$, and each $M_\cdot(\lambda)$ is a supermartingale w.r.t. $(\mathcal{F}_n)$ with $\mathbb{E}[M_0(\lambda)] = 1$. Then $M_n^{\mathrm{mix}}$ is a nonnegative supermartingale with $\mathbb{E}[M_0^{\mathrm{mix}}] = 1$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+Nonnegativity and unit initial expectation are immediate from Tonelli. Adapted-ness: each $M_n(\lambda)$ is $\mathcal{F}_n$-measurable; joint measurability + Fubini makes $M_n^{\mathrm{mix}}$ $\mathcal{F}_n$-measurable. Supermartingale property: by Fubini on the nonnegative integrand,
+
+$$
+\mathbb{E}[M_{n+1}^{\mathrm{mix}} \mid \mathcal{F}_n] = \int \mathbb{E}[M_{n+1}(\lambda) \mid \mathcal{F}_n]\, d\pi(\lambda) \leq \int M_n(\lambda)\, d\pi(\lambda) = M_n^{\mathrm{mix}}.
+$$
+
+</TheoremBlock>
+
+Theorem 4.1 + Ville (Theorem 2.3) gives $\mathbb{P}(\sup_n M_n^{\mathrm{mix}} \geq 1/\delta) \leq \delta$. Every mixing prior $\pi$ produces an anytime-valid level-$\delta$ test.
+
+There is a Bayesian–frequentist symmetry worth flagging. The integral (4.1) is exactly the marginal likelihood from a Bayesian model with prior $\pi$. Yet our usage is purely frequentist: Ville's inequality, not Bayes's theorem, and the resulting type-I error guarantee holds *unconditionally* on $\pi$. This is the *safe testing* perspective of Grünwald, de Heide, and Koolen (2024).
+
+### 4.3 Conjugate Gaussian–Gaussian mixture and the closed-form boundary
+
+The canonical example: $X_i \overset{\text{iid}}{\sim} \mathcal{N}(\mu, \sigma^2)$ with known $\sigma$, test $H_0: \mu = 0$ vs composite $\mu \in \mathbb{R}$. The sub-Gaussian Wald–Doob martingale is $M_n(\lambda) = \exp(\lambda S_n - n \lambda^2 \sigma^2 / 2)$. Mix with $\lambda \sim \mathcal{N}(0, \rho^2)$.
+
+The mixed integral combines exponents: $\lambda S_n - \lambda^2 \cdot (1 + n \rho^2 \sigma^2)/(2\rho^2)$. Completing the square in $\lambda$ and integrating out gives the *closed-form Robbins mixture*
+
+$$
+M_n^{\mathrm{mix}} \;=\; \frac{1}{\sqrt{1 + n \rho^2 \sigma^2}}\, \exp\!\left(\frac{\rho^2 S_n^2}{2(1 + n \rho^2 \sigma^2)}\right). \qquad\qquad (4.3)
+$$
+
+Applying Ville at threshold $1/\delta$ and inverting for the running mean (after translating from $H_0: \mu = 0$ to general $\mu$ by replacing $X_i$ with $X_i - \mu$):
+
+<TheoremBlock type="theorem" number={4.2} title="Gaussian-mixture confidence sequence">
+
+Let $X_i \overset{\text{iid}}{\sim} \mathcal{N}(\mu, \sigma^2)$ with $\sigma$ known. For any $\rho > 0$ and $\delta \in (0, 1)$,
+
+$$
+C_n^{\mathrm{mix}}(\rho) \;=\; \bar X_n \;\pm\; \sqrt{\frac{2(1 + n \rho^2 \sigma^2)}{n^2 \rho^2}\, \log \frac{\sqrt{1 + n \rho^2 \sigma^2}}{\delta}} \qquad\qquad (4.4)
+$$
+
+is a $(1 - \delta)$-confidence sequence for $\mu$.
+
+</TheoremBlock>
+
+Three things to read off. (i) The boundary scales as $\sqrt{\log n / n}$ for large $n$ — a $\sqrt{\log n}$ factor over the fixed-$n$ Hoeffding bound. (ii) The parameter $\rho$ is a *bias–variance dial*: large $\rho$ tight at small $n$, small $\rho$ tight at large $n$. Optimal $\rho^\star = 1/(\sigma\sqrt{n^\star})$ for design horizon $n^\star$ gives the tightest CS near $n^\star$. (iii) The boundary (4.4) is the *lower envelope* of all single-$\lambda$ boundaries (by Jensen on the log in (4.1)) — for every $n$, the mixture is at worst a small constant factor wider than the best single-$\lambda$ choice for that $n$.
+
+<SingleLambdaVsMixtureEnvelope client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/07_mixture_envelope.png"
+  alt="Log-log plot of single-λ sub-Gaussian boundaries (thin gray) and Gaussian-mixture envelope (blue) and LIL rate (dashed brown), showing the mixture tracking the lower envelope of single-λ choices."
+  caption="Notebook Figure 7. Single-λ vs Gaussian-mixture envelope (log-log, n ∈ [10, 10^6]). Each thin gray line is a single-λ sub-Gaussian boundary tight at one n; the blue Gaussian-mixture (4.4) tracks the lower envelope at every n. The dashed brown LIL rate σ√(2 log log n / n) is the asymptotic floor."
+/>
+
+### 4.4 Why mixtures *almost* match the LIL rate
+
+The Gaussian mixture boundary is $\sigma\sqrt{\log n / n}$; the LIL lower bound is $\sigma\sqrt{2\log\log n / n}$. The ratio is $\sqrt{\log n / \log\log n}$ — at $n = 10^6$, $\approx 2.3$. Closing the gap requires heavier-tailed mixing densities:
+
+1. **Stitched discretized mixtures (Howard et al. 2020, §4).** Discretize a geometric grid of design horizons $n_k = 2^k$, take a separate single-$\lambda$ boundary tight at each $n_k$, and union-bound them with weights $w_k \propto 1/k^2$. Matches LIL with explicit constants. No closed form.
+2. **Predictable-mixture / betting boundaries (Waudby-Smith and Ramdas 2024).** Replace fixed $\pi$ with a *data-dependent* (predictable) sequence $\lambda_1, \lambda_2, \ldots$. Formally tighter than any fixed-prior mixture and matches the LIL rate. Developed in §6.
+
+For practical horizons ($n \leq 10^6$), the Gaussian-mixture's $\sqrt{2}$–$3\times$ widening over LIL is a modest price for the closed-form expression (4.3), and most A/B-testing platforms ship it as default. The formal LIL lower bound is in §13.3.
+
+<MixtureCSFixesPeeking client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/08_mixture_fixes_peeking.png"
+  alt="Side-by-side empirical false-rejection rate vs n_max — the fixed-n band climbs past 60%, while the Gaussian-mixture CS stays flat below δ = 0.05."
+  caption="Notebook Figure 8. The mixture CS closes the loop on §1's peeking demonstration. Under the same aggressive-analyst stopping rule, the fixed-n band's empirical false-rejection rate climbs past 60% by n_max = 10,000 (left, anytime-invalid), while the Gaussian-mixture CS (4.4) stays flat at ≈ 0.03 — below the nominal δ = 0.05 for the full horizon (right, anytime-valid)."
+/>
