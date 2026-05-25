@@ -292,6 +292,8 @@ import SingleLambdaVsMixtureEnvelope from '../../components/viz/SingleLambdaVsMi
 import MixtureCSFixesPeeking from '../../components/viz/MixtureCSFixesPeeking.tsx';
 import BoundaryAtlasBrowser from '../../components/viz/BoundaryAtlasBrowser.tsx';
 import EmpiricalCoverageAcrossClasses from '../../components/viz/EmpiricalCoverageAcrossClasses.tsx';
+import BettingGameExplorer from '../../components/viz/BettingGameExplorer.tsx';
+import EmpiricalBernsteinVsBetaMixture from '../../components/viz/EmpiricalBernsteinVsBetaMixture.tsx';
 
 ## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
 
@@ -963,3 +965,151 @@ The sub-Gaussian mixture is $1.20$–$1.64\times$ wider than fixed-$n$ Hoeffding
 />
 
 **Practitioner verdict.** For bounded $[0,1]$ data, **sub-Bernoulli by default**. For sub-Gaussian data, **Robbins mixture (4.4)**. For Poisson/$\chi^2$/exponential, **Bennett mixture (5.9)** with $c$ correction (negligible for $n \gg c^2/\nu^2$).
+
+## 6. Empirical-Bernstein and predictable mixtures — the betting reformulation
+
+§5's atlas got us most of the way, but two limitations linger. *First*, the sub-Gaussian and sub-exponential boundaries use *worst-case* variance proxies; for low-variance data the boundary is loose by a substantial factor (e.g., $25\times$ for Bernoulli at $\mu = 0.01$). *Second*, the closed-form Gaussian-mixture has a residual $\sqrt{\log n / \log\log n}$ excess over LIL. The reformulation that fixes both is due to Waudby-Smith and Ramdas (2024), built on game-theoretic probability (Vovk, Shafer) and Kelly's (1956) information-theoretic gambling.
+
+### 6.1 Variance adaptation as wealth accumulation
+
+For small $\lambda$, expand $\exp(\lambda(X_i - \mu) - \lambda^2 \sigma^2/2) \approx 1 + \lambda(X_i - \mu) - \lambda^2 \sigma^2/2 + O(\lambda^3)$. Replace the worst-case $\sigma^2$ correction with the *empirical* per-step $\lambda^2 (X_i - \mu)^2 / 2$, giving the *product form*:
+
+$$
+K_n(\lambda) \;=\; \prod_{i=1}^n \left[1 + \lambda(X_i - \mu)\right]. \qquad\qquad (6.1)
+$$
+
+A cumulative product, not an exponential of a sum — the wealth process of a gambler betting fraction $\lambda$ at each round.
+
+<TheoremBlock type="definition" number={6.1} title="Betting wealth, fixed λ">
+
+For i.i.d. $X_i \in [a, b]$ with $\mathbb{E}[X_i] = \mu$ under $H_0$ and $|\lambda| < 1 / \max(\mu - a, b - \mu)$, the *betting wealth process* is (6.1) with $K_0 = 1$.
+
+</TheoremBlock>
+
+<TheoremBlock type="lemma" number={6.2} title="Fixed-bet wealth is a martingale under H_0">
+
+Under Definition 6.1, $(K_n(\lambda))_{n \geq 0}$ is a nonnegative martingale with $\mathbb{E}_{H_0}[K_n(\lambda)] = 1$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+Nonnegativity is from the $|\lambda|$ constraint. One-step ratio:
+
+$$\mathbb{E}_{H_0}[1 + \lambda(X_{n+1} - \mu) \mid \mathcal{F}_n] = 1 + \lambda \cdot 0 = 1.$$
+
+Multiplying by $K_n(\lambda)$ and induction with $K_0 = 1$ gives the claim.
+
+</TheoremBlock>
+
+**Variance adaptation as the headline win.** For Bernoulli at $\mu = 0.05$: $\mathrm{Var}(X) = 0.0475$, but worst-case sub-Gaussian $\sigma^2 = 1/4 = 0.25$. The boundary based on $\sigma^2$ is $\sqrt{0.25/0.0475} \approx 2.3\times$ wider than what the actual data warrant. The betting wealth recovers that factor automatically by using the *actual* deviations $X_i - \mu$.
+
+### 6.2 Predictable processes and Kelly bets
+
+The fixed-$\lambda$ wealth (6.1) is already a martingale. Lemma 6.2 has more to offer: the property survives when $\lambda$ is a *predictable* process.
+
+<TheoremBlock type="definition" number={6.3} title="Predictable bet schedule">
+
+A sequence $(\lambda_n)_{n \geq 1}$ is *predictable* if $\lambda_n$ is $\mathcal{F}_{n-1}$-measurable for each $n$. The *predictable-bet wealth process* is
+
+$$
+K_n(\{\lambda_i\}) \;=\; \prod_{i=1}^n \left[1 + \lambda_i \cdot (X_i - \mu)\right], \qquad K_0 = 1. \qquad\qquad (6.2)
+$$
+
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={6.4} title="Predictable wealth is a martingale under H_0">
+
+With $\lambda_n$ predictable and positivity-preserving, $(K_n(\{\lambda_i\}))_{n \geq 0}$ is a nonnegative martingale with $\mathbb{E}_{H_0}[K_n] = 1$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+By predictability, $\lambda_{n+1}$ is $\mathcal{F}_n$-measurable, so
+
+$$\mathbb{E}_{H_0}[K_{n+1}/K_n \mid \mathcal{F}_n] = 1 + \lambda_{n+1} \cdot \mathbb{E}_{H_0}[X_{n+1} - \mu \mid \mathcal{F}_n] = 1.$$
+
+</TheoremBlock>
+
+Predictability preserves the unbiasedness while letting $\lambda_n$ be *learned from* prior observations.
+
+<TheoremBlock type="definition" number={6.5} title="Kelly-optimal bet">
+
+Under alternative $H_1$ with $\mathbb{E}_{H_1}[X] = \mu_1 \neq \mu$, the *Kelly-optimal bet* is
+
+$$
+\lambda^\star \;=\; \arg\max_\lambda \mathbb{E}_{H_1}\!\left[\log\!\left(1 + \lambda(X - \mu)\right)\right]. \qquad\qquad (6.3)
+$$
+
+</TheoremBlock>
+
+Two reasons: (i) expected detection time is approximately $\log(1/\alpha) / \mathbb{E}_{H_1}[L_1]$ where $L_n = \log K_n$, so maximizing $\mathbb{E}_{H_1}[L_1]$ minimizes detection time; (ii) by the LLN, $\log K_n / n \to \mathbb{E}_{H_1}[L_1]$ almost surely.
+
+**Closed-form Kelly for small bets.** First-order expansion gives the approximation
+
+$$
+\lambda^\star \;\approx\; \frac{\mu_1 - \mu}{\mathbb{E}_{H_1}[(X - \mu)^2]}. \qquad\qquad (6.4)
+$$
+
+For Bernoulli the *exact* closed form is $\lambda^\star = (\mu_1 - \mu_0)/[\mu_0(1-\mu_0)]$ — see (9.7) in §9.3. The two agree to leading order in $|\mu_1 - \mu_0|$.
+
+**Empirical Kelly.** Plug in the running estimates:
+
+$$
+\hat\lambda_n \;=\; \frac{\bar X_{n-1} - \mu}{\hat m_2^{n-1}}. \qquad\qquad (6.5)
+$$
+
+Each $\hat\lambda_n$ depends only on $X_1, \ldots, X_{n-1}$, hence predictable.
+
+<BettingGameExplorer client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/11_betting_wealth.png"
+  alt="Log betting wealth trajectories under H_0 (bounded, blue) and H_1 (drifting up, red) with the rejection threshold log(1/δ)."
+  caption="Notebook Figure 11. Betting-wealth trajectories under H_0: Bern(0.5) (blue, bounded by Ville) and H_1: Bern(0.6) (red, drifting up at Kelly rate KL(0.6 ‖ 0.5) ≈ 0.0201). The horizontal threshold log(1/δ) is the rejection boundary."
+/>
+
+### 6.3 Waudby-Smith–Ramdas (2024) bounded-variable boundaries
+
+Waudby-Smith and Ramdas (2024) systematized the betting approach for bounded $X_i \in [0, 1]$. The **PrPl-EB schedule** (predictable plug-in, empirical Bernstein):
+
+$$
+\hat\lambda_n^{\mathrm{EB}}(\mu) \;=\; \mathrm{sgn}(\bar X_{n-1} - \mu) \cdot \min\!\left(\sqrt{\frac{2 \log(2/\delta)}{n\, \hat\sigma_{n-1}^2}}, \;\; \lambda_n^{\max}\right). \qquad\qquad (6.6)
+$$
+
+<TheoremBlock type="theorem" number={6.6} title="Empirical-Bernstein CS (Waudby-Smith and Ramdas 2024, Theorem 2)">
+
+For $X_i$ i.i.d. bounded on $[0, 1]$ with mean $\mu$ and variance $\sigma^2 > 0$, the PrPl-EB CS satisfies $\mathbb{P}(\mu \in C_n\ \forall n) \geq 1 - \delta$, and asymptotically
+
+$$
+\mathrm{HW}(n) \;\sim\; \sqrt{\frac{2 \sigma^2 \log\log n}{n}} \qquad \text{as } n \to \infty. \qquad\qquad (6.7)
+$$
+
+</TheoremBlock>
+
+LIL match with the *true* variance $\sigma^2$, not the worst-case bound. This closes both the LIL gap (cf. §13.3) and the variance-adaptation gap at once.
+
+<EmpiricalBernsteinVsBetaMixture client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/12_betting_cs_comparison.png"
+  alt="Side-by-side Bernoulli(0.05) CS over n — sub-Bernoulli Beta-mixture (left) vs PrPl-EB (right, visibly tighter)."
+  caption="Notebook Figure 12. On a Bernoulli(0.05) stream, PrPl-EB (Theorem 6.6) is uniformly tighter than the sub-Bernoulli Beta-mixture (5.14). At n = 10⁴, the ratio settles to ≈ 0.5 — a 4× sample-size win."
+/>
+
+<TheoremBlock type="example" number={7} title="PrPl-EB beats Beta-mixture for low μ">
+
+At $\bar X_n = 0.05, n = 10^4, \delta = 0.05$: PrPl-EB half-width $\approx 0.0099$; sub-Bernoulli Beta-mixture $\approx 0.023$. A $57\%$ reduction.
+
+</TheoremBlock>
+
+### 6.4 Practical numerical computation
+
+**Log-space computation.** Always store $\log K_n = \sum \log(1 + \hat\lambda_i (X_i - \mu))$, never $K_n$ directly. Overflow at $n \approx 200$ for GRO bets on well-separated data.
+
+**CS endpoint computation via bisection.** $K_n(\mu)$ is unimodal in $\mu$; CS endpoints are roots of $\log K_n(\mu) - \log(1/\delta) = 0$ via bisection. Tolerance $10^{-6}$ suffices.
+
+**Clipping for positivity.** $|\hat\lambda_n| < c/\max(\mu - a, b - \mu)$ for $c \in (0, 1)$. Standard $c = 0.5$.
+
+**Forward-pointing.** The betting wealth is the prototype of what §8 calls an *e-process*. The Kelly criterion is the prototype of §9's *growth-rate optimality*. §10's merging operations combine wealth processes from independent experiments.
