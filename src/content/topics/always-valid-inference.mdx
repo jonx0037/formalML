@@ -1,0 +1,592 @@
+---
+title: "Always-Valid Inference"
+subtitle: "Time-uniform confidence sequences, e-processes, and the betting reformulation — sequential A/B testing without peeking penalties"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "concentration-inequalities"
+  - "pac-bayes-bounds"
+  - "kl-divergence"
+  - "measure-theoretic-probability"
+formalstatisticsPrereqs:
+  - topic: "multiple-testing-and-false-discovery"
+    site: "formalstatistics"
+    relationship: "Discharges the deferred reciprocal — formalStatistics §20 declares always-valid-inference as the natural successor for FDR control under optional stopping. This topic delivers the e-process and supermartingale machinery that the §20.3 forward-pointer promised; §10's merging operations and §11.5's online-FDR pointer (e-LOND, e-LORD; Wang and Ramdas 2022) close the loop on the family-wise vs FDR distinction made there."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+tags:
+  - "anytime-valid-inference"
+  - "confidence-sequences"
+  - "e-processes"
+  - "sequential-testing"
+  - "ab-testing"
+  - "kelly-criterion"
+  - "supermartingales"
+  - "machine-learning"
+domain: "learning-theory"
+videoId: null
+notebookPath: "notebooks/always-valid-inference/01_always_valid_inference.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/always-valid-inference.mdx"
+datePublished: 2026-05-25
+estimatedReadTime: 60
+abstract: "Always-valid inference is the time-uniform extension of the fixed-n concentration-inequality toolkit. Where a Hoeffding interval controls coverage at one pre-specified sample size, an always-valid confidence sequence satisfies the coverage guarantee simultaneously over every sample size — letting analysts peek, decide, and stop without invalidating their confidence statement. The whole topic rests on one tool: a nonnegative supermartingale with unit initial expectation, run through Ville's inequality. We trace it from Wald's 1945 sequential probability ratio test through Robbins' 1970 method of mixtures, the Howard–Ramdas–McAuliffe–Sekhon boundary atlas (2020), and Waudby-Smith and Ramdas's 2024 betting reformulation. The e-process language (Vovk 1993, Vovk and Wang 2021, Grünwald, de Heide, and Koolen 2024) and the growth-rate-optimality theorem (Kelly 1956, Grünwald and Koolen 2022) unify these constructions and connect anytime-valid testing to information-theoretic gambling. Modern A/B-testing platforms (Eppo, Statsig, Optimizely, Microsoft EXP, LinkedIn, Netflix, VWO) standardized around these methods between 2017 and 2022; off-policy confidence sequences extend the framework to contextual bandits and causal inference under adaptive sampling."
+connections:
+  - topic: "concentration-inequalities"
+    relationship: "AVI lifts every fixed-n Chernoff bound to a time-uniform analogue via Ville's inequality on the corresponding Wald–Doob supermartingale (§2.4). The sub-Gaussian, sub-exponential, and sub-Bernoulli boundary atlas of §5 IS the time-uniform extension of the Chernoff machinery developed there."
+  - topic: "pac-bayes-bounds"
+    relationship: "Both topics use the same supermartingale + Ville + Donsker–Varadhan machinery for different applications: PAC-Bayes for generalization of randomized predictors, AVI for type-I error of sequential tests. The §13.1 structural identity makes this explicit — a reader who has done both has met the same theorem twice."
+  - topic: "kl-divergence"
+    relationship: "The growth-rate-optimal (GRO) e-process for testing H_0: f_0 vs H_1: f_1 has expected log-growth equal to KL(f_1 || f_0). Theorem 9.3 identifies KL as the Cramér rate function in fixed-n large deviations AND the Kelly-optimal log-growth rate in anytime-valid testing — the same divergence governs both."
+  - topic: "selective-inference"
+    relationship: "Structural cousin one track over: both address post-hoc inference failures with different conditioning. Selective inference conditions on a polyhedral selection event Ay ≤ b; AVI conditions on stopping-time events τ ≤ n. The §13.2 comparison table makes the complementarity explicit."
+  - topic: "measure-theoretic-probability"
+    relationship: "The supermartingale framework (filtrations, adapted processes, Doob's optional-stopping theorem, Ville's inequality) is the measure-theoretic substrate. Every confidence-sequence construction in this topic instantiates the same template — choose a Wald–Doob supermartingale, mix it, apply Ville."
+references:
+  - type: "paper"
+    title: "On the Law of the Iterated Logarithm"
+    authors: "Hartman & Wintner"
+    year: 1941
+    url: "https://doi.org/10.2307/2371287"
+    note: "American Journal of Mathematics 63(1): 169–176. The almost-sure lim sup that makes peeking unavoidable."
+  - type: "paper"
+    title: "An invariance principle for the law of the iterated logarithm"
+    authors: "Strassen"
+    year: 1964
+    url: "https://doi.org/10.1007/BF00534910"
+    note: "Z. Wahrscheinlichkeitstheorie 3(3): 211–226. The sharp LIL constant."
+  - type: "book"
+    title: "Étude critique de la notion de collectif"
+    authors: "Ville"
+    year: 1939
+    url: "http://www.numdam.org/item/THESE_1939__218__1_0.pdf"
+    note: "Gauthier-Villars, Paris. The original supermartingale-maximal inequality."
+  - type: "paper"
+    title: "Sequential Tests of Statistical Hypotheses"
+    authors: "Wald"
+    year: 1945
+    url: "https://doi.org/10.1214/aoms/1177731118"
+    note: "Annals of Mathematical Statistics 16(2): 117–186. The SPRT, founding the field."
+  - type: "paper"
+    title: "Optimum Character of the Sequential Probability Ratio Test"
+    authors: "Wald & Wolfowitz"
+    year: 1948
+    url: "https://doi.org/10.1214/aoms/1177730197"
+    note: "Annals of Mathematical Statistics 19(3): 326–339. The minimax-optimality theorem cited in §3.3."
+  - type: "paper"
+    title: "A New Interpretation of Information Rate"
+    authors: "Kelly"
+    year: 1956
+    url: "https://doi.org/10.1002/j.1538-7305.1956.tb03809.x"
+    note: "Bell System Technical Journal 35(4): 917–926. The log-optimal betting rule developed in §9.3."
+  - type: "paper"
+    title: "Confidence Sequences for Mean, Variance, and Median"
+    authors: "Darling & Robbins"
+    year: 1967
+    url: "https://doi.org/10.1073/pnas.58.1.66"
+    note: "PNAS 58(1): 66–68. First confidence-sequence constructions."
+  - type: "paper"
+    title: "Some Nonparametric Sequential Tests with Power One"
+    authors: "Darling & Robbins"
+    year: 1968
+    url: "https://doi.org/10.1073/pnas.61.3.804"
+    note: "PNAS 61(3): 804–809. Companion to the 1967 paper."
+  - type: "paper"
+    title: "Statistical Methods Related to the Law of the Iterated Logarithm"
+    authors: "Robbins"
+    year: 1970
+    url: "https://doi.org/10.1214/aoms/1177696786"
+    note: "Annals of Mathematical Statistics 41(5): 1397–1409. The method-of-mixtures paper developed in §4."
+  - type: "paper"
+    title: "A Nonlinear Renewal Theory with Applications to Sequential Analysis II"
+    authors: "Lai & Siegmund"
+    year: 1979
+    url: "https://doi.org/10.1214/aos/1176344555"
+    note: "Annals of Statistics 7(1): 60–76. Refinements of Wald's identity and the SPRT efficiency theory."
+  - type: "paper"
+    title: "Universal Portfolios"
+    authors: "Cover"
+    year: 1991
+    url: "https://doi.org/10.1111/j.1467-9965.1991.tb00002.x"
+    note: "Mathematical Finance 1(1): 1–29. The construction lifted to §9.4 universal e-processes."
+  - type: "paper"
+    title: "A Logic of Probability, with Application to the Foundations of Statistics"
+    authors: "Vovk"
+    year: 1993
+    url: "https://doi.org/10.1111/j.2517-6161.1993.tb01904.x"
+    note: "JRSS B 55(2): 317–341. Game-theoretic probability and the early e-value concept."
+  - type: "paper"
+    title: "Time-uniform Chernoff bounds via nonnegative supermartingales"
+    authors: "Howard, Ramdas, McAuliffe & Sekhon"
+    year: 2020
+    url: "https://doi.org/10.1214/18-PS321"
+    note: "Probability Surveys 17: 257–317. The supermartingale-tooling paper underlying §§2 and 5; arXiv:1808.03204."
+  - type: "paper"
+    title: "Time-uniform, nonparametric, nonasymptotic confidence sequences"
+    authors: "Howard, Ramdas, McAuliffe & Sekhon"
+    year: 2021
+    url: "https://doi.org/10.1214/20-AOS1991"
+    note: "Annals of Statistics 49(2): 1055–1080. The confidence-sequence atlas cited in §§1.1, 4, 11.1; arXiv:1810.08240."
+  - type: "paper"
+    title: "Estimating means of bounded random variables by betting"
+    authors: "Waudby-Smith & Ramdas"
+    year: 2024
+    url: "https://doi.org/10.1093/jrsssb/qkad009"
+    note: "JRSS B 86(1): 1–27. The PrPl-EB construction developed in §6."
+  - type: "paper"
+    title: "E-values: Calibration, combination, and applications"
+    authors: "Vovk & Wang"
+    year: 2021
+    url: "https://doi.org/10.1214/20-AOS2020"
+    note: "Annals of Statistics 49(3): 1736–1754. The calibrator and merging characterizations cited in §§8.4, 10.3."
+  - type: "paper"
+    title: "Safe testing"
+    authors: "Grünwald, de Heide & Koolen"
+    year: 2024
+    url: "https://doi.org/10.1093/jrsssb/qkae011"
+    note: "JRSS B 86(5): 1091–1128 (with discussion). The safe-testing framework underlying composite-null AVI."
+  - type: "paper"
+    title: "Testing by betting: A strategy for statistical and scientific communication"
+    authors: "Shafer"
+    year: 2021
+    url: "https://doi.org/10.1111/rssa.12647"
+    note: "JRSS A 184(2): 407–431. The test-by-betting perspective developed in §9."
+  - type: "paper"
+    title: "Log-optimal anytime-valid E-values"
+    authors: "Grünwald & Koolen"
+    year: 2022
+    url: "https://doi.org/10.1016/j.ijar.2021.09.010"
+    note: "International Journal of Approximate Reasoning 141: 69–82. The GRO theorem and its log-optimal interpretation."
+  - type: "paper"
+    title: "Game-theoretic statistics and safe anytime-valid inference"
+    authors: "Ramdas, Grünwald, Vovk & Shafer"
+    year: 2023
+    url: "https://doi.org/10.1214/23-STS894"
+    note: "Statistical Science 38(4): 576–601. The standard survey reference for the field as of 2023."
+  - type: "paper"
+    title: "Always Valid Inference: Bringing Sequential Analysis to A/B Testing"
+    authors: "Johari, Pekelis & Walsh"
+    year: 2015
+    url: "https://arxiv.org/abs/1512.04922"
+    note: "arXiv. Deployed as Optimizely Stats Engine, Jan 2015."
+  - type: "paper"
+    title: "Peeking at A/B tests: Why it matters, and what to do about it"
+    authors: "Johari, Koomen, Pekelis & Walsh"
+    year: 2017
+    url: "https://doi.org/10.1145/3097983.3097992"
+    note: "Proc. 23rd ACM SIGKDD (KDD '17): 1517–1525. The §1 peeking pathology made explicit."
+  - type: "paper"
+    title: "Continuous Monitoring of A/B Tests without Pain: Optional Stopping in Bayesian Testing"
+    authors: "Deng, Lu & Chen"
+    year: 2016
+    url: "https://doi.org/10.1109/DSAA.2016.33"
+    note: "IEEE DSAA 2016. Microsoft EXP's deployment of sequential testing; arXiv:1602.05549."
+  - type: "paper"
+    title: "From Infrastructure to Culture: A/B Testing Challenges in Large Scale Social Networks"
+    authors: "Xu, Chen, Fernandez, Sinno & Bhasin"
+    year: 2015
+    url: "https://doi.org/10.1145/2783258.2788602"
+    note: "Proc. 21st ACM SIGKDD (KDD '15): 2227–2236. LinkedIn's experimentation platform paper."
+  - type: "paper"
+    title: "Anytime-Valid Linear Models and Regression Adjusted Causal Inference in Randomized Experiments"
+    authors: "Lindon, Ham, Tingley & Bojinov"
+    year: 2022
+    url: "https://arxiv.org/abs/2210.08589"
+    note: "Netflix's AVI methodology paper."
+  - type: "paper"
+    title: "Off-Policy Confidence Sequences"
+    authors: "Karampatziakis, Mineiro & Ramdas"
+    year: 2021
+    url: "https://proceedings.mlr.press/v139/karampatziakis21a.html"
+    note: "Proc. 38th ICML, PMLR 139. The off-policy CS construction used in §11.3; arXiv:2102.09540."
+  - type: "paper"
+    title: "Sequential causal inference in a single world of connected units"
+    authors: "Bibaut, Petersen, Vlassis, Dimakopoulou & van der Laan"
+    year: 2021
+    url: "https://arxiv.org/abs/2101.07380"
+    note: "arXiv. The causal extension cited in §11.4."
+  - type: "paper"
+    title: "False discovery rate control with e-values"
+    authors: "Wang & Ramdas"
+    year: 2022
+    url: "https://doi.org/10.1111/rssb.12489"
+    note: "JRSS B 84(3): 822–852. The e-LOND/e-LORD online-FDR procedures referenced in §§10.4, 11.5."
+  - type: "paper"
+    title: "Logarithmic Regret Algorithms for Online Convex Optimization"
+    authors: "Hazan, Agarwal & Kale"
+    year: 2007
+    url: "https://doi.org/10.1007/s10994-007-5016-8"
+    note: "Machine Learning 69(2–3): 169–192. The Online Newton Step underlying AGRAPA."
+  - type: "paper"
+    title: "The numeraire e-variable and reverse information projection"
+    authors: "Larsson, Ramdas & Ruf"
+    year: 2024
+    url: "https://arxiv.org/abs/2402.18810"
+    note: "arXiv. Composite-null e-process constructions referenced in §13.4."
+  - type: "paper"
+    title: "Fully Unconstrained Online Learning"
+    authors: "Cutkosky & Mhammedi"
+    year: 2024
+    url: "https://arxiv.org/abs/2405.20540"
+    note: "NeurIPS 2024. The distribution-free / adversarial AVI frontier of §13.4."
+  - type: "paper"
+    title: "Exact post-selection inference, with application to the lasso"
+    authors: "Lee, Sun, Sun & Taylor"
+    year: 2016
+    url: "https://doi.org/10.1214/15-AOS1371"
+    note: "Annals of Statistics 44(3): 907–927. The selective-inference precedent compared against in §13.2."
+  - type: "book"
+    title: "Testing Statistical Hypotheses, 3rd ed."
+    authors: "Lehmann & Romano"
+    year: 2005
+    url: "https://doi.org/10.1007/0-387-27605-X"
+    note: "Springer Texts in Statistics. Ch. 4 develops the Wald–Wolfowitz minimax-optimality result."
+  - type: "book"
+    title: "Sequential Analysis: Tests and Confidence Intervals"
+    authors: "Siegmund"
+    year: 1985
+    url: "https://doi.org/10.1007/978-1-4757-1862-1"
+    note: "Springer Series in Statistics. Ch. II covers the SPRT in detail."
+  - type: "book"
+    title: "Probability with Martingales"
+    authors: "Williams"
+    year: 1991
+    url: "https://doi.org/10.1017/CBO9780511813658"
+    note: "Cambridge UP. The standard textbook for martingale convergence and the optional-stopping theorem."
+  - type: "book"
+    title: "Game-Theoretic Foundations for Probability and Finance"
+    authors: "Shafer & Vovk"
+    year: 2019
+    url: "https://doi.org/10.1002/9781118548035"
+    note: "Wiley. The game-theoretic probability program underlying §§9 and 13."
+  - type: "book"
+    title: "High-Dimensional Statistics: A Non-Asymptotic Viewpoint"
+    authors: "Wainwright"
+    year: 2019
+    url: "https://doi.org/10.1017/9781108627771"
+    note: "Cambridge UP. Concentration-inequality machinery the fixed-n half of every result in §5 reduces to."
+  - type: "book"
+    title: "Elements of Information Theory, 2nd ed."
+    authors: "Cover & Thomas"
+    year: 2006
+    url: "https://doi.org/10.1002/047174882X"
+    note: "Wiley-Interscience. Ch. 13 (Universal Source Coding) is the information-theoretic side of the §9.4 universality argument."
+  - type: "book"
+    title: "The Minimum Description Length Principle"
+    authors: "Grünwald"
+    year: 2007
+    url: "https://mitpress.mit.edu/9780262529631/the-minimum-description-length-principle/"
+    note: "MIT Press. MDL as the information-theoretic principle behind universal e-processes."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import Figure from '../../components/ui/Figure.astro';
+
+import OptionalStoppingFailureExplorer from '../../components/viz/OptionalStoppingFailureExplorer.tsx';
+import LILPreviewBands from '../../components/viz/LILPreviewBands.tsx';
+import VilleInequalityExplorer from '../../components/viz/VilleInequalityExplorer.tsx';
+import MixingTrickPreview from '../../components/viz/MixingTrickPreview.tsx';
+
+## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
+
+### 1.1 The peeking analyst
+
+Picture an A/B test. We've decided to run it for 10,000 visitors, and we'll form a 95% confidence interval for the lift at the end. After 1,000 visitors, we glance at the dashboard. The lift looks significant — the 95% CI excludes zero. We stop.
+
+That action — *peeking* and *stopping based on what we saw* — quietly invalidates our confidence statement. The fixed-$n$ CI we relied on, say a Hoeffding band
+
+$$
+C_n^{\text{fixed}} \;=\; \left[\, \bar X_n - \sqrt{\tfrac{2\sigma^2}{n}\log\tfrac{2}{\delta}},\; \bar X_n + \sqrt{\tfrac{2\sigma^2}{n}\log\tfrac{2}{\delta}} \,\right],
+$$
+
+promises exactly one thing:
+
+$$
+\mathbb{P}\!\left(\theta \in C_n^{\text{fixed}}\right) \;\geq\; 1 - \delta \qquad \text{for the single, pre-specified } n.
+$$
+
+That guarantee says nothing about $C_1^{\text{fixed}}, C_2^{\text{fixed}}, \ldots, C_n^{\text{fixed}}$ holding *simultaneously*. The naïve union bound $\mathbb{P}(\exists\, n \leq N : \theta \notin C_n^{\text{fixed}}) \leq N\delta$ is vacuous for $N \geq 1/\delta$. We need a different kind of object — one whose coverage guarantee survives looking, deciding, and stopping.
+
+### 1.2 A concrete optional-stopping demonstration
+
+We'll make this visceral. Generate i.i.d. $X_i \sim \mathcal{N}(0, 1)$ — true mean $\mu = 0$. At each $n$, form the fixed-$n$ Gaussian CI $C_n^{\text{fixed}} = [\bar X_n - z_{\delta/2}/\sqrt{n},\, \bar X_n + z_{\delta/2}/\sqrt{n}]$ with $z_{0.025} \approx 1.96$. Adopt the aggressive-analyst stopping rule
+
+$$
+\tau \;=\; \min\{\, n \geq 1 : 0 \notin C_n^{\text{fixed}} \,\}, \qquad \tau \wedge n_{\max} \text{ if no exit by } n_{\max}.
+$$
+
+Across $B = 5{,}000$ Monte Carlo replicates, the fraction of replicates stopping at some $\tau \leq n_{\max}$ with the CI excluding the truth climbs from $\approx 0.31$ at $n_{\max} = 50$ to $\approx 0.65$ at $n_{\max} = 10{,}000$, and would approach $1$ as $n_{\max} \to \infty$. Drag the slider below to watch the failure rate grow with the analyst's patience.
+
+<OptionalStoppingFailureExplorer client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/01_peeking_failure.png"
+  alt="Empirical false-rejection rate of the fixed-n Gaussian CI under aggressive stopping, plotted against n_max; trajectories on the right show how the running mean grazes the shrinking band."
+  caption="Notebook Figure 1. Empirical false-rejection rate of the fixed-n Gaussian CI under the aggressive-analyst stopping rule, with 200 sample trajectories of the running mean and the shrinking ±z_(δ/2)/√n band."
+/>
+
+The pathology is not subtle. The fixed-$n$ band shrinks like $1/\sqrt{n}$, but $\bar X_n$ fluctuates on the *same* $1/\sqrt{n}$ scale by the CLT — so the band is exactly tight enough at any single $n$ and *not* tight enough to hold over all $n$ simultaneously.
+
+### 1.3 The law of the iterated logarithm — a preview
+
+The deepest reason the fixed-$n$ band fails under peeking comes from the *law of the iterated logarithm* (LIL), proved in Hartman and Wintner (1941) and sharpened by Strassen (1964). For i.i.d. mean-zero $X_i$ with variance $\sigma^2$, the partial sums $S_n = \sum_{i=1}^n X_i$ satisfy
+
+$$
+\limsup_{n \to \infty}\, \frac{S_n}{\sqrt{2 n \sigma^2 \log\log n}} \;=\; 1 \qquad \text{almost surely.}
+$$
+
+Translated to the running mean, $|\bar X_n|$ infinitely often exceeds $\sigma\sqrt{2 \log\log n / n}$ — a width that grows by a factor of $\sqrt{\log\log n}$ over the fixed-$n$ band. The random walk revisits arbitrarily large $\sqrt{\log\log n}$-scaled deviations forever. Any band whose half-width is $O(1/\sqrt{n})$ alone is *eventually exited with probability one*. The peeking analyst is a victim not of bad luck but of the law of large numbers' fine print.
+
+<LILPreviewBands client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/02_lil_preview.png"
+  alt="200 sample trajectories of the running mean overlaid with the shrinking fixed-n Gaussian band and the LIL-shaped band, on a log-x axis; the LIL band envelopes the fluctuations as n grows while the fixed-n band is exited persistently."
+  caption="Notebook Figure 2. The same 200 trajectories from Figure 1 with two bands overlaid — the shrinking fixed-n Gaussian band (which the trajectories exit) and the LIL-shaped band σ√(2 log log n / n) (which envelopes them)."
+/>
+
+The LIL also tells us what kind of widening we'll have to pay. Any honest confidence sequence must accommodate at least a $\sqrt{\log\log n}$ factor. The modern boundaries of §§5–6 hit this rate up to constants; the formal discussion of the LIL as a lower bound is in §13.3.
+
+### 1.4 What we want — time-uniform coverage
+
+<TheoremBlock type="definition" number={1.1} title="Confidence sequence">
+
+Let $X_1, X_2, \ldots$ be a stochastic process adapted to a filtration $(\mathcal{F}_n)_{n \geq 0}$, and let $\theta$ be a parameter of the data-generating distribution. A *$(1-\delta)$-confidence sequence for $\theta$* is a sequence $(C_n)_{n \geq 1}$ of $\mathcal{F}_n$-measurable random sets satisfying
+
+$$
+\mathbb{P}\!\left(\theta \in C_n \text{ for all } n \geq 1\right) \;\geq\; 1 - \delta. \qquad\qquad (1.1)
+$$
+
+</TheoremBlock>
+
+The "for all $n \geq 1$" is the entire game. It promises that the *event* "every $C_n$ contains $\theta$" has probability $\geq 1 - \delta$ — a statement about the full sample path, not about any individual $n$.
+
+<TheoremBlock type="proposition" number={1.2} title="Stopping-time equivalence">
+
+$(C_n)_{n \geq 1}$ is a $(1-\delta)$-confidence sequence if and only if for every stopping time $\tau$ (taking values in $\mathbb{N} \cup \{\infty\}$),
+
+$$
+\mathbb{P}\!\left(\tau < \infty \text{ and } \theta \notin C_\tau\right) \;\leq\; \delta. \qquad\qquad (1.2)
+$$
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+**($\Rightarrow$)** Fix a stopping time $\tau$. On $\{\tau < \infty,\; \theta \notin C_\tau\}$, there exists at least one finite index at which $\theta \notin C_n$. Hence $\{\tau < \infty,\; \theta \notin C_\tau\} \subseteq \{\exists\, n \geq 1 : \theta \notin C_n\}$, and taking probabilities gives $\mathbb{P}(\tau < \infty, \theta \notin C_\tau) \leq \delta$ by (1.1).
+
+**($\Leftarrow$)** Define the exit time $\tau^\star = \inf\{n \geq 1 : \theta \notin C_n\}$ (with $\tau^\star = \infty$ if no such $n$). Each $\mathbf{1}[\theta \in C_n]$ is $\mathcal{F}_n$-measurable, so $\tau^\star$ is a stopping time. On $\{\tau^\star < \infty\}$, $\theta \notin C_{\tau^\star}$ by definition, so
+
+$$
+\mathbb{P}\!\left(\exists\, n \geq 1 : \theta \notin C_n\right) = \mathbb{P}(\tau^\star < \infty) = \mathbb{P}(\tau^\star < \infty, \theta \notin C_{\tau^\star}) \leq \delta
+$$
+
+by (1.2). Taking complements yields (1.1).
+
+</TheoremBlock>
+
+*Time-uniform coverage* and *stopping-time validity* are the same property. We use *anytime-valid* and *time-uniform* interchangeably, and say a procedure is *anytime-valid* if its guarantee holds under (1.2) for every stopping time, including stopping rules the analyst designs by staring at the data.
+
+### 1.5 Roadmap
+
+**Arc A — Classical sequential analysis (§§3–4).** Wald (1945, 1947) and Robbins (1970): the SPRT prototype and the method-of-mixtures structural template.
+
+**Arc B — Modern confidence sequences (§§5–6).** Howard, Ramdas, McAuliffe, and Sekhon (2020, 2021): every fixed-$n$ Chernoff-style tail bound has a time-uniform analogue obtained by replacing Markov on the MGF with Ville on the supermartingale. Waudby-Smith and Ramdas (2024): the betting reformulation, with empirical-Bernstein confidence sequences matching LIL.
+
+**Arc C — e-values and e-processes (§§8–10).** Vovk (1993, 2019), Vovk and Wang (2021), Grünwald, de Heide, and Koolen (2024): the formal definition of e-value, the duality between e-processes and anytime-valid tests, and the merging operations that handle multiple-testing without Bonferroni.
+
+All three arcs reduce to the same one tool: **Ville's inequality applied to a nonnegative supermartingale**. We develop that tool in §2.
+
+## 2. From Markov to Ville — the supermartingale lift
+
+We promised in §1 that the entire topic rests on one tool. This section delivers it. The fixed-$n$ Chernoff recipe — every tail bound on $\mathbb{P}(S_n \geq t)$ the reader has ever seen — comes from a single application of Markov's inequality to a moment-generating function. The time-uniform version comes from a single substitution: replace that Markov step with **Ville's inequality**, applied to the corresponding nonnegative supermartingale. The bounds are uniformly valid over all sample sizes $n$ simultaneously, at the cost of a $\sqrt{\log\log n}$ factor that §13.3 will show is unavoidable.
+
+### 2.1 Markov's inequality and the fixed-$n$ Chernoff recipe
+
+<TheoremBlock type="lemma" number={2.1} title="Markov's inequality">
+
+For any nonnegative random variable $Y \geq 0$ and any $a > 0$,
+
+$$
+\mathbb{P}(Y \geq a) \;\leq\; \frac{\mathbb{E}[Y]}{a}. \qquad\qquad (2.1)
+$$
+
+</TheoremBlock>
+
+Markov bounds a tail probability by an expectation. The Chernoff recipe takes $Y = e^{\lambda X}$ for some tilt $\lambda > 0$:
+
+$$
+\mathbb{P}(X \geq t) \;=\; \mathbb{P}(e^{\lambda X} \geq e^{\lambda t}) \;\leq\; e^{-\lambda t}\, \mathbb{E}[e^{\lambda X}].
+$$
+
+Apply this to $S_n = \sum_{i=1}^n X_i$ for i.i.d. $X_i$ with cumulant generating function $\psi(\lambda) = \log \mathbb{E}[e^{\lambda X_1}]$. Independence factors the expectation, so $\mathbb{E}[e^{\lambda S_n}] = e^{n\psi(\lambda)}$, and Markov gives
+
+$$
+\mathbb{P}(S_n \geq t) \;\leq\; e^{-\lambda t + n \psi(\lambda)} \qquad \text{for every } \lambda \geq 0. \qquad\qquad (2.2)
+$$
+
+Minimize over $\lambda$ to get the Chernoff bound; specialize $\psi$ to get every named tail bound.
+
+<TheoremBlock type="example" number={1} title="The sub-Gaussian case">
+
+A random variable $X$ with mean $\mu$ is *sub-Gaussian with variance proxy $\sigma^2$* if $\mathbb{E}[e^{\lambda(X - \mu)}] \leq e^{\lambda^2 \sigma^2 / 2}$ for all $\lambda \in \mathbb{R}$. Plugging into (2.2), $\mathbb{P}(S_n - n\mu \geq t) \leq \exp(-\lambda t + n \lambda^2 \sigma^2 / 2)$. Minimum over $\lambda > 0$ at $\lambda^\star = t/(n\sigma^2)$ equals $\exp(-t^2 / (2 n \sigma^2))$. Inverting at level $\delta$ gives the fixed-$n$ Hoeffding CI
+
+$$
+\mathbb{P}\!\left(\bar X_n - \mu \geq \sigma\sqrt{\tfrac{2\log(1/\delta)}{n}}\right) \;\leq\; \delta. \qquad\qquad (2.3)
+$$
+
+This is the band that failed under peeking in §1. It fails because the Markov step in (2.2) is a *single-$n$* statement. To control the supremum over $n$, we need an inequality that handles every $n$ at once.
+
+</TheoremBlock>
+
+### 2.2 Nonnegative supermartingales and Ville's inequality
+
+<TheoremBlock type="definition" number={2.2} title="Filtration, supermartingale">
+
+A *filtration* on a probability space is an increasing sequence of $\sigma$-algebras $(\mathcal{F}_n)_{n \geq 0}$, with $\mathcal{F}_n \subseteq \mathcal{F}_{n+1}$ for all $n$. A real-valued process $(M_n)_{n \geq 0}$ adapted to $(\mathcal{F}_n)$ is a *supermartingale* if $\mathbb{E}|M_n| < \infty$ for all $n$ and
+
+$$
+\mathbb{E}[M_{n+1} \mid \mathcal{F}_n] \;\leq\; M_n \quad \text{a.s.} \qquad\qquad (2.4)
+$$
+
+The supermartingale is *nonnegative* if $M_n \geq 0$ almost surely for every $n$.
+
+</TheoremBlock>
+
+<TheoremBlock type="example" number={2} title="The sub-Gaussian supermartingale">
+
+For i.i.d. mean-zero sub-Gaussian $X_i$ with variance proxy $\sigma^2$, fix $\lambda \in \mathbb{R}$ and define
+
+$$
+M_n^{\mathrm{sG}}(\lambda) \;=\; \exp\!\left(\lambda S_n - n \lambda^2 \sigma^2 / 2\right), \qquad M_0^{\mathrm{sG}}(\lambda) = 1. \qquad\qquad (2.5)
+$$
+
+Each $M_n^{\mathrm{sG}}(\lambda) \geq 0$ trivially. The supermartingale property holds:
+
+$$
+\mathbb{E}\!\left[\frac{M_{n+1}^{\mathrm{sG}}(\lambda)}{M_n^{\mathrm{sG}}(\lambda)} \;\middle|\; \mathcal{F}_n\right] = \mathbb{E}\!\left[e^{\lambda X_{n+1} - \lambda^2 \sigma^2 / 2}\right] \leq 1
+$$
+
+by the sub-Gaussian MGF bound. This is the *Wald–Doob supermartingale* — the canonical fixed-$n$ → time-uniform lift.
+
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={2.3} title="Ville's inequality (Ville 1939)">
+
+Let $(M_n)_{n \geq 0}$ be a nonnegative supermartingale with $\mathbb{E}[M_0] < \infty$. Then for any $a > 0$,
+
+$$
+\mathbb{P}\!\left(\sup_{n \geq 0} M_n \geq a\right) \;\leq\; \frac{\mathbb{E}[M_0]}{a}. \qquad\qquad (2.6)
+$$
+
+</TheoremBlock>
+
+Same right-hand side as Markov (2.1), but the left-hand side controls the *supremum* of the process — every $n$ simultaneously. The same Markov budget $\mathbb{E}[M_0]/a$ buys a uniform statement over the whole sample path.
+
+<TheoremBlock type="proof">
+
+We use Doob's optional-stopping theorem for bounded stopping times (Theorem 2.5 below). Fix $a > 0$ and define $\tau_a = \inf\{n \geq 0 : M_n \geq a\}$ (with $\tau_a = \infty$ if no such $n$).
+
+Each indicator $\mathbf{1}\{M_n \geq a\}$ is $\mathcal{F}_n$-measurable, so $\{\tau_a \leq n\} \in \mathcal{F}_n$ — making $\tau_a$ a stopping time. For any finite horizon $N$, $\tau_a \wedge N \leq N$, so Theorem 2.5 gives $\mathbb{E}[M_{\tau_a \wedge N}] \leq \mathbb{E}[M_0]$.
+
+On $\{\tau_a \leq N\}$, $\tau_a \wedge N = \tau_a$ and $M_{\tau_a} \geq a$. On $\{\tau_a > N\}$, $M_{\tau_a \wedge N} = M_N \geq 0$. Hence
+
+$$
+\mathbb{E}[M_{\tau_a \wedge N}] \geq a \cdot \mathbb{P}(\tau_a \leq N),
+$$
+
+so $a \cdot \mathbb{P}(\tau_a \leq N) \leq \mathbb{E}[M_0]$, i.e. $\mathbb{P}(\tau_a \leq N) \leq \mathbb{E}[M_0]/a$.
+
+The events $\{\tau_a \leq N\}$ are increasing with union $\{\tau_a < \infty\} = \{\sup_n M_n \geq a\}$. Continuity of measure gives
+
+$$
+\mathbb{P}\!\left(\sup_n M_n \geq a\right) = \mathbb{P}(\tau_a < \infty) = \lim_{N \to \infty} \mathbb{P}(\tau_a \leq N) \leq \mathbb{E}[M_0]/a.
+$$
+
+</TheoremBlock>
+
+<VilleInequalityExplorer client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/03_supermartingale_paths.png"
+  alt="Log Wald–Doob supermartingale trajectories under H_0 (blue, bounded by Ville) and under H_1 (red, drifting up); lower panel shows empirical sup-crossing probability staying below δ under H_0 and climbing to 1 under H_1."
+  caption="Notebook Figure 3. Wald–Doob supermartingale trajectories at λ = 0.3 — bounded under H_0 by Ville (top, blue) and exhibiting linear positive drift μ_1²/(2σ²) under H_1 (top, red). The bottom panel shows the empirical sup-crossing probability staying below δ = 0.05 under H_0 (≈ 0.04 — Ville slack) and climbing to ≈ 1 under H_1."
+/>
+
+### 2.3 Doob's optional-stopping theorem and stopping-time invariance
+
+<TheoremBlock type="definition" number={2.4} title="Stopping time">
+
+A random variable $\tau : \Omega \to \{0, 1, 2, \ldots\} \cup \{\infty\}$ is a *stopping time* with respect to $(\mathcal{F}_n)$ if $\{\tau \leq n\} \in \mathcal{F}_n$ for every $n \geq 0$.
+
+</TheoremBlock>
+
+The event "we've stopped by time $n$" is decidable from the first $n$ observations alone — no peeking into the future.
+
+<TheoremBlock type="theorem" number={2.5} title="Doob's optional-stopping theorem (bounded stopping times)">
+
+Let $(M_n)_{n \geq 0}$ be a supermartingale and $\tau$ a stopping time with $\tau \leq N$ almost surely for some finite $N$. Then
+
+$$
+\mathbb{E}[M_\tau] \;\leq\; \mathbb{E}[M_0]. \qquad\qquad (2.7)
+$$
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+The key combinatorial identity: for any $0 \leq \tau \leq N$,
+
+$$
+M_\tau \;=\; M_0 \,+\, \sum_{n=0}^{N-1} (M_{n+1} - M_n)\, \mathbf{1}\{n < \tau\}.
+$$
+
+For $\tau = k$, the indicators are $\mathbf{1}\{n < k\} = 1$ for $n = 0, \ldots, k-1$ and $0$ otherwise, so the sum telescopes to $M_k = M_\tau$. Taking expectations and using $\{n < \tau\} = \{\tau \leq n\}^c \in \mathcal{F}_n$,
+
+$$
+\mathbb{E}[(M_{n+1} - M_n)\, \mathbf{1}\{n < \tau\}] = \mathbb{E}[\mathbf{1}\{n < \tau\}\, \mathbb{E}[M_{n+1} - M_n \mid \mathcal{F}_n]] \leq 0
+$$
+
+by the supermartingale property. Summing over $n = 0, \ldots, N-1$ gives $\mathbb{E}[M_\tau] \leq \mathbb{E}[M_0]$.
+
+</TheoremBlock>
+
+For unbounded $\tau$ the statement still holds for nonnegative supermartingales: $\mathbb{E}[M_\tau \mathbf{1}\{\tau < \infty\}] \leq \mathbb{E}[M_0]$ — the uniform-integrability extension. We won't need the unbounded version directly.
+
+<TheoremBlock type="corollary" number={2.6} title="Stopping-time invariance of nonnegative supermartingales">
+
+Let $(M_n)_{n \geq 0}$ be a nonnegative supermartingale with $\mathbb{E}[M_0] \leq 1$. Then for any stopping time $\tau$ and any $\alpha \in (0, 1)$,
+
+$$
+\mathbb{P}(M_\tau \geq 1/\alpha,\; \tau < \infty) \;\leq\; \alpha. \qquad\qquad (2.8)
+$$
+
+</TheoremBlock>
+
+Compare (2.8) with Proposition 1.2. *Both characterize the property "guarantee holds for every stopping rule"*. This is the structural reason supermartingales give anytime-valid inference.
+
+### 2.4 The fixed-$n$ → time-uniform recipe
+
+**Step 1 — start with a fixed-$n$ Chernoff bound.** Identify a class of distributions and an MGF upper bound $\psi(\lambda)$ such that $\mathbb{E}[e^{\lambda X_i}] \leq e^{\psi(\lambda)}$ for $\lambda \in I$.
+
+**Step 2 — construct the Wald–Doob supermartingale.** $M_n(\lambda) = \exp(\lambda S_n - n\, \psi(\lambda))$, $M_0(\lambda) = 1$, is a nonnegative supermartingale by Example 2.
+
+**Step 3 — apply Ville.** $\mathbb{P}(\sup_n M_n(\lambda) \geq 1/\delta) \leq \delta$, or equivalently
+
+$$
+\mathbb{P}\!\left(\exists\, n \geq 1 : \lambda S_n - n\,\psi(\lambda) \geq \log(1/\delta)\right) \leq \delta. \qquad\qquad (2.9)
+$$
+
+**Step 4 — mix over $\lambda$ to get an adaptive boundary.** Replace the single-$\lambda$ bound with $M_n^{\mathrm{mix}} = \int M_n(\lambda)\, d\pi(\lambda)$ for a mixing distribution $\pi$. By Fubini, $M_n^{\mathrm{mix}}$ is a nonnegative supermartingale. Ville applies, giving the *method-of-mixtures* boundary of Robbins (1970).
+
+This cookbook drives §§3–6. Every confidence sequence is steps 1–4 instantiated with a different MGF bound and mixing distribution.
+
+We close by validating the recipe numerically. Under $H_0: \mu = 0$, $M_n^{\mathrm{sG}}(\lambda)$ trajectories stay bounded by Ville. Under $H_1: \mu = \mu_1 > 0$, $\log M_n$ exhibits linear positive drift $\lambda \mu_1 - \lambda^2 \sigma^2/2$, maximized at $\lambda^\star = \mu_1 / \sigma^2$, giving the optimal log-growth $\mu_1^2 / (2\sigma^2)$ — exactly the KL divergence between $\mathcal{N}(\mu_1, \sigma^2)$ and $\mathcal{N}(0, \sigma^2)$. This is the first glimpse of the *growth-rate-optimal* property of §9.
+
+<MixingTrickPreview client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/04_villes_typeI_power.png"
+  alt="Empirical sup-crossing probability vs n under H_0 (stays below δ, validating Ville) and under H_1 (climbs to 1, demonstrating power)."
+  caption="Notebook Figure 4. Validating Ville's recipe — the empirical sup-crossing probability stays below δ = 0.05 under H_0 (left, the type-I error guarantee) and climbs to ≈ 1 under H_1 (right, the power story)."
+/>
