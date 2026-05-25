@@ -28,14 +28,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalmlConnections`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The gradient of log|A Σ Aᵀ + I| with respect to A — used in §6.3 to derive the closed-form Gaussian IB encoder and the generalized-eigenproblem reduction — is a matrix-calculus identity that needs …_
 
-## When `formalml/always-valid-inference` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/multiple-testing-and-false-discovery** declares `formalmlConnections` → `always-valid-inference` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _The single-test framework of §20.3 assumes the $m$ hypotheses and the stopping rule are fixed in advance. Always-valid confidence sequences (Howard et al. 2021) and e-processes (Vovk 2019, Grünwald…_
-
 ## When `formalml/embeddings` ships
 
 Add the reciprocal pointer back to:
