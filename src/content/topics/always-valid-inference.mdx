@@ -298,6 +298,8 @@ import EProcessCatalogue from '../../components/viz/EProcessCatalogue.tsx';
 import CalibrationRoundTrip from '../../components/viz/CalibrationRoundTrip.tsx';
 import GROAndKellyExplorer from '../../components/viz/GROAndKellyExplorer.tsx';
 import UniversalPortfolioRegret from '../../components/viz/UniversalPortfolioRegret.tsx';
+import MergingCalculator from '../../components/viz/MergingCalculator.tsx';
+import ProductBreaksUnderCorrelation from '../../components/viz/ProductBreaksUnderCorrelation.tsx';
 
 ## 1. Motivation — why fixed-$n$ confidence intervals fail under peeking
 
@@ -1417,3 +1419,101 @@ For the practitioner: universal e-processes give *honest, anytime-valid inferenc
   alt="Log-scale regret plot: log E_n^univ − log E_n(μ_1) growing like log n across three μ_1 values."
   caption="Notebook Figure 16. Universal-portfolio regret on Bern(μ_1) streams testing H_0: μ = 0.5. The regret log E_n^univ − log E_n(μ_1) scales as O(log n) (Theorem 9.5) — modest cost for not knowing the alternative."
 />
+
+## 10. Merging e-values
+
+A single test rarely lives in isolation. A modern A/B-testing platform runs hundreds of concurrent experiments; a meta-analyst pools evidence from a dozen studies; a bandit tracks rewards across arms. The classical answer is *Bonferroni* on p-values — honest but punitively conservative. E-values handle the combination dramatically better. *Arithmetic-mean merging* is valid under *arbitrary dependence*. *Product merging* under independence is dramatically tighter than even the most efficient p-value combiner. Vovk and Wang (2021) prove that arithmetic mean is the *dominant* symmetric merger under arbitrary dependence.
+
+### 10.1 Arithmetic mean — robust under arbitrary dependence
+
+<TheoremBlock type="theorem" number={10.1} title="Arithmetic-mean merger">
+
+Let $E^{(1)}, \ldots, E^{(m)}$ be e-values for $H_0$ with *arbitrary* joint distribution. The arithmetic mean $E^{\mathrm{AM}} = \frac{1}{m} \sum E^{(i)}$ is an e-value for $H_0$.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+Nonnegativity is immediate. By linearity:
+
+$$\mathbb{E}_{H_0}[E^{\mathrm{AM}}] = \frac{1}{m}\sum \mathbb{E}_{H_0}[E^{(i)}] \leq \frac{1}{m}\cdot m \cdot 1 = 1.$$
+
+Linearity does *not* require independence.
+
+</TheoremBlock>
+
+The dependence structure can be *anything* and the arithmetic mean remains valid. Compare with p-values: the smallest p-value is not generally a valid p-value (Bonferroni loses a factor of $m$); the arithmetic mean of e-values loses *nothing*.
+
+**Extending to e-processes.** If $(E_n^{(1)}), \ldots, (E_n^{(m)})$ are e-processes with arbitrary cross-dependence, $\bar E_n = \frac{1}{m} \sum E_n^{(i)}$ is itself an e-process (Theorem 10.1 + Theorem 4.1). Anytime-valid meta-analysis with no dependence assumption.
+
+<TheoremBlock type="example" number={10} title="A/B testing across user segments">
+
+$m = 10$ segment-level e-processes $E_n^{(i)}$ testing per-segment treatment effect. We want global anytime-valid test of "no effect in any segment." Segments may be correlated (shared platform-level confounders). Arithmetic-mean process $\bar E_n$ is anytime-valid for the global null — *no Bonferroni, no covariance estimation*.
+
+</TheoremBlock>
+
+### 10.2 Geometric mean and product — independence required
+
+<TheoremBlock type="theorem" number={10.2} title="Product merger under independence">
+
+Let $E^{(1)}, \ldots, E^{(m)}$ be *jointly independent* e-values for $H_0$. The product $E^{\mathrm{prod}} = \prod E^{(i)}$ is an e-value.
+
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+
+By independence, $\mathbb{E}_{H_0}[E^{\mathrm{prod}}] = \prod \mathbb{E}_{H_0}[E^{(i)}] \leq \prod 1 = 1$.
+
+</TheoremBlock>
+
+The product can be *exponentially* larger than the arithmetic mean. $E^{(i)} = 5$ for $m = 10$: $E^{\mathrm{AM}} = 5$, $E^{\mathrm{prod}} = 5^{10} = 9.8 \times 10^6$. Independent observations let us multiply our beliefs.
+
+**Geometric mean is dominated.** $E^{\mathrm{GM}} \leq E^{\mathrm{AM}}$ pointwise (AM–GM); no reason to prefer it.
+
+<MergingCalculator client:visible />
+
+### 10.3 The Vovk–Wang (2021) merging-function characterization
+
+<TheoremBlock type="definition" number={10.3} title="E-merging function">
+
+A symmetric $M: [0, \infty)^m \to [0, \infty)$ is an *e-merging function under arbitrary dependence* if $M(E^{(1)}, \ldots, E^{(m)})$ is an e-value whenever each $E^{(i)}$ is, *regardless of joint distribution*.
+
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={10.4} title="Vovk and Wang 2021, Proposition 3.1">
+
+*Every* symmetric e-merging function under arbitrary dependence is dominated pointwise by the arithmetic mean:
+
+$$
+M(e_1, \ldots, e_m) \;\leq\; \frac{1}{m} \sum_{i=1}^m e_i \qquad \forall (e_1, \ldots, e_m) \in [0, \infty)^m. \qquad\qquad (10.4)
+$$
+
+</TheoremBlock>
+
+Proof in Vovk and Wang (2021, §3). *The arithmetic mean is the unique (up to dominated alternatives) optimal symmetric e-merging function under arbitrary dependence.*
+
+Weighted means $M_w(e) = \sum w_i e_i$ with $w_i \geq 0, \sum w_i \leq 1$ are also valid mergers; encode prior beliefs about study quality.
+
+**Contrast with p-value merging.** The unique symmetric p-merging function under arbitrary dependence is *Bonferroni*. *There is no p-value analogue of the arithmetic-mean merger that improves linearly in $m$ without independence assumptions.* The asymmetry: e-value's $\mathbb{E}_{H_0}[E] \leq 1$ is a *linear* constraint (Jensen-friendly); p-value's $\mathbb{P}(P \leq \alpha) \leq \alpha$ is a *quantile* constraint (adds up under worst-case dependence — Bonferroni).
+
+<ProductBreaksUnderCorrelation client:visible />
+
+<Figure
+  src="/images/topics/always-valid-inference/17_merging_strength.png"
+  alt="Bar chart comparing combined evidence — Bonferroni p, AM e-value, product e-value, Fisher combined p — at m=10 independent tests, each E=5."
+  caption="Notebook Figure 17. Quantifying the Bonferroni penalty. At m = 10 independent tests, each with e-value E = 5: Bonferroni p ≈ 0.40 (not significant); arithmetic-mean e ≈ 5 (p-equivalent ≈ 0.20); product e ≈ 9.77 × 10⁶ (p-equivalent ≈ 1.02 × 10⁻⁷); Fisher combined p ≈ 2 × 10⁻⁵. Product merger gives ~10⁷× more evidence than Fisher at the same input strength."
+/>
+
+### 10.4 When you should *not* Bonferroni
+
+Bonferroni is right when (i) tests are fixed-sample, (ii) $m$ is small, (iii) external constraint demands p-values. For *every other* multiple-testing setting, e-value merging is dramatically better. Four headline cases:
+
+**Sequential multiple testing.** Platform runs $m$ concurrent A/B tests, peeking at each. Bonferroni on fixed-$n$ p-values gives per-test $\alpha/m$ — compounds with sequential widening. E-value alternative: maintain anytime-valid $E_n^{(i)}$ per test, merge via $\bar E_n$. Global type-I at $\bar E_n \geq 1/\alpha$ is $\leq \alpha$ by Ville. No Bonferroni.
+
+**Online FDR control.** LORD/SAFFRON for p-values; e-LOND/e-LORD (Wang and Ramdas 2022) for e-values. The e-value versions use the wealth-process structure directly; *strictly more powerful* under independence.
+
+**Meta-analysis with unknown correlation.** Random-effects models assume distributional structure; e-value AM merger is assumption-free.
+
+**Bandit / off-policy evaluation.** Adaptive sampling breaks standard CIs. Per-arm e-process CSs (Karampatziakis–Mineiro–Ramdas 2021) merged via AM give a global anytime-valid CS for the policy value.
+
+**Unifying message.** e-values let you merge across studies, segments, and time without paying the Bonferroni penalty.
