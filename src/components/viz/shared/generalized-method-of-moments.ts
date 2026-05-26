@@ -432,6 +432,12 @@ export function gammaMLE(samples: Vec, tol = 1e-10, maxIter = 50): GammaFit {
   const logMean = Math.log(mean);
   const meanLog = sumLog / n;
   const s = logMean - meanLog;
+  // Degenerate sample (all values identical) ⇒ s = 0 and the Minka initial
+  // estimate divides by zero. Returning MoM β = mean is the sensible limit
+  // (α → ∞ in the parametric family is degenerate).
+  if (s <= 1e-15) {
+    throw new Error(`gammaMLE: degenerate samples (sample variance underflow, s = ${s})`);
+  }
   // Initial estimate via Minka (2002).
   let alpha = (3 - s + Math.sqrt((s - 3) * (s - 3) + 24 * s)) / (12 * s);
   for (let iter = 0; iter < maxIter; iter++) {
@@ -841,13 +847,24 @@ export function twoStepAffineGMM(X: Mat, A: Mat, W1?: Mat): TwoStepResult {
   for (let j = 0; j < L; j++) Xbar[j] /= n;
   // Step 1.
   const theta1 = gmmEstimateAffine(A, Xbar, W);
-  // Step 2: residuals e_i = X_i - A θ̂^(1).
+  // Step 2: residuals e_i = X_i - A θ̂^(1). Ω̂ is symmetric — fill the lower
+  // triangle in the inner accumulation and mirror once at the end. The `e`
+  // buffer is hoisted out of the loop to avoid per-iteration allocation.
   const Atheta1 = matVec(A, theta1);
   const OmegaHat: Mat = zerosMat(L, L);
+  const e: Vec = new Array(L);
   for (let i = 0; i < n; i++) {
-    const e: Vec = new Array(L);
-    for (let j = 0; j < L; j++) e[j] = X[i][j] - Atheta1[j];
-    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] += e[a] * e[b];
+    const Xi = X[i];
+    for (let j = 0; j < L; j++) e[j] = Xi[j] - Atheta1[j];
+    for (let a = 0; a < L; a++) {
+      const ea = e[a];
+      const OmegaA = OmegaHat[a];
+      for (let b = 0; b <= a; b++) OmegaA[b] += ea * e[b];
+    }
+  }
+  for (let a = 0; a < L; a++) {
+    const OmegaA = OmegaHat[a];
+    for (let b = 0; b < a; b++) OmegaHat[b][a] = OmegaA[b];
   }
   for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] /= n;
   const OmegaHatInv = matInverse(OmegaHat);
@@ -1489,22 +1506,25 @@ function polyBasis(w: number, deg: number): Vec {
 }
 
 function polyOLS(W: Vec, Y: Vec, deg: number): Vec {
-  // Closed-form OLS of Y on polynomial(W). Build the n × (deg+1) design and
-  // solve normal equations.
+  // Closed-form OLS of Y on polynomial(W). Accumulate XᵀX and XᵀY directly
+  // from the per-sample basis vector — avoids materialising the p × n design.
+  // XᵀX is symmetric; fill the lower triangle and mirror once at the end.
   const n = W.length;
   const p = deg + 1;
-  const Xt: Mat = zerosMat(p, n);
-  for (let i = 0; i < n; i++) {
-    const phi = polyBasis(W[i], deg);
-    for (let j = 0; j < p; j++) Xt[j][i] = phi[j];
-  }
   const XtX: Mat = zerosMat(p, p);
   const XtY: Vec = new Array(p).fill(0);
   for (let i = 0; i < n; i++) {
+    const phi = polyBasis(W[i], deg);
+    const yi = Y[i];
     for (let a = 0; a < p; a++) {
-      XtY[a] += Xt[a][i] * Y[i];
-      for (let b = 0; b < p; b++) XtX[a][b] += Xt[a][i] * Xt[b][i];
+      const pa = phi[a];
+      XtY[a] += pa * yi;
+      const row = XtX[a];
+      for (let b = 0; b <= a; b++) row[b] += pa * phi[b];
     }
+  }
+  for (let a = 0; a < p; a++) {
+    for (let b = 0; b < a; b++) XtX[b][a] = XtX[a][b];
   }
   // Tikhonov ridge for stability at small fold sizes.
   for (let a = 0; a < p; a++) XtX[a][a] += 1e-6;
@@ -1545,16 +1565,21 @@ export function dmlPartialLinear(
     denNaive += xt * xt;
   }
   const thetaNaive = numNaive / denNaive;
-  // DML cross-fitting.
+  // DML cross-fitting. Folds are contiguous index ranges, so test membership
+  // directly with [foldStart, foldEnd) — no indices array, no Set allocation.
   let numD = 0;
   let denD = 0;
-  const indices = Array.from({ length: n }, (_, i) => i);
   for (let k = 0; k < K; k++) {
     const foldStart = Math.floor((k * n) / K);
     const foldEnd = Math.floor(((k + 1) * n) / K);
-    const inFold = new Set(indices.slice(foldStart, foldEnd));
     const Wtr: Vec = []; const Ytr: Vec = []; const Xtr: Vec = [];
-    for (let i = 0; i < n; i++) if (!inFold.has(i)) { Wtr.push(W[i]); Ytr.push(Y[i]); Xtr.push(X[i]); }
+    for (let i = 0; i < n; i++) {
+      if (i < foldStart || i >= foldEnd) {
+        Wtr.push(W[i]);
+        Ytr.push(Y[i]);
+        Xtr.push(X[i]);
+      }
+    }
     const cGk = polyOLS(Wtr, Ytr, deg);
     const cMk = polyOLS(Wtr, Xtr, deg);
     for (let i = foldStart; i < foldEnd; i++) {

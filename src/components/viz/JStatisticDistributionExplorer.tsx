@@ -153,7 +153,7 @@ export default function JStatisticDistributionExplorer() {
         dens.push([x, chi2Pdf(x, 2)]);
       }
       const lineGen = d3.line<[number, number]>().x((d) => xScale(d[0])).y((d) => yScale(d[1])).curve(d3.curveBasis);
-      g.append('path').attr('d', lineGen(dens)).attr('fill', 'none').attr('stroke', COLOR_DENS).attr('stroke-width', 2);
+      g.append('path').attr('d', lineGen(dens)).attr('fill', 'none').style('stroke', COLOR_DENS).attr('stroke-width', 2);
 
       // 95% critical line.
       const crit = chi2Quantile(0.95, 2);
@@ -186,7 +186,7 @@ export default function JStatisticDistributionExplorer() {
 
       const pts: [number, number][] = power.map((p) => [p.delta, p.rej]);
       const lineGen = d3.line<[number, number]>().x((d) => xScale(d[0])).y((d) => yScale(d[1])).curve(d3.curveCatmullRom);
-      g.append('path').attr('d', lineGen(pts)).attr('fill', 'none').attr('stroke', COLOR_REJ).attr('stroke-width', 2.2);
+      g.append('path').attr('d', lineGen(pts)).attr('fill', 'none').style('stroke', COLOR_REJ).attr('stroke-width', 2.2);
       pts.forEach((p) => g.append('circle').attr('cx', xScale(p[0])).attr('cy', yScale(p[1])).attr('r', 3.5).style('fill', COLOR_REJ));
 
       g.append('text').attr('x', innerW / 2).attr('y', innerH + 32).attr('text-anchor', 'middle').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-sans)').style('font-size', '11px').text(`misspecification δ on g₃ at n = ${n}`);

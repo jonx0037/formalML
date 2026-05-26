@@ -9,10 +9,7 @@ import {
   gmmCriterion,
   gmmEstimateAffine,
   identityMat,
-  matInverse,
-  matVec,
   mulberry32,
-  gaussianFrom,
   sampleSensorObservations,
   type Mat,
   type Vec,
@@ -153,10 +150,10 @@ export default function GMMCriterionSurface() {
         .enter()
         .append('path')
         .attr('d', d3.geoPath() as never)
-        .style('fill', (d) => colorScale(d.value))
+        .attr('fill', (d) => colorScale(d.value))
         .style('stroke', 'var(--color-border)')
-        .style('stroke-width', 0.5 / Math.min(cellW, cellH))
-        .style('opacity', 0.85);
+        .attr('stroke-width', 0.5 / Math.min(cellW, cellH))
+        .attr('opacity', 0.85);
 
       // Axes (re-add after contours so they're on top).
       g.append('g')

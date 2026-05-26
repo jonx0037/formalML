@@ -185,14 +185,14 @@ export default function EfficiencyFrontierExplorer() {
         const rx = Math.abs(xScale(RUNNING_EXAMPLE_THETA0[0] + entry.ellipse.rx) - x0);
         const ry = Math.abs(yScale(RUNNING_EXAMPLE_THETA0[1] + entry.ellipse.ry) - y0);
         const angleDeg = (-entry.ellipse.angle * 180) / Math.PI;
-        g.append('ellipse').attr('cx', x0).attr('cy', y0).attr('rx', rx).attr('ry', ry).attr('transform', `rotate(${angleDeg}, ${x0}, ${y0})`).attr('fill', 'none').attr('stroke', color(entry.alpha)).attr('stroke-width', 1).attr('opacity', 0.45);
+        g.append('ellipse').attr('cx', x0).attr('cy', y0).attr('rx', rx).attr('ry', ry).attr('transform', `rotate(${angleDeg}, ${x0}, ${y0})`).attr('fill', 'none').style('stroke', color(entry.alpha)).attr('stroke-width', 1).attr('opacity', 0.45);
       });
       // User's ellipse (last entry) drawn boldly on top.
       const user = state.alphaEllipses[state.alphaEllipses.length - 1];
       const rxU = Math.abs(xScale(RUNNING_EXAMPLE_THETA0[0] + user.ellipse.rx) - x0);
       const ryU = Math.abs(yScale(RUNNING_EXAMPLE_THETA0[1] + user.ellipse.ry) - y0);
       const angleDegU = (-user.ellipse.angle * 180) / Math.PI;
-      g.append('ellipse').attr('cx', x0).attr('cy', y0).attr('rx', rxU).attr('ry', ryU).attr('transform', `rotate(${angleDegU}, ${x0}, ${y0})`).attr('fill', 'none').attr('stroke', color(alpha)).attr('stroke-width', 2.5);
+      g.append('ellipse').attr('cx', x0).attr('cy', y0).attr('rx', rxU).attr('ry', ryU).attr('transform', `rotate(${angleDegU}, ${x0}, ${y0})`).attr('fill', 'none').style('stroke', color(alpha)).attr('stroke-width', 2.5);
 
       // θ₀ cross.
       g.append('line').attr('x1', x0 - 7).attr('x2', x0 + 7).attr('y1', y0).attr('y2', y0).style('stroke', 'var(--color-text)').style('stroke-width', 1.4);

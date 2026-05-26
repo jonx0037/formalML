@@ -10,7 +10,6 @@ import {
   mulberry32,
   sampleSensorObservations,
   twoStepAffineGMM,
-  type Mat,
   type Vec,
 } from './shared/generalized-method-of-moments';
 

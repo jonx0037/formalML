@@ -117,8 +117,8 @@ export default function SandwichSavesCoverage() {
       const lineGen = d3.line<[number, number]>().x((d) => xScale(d[0])).y((d) => yScale(d[1])).curve(d3.curveCatmullRom);
       const naivePts: [number, number][] = grid.map((p) => [p.g, p.naive]);
       const sandPts: [number, number][] = grid.map((p) => [p.g, p.sandwich]);
-      g.append('path').attr('d', lineGen(naivePts)).attr('fill', 'none').attr('stroke', COLOR_NAIVE).attr('stroke-width', 2);
-      g.append('path').attr('d', lineGen(sandPts)).attr('fill', 'none').attr('stroke', COLOR_SAND).attr('stroke-width', 2);
+      g.append('path').attr('d', lineGen(naivePts)).attr('fill', 'none').style('stroke', COLOR_NAIVE).attr('stroke-width', 2);
+      g.append('path').attr('d', lineGen(sandPts)).attr('fill', 'none').style('stroke', COLOR_SAND).attr('stroke-width', 2);
       naivePts.forEach((p) => g.append('circle').attr('cx', xScale(p[0])).attr('cy', yScale(p[1])).attr('r', 3.5).style('fill', COLOR_NAIVE));
       sandPts.forEach((p) => g.append('circle').attr('cx', xScale(p[0])).attr('cy', yScale(p[1])).attr('r', 3.5).style('fill', COLOR_SAND));
 

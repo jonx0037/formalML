@@ -122,7 +122,7 @@ export default function SandwichDecomposer() {
         const rx = Math.abs(xScale(RUNNING_EXAMPLE_THETA0[0] + ell.rx) - x0);
         const ry = Math.abs(yScale(RUNNING_EXAMPLE_THETA0[1] + ell.ry) - y0);
         const angleDeg = (-ell.angle * 180) / Math.PI;
-        g.append('ellipse').attr('cx', x0).attr('cy', y0).attr('rx', rx).attr('ry', ry).attr('transform', `rotate(${angleDeg}, ${x0}, ${y0})`).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2);
+        g.append('ellipse').attr('cx', x0).attr('cy', y0).attr('rx', rx).attr('ry', ry).attr('transform', `rotate(${angleDeg}, ${x0}, ${y0})`).attr('fill', 'none').style('stroke', color).attr('stroke-width', 2);
         g.append('text').attr('x', x0 + rx + 4).attr('y', y0 + dy).style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', color).text(label);
       };
       drawEllipse(state.ident.ellipse, COLOR_IDENT, 'W = I', -6);

@@ -17,7 +17,7 @@ FIG_DIR = REPO_ROOT / "notebooks/generalized-method-of-moments/figures"
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    nb = json.loads(NOTEBOOK_PATH.read_text())
+    nb = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
 
     # Cell-index → output filename map. Derived from the Phase-1 cell survey.
     # Each entry pins (cell_idx, image_idx_within_cell) → descriptive name.

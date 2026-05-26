@@ -139,7 +139,7 @@ export default function ConsistencyCloudExplorer() {
       const lineGen = d3.line<[number, number]>().x((d) => xScale(d[0])).y((d) => yScale(d[1]));
       g.append('path').attr('d', lineGen(ref))
         .attr('fill', 'none')
-        .attr('stroke', 'var(--color-text-secondary)')
+        .style('stroke', 'var(--color-text-secondary)')
         .attr('stroke-dasharray', '4 3')
         .attr('stroke-width', 1);
       g.append('text').attr('x', xScale(N_GRID[1])).attr('y', yScale(ref[1][1]) - 6).style('font-family', 'var(--font-mono)').style('font-size', '10px').style('fill', 'var(--color-text-secondary)').text('n^{−1/2} reference');
@@ -147,8 +147,8 @@ export default function ConsistencyCloudExplorer() {
       // Lines.
       const identPts: [number, number][] = N_GRID.map((n, i) => [n, run.rmseIdent[i]]);
       const effPts: [number, number][] = N_GRID.map((n, i) => [n, run.rmseEff[i]]);
-      g.append('path').attr('d', lineGen(identPts)).attr('fill', 'none').attr('stroke', COLOR_IDENT).attr('stroke-width', 2);
-      g.append('path').attr('d', lineGen(effPts)).attr('fill', 'none').attr('stroke', COLOR_EFF).attr('stroke-width', 2);
+      g.append('path').attr('d', lineGen(identPts)).attr('fill', 'none').style('stroke', COLOR_IDENT).attr('stroke-width', 2);
+      g.append('path').attr('d', lineGen(effPts)).attr('fill', 'none').style('stroke', COLOR_EFF).attr('stroke-width', 2);
 
       // Markers.
       identPts.forEach((p) => g.append('circle').attr('cx', xScale(p[0])).attr('cy', yScale(p[1])).attr('r', 3.5).style('fill', COLOR_IDENT));
@@ -204,7 +204,7 @@ export default function ConsistencyCloudExplorer() {
           .attr('rx', rx).attr('ry', ry)
           .attr('transform', `rotate(${angleDeg}, ${x0}, ${y0})`)
           .attr('fill', 'none')
-          .attr('stroke', color)
+          .style('stroke', color)
           .attr('stroke-width', 2);
       };
       drawEllipse(run.ellipseIdent, COLOR_IDENT);

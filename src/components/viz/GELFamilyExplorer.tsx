@@ -124,9 +124,9 @@ export default function GELFamilyExplorer() {
 
       // EL reference (gray dashed).
       const elPts: [number, number][] = ref.map((p) => [p[0], p[1]]);
-      g.append('path').attr('d', lineGen(elPts.filter((p) => isFinite(p[1])))).attr('fill', 'none').attr('stroke', COLOR_EL).attr('stroke-dasharray', '4 3').attr('stroke-width', 1.2);
+      g.append('path').attr('d', lineGen(elPts.filter((p) => isFinite(p[1])))).attr('fill', 'none').style('stroke', COLOR_EL).attr('stroke-dasharray', '4 3').attr('stroke-width', 1.2);
       const cuePts: [number, number][] = ref.map((p) => [p[0], p[2]]);
-      g.append('path').attr('d', lineGen(cuePts.filter((p) => isFinite(p[1])))).attr('fill', 'none').attr('stroke', COLOR_CUE).attr('stroke-dasharray', '4 3').attr('stroke-width', 1.2);
+      g.append('path').attr('d', lineGen(cuePts.filter((p) => isFinite(p[1])))).attr('fill', 'none').style('stroke', COLOR_CUE).attr('stroke-dasharray', '4 3').attr('stroke-width', 1.2);
 
       // User's γ curve (solid, prominent).
       const userPts: [number, number][] = [];
@@ -135,7 +135,7 @@ export default function GELFamilyExplorer() {
         const r = rhoCressieRead(v, gamma);
         if (isFinite(r)) userPts.push([v, r]);
       }
-      g.append('path').attr('d', lineGen(userPts)).attr('fill', 'none').attr('stroke', 'var(--color-text)').attr('stroke-width', 2.5);
+      g.append('path').attr('d', lineGen(userPts)).attr('fill', 'none').style('stroke', 'var(--color-text)').attr('stroke-width', 2.5);
 
       g.append('text').attr('x', innerW / 2).attr('y', innerH + 32).attr('text-anchor', 'middle').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-sans)').style('font-size', '11px').text('v = λ ⋅ g(X_i, θ)');
       g.append('text').attr('x', -innerH / 2).attr('y', -42).attr('text-anchor', 'middle').attr('transform', 'rotate(-90)').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-sans)').style('font-size', '11px').text(`ρ_γ(v) at γ = ${gamma.toFixed(2)}`);
