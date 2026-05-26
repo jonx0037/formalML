@@ -1571,6 +1571,76 @@ export function dmlPartialLinear(
   return { thetaDML, thetaOLS: xy / xx, thetaNaive };
 }
 
+// =============================================================================
+// Wave 6 — Laplace-type estimator (Chernozhukov-Hong 2003) via 2D Metropolis
+// on the affine-GMM running example.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Random-walk Metropolis sampler from the quasi-posterior
+//   π*(θ) ∝ exp(-J_n(θ, Ω̂⁻¹)/2) · π(θ),
+// where J_n is the affine GMM criterion at the two-step efficient weighting.
+// Flat prior on the running example. Returns the MH chain after warmup +
+// thinning, plus the acceptance rate.
+// -----------------------------------------------------------------------------
+
+export interface LTESamples {
+  samples: Vec[]; // length nSamples
+  acceptanceRate: number;
+  thetaBar: Vec;
+  posteriorCov: Mat;
+}
+
+export function laplaceTypeMHAffine(
+  X: Mat,
+  A: Mat,
+  rng: () => number,
+  nSamples: number,
+  warmup = 500,
+  stepScale = 0.1,
+): LTESamples {
+  const n = X.length;
+  const L = A.length;
+  // Pre-compute X̄ and the two-step Ω̂⁻¹ for the J target.
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  const twoStep = twoStepAffineGMM(X, A);
+  const W = twoStep.OmegaHatInv;
+  const k = A[0].length;
+
+  let theta: Vec = twoStep.theta2.slice();
+  let logPi = -0.5 * gmmCriterion(theta, A, Xbar, W, n);
+  const gauss = gaussianFrom(rng);
+  let accepted = 0;
+  let proposed = 0;
+  const totalIter = warmup + nSamples;
+  const samples: Vec[] = [];
+  for (let t = 0; t < totalIter; t++) {
+    const prop: Vec = new Array(k);
+    for (let j = 0; j < k; j++) prop[j] = theta[j] + stepScale * gauss();
+    const logPiProp = -0.5 * gmmCriterion(prop, A, Xbar, W, n);
+    const logA = logPiProp - logPi;
+    proposed++;
+    if (logA >= 0 || Math.log(rng()) < logA) {
+      theta = prop;
+      logPi = logPiProp;
+      accepted++;
+    }
+    if (t >= warmup) samples.push(theta.slice());
+  }
+  // Posterior mean and covariance.
+  const thetaBar: Vec = new Array(k).fill(0);
+  for (const s of samples) for (let j = 0; j < k; j++) thetaBar[j] += s[j];
+  for (let j = 0; j < k; j++) thetaBar[j] /= samples.length;
+  const cov: Mat = zerosMat(k, k);
+  for (const s of samples) {
+    for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) cov[a][b] += (s[a] - thetaBar[a]) * (s[b] - thetaBar[b]);
+  }
+  for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) cov[a][b] /= Math.max(samples.length - 1, 1);
+  return { samples, acceptanceRate: accepted / proposed, thetaBar, posteriorCov: cov };
+}
+
 // Simulate the partial-linear DGP: Y = X θ_0 + g_0(W) + ε,  X = m_0(W) + v.
 // Closed-form g_0(W) = sin(πW), m_0(W) = W² as "smooth but nonlinear" nuisances.
 export function simulatePartialLinear(rng: () => number, theta0: number, n: number): { Y: Vec; X: Vec; W: Vec } {

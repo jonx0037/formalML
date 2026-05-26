@@ -117,7 +117,7 @@ export const tracks = [
     layer: 'ML Methodology',
     description:
       'Generalization theory, semiparametric efficiency, causal inference, and uncertainty quantification \u2014 methodology that cuts across model families.',
-    planned: ['generalized-method-of-moments'],
+    planned: [],
     calculusDependent: false,
   },
 ] as const;

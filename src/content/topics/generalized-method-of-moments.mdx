@@ -1,7 +1,7 @@
 ---
 title: "Generalized Method of Moments"
 subtitle: "Hansen's framework for over-identified estimation — efficient weighting, the J-statistic, and the bridge from ML to double machine learning"
-status: "draft"
+status: "published"
 difficulty: "advanced"
 prerequisites:
   - "concentration-inequalities"
@@ -219,6 +219,7 @@ import WeakInstrumentDiagnostics from '../../components/viz/WeakInstrumentDiagno
 import GELFamilyExplorer from '../../components/viz/GELFamilyExplorer.tsx';
 import SandwichSavesCoverage from '../../components/viz/SandwichSavesCoverage.tsx';
 import DMLBiasComparison from '../../components/viz/DMLBiasComparison.tsx';
+import LaplaceTypeEstimatorComparison from '../../components/viz/LaplaceTypeEstimatorComparison.tsx';
 
 ## §1 — Introduction and motivation
 
@@ -1288,3 +1289,49 @@ This is a **pathwise / Gâteaux derivative** condition: small perturbations of $
 **Constructing orthogonal moments via the EIF.** Start with a "naive" moment $g_0(O; \theta, \eta)$ satisfying $\mathbb{E}[g_0(O; \theta_0, \eta_0)] = 0$ but *not* Neyman orthogonal. The **orthogonalized moment** is $g(O; \theta, \eta) = g_0(O; \theta, \eta) + \phi^\star(O; \theta, \eta)$, where $\phi^\star$ is the EIF of the nuisance-correction term from the semiparametric efficiency machinery (§6.4). This **Neyman orthogonalization** is the same operation that produces AIPW from naive outcome regression, Robinson partialling-out from naive OLS, targeted minimum-loss from naive plug-in, and most modern doubly-robust estimators.
 
 Three reasons GMM-with-ML-nuisances is the modern frontier: (1) asymptotic theory is portable — Theorem 5.1's sandwich, §6's efficiency bound, §8's J-statistic all generalize; (2) multiple identifying moments combine optimally — efficient GMM with the union of moments achieves the semiparametric efficiency bound; (3) specification testing is free — Hansen's J-statistic generalizes to the DML setting (Chernozhukov-Newey-Singh 2022).
+
+---
+
+## §13 — Computational notes, limits, and connections
+
+### 13.1 Numerical optimization tips
+
+**Affine moment functions: use the closed form.** `numpy.linalg.solve(A.T @ W @ A, A.T @ W @ b)` computes the GMM estimate in microseconds. Do not call `scipy.optimize.minimize` on a linear problem. For smooth nonlinear moments, `scipy.optimize.minimize(method='BFGS')` with the two-step estimate as starting value is the practical default; pass analytic gradients via `jac=` when available.
+
+The CUE objective is generally *nonconvex* even for affine moments. Starting from the two-step estimate $\hat\theta^{(2)}$ — asymptotically equivalent to CUE — typically lands in the convex basin of the global minimum. For EL, use nested optimization with a convex inner problem: Newton-Raphson with line search on the inner $\lambda$ (converges in $\sim 5$ iterations), BFGS on the profile $\ell_R(\theta)$ as the outer loop.
+
+Convergence diagnostics: monitor the norm of the FOC residual $\|G_n^\top W \bar g_n(\theta)\|$ at the optimum (should be near machine epsilon), the condition number of $G_n^\top W G_n$ (large = weak identification), and the J-statistic value vs $\chi^2_{L-k}$ critical (large = specification rejection). Multi-start optimization is the standard defensive strategy for nonconvex problems.
+
+### 13.2 Bootstrap for GMM and the J-statistic
+
+The naïve nonparametric bootstrap *fails for GMM* because the bootstrap moment condition is not zero at $\theta = \hat\theta_n$ in the over-identified case. The **Brown-Newey (1995) / Hall-Horowitz (1996) recentered bootstrap** fixes this: define $g^\star(X^\star, \theta) := g(X^\star, \theta) - \bar g_n(\hat\theta_n)$ and run GMM on $g^\star$. Hall and Horowitz (1996) proved that the recentered bootstrap yields an *asymptotic refinement*: bootstrap CIs and J-test critical values have coverage error $O(n^{-1})$ vs $O(n^{-1/2})$ asymptotic. Modern variants: wild bootstrap (Davidson-MacKinnon 2010) for heteroskedasticity-robust refinement; block bootstrap (Künsch 1989) for time-series GMM. Default for most applied work: recentered bootstrap with $B \sim 1000$.
+
+### 13.3 Bayesian GMM via Chernozhukov–Hong (2003)
+
+Chernozhukov-Hong define a **Laplace-type estimator (LTE)** by treating the GMM criterion as a quasi-log-likelihood:
+
+$$
+\pi^\star(\theta \mid \text{data}) \;\propto\; \exp\!\left(-\frac{1}{2} J_n(\theta, W)\right) \cdot \pi(\theta).
+$$
+
+Under standard regularity, the posterior mean is consistent, posterior variance equals the GMM sandwich variance, and posterior credible regions equal asymptotic confidence regions to first order. The visualization below runs a 2D random-walk Metropolis sampler from this quasi-posterior on the running example. Top panel: the LTE sample cloud overlaid with the frequentist sandwich 95% ellipse — the two agree at moderate $n$. Bottom panel: marginal posterior densities for $\theta_1$ and $\theta_2$, with the Gaussian asymptotic curves overlaid.
+
+<LaplaceTypeEstimatorComparison client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/13_lte_quasi_posterior.png"
+  alt="2D Metropolis quasi-posterior cloud with frequentist sandwich 95% ellipse overlay"
+  caption="Figure 13.1 — Laplace-type estimator quasi-posterior vs frequentist sandwich at n = 500. The MH sample cloud and the sandwich ellipse agree to first order; the LTE provides a Bayesian-flavored uncertainty quantification without specifying a full likelihood model."
+/>
+
+LTE is useful when: the GMM criterion is non-smooth (quantile IV, M-estimation with non-differentiable loss); the criterion is multimodal; the model is weakly identified and MCMC reveals the indeterminate direction; informative prior information is available.
+
+### 13.4 Cross-site connections and further reading
+
+**Inbound connections from sister sites.** The just-identified predecessor is <ExternalLink href="https://formalstatistics.com/topics/method-of-moments" site="formalstatistics" topic="method-of-moments" />, which develops the §2 Pearson construction in detail. The deferred reciprocal in `docs/plans/deferred-reciprocals.md` auto-discharges via the `formalstatisticsPrereqs` reciprocal on ship.
+
+**Outbound connections within formalML.** Three previously-shipped topics underwrite GMM's machinery: *Concentration Inequalities* (uniform-LLN bridge for the §4 consistency proof), *Convex Analysis* (convex-quadratic geometry of the GMM criterion), and *Semiparametric Inference* (efficient influence function and the semiparametric efficiency bound that equals the Hansen bound). Two planned formalML topics will pick up where GMM leaves off: **Causal Inference Methods** *(coming soon)* — doubly-robust estimation, double machine learning, Neyman orthogonality, AIPW; and **Empirical Processes** *(coming soon)* — formal development of uniform LLN and Glivenko-Cantelli machinery.
+
+**Recommended further reading.** *Original sources:* Hansen (1982), Hansen-Singleton (1982), Owen (1988). *Textbook treatments:* Hayashi (2000) Ch. 3-5; Hansen B.E. (2022) Ch. 13-15 (free online); Newey-McFadden (1994). *Modern developments:* Newey-Smith (2004) for GEL unification; Chernozhukov et al. (2018) for DML; Kennedy (2022) for EIF formulas. *Software:* `linearmodels` (Python); `gmm` package (R); `statsmodels.sandbox.regression.gmm` (Python); `ivreg2` (Stata). For DML: `econml` (Microsoft); `doubleml` (CRAN/PyPI).
+
+**Closing remark.** GMM is one of the few estimation frameworks that has stayed central through forty years of changing computational tools. Pearson's method of moments (1894) became Hansen's GMM (1982) became Newey-Smith's GEL (2004) became Chernozhukov et al.'s DML (2018). Each generation built on the same algebraic core — minimize a weighted quadratic in the sample-moment vector — and adapted it to the computational reality of the day. The modern incarnation, GMM with cross-fitted ML nuisances, is the framework that lets us put random forests inside causal-inference confidence intervals without giving up the $\sqrt{n}$-consistency that classical statistics requires.
