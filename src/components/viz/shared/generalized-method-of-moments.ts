@@ -1047,3 +1047,285 @@ export function chi2Quantile(p: number, df: number): number {
   return x;
 }
 
+// =============================================================================
+// Wave 4 — Linear instrumental-variables simulator, 2SLS, efficient GMM
+// under heteroskedasticity, first-stage F, Anderson-Rubin confidence set.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Linear IV data-generating process. Scalar endogenous regressor X, L
+// instruments Z, structural parameter θ₀.
+//
+//   Y_i = X_i · θ_0 + ε_i              (structural equation)
+//   X_i = Z_iᵀ π + v_i                  (first-stage)
+//   (ε_i, v_i) ~ N(0, [[σ_ε², ρ σ_ε σ_v], [⋅, σ_v²]])
+//   ε_i conditional std = σ_ε(1 + γ |Z_{i,1}|)  (heteroskedastic)
+//
+// First-stage strength is controlled by τ (with π = τ · π_unit). Endogeneity
+// by ρ ∈ (-1, 1). Heteroskedasticity by γ ≥ 0 (γ = 0 is homoskedastic).
+// -----------------------------------------------------------------------------
+
+export interface IVData {
+  Y: Vec;
+  X: Vec; // scalar regressor (length n)
+  Z: Mat; // n × L instrument matrix
+}
+
+export function simulateLinearIV(
+  rng: () => number,
+  theta0: number,
+  n: number,
+  L: number,
+  rho: number,
+  gamma: number,
+  tau: number,
+  piUnit?: Vec,
+): IVData {
+  const gauss = gaussianFrom(rng);
+  const pi: Vec = (piUnit ?? new Array(L).fill(1 / Math.sqrt(L))).map((p) => p * tau);
+  const Z: Mat = zerosMat(n, L);
+  const Y: Vec = new Array(n);
+  const X: Vec = new Array(n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < L; j++) Z[i][j] = gauss();
+    // (ε, v) drawn from the correlated bivariate Gaussian.
+    const u1 = gauss();
+    const u2 = gauss();
+    const eps0 = u1; // standard normal
+    const v = rho * u1 + Math.sqrt(Math.max(1 - rho * rho, 0)) * u2;
+    const sigmaEps = 1 + gamma * Math.abs(Z[i][0]);
+    const eps = sigmaEps * eps0;
+    let zPi = 0;
+    for (let j = 0; j < L; j++) zPi += Z[i][j] * pi[j];
+    X[i] = zPi + v;
+    Y[i] = X[i] * theta0 + eps;
+  }
+  return { Y, X, Z };
+}
+
+// -----------------------------------------------------------------------------
+// OLS on Y ~ X. Biased under endogeneity (cov(X, ε) ≠ 0).
+// -----------------------------------------------------------------------------
+
+export function olsScalar(Y: Vec, X: Vec): { theta: number; resid: Vec } {
+  const n = Y.length;
+  let xx = 0;
+  let xy = 0;
+  for (let i = 0; i < n; i++) {
+    xx += X[i] * X[i];
+    xy += X[i] * Y[i];
+  }
+  const theta = xy / xx;
+  const resid: Vec = new Array(n);
+  for (let i = 0; i < n; i++) resid[i] = Y[i] - X[i] * theta;
+  return { theta, resid };
+}
+
+// -----------------------------------------------------------------------------
+// 2SLS = GMM with W = (Z'Z/n)^{-1}. Closed form for scalar X:
+//   θ̂_2SLS = (Xᵀ P_Z X)^{-1} Xᵀ P_Z Y,    P_Z = Z (ZᵀZ)^{-1} Zᵀ.
+//
+// We compute via the canonical "two-stage" interpretation: regress X on Z to
+// get X̂ = P_Z X (first stage), then OLS of Y on X̂.
+// -----------------------------------------------------------------------------
+
+export function twoStageLeastSquares(Y: Vec, X: Vec, Z: Mat): { theta: number; Xhat: Vec; resid: Vec; firstStageR2: number } {
+  const n = Y.length;
+  const L = Z[0].length;
+  // ZᵀZ (L × L) and ZᵀX (L × 1).
+  const ZtZ: Mat = zerosMat(L, L);
+  const ZtX: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < L; a++) {
+      ZtX[a] += Z[i][a] * X[i];
+      for (let b = 0; b < L; b++) ZtZ[a][b] += Z[i][a] * Z[i][b];
+    }
+  }
+  const ZtZinv = matInverse(ZtZ);
+  const piHat = matVec(ZtZinv, ZtX); // first-stage OLS coefficients
+  // X̂ = Z · π̂.
+  const Xhat: Vec = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let a = 0; a < L; a++) s += Z[i][a] * piHat[a];
+    Xhat[i] = s;
+  }
+  // OLS of Y on X̂.
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += Xhat[i] * Y[i];
+    den += Xhat[i] * Xhat[i];
+  }
+  const theta = num / den;
+  const resid: Vec = new Array(n);
+  for (let i = 0; i < n; i++) resid[i] = Y[i] - X[i] * theta;
+  // First-stage R² as a sanity / strength readout.
+  let xbar = 0;
+  for (const x of X) xbar += x;
+  xbar /= n;
+  let tss = 0;
+  let rss = 0;
+  for (let i = 0; i < n; i++) {
+    tss += (X[i] - xbar) * (X[i] - xbar);
+    const e = X[i] - Xhat[i];
+    rss += e * e;
+  }
+  const firstStageR2 = 1 - rss / Math.max(tss, 1e-12);
+  return { theta, Xhat, resid, firstStageR2 };
+}
+
+// -----------------------------------------------------------------------------
+// First-stage F-statistic. Under H₀: π = 0, F ~ F_{L, n-L-1}; large F means
+// strong instruments. Staiger-Stock (1997) rule of thumb: F > 10 ⇒ strong.
+// -----------------------------------------------------------------------------
+
+export function firstStageF(X: Vec, Z: Mat): number {
+  const n = X.length;
+  const L = Z[0].length;
+  const { Xhat } = twoStageLeastSquares(X, X, Z); // hack: regress X on Z directly
+  let ess = 0;
+  let rss = 0;
+  let xbar = 0;
+  for (const x of X) xbar += x;
+  xbar /= n;
+  for (let i = 0; i < n; i++) {
+    ess += (Xhat[i] - xbar) * (Xhat[i] - xbar);
+    rss += (X[i] - Xhat[i]) * (X[i] - Xhat[i]);
+  }
+  const df1 = L;
+  const df2 = Math.max(n - L - 1, 1);
+  return (ess / df1) / (rss / df2);
+}
+
+// -----------------------------------------------------------------------------
+// Heteroskedasticity-robust efficient GMM for linear IV. Algorithm 9.1:
+//   1. 2SLS to get θ̂_2SLS and residuals ê = Y - X θ̂_2SLS.
+//   2. Ω̂ = (1/n) Σ Z_i Z_iᵀ ê_i².
+//   3. Efficient GMM with Ŵ = Ω̂⁻¹.
+//
+// Returns the efficient estimate and its plug-in sandwich variance.
+// -----------------------------------------------------------------------------
+
+export interface EfficientIVResult {
+  theta: number;
+  V: number; // scalar asymptotic variance
+  J: number; // J-statistic at efficient weighting
+  OmegaHat: Mat;
+}
+
+export function efficientGMM_IV(Y: Vec, X: Vec, Z: Mat): EfficientIVResult {
+  const n = Y.length;
+  const L = Z[0].length;
+  const tsls = twoStageLeastSquares(Y, X, Z);
+  // Ω̂ from 2SLS residuals.
+  const OmegaHat: Mat = zerosMat(L, L);
+  for (let i = 0; i < n; i++) {
+    const e = tsls.resid[i];
+    const w = e * e;
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] += Z[i][a] * Z[i][b] * w;
+  }
+  for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] /= n;
+  const W = matInverse(OmegaHat);
+  // Efficient closed form: (X' Z W Z' X)^{-1} X' Z W Z' Y.
+  const ZtX: Vec = new Array(L).fill(0);
+  const ZtY: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < L; a++) {
+      ZtX[a] += Z[i][a] * X[i];
+      ZtY[a] += Z[i][a] * Y[i];
+    }
+  }
+  const WZtX = matVec(W, ZtX);
+  const WZtY = matVec(W, ZtY);
+  let num = 0;
+  let den = 0;
+  for (let a = 0; a < L; a++) {
+    num += ZtX[a] * WZtY[a];
+    den += ZtX[a] * WZtX[a];
+  }
+  const theta = num / den;
+  // V = n · ((X'Z/n)' W (Z'X/n))^{-1} = (1/n) · n² / den · ... — using the
+  // sandwich at efficient weighting, V̂ = ( (X'Z/n) Ω̂⁻¹ (Z'X/n) )^{-1} / n.
+  const ZtXn = ZtX.map((v) => v / n);
+  const WZtXn = matVec(W, ZtXn);
+  let breadEff = 0;
+  for (let a = 0; a < L; a++) breadEff += ZtXn[a] * WZtXn[a];
+  const V = 1 / (n * breadEff);
+  // J at efficient θ:  J = n · g_n(θ)' W g_n(θ),  g_n(θ) = (1/n) Σ Z_i (Y_i - X_i θ).
+  const gn: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) {
+    const e = Y[i] - X[i] * theta;
+    for (let a = 0; a < L; a++) gn[a] += Z[i][a] * e;
+  }
+  for (let a = 0; a < L; a++) gn[a] /= n;
+  let J = 0;
+  const Wgn = matVec(W, gn);
+  for (let a = 0; a < L; a++) J += gn[a] * Wgn[a];
+  J *= n;
+  return { theta, V, J, OmegaHat };
+}
+
+// -----------------------------------------------------------------------------
+// Anderson-Rubin confidence set. For each θ in a grid, compute
+//   AR(θ) = n · ḡ_n(θ)' Ω̂(θ)^{-1} ḡ_n(θ),   ḡ_n(θ) = (1/n) Σ Z_i (Y_i - X_i θ).
+// Accept θ if AR(θ) < χ²_L(1 - α). Returns the boundary indices.
+//
+// Robust to weak instruments because AR does not condition on estimating θ.
+// -----------------------------------------------------------------------------
+
+export interface ARResult {
+  thetaGrid: Vec;
+  arValues: Vec;
+  accepted: boolean[];
+  crit: number; // χ²_L(0.95)
+  lower: number | null;
+  upper: number | null;
+}
+
+export function andersonRubinSet(Y: Vec, X: Vec, Z: Mat, thetaGrid: Vec, alpha = 0.05): ARResult {
+  const n = Y.length;
+  const L = Z[0].length;
+  const crit = chi2Quantile(1 - alpha, L);
+  const arValues: Vec = [];
+  const accepted: boolean[] = [];
+  for (const t of thetaGrid) {
+    const gn: Vec = new Array(L).fill(0);
+    for (let i = 0; i < n; i++) {
+      const e = Y[i] - X[i] * t;
+      for (let a = 0; a < L; a++) gn[a] += Z[i][a] * e;
+    }
+    for (let a = 0; a < L; a++) gn[a] /= n;
+    // Ω̂(θ) heteroskedasticity-robust at this θ.
+    const Omega: Mat = zerosMat(L, L);
+    for (let i = 0; i < n; i++) {
+      const w = (Y[i] - X[i] * t) ** 2;
+      for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) Omega[a][b] += Z[i][a] * Z[i][b] * w;
+    }
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) Omega[a][b] /= n;
+    let arVal: number;
+    try {
+      const Winv = matInverse(Omega);
+      const Wgn = matVec(Winv, gn);
+      let ar = 0;
+      for (let a = 0; a < L; a++) ar += gn[a] * Wgn[a];
+      arVal = n * ar;
+    } catch {
+      arVal = Infinity;
+    }
+    arValues.push(arVal);
+    accepted.push(arVal < crit);
+  }
+  // Locate contiguous accepted interval (the AR set may be the whole line for
+  // very weak instruments — we report the first / last accepted grid index).
+  let lower: number | null = null;
+  let upper: number | null = null;
+  for (let i = 0; i < accepted.length; i++) {
+    if (accepted[i]) {
+      if (lower === null) lower = thetaGrid[i];
+      upper = thetaGrid[i];
+    }
+  }
+  return { thetaGrid, arValues, accepted, crit, lower, upper };
+}
+

@@ -214,6 +214,8 @@ import SandwichDecomposer from '../../components/viz/SandwichDecomposer.tsx';
 import EfficiencyFrontierExplorer from '../../components/viz/EfficiencyFrontierExplorer.tsx';
 import TwoStepGMMWalkthrough from '../../components/viz/TwoStepGMMWalkthrough.tsx';
 import JStatisticDistributionExplorer from '../../components/viz/JStatisticDistributionExplorer.tsx';
+import LinearIVPlayground from '../../components/viz/LinearIVPlayground.tsx';
+import WeakInstrumentDiagnostics from '../../components/viz/WeakInstrumentDiagnostics.tsx';
 
 ## §1 — Introduction and motivation
 
@@ -970,3 +972,99 @@ The standard reporting convention is the **p-value**: $p_{\hat J} = P(\chi^2_{L-
 **Pitfall 3: Weak identification inflates the false-rejection rate.** When $G_0$ is near-singular, the asymptotic $\chi^2_{L-k}$ approximation breaks down. The Anderson–Rubin test (§9.4) provides a weak-instrument-robust alternative.
 
 **Relationship to other specification tests.** The **Sargan test** (Sargan 1958) is the J-test specialized to linear IV — same statistic, same null distribution, older econometric name. The **Hausman test** (Hausman 1978) tests whether two consistent estimators agree — a specification check based on the *difference* between estimators. **Conditional moment tests** (Newey 1985) test *subsets* of moment conditions, useful for localizing the source of a significant J-statistic.
+
+---
+
+## §9 — Linear GMM, instrumental variables, and 2SLS
+
+This section makes the abstract framework concrete via the canonical applied case: **linear instrumental-variables regression**. The IV setting is where GMM was born — Hansen and Singleton's (1982) Euler equations are nonlinear IV — and where the framework continues to do most of its applied work.
+
+### 9.1 The linear IV model
+
+The structural equation is $Y_i = X_i^\top \theta_0 + \varepsilon_i$, $i = 1, \dots, n$, where $X_i \in \mathbb{R}^k$ is a vector of regressors with some component endogenous, $\mathbb{E}[X_i \varepsilon_i] \ne 0$. OLS is biased because the orthogonality condition fails.
+
+The fix is an **instrument vector** $Z_i \in \mathbb{R}^L$ with $L \ge k$ satisfying two conditions: **exogeneity** $\mathbb{E}[Z_i \varepsilon_i] = 0$ and **relevance** $\mathbb{E}[Z_i X_i^\top] \in \mathbb{R}^{L \times k}$ has rank $k$. Given $(Y_i, X_i, Z_i)$, the GMM **moment function** is $g(Y_i, X_i, Z_i; \theta) = Z_i \,(Y_i - X_i^\top \theta) \in \mathbb{R}^L$. By exogeneity, $\mathbb{E}[g(Y, X, Z; \theta_0)] = 0$ at the truth. By relevance, $G_0 = -\mathbb{E}[Z X^\top]$ has full column rank $k$. The over-identification degree is $L - k$.
+
+The sample-moment vector is $\bar g_n(\theta) = (1/n) Z^\top (Y - X \theta)$ where $Z, X, Y$ stack rows. The sample Jacobian is $G_n = -(1/n) Z^\top X$, independent of $\theta$ (the moment function is affine in $\theta$).
+
+The visualization below sets $k = 1$ (one endogenous regressor) and $L = 4$ (four instruments), with a heteroskedasticity-controlled error variance. As you raise endogeneity $\rho$, the OLS sampling distribution drifts away from $\theta_0 = 1$. As you raise heteroskedasticity $\gamma$, the efficient-GMM advantage over 2SLS grows.
+
+<LinearIVPlayground client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/09_linear_iv_sampling.png"
+  alt="Three sampling distributions overlaid: OLS biased, 2SLS unbiased but spread, efficient GMM unbiased and tighter"
+  caption="Figure 9.1 — Linear IV sampling distributions at n = 500, L = 4 instruments, ρ = 0.5 endogeneity, γ = 1.5 heteroskedasticity. OLS is biased toward the confounded mean; 2SLS is consistent for θ₀ = 1 but inefficient; efficient GMM tightens the distribution by exploiting the heteroskedasticity through Ω̂⁻¹ weighting."
+/>
+
+### 9.2 2SLS as $(Z^\top Z / n)^{-1}$-weighted GMM
+
+The GMM estimator with a generic weighting matrix $W$ is
+
+$$
+\hat\theta_W \;=\; (X^\top Z \, W \, Z^\top X)^{-1} X^\top Z \, W \, Z^\top Y, \qquad\qquad (9.1)
+$$
+
+closed-form because $g$ is affine in $\theta$.
+
+<TheoremBlock type="theorem" number={9.1} title="2SLS as GMM">
+The two-stage least squares estimator is the GMM estimator with weighting matrix $W = (Z^\top Z / n)^{-1}$:
+
+$$
+\hat\theta_{2SLS} \;=\; (X^\top P_Z X)^{-1} X^\top P_Z Y, \qquad P_Z = Z (Z^\top Z)^{-1} Z^\top.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Substitute $W = n (Z^\top Z)^{-1}$ into (9.1); the scalar $n$ cancels, leaving $(X^\top Z (Z^\top Z)^{-1} Z^\top X)^{-1} X^\top Z (Z^\top Z)^{-1} Z^\top Y = (X^\top P_Z X)^{-1} X^\top P_Z Y$.
+</TheoremBlock>
+
+The textbook "two-stage" interpretation: $P_Z X = \hat X$ is the OLS prediction of $X$ from $Z$ (first stage), and $\hat\theta_{2SLS}$ is the OLS regression of $Y$ on $\hat X$ (second stage). Under homoskedasticity $\mathbb{E}[\varepsilon^2 | Z] = \sigma_\varepsilon^2$, $\Omega = \sigma_\varepsilon^2 \cdot \mathbb{E}[Z Z^\top]$, and $W = (Z^\top Z / n)^{-1}$ differs from $W^\star = \Omega^{-1}$ only by the scalar $\sigma_\varepsilon^2$. So **2SLS is efficient GMM under homoskedasticity**. The Hansen bound becomes $V^\star_{\rm 2SLS} = \sigma_\varepsilon^2 \cdot (\mathbb{E}[X Z^\top] (\mathbb{E}[Z Z^\top])^{-1} \mathbb{E}[Z X^\top])^{-1}$, estimated as $\hat V_{\rm 2SLS} = \hat\sigma_\varepsilon^2 \cdot (X^\top P_Z X / n)^{-1}$ — the standard 2SLS variance formula.
+
+### 9.3 Efficient GMM under heteroskedasticity
+
+When $\mathbb{E}[\varepsilon^2 | Z]$ depends on $Z$, $\Omega$ is no longer proportional to $\mathbb{E}[Z Z^\top]$, and 2SLS is *inefficient*. The fix is the two-step procedure of §7 specialized to linear IV.
+
+<TheoremBlock type="algorithm" number={9.1} title="Heteroskedasticity-robust efficient GMM">
+1. Run 2SLS to obtain $\hat\theta_{2SLS}$.
+2. Compute residuals $\hat e_i = Y_i - X_i^\top \hat\theta_{2SLS}$.
+3. Estimate the heteroskedasticity-robust moment covariance: $\hat\Omega_n = (1/n) \sum_{i=1}^n Z_i Z_i^\top \hat e_i^2$.
+4. Re-estimate GMM with $\hat W = \hat\Omega_n^{-1}$: $\hat\theta^{\rm eff} = (X^\top Z \hat W Z^\top X)^{-1} X^\top Z \hat W Z^\top Y$.
+5. The plug-in efficient variance is $\hat V^{\rm eff} = ((X^\top Z / n) \, \hat W \, (Z^\top X / n))^{-1}$.
+</TheoremBlock>
+
+This estimator goes by several names: **efficient GMM** (Hansen 1982), **heteroskedasticity-robust 2SLS** (applied econometrics), **White (1980) estimator** in the just-identified case $L = k$, or **sandwich estimator** (statistical learning).
+
+### 9.4 Weak instruments and near-identification
+
+For a scalar endogenous regressor ($k = 1$), the first-stage equation is $X_i = Z_i^\top \pi + v_i$. The strength of the instruments is measured by the **concentration parameter** $\mu^2 = \pi^\top (Z^\top Z) \pi / \sigma_v^2$. The first-stage F-statistic is $F = \mu^2 / L$ (large-$n$ approximation), an asymptotic chi-squared random variable under the null that all $\pi_j = 0$.
+
+Staiger and Stock (1997, *Econometrica* 65(3): 557–586) proposed the most-cited rule of thumb — **first-stage F > 10** as a working threshold separating "strong" from "weak" identification — based on simulation evidence that the 2SLS asymptotic-normal approximation deteriorates below this point. Stock and Yogo (2005) subsequently formalized the threshold via tabulated critical values: under their bias-bound criterion (2SLS bias $\le 10\%$ of OLS bias) at $L = 1$ instrument, the 5%-level critical value is approximately 11.0; values for other $(L, k)$ pairs are in Stock-Yogo Tables 1–2.
+
+When the first-stage F is below 10, two pathologies appear. **Bias:** 2SLS becomes biased toward OLS in finite samples, with bias of order $O(1/F)$. **Standard-error distortion:** the 2SLS asymptotic-normal CI undercovers — the nominal-95% CI may have actual coverage of 80% or less.
+
+The **Anderson–Rubin test** (Anderson and Rubin 1949) introduced a test that *does not condition on estimating $\theta$* and is therefore robust to weak instruments. The AR statistic at a hypothesized value $\theta^\star$ is
+
+$$
+\mathrm{AR}(\theta^\star) \;=\; n \cdot \bar g_n(\theta^\star)^\top \hat\Omega(\theta^\star)^{-1} \bar g_n(\theta^\star),
+$$
+
+where $\hat\Omega(\theta^\star)$ is the moment-covariance estimated *under $H_0: \theta = \theta^\star$*. Under $H_0$, by the same residual-projection argument as §8.2 *but without subtracting the $k$ parameter-estimation degrees of freedom*,
+
+$$
+\mathrm{AR}(\theta^\star) \;\to_d\; \chi^2_L \qquad (\text{not } \chi^2_{L-k}).
+$$
+
+The AR confidence set is $\mathrm{CR}_{1-\alpha}^{\rm AR} = \{ \theta^\star : \mathrm{AR}(\theta^\star) < \chi^2_{L, \, 1-\alpha} \}$ — robust to weak instruments. Kleibergen (2002) developed the K-statistic and Moreira (2003) the conditional-likelihood-ratio test as closely related weak-instrument-robust alternatives.
+
+The visualization below makes the weak-instrument failure mode visible. Slide the first-stage strength $\tau$ down toward zero: the 2SLS sampling distribution develops bias toward OLS and heavy tails, while the AR confidence set widens dramatically (often spanning the whole real line) to honestly reflect the lost identification. The 2SLS Wald 95% CI under-covers — its width does not grow as $\tau$ shrinks.
+
+<WeakInstrumentDiagnostics client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/09_weak_instruments.png"
+  alt="Three-panel diagnostic showing first-stage F, 2SLS bias, and AR set width as instrument strength scales"
+  caption="Figure 9.2 — Weak-instrument diagnostics. As the first-stage strength scale τ shrinks: F-statistic drops below the SY-10 threshold; 2SLS becomes biased toward OLS with heavier tails; the AR set widens to honestly reflect lost identification, while the 2SLS Wald CI under-covers."
+/>
+
+For ML / causal-inference applications with strong, theory-motivated instruments (e.g., randomized experiments treated as instruments for compliance), weak instruments are rarely binding. For applied micro applications relying on borderline-relevant instruments, the weak-instrument diagnostics are essential.

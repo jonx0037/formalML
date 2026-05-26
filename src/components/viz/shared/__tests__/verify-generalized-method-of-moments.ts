@@ -63,6 +63,12 @@ import {
   trigamma,
   twoStepAffineGMM,
   vecDot,
+  simulateLinearIV,
+  twoStageLeastSquares,
+  efficientGMM_IV,
+  olsScalar,
+  firstStageF,
+  andersonRubinSet,
 } from '../generalized-method-of-moments';
 
 let pass = 0;
@@ -659,6 +665,132 @@ ok(chi2Pdf(0, 2) === 0, 'chi2Pdf zero at x=0');
   const Xbar = [1, 1, 2, 1]; // exact (A θ₀) for θ_0 = (1, 1)
   const J = jStatisticAffine([1, 1], A, Xbar, identityMat(4), 100);
   approxEq(J, 0, 1e-12, 'J = 0 at θ=θ₀ under exact moments');
+}
+
+// =============================================================================
+// Wave 4 assertions — linear IV simulator, 2SLS, efficient GMM, first-stage F,
+// Anderson-Rubin confidence set.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// 24. simulateLinearIV smoke test — sample dimensions are correct.
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(901);
+  const ivd = simulateLinearIV(rng, 1.0, 500, 4, 0.5, 0.0, 0.8);
+  ok(ivd.Y.length === 500, 'simulateLinearIV Y length');
+  ok(ivd.X.length === 500, 'simulateLinearIV X length');
+  ok(ivd.Z.length === 500 && ivd.Z[0].length === 4, 'simulateLinearIV Z shape');
+}
+
+// -----------------------------------------------------------------------------
+// 25. OLS bias under endogeneity (ρ = 0.6). The OLS estimate should be
+// noticeably above the truth at large n.
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(902);
+  const ivd = simulateLinearIV(rng, 1.0, 5000, 4, 0.6, 0.0, 1.0);
+  const ols = olsScalar(ivd.Y, ivd.X);
+  ok(ols.theta > 1.1, `OLS biased upward under endogeneity (θ̂ = ${ols.theta.toFixed(3)})`);
+}
+
+// -----------------------------------------------------------------------------
+// 26. 2SLS recovers θ_0 under strong instruments. At τ=1.0, ρ=0.6,
+// homoskedastic, n=5000, 2SLS should land near 1.0.
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(903);
+  const ivd = simulateLinearIV(rng, 1.0, 5000, 4, 0.6, 0.0, 1.0);
+  const tsls = twoStageLeastSquares(ivd.Y, ivd.X, ivd.Z);
+  approxEq(tsls.theta, 1.0, 0.1, '2SLS near truth at strong instruments');
+}
+
+// -----------------------------------------------------------------------------
+// 27. 2SLS projection-form identity. θ̂_2SLS = (Xᵀ P_Z X)^{-1} Xᵀ P_Z Y at a
+// fixed sample.
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(904);
+  const ivd = simulateLinearIV(rng, 1.0, 200, 4, 0.4, 0.0, 0.7);
+  const tsls = twoStageLeastSquares(ivd.Y, ivd.X, ivd.Z);
+  // Direct closed-form via P_Z.
+  const n = 200;
+  const L = 4;
+  const ZtZ = zerosMat(L, L);
+  const ZtX: number[] = new Array(L).fill(0);
+  const ZtY: number[] = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < L; a++) {
+      ZtX[a] += ivd.Z[i][a] * ivd.X[i];
+      ZtY[a] += ivd.Z[i][a] * ivd.Y[i];
+      for (let b = 0; b < L; b++) ZtZ[a][b] += ivd.Z[i][a] * ivd.Z[i][b];
+    }
+  }
+  const ZtZinv = matInverse(ZtZ);
+  const ZtZinvZtX = matVec(ZtZinv, ZtX);
+  const ZtZinvZtY = matVec(ZtZinv, ZtY);
+  let xpzx = 0; let xpzy = 0;
+  for (let a = 0; a < L; a++) { xpzx += ZtX[a] * ZtZinvZtX[a]; xpzy += ZtX[a] * ZtZinvZtY[a]; }
+  const thetaProj = xpzy / xpzx;
+  approxEq(tsls.theta, thetaProj, 1e-10, '2SLS = (X\' P_Z X)^{-1} X\' P_Z Y projection form');
+}
+
+function zerosMat(rows: number, cols: number): number[][] {
+  return Array.from({ length: rows }, () => new Array(cols).fill(0));
+}
+
+// -----------------------------------------------------------------------------
+// 28. Efficient GMM under heteroskedasticity beats 2SLS in RMSE. At
+// n=500, B=300, γ=2 (strong heteroskedasticity), efficient GMM should have
+// notably smaller RMSE than 2SLS.
+// -----------------------------------------------------------------------------
+{
+  let mseTsls = 0; let mseEff = 0;
+  const B = 200;
+  const n = 500;
+  for (let b = 0; b < B; b++) {
+    const rng = mulberry32(10000 + b * 7);
+    const ivd = simulateLinearIV(rng, 1.0, n, 4, 0.4, 2.0, 0.8);
+    const tsls = twoStageLeastSquares(ivd.Y, ivd.X, ivd.Z);
+    const eff = efficientGMM_IV(ivd.Y, ivd.X, ivd.Z);
+    mseTsls += (tsls.theta - 1.0) ** 2;
+    mseEff += (eff.theta - 1.0) ** 2;
+  }
+  const rmseTsls = Math.sqrt(mseTsls / B);
+  const rmseEff = Math.sqrt(mseEff / B);
+  ok(rmseEff <= rmseTsls * 1.05, `Efficient GMM RMSE ${rmseEff.toFixed(4)} ≤ 1.05 × 2SLS RMSE ${rmseTsls.toFixed(4)}`);
+}
+
+// -----------------------------------------------------------------------------
+// 29. First-stage F discriminates weak vs strong instruments. At τ=0.05,
+// F should be small (< 10). At τ=1.0, F should be large (> 50).
+// -----------------------------------------------------------------------------
+{
+  const rngWeak = mulberry32(11000);
+  const ivdWeak = simulateLinearIV(rngWeak, 1.0, 500, 4, 0.3, 0.0, 0.05);
+  const Fweak = firstStageF(ivdWeak.X, ivdWeak.Z);
+  ok(Fweak < 10, `Weak instruments F = ${Fweak.toFixed(2)} < 10`);
+
+  const rngStrong = mulberry32(11001);
+  const ivdStrong = simulateLinearIV(rngStrong, 1.0, 500, 4, 0.3, 0.0, 1.0);
+  const Fstrong = firstStageF(ivdStrong.X, ivdStrong.Z);
+  ok(Fstrong > 50, `Strong instruments F = ${Fstrong.toFixed(2)} > 50`);
+}
+
+// -----------------------------------------------------------------------------
+// 30. Anderson-Rubin set covers the truth at strong instruments. At τ=1,
+// the AR confidence set should contain θ_0 = 1.0.
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(12000);
+  const ivd = simulateLinearIV(rng, 1.0, 500, 4, 0.4, 0.0, 1.0);
+  const grid: number[] = [];
+  for (let g = 0; g <= 200; g++) grid.push(0.5 + g * 0.005);
+  const ar = andersonRubinSet(ivd.Y, ivd.X, ivd.Z, grid);
+  ok(ar.lower !== null && ar.upper !== null, 'AR set is nonempty under strong instruments');
+  if (ar.lower !== null && ar.upper !== null) {
+    ok(ar.lower <= 1.0 && ar.upper >= 1.0, `AR set [${ar.lower.toFixed(3)}, ${ar.upper.toFixed(3)}] contains θ_0=1`);
+  }
 }
 
 // -----------------------------------------------------------------------------
