@@ -44,14 +44,6 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalstatisticsPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _Every high-dimensional feature-selection procedure inherits a multiple-testing problem. BH is the default tool for selecting significant coefficients in deployed scikit-learn and R glmnet pipelines…_
 
-## When `formalml/generalized-method-of-moments` ships
-
-Add the reciprocal pointer back to:
-
-- **formalStatistics/method-of-moments** declares `formalmlConnections` → `generalized-method-of-moments` (connections)
-  - Reciprocal field on the new topic: `formalstatisticsPrereqs`
-  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _GMM (Hansen 1982) generalizes MoM to over-identified systems — more moment equations than parameters — solved by weighted least squares on the moment residuals. Previewed in §15.12 as the forward l…_
-
 ## When `formalml/high-dimensional-testing-knockoffs` ships
 
 Add the reciprocal pointer back to:

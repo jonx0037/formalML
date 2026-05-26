@@ -1,0 +1,1337 @@
+---
+title: "Generalized Method of Moments"
+subtitle: "Hansen's framework for over-identified estimation — efficient weighting, the J-statistic, and the bridge from ML to double machine learning"
+status: "published"
+difficulty: "advanced"
+prerequisites:
+  - "concentration-inequalities"
+  - "convex-analysis"
+  - "semiparametric-inference"
+formalstatisticsPrereqs:
+  - topic: "method-of-moments"
+    site: "formalstatistics"
+    relationship: "Discharges the deferred reciprocal — formalStatistics §15 declares method-of-moments → generalized-method-of-moments as the natural over-identified extension. Pearson (1894) solves the just-identified L = k case by inverting the sample-moment system. When economic or causal theory supplies L > k moment conditions, the inversion fails — no value of θ exactly zeros all L residuals at finite n. §2 of this topic re-derives the just-identified asymptotics as the special case the sandwich variance collapses to, and §3 takes over with Hansen's (1982) weighted-quadratic-form construction."
+formalstatisticsConnections: []
+formalcalculusConnections: []
+formalcalculusPrereqs: []
+tags:
+  - "moment-conditions"
+  - "instrumental-variables"
+  - "two-step-gmm"
+  - "hansen-j-statistic"
+  - "empirical-likelihood"
+  - "double-machine-learning"
+  - "neyman-orthogonality"
+  - "semiparametric-efficiency"
+domain: "learning-theory"
+videoId: null
+notebookPath: "notebooks/generalized-method-of-moments/01_generalized_method_of_moments.ipynb"
+githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/generalized-method-of-moments.mdx"
+datePublished: 2026-05-26
+estimatedReadTime: 70
+abstract: "The Generalized Method of Moments (GMM) is the over-identified extension of Pearson's classical method of moments, formalized by Lars Peter Hansen in 1982 and now the workhorse estimator across modern econometrics, structural finance, and causal inference. When economic or causal theory supplies L > k moment conditions on a k-parameter model, no value of θ exactly zeros all L sample moments at finite n; Hansen's framework collapses the over-identified system to a weighted quadratic form J_n(θ, W) and produces both a point estimator (the minimizer) and a free over-identification test (the Hansen J-statistic at the efficient-weight optimum) as by-products of the same optimization. We develop the framework from the just-identified Pearson setup through the asymptotic sandwich variance, Hansen's efficiency bound, the two-step feasible procedure, the J-statistic χ²_{L-k} distribution, and modern extensions: linear instrumental variables and 2SLS, the continuous-updating estimator and Owen's empirical likelihood, GMM as just-identified ML with score moments, and the double machine learning of Chernozhukov et al. (2018) that lets cross-fitted machine-learned nuisance functions appear inside √n-consistent causal-inference estimators."
+connections:
+  - topic: "concentration-inequalities"
+    relationship: "The uniform LLN required for the §4 consistency proof comes directly from the empirical-process / Talagrand machinery developed there. Pointwise convergence of the sample-moment vector at each θ is not enough — the GMM estimator is an argmin, and we need sup_θ ‖ḡ_n − m‖ →_p 0 to conclude argmin convergence. The bracketing-entropy and Rademacher-complexity routes both deliver this."
+  - topic: "convex-analysis"
+    relationship: "The GMM criterion J_n(θ, W) = n ḡ_n(θ)ᵀ W ḡ_n(θ) is a convex quadratic form in the sample-moment residual. When g(X, θ) is affine in θ (the linear IV / running-example case), J_n is globally convex in θ with a closed-form minimizer; for nonlinear g it is convex on a neighborhood of θ₀. The first-order conditions of §3.3 are the convex normal equations."
+  - topic: "semiparametric-inference"
+    relationship: "The Hansen efficiency bound V* = (G₀ᵀ Ω⁻¹ G₀)⁻¹ equals the semiparametric efficiency bound for the moment-condition model — derivable independently via the efficient influence function (§6.4). The DML machinery of §12 is exactly Neyman-orthogonalized GMM with ML-estimated nuisance functions; the orthogonalization step uses the same EIF construction."
+references:
+  - type: "paper"
+    title: "Contributions to the Mathematical Theory of Evolution"
+    authors: "Pearson"
+    year: 1894
+    url: "https://doi.org/10.1098/rsta.1894.0003"
+    note: "Philosophical Transactions of the Royal Society A 185: 71–110. The introduction of the method of moments."
+  - type: "paper"
+    title: "Large Sample Properties of Generalized Method of Moments Estimators"
+    authors: "Hansen"
+    year: 1982
+    url: "https://doi.org/10.2307/1912775"
+    note: "Econometrica 50(4): 1029–1054. The foundational GMM paper."
+  - type: "paper"
+    title: "Generalized Instrumental Variables Estimation of Nonlinear Rational Expectations Models"
+    authors: "Hansen & Singleton"
+    year: 1982
+    url: "https://doi.org/10.2307/1911873"
+    note: "Econometrica 50(5): 1269–1286. The asset-pricing application that motivated GMM."
+  - type: "paper"
+    title: "Estimation of the Parameters of a Single Equation in a Complete System of Stochastic Equations"
+    authors: "Anderson & Rubin"
+    year: 1949
+    url: "https://doi.org/10.1214/aoms/1177730090"
+    note: "Annals of Mathematical Statistics 20(1): 46–63. The AR weak-instrument-robust test."
+  - type: "paper"
+    title: "Theory of Statistical Estimation"
+    authors: "Fisher"
+    year: 1925
+    url: "https://doi.org/10.1017/S0305004100009580"
+    note: "Proceedings of the Cambridge Philosophical Society 22(5): 700–725. The information matrix equality."
+  - type: "paper"
+    title: "Empirical Likelihood Ratio Confidence Intervals for a Single Functional"
+    authors: "Owen"
+    year: 1988
+    url: "https://doi.org/10.1093/biomet/75.2.237"
+    note: "Biometrika 75(2): 237–249. The introduction of empirical likelihood."
+  - type: "paper"
+    title: "Empirical Likelihood Ratio Confidence Regions"
+    authors: "Owen"
+    year: 1990
+    url: "https://doi.org/10.1214/aos/1176347494"
+    note: "Annals of Statistics 18(1): 90–120. Wilks' theorem for empirical likelihood."
+  - type: "paper"
+    title: "The Estimation of Economic Relationships Using Instrumental Variables"
+    authors: "Sargan"
+    year: 1958
+    url: "https://doi.org/10.2307/1907619"
+    note: "Econometrica 26(3): 393–415. The Sargan test (special case of Hansen's J)."
+  - type: "paper"
+    title: "A Heteroskedasticity-Consistent Covariance Matrix Estimator and a Direct Test for Heteroskedasticity"
+    authors: "White"
+    year: 1980
+    url: "https://doi.org/10.2307/1912934"
+    note: "Econometrica 48(4): 817–838. The Eicker–Huber–White sandwich estimator."
+  - type: "paper"
+    title: "Finite Sample Properties of Some Alternative GMM Estimators"
+    authors: "Hansen, Heaton & Yaron"
+    year: 1996
+    url: "https://doi.org/10.1080/07350015.1996.10524656"
+    note: "Journal of Business and Economic Statistics 14(3): 262–280. Introduces the CUE and quantifies two-step bias."
+  - type: "paper"
+    title: "An MCMC Approach to Classical Estimation"
+    authors: "Chernozhukov & Hong"
+    year: 2003
+    url: "https://doi.org/10.1016/S0304-4076(03)00100-3"
+    note: "Journal of Econometrics 115(2): 293–346. The Laplace-type estimator."
+  - type: "paper"
+    title: "Multinomial Goodness-of-Fit Tests"
+    authors: "Cressie & Read"
+    year: 1984
+    url: "https://doi.org/10.1111/j.2517-6161.1984.tb01318.x"
+    note: "Journal of the Royal Statistical Society B 46(3): 440–464. The Cressie–Read divergence family."
+  - type: "paper"
+    title: "Bootstrap Critical Values for Tests Based on Generalized-Method-of-Moments Estimators"
+    authors: "Hall & Horowitz"
+    year: 1996
+    url: "https://doi.org/10.2307/2171849"
+    note: "Econometrica 64(4): 891–916. Recentered bootstrap for GMM."
+  - type: "paper"
+    title: "Specification Tests in Econometrics"
+    authors: "Hausman"
+    year: 1978
+    url: "https://doi.org/10.2307/1913827"
+    note: "Econometrica 46(6): 1251–1271."
+  - type: "paper"
+    title: "One-Step Estimators for Over-Identified Generalized Method of Moments Models"
+    authors: "Imbens"
+    year: 1997
+    url: "https://doi.org/10.2307/2971718"
+    note: "Review of Economic Studies 64(3): 359–383. Information-theoretic alternatives to GMM."
+  - type: "paper"
+    title: "An Information-Theoretic Alternative to Generalized Method of Moments Estimation"
+    authors: "Kitamura & Stutzer"
+    year: 1997
+    url: "https://doi.org/10.2307/2171942"
+    note: "Econometrica 65(4): 861–874. Exponential tilting estimator."
+  - type: "paper"
+    title: "Pivotal Statistics for Testing Structural Parameters in Instrumental Variables Regression"
+    authors: "Kleibergen"
+    year: 2002
+    url: "https://doi.org/10.1111/1468-0262.00353"
+    note: "Econometrica 70(5): 1781–1803. The K-statistic for weak instruments."
+  - type: "paper"
+    title: "A Conditional Likelihood Ratio Test for Structural Models"
+    authors: "Moreira"
+    year: 2003
+    url: "https://doi.org/10.1111/1468-0262.00438"
+    note: "Econometrica 71(4): 1027–1048. Conditional LR for weak-instrument-robust inference."
+  - type: "paper"
+    title: "Generalized Method of Moments Specification Testing"
+    authors: "Newey"
+    year: 1985
+    url: "https://doi.org/10.1016/0304-4076(85)90154-X"
+    note: "Journal of Econometrics 29(3): 229–256. Conditional moment tests."
+  - type: "paper"
+    title: "Large Sample Estimation and Hypothesis Testing"
+    authors: "Newey & McFadden"
+    year: 1994
+    url: "https://doi.org/10.1016/S1573-4412(05)80005-4"
+    note: "Handbook of Econometrics Vol. 4, Ch. 36. The textbook treatment of GMM asymptotics."
+  - type: "paper"
+    title: "Higher Order Properties of GMM and Generalized Empirical Likelihood Estimators"
+    authors: "Newey & Smith"
+    year: 2004
+    url: "https://doi.org/10.1111/j.1468-0262.2004.00482.x"
+    note: "Econometrica 72(1): 219–255. Unifies CUE, EL, and ET in the GEL family."
+  - type: "paper"
+    title: "Root-N-Consistent Semiparametric Regression"
+    authors: "Robinson"
+    year: 1988
+    url: "https://doi.org/10.2307/1912705"
+    note: "Econometrica 56(4): 931–954. The partial-linear estimator."
+  - type: "paper"
+    title: "Instrumental Variables Regression with Weak Instruments"
+    authors: "Staiger & Stock"
+    year: 1997
+    url: "https://doi.org/10.2307/2171753"
+    note: "Econometrica 65(3): 557–586. First-stage F > 10 rule of thumb."
+  - type: "book"
+    title: "Testing for Weak Instruments in Linear IV Regression"
+    authors: "Stock & Yogo"
+    year: 2005
+    url: "https://doi.org/10.1017/CBO9780511614491.006"
+    note: "Identification and Inference for Econometric Models, ed. Andrews & Stock, 80–108."
+  - type: "paper"
+    title: "Double/Debiased Machine Learning for Treatment and Structural Parameters"
+    authors: "Chernozhukov, Chetverikov, Demirer, Duflo, Hansen, Newey & Robins"
+    year: 2018
+    url: "https://doi.org/10.1111/ectj.12097"
+    note: "Econometrics Journal 21(1): C1–C68. The DML framework."
+  - type: "book"
+    title: "Econometrics"
+    authors: "Hayashi"
+    year: 2000
+    url: "https://press.princeton.edu/books/hardcover/9780691010182/econometrics"
+    note: "Princeton University Press. Chapters 3–5 cover GMM in textbook form."
+  - type: "book"
+    title: "Empirical Likelihood"
+    authors: "Owen"
+    year: 2001
+    url: "https://doi.org/10.1201/9781420036152"
+    note: "Chapman & Hall/CRC Monographs on Statistics and Applied Probability 92."
+---
+
+import TheoremBlock from '../../components/ui/TheoremBlock.astro';
+import ExternalLink from '../../components/ui/ExternalLink.astro';
+import Figure from '../../components/ui/Figure.astro';
+
+import MoMEfficiencyExplorer from '../../components/viz/MoMEfficiencyExplorer.tsx';
+import GMMCriterionSurface from '../../components/viz/GMMCriterionSurface.tsx';
+import IdentificationRankInspector from '../../components/viz/IdentificationRankInspector.tsx';
+import ConsistencyCloudExplorer from '../../components/viz/ConsistencyCloudExplorer.tsx';
+import SandwichDecomposer from '../../components/viz/SandwichDecomposer.tsx';
+import EfficiencyFrontierExplorer from '../../components/viz/EfficiencyFrontierExplorer.tsx';
+import TwoStepGMMWalkthrough from '../../components/viz/TwoStepGMMWalkthrough.tsx';
+import JStatisticDistributionExplorer from '../../components/viz/JStatisticDistributionExplorer.tsx';
+import LinearIVPlayground from '../../components/viz/LinearIVPlayground.tsx';
+import WeakInstrumentDiagnostics from '../../components/viz/WeakInstrumentDiagnostics.tsx';
+import GELFamilyExplorer from '../../components/viz/GELFamilyExplorer.tsx';
+import SandwichSavesCoverage from '../../components/viz/SandwichSavesCoverage.tsx';
+import DMLBiasComparison from '../../components/viz/DMLBiasComparison.tsx';
+import LaplaceTypeEstimatorComparison from '../../components/viz/LaplaceTypeEstimatorComparison.tsx';
+
+## §1 — Introduction and motivation
+
+Eighty-nine years separate Karl Pearson's introduction of the method of moments in 1894 from Lars Peter Hansen's generalization in 1982. In that span the field of statistics underwent the likelihood revolution, the rise of the Neyman–Pearson testing framework, and the bootstrap; econometrics absorbed all three and grew its own preoccupations on top. By the early 1980s rational-expectations models routinely produced more moment restrictions on a parameter vector than the parameter vector had components, and the just-identified inversion Pearson had relied on could no longer carry the load. Hansen's resolution — minimize a weighted quadratic form in the sample-moment vector — is what we now call **generalized method of moments** (GMM). It earned Hansen a share of the 2013 Nobel Prize and has been the workhorse estimator of modern econometrics ever since.
+
+We develop GMM from the just-identified Pearson setup forward, building the asymptotic theory, deriving the efficient weighting matrix and the Hansen J-statistic in full, and connecting GMM to maximum likelihood, instrumental variables, and the modern double machine learning of Chernozhukov et al. (2018). The reader should have seen *Semiparametric Inference* (the efficient-weighting matrix realizes the semiparametric bound), *Convex Analysis* (the GMM criterion is convex-quadratic in the moment residuals), and *Concentration Inequalities* (uniform laws of large numbers are the workhorse step in the consistency proof) before this topic.
+
+### 1.1 From Pearson to Hansen — a century of moment matching
+
+Pearson's (1894) "Contributions to the mathematical theory of evolution" introduced the method of moments as a procedure for fitting a mixture of two Gaussians to a dataset of crab carapace measurements. The recipe was simple: compute the first $k$ sample moments, set them equal to the first $k$ population moments expressed as functions of $\theta$, and solve the resulting system for $\theta$. With $k$ equations in $k$ unknowns the problem was usually well-posed; Pearson did the arithmetic by hand for $k = 5$ in the crab study, an order of difficulty that limited the method's reach.
+
+Then Fisher's likelihood program subsumed nearly everything. From the 1920s through the 1960s the method of moments survived in textbooks as a pedagogical introduction to estimation, but in research it was sidelined as a "rough" alternative to maximum likelihood — asymptotically efficient only by accident, and noticeably inefficient in standard parametric families.
+
+The setting that brought moment-based estimation back was rational-expectations macroeconomics. Hansen and Singleton's "Generalized instrumental variables estimation of nonlinear rational expectations models" (1982, *Econometrica*) modeled a consumer's Euler equation as
+
+$$
+\mathbb{E}\!\left[\bigl(\delta\, R_{t+1}^{\,\beta} - 1\bigr) \,\big|\, \mathcal{F}_t\right] = 0,
+$$
+
+where $\delta$ is the discount factor, $\beta$ the coefficient of relative risk aversion, $R_{t+1}$ the gross asset return, and $\mathcal{F}_t$ the agent's information set at time $t$. The conditional moment condition becomes a *family* of unconditional moment conditions — one for every $\mathcal{F}_t$-measurable instrument $Z_t$ we choose — and as soon as we pick more than two instruments we have more equations than the two parameters $(\delta, \beta)$ to identify. The companion paper, Hansen's "Large sample properties of generalized method of moments estimators" (1982, *Econometrica*), gave the framework that made this over-identified system into a well-defined estimator. Hansen shared the 2013 Nobel Prize for the asset-pricing applications of this machinery.
+
+### 1.2 The over-identified problem — what L &gt; k moment conditions break
+
+Suppose we observe an i.i.d. sample $X_1, \dots, X_n$ from a distribution $P_0$ indexed by an unknown parameter $\theta_0 \in \Theta \subseteq \mathbb{R}^k$. *Economic theory* — or a structural model, or a domain assumption — supplies a vector-valued **moment function**
+
+$$
+g \colon \mathcal{X} \times \Theta \to \mathbb{R}^L,
+$$
+
+such that the **population moment condition**
+
+$$
+\mathbb{E}_{P_0}\!\left[g(X, \theta_0)\right] \;=\; 0
+$$
+
+holds at the true parameter and at no other parameter in $\Theta$. The integer $L$ is the number of moment conditions; $k$ is the number of unknown parameters. Three regimes:
+
+- **Under-identified** ($L < k$): fewer equations than unknowns. Even in expectation the moment conditions do not pin $\theta_0$ down — the parameter is not identifiable from these moments alone, and no amount of data can rescue us.
+- **Just-identified** ($L = k$): as many equations as unknowns. The Pearson case. The system $\mathbb{E}[g(X,\theta)] = 0$ generically has a unique solution $\theta_0$, and the sample-moment system $\bar g_n(\theta) = n^{-1}\sum_{i=1}^n g(X_i, \theta) = 0$ generically has a unique solution $\hat\theta_n$ that we can compute by inverting $g$.
+- **Over-identified** ($L > k$): more equations than unknowns. In expectation the system is consistent — $\theta_0$ zeroes all $L$ moment conditions simultaneously by hypothesis — but in any finite sample $\bar g_n(\theta) = 0$ has no solution at all. We have a redundancy of information that no choice of $\theta$ can absorb exactly.
+
+The over-identified regime is the interesting one and the one Hansen's framework targets. Why might we want more moment conditions than parameters? Because more conditions, even though they cannot all hold exactly in-sample, contain more *information* about $\theta_0$ than any subset of $k$ of them — and we want an estimator that uses all $L$ of them simultaneously rather than picking a subset and throwing the rest away.
+
+Concrete prototype: linear instrumental variables. We posit a structural equation
+
+$$
+Y_i \;=\; X_i^\top \theta_0 + \varepsilon_i, \qquad \mathbb{E}[Z_i \varepsilon_i] = 0,
+$$
+
+where $X_i \in \mathbb{R}^k$ is endogenous (correlated with $\varepsilon_i$) and $Z_i \in \mathbb{R}^L$ is a vector of $L \ge k$ instruments assumed orthogonal to the structural error. The moment function is $g(X_i, Y_i, Z_i; \theta) = Z_i (Y_i - X_i^\top \theta)$. With $L = k$ exactly, the unique solution to $\bar g_n(\theta) = 0$ is the textbook IV estimator $\hat\theta = (Z^\top X)^{-1} Z^\top Y$. With $L > k$ — more instruments than endogenous regressors — there is no $\theta$ that orthogonalizes the residual against every column of $Z$, and we need a principled rule for combining the $L$ moment conditions. That rule is GMM.
+
+### 1.3 The GMM idea in one paragraph
+
+The natural object to minimize is the magnitude of the sample-moment vector $\bar g_n(\theta)$. But magnitude relative to what metric? Hansen's framework parameterizes this freedom. Pick any positive-definite $L \times L$ matrix $W$ — this is the **weighting matrix** — and define the **GMM criterion**
+
+$$
+J_n(\theta, W) \;=\; n \cdot \bar g_n(\theta)^\top \, W \, \bar g_n(\theta).
+$$
+
+The **GMM estimator** corresponding to $W$ is the minimizer
+
+$$
+\hat\theta_W \;=\; \arg\min_{\theta \in \Theta} J_n(\theta, W).
+$$
+
+Three facts make this work as a foundational estimation framework. First, *any* positive-definite $W$ delivers a consistent estimator: as $n \to \infty$, $\hat\theta_W \to_p \theta_0$ regardless of the choice of $W$. Second, different choices of $W$ deliver different asymptotic variances, all of the same "sandwich" form, partially ordered by the Loewner ordering on positive-semidefinite matrices — and one specific choice uniquely minimizes the asymptotic variance: the inverse of the moment-residual variance $W^\star = \Omega^{-1}$, where $\Omega = \mathrm{Var}\bigl(\sqrt{n}\,\bar g_n(\theta_0)\bigr)$. The resulting minimum-variance $V^\star = (G^\top \Omega^{-1} G)^{-1}$ matches the semiparametric efficiency bound for the moment-condition model and gives Hansen's framework its claim to optimality. Third, the value of the criterion at its efficient-weight minimum, $\hat J = J_n(\hat\theta_{W^\star}, \hat\Omega^{-1})$, has an asymptotic $\chi^2_{L-k}$ distribution under correct specification — a *free* over-identification test that emerges as a by-product of the same quadratic form the estimator minimizes. Sections §4 through §8 develop these three facts in full.
+
+### 1.4 Where GMM sits in the T6 track
+
+GMM is the over-identified extension of <ExternalLink href="https://formalstatistics.com/topics/method-of-moments" site="formalstatistics" topic="method-of-moments" />. That topic covers the just-identified Pearson case in detail; this topic picks up where Pearson stops, generalizing to $L > k$ and developing the asymptotic machinery the over-identified case requires.
+
+Three formalML prerequisites carry direct weight. *Concentration Inequalities* supplies the uniform laws of large numbers that make the consistency proof go through: we need $\bar g_n(\theta) \to \mathbb{E}[g(X,\theta)]$ *uniformly* over $\theta \in \Theta$, not just pointwise, and the empirical-process bounds from that topic are how we get there. *Convex Analysis* gives us the geometry of the criterion: $J_n(\theta, W)$ is a positive-semidefinite quadratic form in $\bar g_n(\theta)$, which means the criterion is convex in $\theta$ whenever $g(X, \theta)$ is affine in $\theta$ (the linear case) and the first-order conditions are well-behaved more generally. *Semiparametric Inference* supplies the efficiency bound: the variance $V^\star = (G^\top \Omega^{-1} G)^{-1}$ that efficient GMM achieves is the semiparametric efficiency bound for the moment-condition model, derivable from the efficient influence function of $\theta_0$ on the tangent space orthogonal to the moment-condition score.
+
+Two formalML topics pick up where GMM leaves off. **Causal Inference Methods** *(coming soon)* extends to doubly-robust estimation, where the augmented inverse-probability-weighted estimator is GMM with a specific Neyman-orthogonal moment condition. The same topic covers double machine learning (Chernozhukov et al. 2018), where GMM-style score equations on first-stage nuisance functions produce second-stage point estimators whose asymptotic distribution is unaffected by the convergence rate of the machine-learned first-stage estimators.
+
+---
+
+## §2 — Classical method of moments: the just-identified case
+
+### 2.1 Sample moments and the moment equations
+
+Given an i.i.d. sample $X_1, \dots, X_n$ from $P_0$ indexed by $\theta_0 \in \Theta \subseteq \mathbb{R}^k$, Pearson's construction picks $k$ scalar **moment functions** $g_1, \dots, g_k$ — a vector-valued $g \colon \mathcal{X} \times \Theta \to \mathbb{R}^k$ — satisfying the population moment condition $\mathbb{E}_{P_0}[g(X, \theta_0)] = 0$ at the true parameter, and at no other parameter in $\Theta$. The **method-of-moments estimator** $\hat\theta_n$ is the solution to the sample-moment equations
+
+$$
+\bar g_n(\hat\theta_n) \;=\; \frac{1}{n} \sum_{i=1}^n g(X_i, \hat\theta_n) \;=\; 0.
+$$
+
+Two practical observations frame everything that follows. First, the choice of moment functions is a *design choice*: different functions give different estimators with different asymptotic variances, and the estimator is only as efficient as the moments are informative about $\theta_0$. Second, in general the system $\bar g_n(\hat\theta_n) = 0$ has no closed-form solution, and we solve it numerically via Newton–Raphson or `scipy.optimize.fsolve`. The canonical illustrations below — Gaussian on the first two moments and Gamma on the first two moments — happen to admit clean closed forms; most nontrivial cases do not.
+
+### 2.2 Worked examples — Gaussian and Gamma
+
+**Gaussian on $\mu, \sigma^2$.** For $X \sim \mathcal{N}(\mu, \sigma^2)$ with $\theta = (\mu, \sigma^2)$, the first two population moments are $\mathbb{E}[X] = \mu$ and $\mathbb{E}[X^2] = \mu^2 + \sigma^2$. The MoM sample-moment equations are $\bar X = \hat\mu$ and $\overline{X^2} = \hat\mu^2 + \hat\sigma^2$, solved in closed form by $\hat\mu = \bar X$ and $\hat\sigma^2 = \overline{X^2} - \bar X^2 = S_n^2$ (the sample variance with divisor $n$).
+
+For the Gaussian, this MoM estimator coincides exactly with maximum likelihood: the sufficient statistics for $(\mu, \sigma^2)$ are precisely the first two sample moments, so the score equations $\nabla_\theta \log p(X; \theta) = 0$ reduce to the same system the MoM solves. We will see in §11 that *every* MLE is a just-identified GMM with the score equations as moment conditions; for the Gaussian, the first-two-moments MoM is also the score-equation MoM, and the two coincide.
+
+**Gamma on $\alpha, \beta$.** For $X \sim \mathrm{Gamma}(\alpha, \beta)$ with density $p(x; \alpha, \beta) = \beta^\alpha x^{\alpha-1} e^{-\beta x} / \Gamma(\alpha)$ on $x > 0$, the mean is $\mu = \alpha / \beta$ and the variance is $\sigma^2 = \alpha / \beta^2$. Equating to the sample mean and sample variance,
+
+$$
+\frac{\hat\alpha}{\hat\beta} \;=\; \bar X, \qquad \frac{\hat\alpha}{\hat\beta^2} \;=\; S_n^2,
+$$
+
+and solving gives the closed form
+
+$$
+\hat\beta \;=\; \frac{\bar X}{S_n^2}, \qquad \hat\alpha \;=\; \frac{\bar X^2}{S_n^2}.
+$$
+
+The MLE for the Gamma is *not* this estimator. The Gamma's sufficient statistics are $\sum X_i$ and $\sum \log X_i$, not $\sum X_i$ and $\sum X_i^2$, and the MLE $\hat\alpha_{\mathrm{MLE}}$ solves the **digamma equation**
+
+$$
+\log \alpha - \psi(\alpha) \;=\; \log \bar X - \overline{\log X},
+$$
+
+where $\psi = \Gamma'/\Gamma$ is the digamma function. This has no closed form; we solve it numerically. The MoM estimator on the Gamma is therefore *consistent but not efficient* — and the gap to MLE is large enough to see clearly at moderate sample sizes, as the visualization below demonstrates.
+
+<MoMEfficiencyExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/02_gamma_mom_vs_mle.png"
+  alt="Sampling distributions of Gamma MoM and MLE estimators of α across 1000 Monte Carlo replicates at n=200"
+  caption="Figure 2.1 — Gamma sampling distributions of α̂. MoM is centered on the truth but spread wider than MLE. The relative-efficiency gap is set by the ratio of the asymptotic variances, det(V_MoM)/det(V_MLE), which exceeds 1 for every α > 0."
+/>
+
+### 2.3 Asymptotic normality via the delta method
+
+<TheoremBlock type="theorem" number={2.1} title="Just-identified MoM asymptotic normality">
+Suppose $\hat\theta_n \to_p \theta_0$, $g(x, \theta)$ is twice continuously differentiable in $\theta$ in an open neighborhood of $\theta_0$, the Jacobian
+
+$$
+G \;=\; G(\theta_0) \;=\; \mathbb{E}\!\left[\frac{\partial g(X, \theta_0)}{\partial \theta^\top}\right]
+$$
+
+is non-singular, and $\Omega = \mathbb{E}\!\left[g(X, \theta_0)\, g(X, \theta_0)^\top\right]$ is finite. Then
+
+$$
+\sqrt{n}\,(\hat\theta_n - \theta_0) \;\to_d\; \mathcal{N}\!\left(0,\, G^{-1} \Omega \, G^{-\top}\right).
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+The estimator solves $\bar g_n(\hat\theta_n) = 0$. By the consistency assumption, $\hat\theta_n$ lies in the smooth neighborhood for $n$ large enough. Taylor-expand each component $\bar g_{n,j}$ around $\theta_0$ to first order, with the second-order remainder absorbed by a mean-value point $\theta_{n,j}^\star$ on the segment between $\theta_0$ and $\hat\theta_n$:
+
+$$
+0 \;=\; \bar g_n(\hat\theta_n) \;=\; \bar g_n(\theta_0) \;+\; G_n(\theta_n^\star)\,(\hat\theta_n - \theta_0),
+$$
+
+where $G_n(\theta) = \partial \bar g_n(\theta) / \partial \theta^\top$ is the sample-Jacobian. The mean-value point varies by component, but the rest of the argument needs only $G_n(\theta_n^\star) \to_p G$, which follows from uniform LLN on $\partial g / \partial \theta$ over the neighborhood (a workhorse application of *Concentration Inequalities*) together with $\theta_n^\star \to_p \theta_0$.
+
+Rearrange and multiply by $\sqrt{n}$:
+
+$$
+\sqrt{n}\,(\hat\theta_n - \theta_0) \;=\; -\,G_n(\theta_n^\star)^{-1} \cdot \sqrt{n}\, \bar g_n(\theta_0).
+$$
+
+Two convergence facts complete the proof. By the central limit theorem applied to the i.i.d. observations $g(X_i, \theta_0)$ with mean $0$ and covariance $\Omega$,
+
+$$
+\sqrt{n}\, \bar g_n(\theta_0) \;=\; \frac{1}{\sqrt{n}} \sum_{i=1}^n g(X_i, \theta_0) \;\to_d\; \mathcal{N}(0, \Omega).
+$$
+
+By the continuous mapping theorem applied to matrix inversion (continuous at non-singular matrices), $G_n(\theta_n^\star)^{-1} \to_p G^{-1}$. Slutsky's theorem combines these:
+
+$$
+\sqrt{n}\,(\hat\theta_n - \theta_0) \;\to_d\; -\,G^{-1} \cdot \mathcal{N}(0, \Omega) \;=\; \mathcal{N}\!\left(0, \, G^{-1} \Omega \, G^{-\top}\right).
+$$
+</TheoremBlock>
+
+This is the just-identified case of the sandwich variance formula §5 will develop in full generality. With $L = k$, the Jacobian $G$ is square and invertible by identification, so the "sandwich" collapses to the triple product $G^{-1} \Omega \, G^{-\top}$. The weighting matrix $W$ does not appear because $L = k$ leaves no choice of how to combine moment conditions — the just-identified system has a unique solution.
+
+A useful corollary: when the moment functions are the score, $g(X, \theta) = \nabla_\theta \log p(X; \theta)$, the asymptotic variance reduces to the inverse Fisher information $\mathcal{I}^{-1}$ — the **Cramér–Rao lower bound**. To see this, note that under regularity $G = \mathbb{E}[\partial^2 \log p / \partial \theta \partial \theta^\top] = -\mathcal{I}$ (the negative Hessian of the log-likelihood in expectation), and $\Omega = \mathbb{E}[\nabla \log p \cdot \nabla \log p^\top] = \mathcal{I}$ (the information matrix equality). So $G^{-1} \Omega \, G^{-\top} = (-\mathcal{I})^{-1} \mathcal{I} (-\mathcal{I})^{-\top} = \mathcal{I}^{-1}$. Choosing the score as moment function gives MLE efficiency; any other choice gives a consistent estimator with a (weakly) larger asymptotic variance in the Loewner ordering. This is why MoM on the Gaussian (where the first-two-moments are sufficient) matches MLE, and MoM on the Gamma (where the first-two-moments are not sufficient) does not.
+
+### 2.4 Why we need GMM — over-identification kills direct inversion
+
+What happens if we add a third moment condition to the Gaussian setup? Take
+
+$$
+g(X, \mu, \sigma^2) \;=\; \begin{pmatrix} X - \mu \\ (X - \mu)^2 - \sigma^2 \\ (X - \mu)^3 \\ (X - \mu)^4 - 3 \sigma^4 \end{pmatrix}, \qquad L = 4, \; k = 2.
+$$
+
+The third and fourth components exploit the Gaussian's symmetry and the closed form for its fourth central moment ($\mathbb{E}[(X-\mu)^4] = 3\sigma^4$). In population all four moment conditions hold at $(\mu_0, \sigma_0^2)$. In any finite sample, however, the sample third central moment fluctuates around zero at rate $n^{-1/2}$ and the sample fourth central moment fluctuates around $3 \hat\sigma_n^4$ at the same rate. So the system $\bar g_n(\theta) = 0$ has *no* solution at finite $n$: the first two equations pin down $(\hat\mu, \hat\sigma^2) = (\bar X, S_n^2)$, and the third and fourth equations evaluated at that solution leave residuals of order $O_p(n^{-1/2})$.
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/02_overidentification.png"
+  alt="Four moment-residual curves as functions of candidate μ, showing that no single μ zeros all four conditions simultaneously"
+  caption="Figure 2.2 — Over-identification visualized. The four moment-residual curves intersect zero at different values of the candidate parameter, so no single μ zeros all four conditions simultaneously. As n grows the residual curves shrink toward zero at rate n^{-1/2} but never coincide."
+/>
+
+Three responses to this redundancy. We can drop two moment conditions and revert to a just-identified system — but which two, and why throw away information theory has supplied? We can use the first two to estimate $\theta$ and use the residuals in the third and fourth as a *test* of correct specification — a quick precursor to the Hansen J-statistic of §8. Or we can combine all four moment conditions through a positive-definite weighting matrix that absorbs their relative noise levels and trades off between them. This is GMM, and §3 develops it.
+
+---
+
+## §3 — The GMM framework: moment conditions and weighted quadratic forms
+
+This is the central definitional section. We formalize the over-identified moment-condition model, define the GMM criterion $J_n(\theta, W)$ as a weighted quadratic form in the sample-moment vector, derive the first-order conditions that the GMM estimator solves, and lay out the rank condition that makes the whole construction work. Hansen's (1982) original paper develops all four pieces in roughly five pages of dense notation; we expand them with concrete geometry and a worked running example.
+
+### 3.1 Moment conditions and population identification
+
+The GMM data-generating model has three pieces.
+
+1. **Sample.** An i.i.d. sample $X_1, \dots, X_n$ from a distribution $P_0$ on a measurable space $(\mathcal{X}, \mathcal{B})$.
+2. **Parameter.** An unknown $\theta_0 \in \Theta \subseteq \mathbb{R}^k$, with $\Theta$ an open subset of Euclidean space. (Compactness is sometimes imposed for the consistency proof in §4; we relax it where the geometry allows.)
+3. **Moment function.** A known map $g \colon \mathcal{X} \times \Theta \to \mathbb{R}^L$, measurable in its first argument and continuously differentiable in its second, satisfying the **population moment condition**
+
+   $$
+   \mathbb{E}_{P_0}[g(X, \theta_0)] \;=\; 0.
+   $$
+
+The integer $L$ is the number of moment conditions; $k$ is the number of unknown parameters. We assume $L \ge k$ throughout. When $L = k$ we recover the just-identified Pearson setup of §2; the over-identified case $L > k$ is the one Hansen 1982 targets and the one this topic is about.
+
+The moment condition is an **identifying restriction**: we further assume the population moment $m(\theta) := \mathbb{E}_{P_0}[g(X, \theta)]$ satisfies $m(\theta) = 0$ if and only if $\theta = \theta_0$. Without this **global identification** hypothesis the population objective the GMM estimator targets has multiple zeros and consistency fails outright.
+
+**Running example.** Throughout this section we use a synthetic problem that strips IV and endogeneity away and isolates the over-identified structure. We observe four scalar measurements $X_i = (X_{i,1}, X_{i,2}, X_{i,3}, X_{i,4})^\top \in \mathbb{R}^4$ at each $i$, and on theoretical grounds we know the population means satisfy
+
+$$
+\mathbb{E}[X_1] = \theta_{01}, \quad \mathbb{E}[X_2] = \theta_{02}, \quad \mathbb{E}[X_3] = \theta_{01} + \theta_{02}, \quad \mathbb{E}[X_4] = 2\theta_{01} - \theta_{02}.
+$$
+
+With four measurements and two unknown parameters ($k = 2$, $L = 4$), the system is over-identified. The moment function is
+
+$$
+g(X, \theta) \;=\; X - A\theta, \qquad A \;=\; \begin{pmatrix} 1 & 0 \\ 0 & 1 \\ 1 & 1 \\ 2 & -1 \end{pmatrix} \in \mathbb{R}^{4 \times 2}.
+$$
+
+This is generalized-least-squares-via-moments — the simplest nontrivial over-identified GMM problem. The linear setup makes everything in §3 concrete and the criterion surface in §3.2 literally elliptical. §9 will replace the synthetic design $A$ with a structural instrumental variables setup.
+
+### 3.2 The GMM criterion function
+
+The **sample moment vector** is the empirical analog of $m(\theta)$,
+
+$$
+\bar g_n(\theta) \;:=\; \frac{1}{n} \sum_{i=1}^n g(X_i, \theta) \;\in\; \mathbb{R}^L.
+$$
+
+By LLN, $\bar g_n(\theta) \to_p m(\theta)$ pointwise (we will need uniform convergence for the consistency proof in §4, but pointwise convergence suffices to define the estimator). For the running example, $\bar g_n(\theta) = \bar X - A\theta$ where $\bar X = (1/n)\sum_i X_i \in \mathbb{R}^4$.
+
+The **GMM criterion function** measures the magnitude of $\bar g_n(\theta)$ relative to a positive-definite weighting matrix $W$:
+
+$$
+J_n(\theta, W) \;:=\; n \cdot \bar g_n(\theta)^\top W \, \bar g_n(\theta) \qquad\qquad (\star)
+$$
+
+where $W \in \mathbb{R}^{L \times L}$ is symmetric and positive-definite. The factor of $n$ standardizes the criterion to an $O_p(1)$ scale at $\theta_0$: without it, $J_n(\theta_0, W) = O_p(n^{-1}) \to 0$ and the asymptotic theory would be awkward. With the $n$ factor, $J_n(\theta_0, W)$ converges in distribution (§8 gives the $\chi^2_{L-k}$ limit at the efficient weighting, and the analogous quadratic-form-in-Gaussians limit in general).
+
+The criterion is non-negative, and equals zero only when $\bar g_n(\theta) = 0$. In the over-identified case ($L > k$), $J_n(\theta, W) > 0$ for *all* $\theta \in \Theta$ at finite $n$ — the system has no solution that zeroes all $L$ residuals simultaneously — so the minimization
+
+$$
+\hat\theta_W \;:=\; \arg\min_{\theta \in \Theta} J_n(\theta, W)
+$$
+
+is a genuine minimization rather than root-finding. The minimum value $\hat J := J_n(\hat\theta_W, W)$ is the residual GMM criterion — the unavoidable mismatch the over-identified system leaves behind, which §8 will repurpose as a specification test.
+
+When $g$ is affine in $\theta$, as in the running example, $J_n(\theta, W)$ is exactly quadratic in $\theta$:
+
+$$
+J_n(\theta, W) \;=\; n \,(\bar X - A\theta)^\top W \,(\bar X - A\theta).
+$$
+
+Its contours in $\theta$-space are concentric ellipses centered at $\hat\theta_W$, with shape controlled by $A^\top W A$ and eccentricity reflecting how the four moment conditions trade off against each other under the metric $W$.
+
+<GMMCriterionSurface client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/03_criterion_surface.png"
+  alt="Contour plot of J_n(θ, I) over a 2D grid in (θ_1, θ_2) for the running-example design"
+  caption="Figure 3.1 — GMM criterion surface for the running example under identity weighting. The contours are concentric ellipses; the estimator θ̂_W is the unique minimum, marked by the dot. The cross marks the population truth θ₀."
+/>
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/03_criterion_surface_weightings.png"
+  alt="Three side-by-side criterion surfaces under identity, suboptimal-diagonal, and efficient weighting matrices"
+  caption="Figure 3.2 — How the weighting matrix shapes the criterion surface. Identity (left) treats every moment equally; diagonal (center) downweights noisier moments; efficient W* = Ω⁻¹ (right) accounts for cross-moment correlations and yields the tightest confidence ellipse. The estimate θ̂_W shifts modestly across panels; the *uncertainty* shrinks substantially."
+/>
+
+For general nonlinear $g$, $J_n(\theta, W)$ is convex in a neighborhood of $\theta_0$ — its Hessian at $\theta_0$ is $2\,G_0^\top W G_0$, which is positive-definite under the rank condition in §3.4 — but may be non-convex globally. Practical optimization uses Newton–Raphson, quasi-Newton, or `scipy.optimize.minimize`; §13 covers the tips and traps.
+
+### 3.3 First-order conditions — the GMM normal equations
+
+Differentiate $J_n$ with respect to $\theta$:
+
+$$
+\frac{\partial J_n(\theta, W)}{\partial \theta} \;=\; 2n \cdot G_n(\theta)^\top W \, \bar g_n(\theta),
+$$
+
+where $G_n(\theta) := \partial \bar g_n(\theta) / \partial \theta^\top \in \mathbb{R}^{L \times k}$ is the sample Jacobian. Setting this to zero gives the **GMM normal equations**:
+
+$$
+G_n(\hat\theta_W)^\top \, W \, \bar g_n(\hat\theta_W) \;=\; 0.
+$$
+
+This is the over-identified analog of the just-identified system $\bar g_n(\hat\theta_n) = 0$ from §2. In the just-identified case ($L = k$), $G_n$ is $k \times k$ and generically invertible, so $G_n^\top W \bar g_n = 0$ if and only if $\bar g_n = 0$ — the weighting matrix drops out and we recover the unique just-identified solution. In the over-identified case ($L > k$), the system reduces from $L$ equations to $k$ equations through left-multiplication by $G_n^\top W$, projecting the $L$-dimensional moment residual onto the $k$-dimensional column space of $W^{1/2} G_n$. The geometric reading is *set the projection of the moment residual onto the parameter-direction subspace (in the metric $W$) to zero* — we cannot zero the full $L$-dimensional residual at any $\theta$, but we can zero its projection along the $k$ directions that matter for $\theta$.
+
+For affine $g$, the GMM normal equations have a closed-form solution. The running example gives $G_n = -A$ (independent of $\theta$), so
+
+$$
+A^\top W A \, \hat\theta_W \;=\; A^\top W \, \bar X,
+\qquad
+\hat\theta_W \;=\; (A^\top W A)^{-1} \, A^\top W \, \bar X.
+$$
+
+This is **generalized least squares**, with the role of the GLS weighting matrix played by the GMM weighting matrix $W$. For $W = I$ we get ordinary least squares of $\bar X$ on $A\theta$; for $W = \mathrm{diag}(1/\mathrm{Var}(X_j))$ we get weighted least squares with variance-inverse weights; for the efficient choice $W^\star = \Omega^{-1}$ where $\Omega$ is the full $L \times L$ moment-covariance matrix (off-diagonal terms included), we get the Aitken / Gauss–Markov estimator that achieves the smallest asymptotic variance. §6 derives this efficient choice.
+
+### 3.4 Identification rank conditions
+
+The GMM estimator is well-defined and the asymptotic theory works only if the model **identifies** $\theta_0$. Two layers.
+
+**Global identification.** The population moment $m(\theta) = \mathbb{E}[g(X, \theta)]$ has a unique zero at $\theta_0$:
+
+$$
+m(\theta) \;=\; 0 \;\iff\; \theta \;=\; \theta_0.
+$$
+
+This is a hypothesis on the model — we assume it. For affine $g$ of the form $g(X, \theta) = X - A\theta$, global identification reduces to $A$ having full column rank $k$: equivalently $A^\top A$ being invertible. Geometrically, the columns of $A$ must span a $k$-dimensional subspace of $\mathbb{R}^L$, so no two parameter vectors map to the same population mean vector.
+
+**Local identification — the rank condition.** The Jacobian at the truth,
+
+$$
+G_0 \;:=\; G(\theta_0) \;=\; \mathbb{E}\!\left[\frac{\partial g(X, \theta_0)}{\partial \theta^\top}\right] \;\in\; \mathbb{R}^{L \times k},
+$$
+
+has full column rank $k$:
+
+$$
+\mathrm{rank}(G_0) \;=\; k.
+$$
+
+This is *the* **rank condition** of GMM, and it carries three consequences we will rely on throughout the rest of the topic.
+
+1. The Hessian of the population criterion $Q_0(\theta) = m(\theta)^\top W m(\theta)$ at $\theta_0$ is $2\,G_0^\top W G_0$, positive-definite under the rank condition — so $\theta_0$ is a strict local minimum of the population objective.
+2. The sandwich variance $V_W = (G_0^\top W G_0)^{-1} G_0^\top W \Omega W G_0 (G_0^\top W G_0)^{-1}$ that §5 derives is well-defined (the "bread" $G_0^\top W G_0$ is invertible).
+3. The efficient-weighting variance $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$ that §6 derives is well-defined.
+
+For the running example, $G_0 = -A$ has rank 2 iff the columns of $A$ are linearly independent. With the given $A$ the first two rows already form a $2 \times 2$ identity submatrix, so the rank condition holds. The visualization below lets you watch the criterion surface degenerate as the design matrix is artificially collapsed toward rank deficiency.
+
+<IdentificationRankInspector client:visible />
+
+What can go wrong? If the four moment conditions were $\mathbb{E}[X_j] = \alpha_j \theta_{01} + \beta_j \theta_{02}$ with $(\alpha_j, \beta_j) = (1, 0.5), (2, 1), (3, 1.5), (4, 2)$ for all $j$, every row of $A$ would be a scalar multiple of $(1, 0.5)^\top$ — $A$ has rank 1, $\theta_{02}$ is not identified by these moments (only the linear combination $\theta_{01} + 0.5\,\theta_{02}$ is), and no amount of data rescues the estimator. The model is **under-identified** despite having $L = 4 > k = 2$ moment conditions. Over-identification counts equations, not information; the rank condition counts information.
+
+When the rank condition holds *exactly* but $G_0$ is *nearly* rank-deficient — the columns of $G_0$ are nearly collinear in the metric $W^{1/2}$ — we have **weakly-identified** parameters (in the IV setting, **weak instruments**). The asymptotic theory still goes through but the asymptotic-normal approximation deteriorates at finite samples, and standard errors can be wildly understated. §9 covers the diagnostics for this case (the Staiger–Stock F-statistic for linear IV, the Anderson–Rubin test as a weak-instrument-robust alternative).
+
+---
+
+## §4 — Consistency of GMM estimators
+
+We turn to the first asymptotic result: as $n \to \infty$, the GMM estimator $\hat\theta_{W_n}$ converges in probability to the true parameter $\theta_0$. The result is *almost free* in the sense that it requires no particular choice of weighting matrix — any positive-definite limiting $W$ delivers consistency — and depends only on global identification plus a uniform law of large numbers on the sample-moment vector. What does require care is the bridge from *pointwise* convergence of $\bar g_n(\theta)$ at each $\theta$ to *uniform* convergence over $\Theta$, which is what the consistency proof actually needs. The technical workhorse is the empirical-process machinery developed in *Concentration Inequalities*.
+
+### 4.1 Uniform laws of large numbers
+
+The ordinary LLN gives us $\bar g_n(\theta) \to_p m(\theta)$ for each *fixed* $\theta$ — pointwise convergence. But the GMM estimator is the argmin of a function of $\theta$, and pointwise convergence of the integrand is not enough to conclude that the argmin converges. A small pathological dip of $\bar g_n$ far from $\theta_0$ can fool the optimizer even when each $\bar g_n(\theta)$ is close to $m(\theta)$ in expectation; what we need is that *no* such dip happens *anywhere* in $\Theta$.
+
+A function class $\mathcal{F} = \{g(\cdot, \theta) : \theta \in \Theta\}$ obeys the **uniform law of large numbers** if
+
+$$
+\sup_{\theta \in \Theta} \|\bar g_n(\theta) - m(\theta)\| \;\to_p\; 0 \quad \text{as } n \to \infty.
+$$
+
+Two standard conditions, both inherited from *Concentration Inequalities*, deliver this. The **bracketing-entropy condition** asks that $\Theta$ be compact, $g(X, \cdot)$ be continuous in $\theta$ for $P_0$-a.e. $X$, and a *dominating function* $d(X)$ exist with $\sup_{\theta \in \Theta} \|g(X, \theta)\| \le d(X)$ and $\mathbb{E}[d(X)] < \infty$. This is the textbook Newey–McFadden setup (1994, Lemma 2.4); it gives $o_p(1)$ convergence with no explicit rate. The **Rademacher complexity condition** asks that the class $\mathcal{F}$ have Rademacher complexity $\mathfrak{R}_n(\mathcal{F})$ that vanishes with $n$. This gives an explicit rate $\sup_\theta \|\bar g_n - m\| = O_p(\mathfrak{R}_n(\mathcal{F}))$ — at the parametric $O_p(n^{-1/2})$ when $\mathcal{F}$ is VC or has bounded entropy.
+
+For the linear running example $g(X, \theta) = X - A\theta$, the function class is affine in $k$ parameters, has VC-dimension $O(k)$, and the uniform LLN holds at the optimal parametric rate $O_p(\sqrt{k/n})$. The connection to *Concentration Inequalities* is direct: the uniform LLN follows from concentration of the empirical-process supremum $\sup_\theta |\bar g_n(\theta) - m(\theta)|$, controlled by Talagrand's inequality, the bounded-differences inequality, or Massart's symmetrization argument applied to the function class $\mathcal{F}$.
+
+### 4.2 The population objective and global identification
+
+Define the **population criterion** as the limit of $J_n / n$:
+
+$$
+Q_0(\theta, W) \;:=\; m(\theta)^\top W m(\theta).
+$$
+
+Two properties drive consistency. First, $Q_0(\theta, W) \ge 0$ for all $\theta$, with equality iff $m(\theta) = 0$; this follows from positive-definiteness of $W$. Second, under the global-identification hypothesis $m(\theta) = 0 \iff \theta = \theta_0$, the population criterion has a unique minimizer at $\theta_0$, where $Q_0(\theta_0, W) = 0$.
+
+Combining: $\theta_0 = \arg\min_{\theta \in \Theta} Q_0(\theta, W)$ uniquely. Consistency reduces to verifying that the sample argmin $\hat\theta_W$ converges to the population argmin $\theta_0$ — a question for the *argmax theorem* (the consistency lemma for extremum estimators). The sample criterion is the empirical version of $Q_0$, scaled by $n$: $Q_n(\theta, W_n) := J_n(\theta, W_n)/n = \bar g_n(\theta)^\top W_n \bar g_n(\theta)$. The factor of $n$ does not move the argmin.
+
+### 4.3 The consistency theorem
+
+<TheoremBlock type="theorem" number={4.1} title="Consistency of GMM">
+Assume (i) i.i.d. sample; (ii) compact parameter space $\Theta \ni \theta_0$; (iii) global identification ($m(\theta) = 0 \iff \theta = \theta_0$); (iv) continuity of $g(X, \cdot)$ on $\Theta$ for $P_0$-a.e. $X$; (v) dominating function $\mathbb{E}\!\left[\sup_{\theta \in \Theta} \|g(X, \theta)\|\right] < \infty$; (vi) weighting $W_n \to_p W$ with $W$ symmetric positive-definite deterministic. Then
+
+$$
+\hat\theta_{W_n} \;:=\; \arg\min_{\theta \in \Theta} J_n(\theta, W_n) \;\to_p\; \theta_0.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Four steps.
+
+**Step 1: uniform LLN.** By (i), (iv), (v), the class $\mathcal{F} = \{g(\cdot, \theta) : \theta \in \Theta\}$ satisfies the bracketing-entropy condition and the uniform LLN holds: $\sup_{\theta \in \Theta} \|\bar g_n(\theta) - m(\theta)\| \to_p 0$.
+
+**Step 2: uniform convergence of the criterion.** We show $\sup_\theta |Q_n(\theta, W_n) - Q_0(\theta, W)| \to_p 0$. Using the symmetric-$W$ identity $a^\top W a - b^\top W b = (a - b)^\top W (a + b)$,
+
+$$
+\bar g_n^\top W_n \bar g_n - m^\top W m \;=\; \bar g_n^\top (W_n - W) \bar g_n \;+\; (\bar g_n - m)^\top W (\bar g_n + m).
+$$
+
+Take operator-norm bounds, sup over $\theta$, and apply Slutsky with Step 1's uniform LLN and assumption (vi). Result: $\sup_\theta |Q_n(\theta, W_n) - Q_0(\theta, W)| \to_p 0$.
+
+**Step 3: identification.** By (iii) and positive-definiteness of $W$, $Q_0(\theta, W) \ge \lambda_{\min}(W) \|m(\theta)\|^2 \ge 0$ with equality iff $\theta = \theta_0$. So $\theta_0$ is the unique minimizer of $Q_0$ on $\Theta$.
+
+**Step 4: argmin convergence.** Fix $\varepsilon > 0$ and let $B_\varepsilon^c = \Theta \setminus B(\theta_0, \varepsilon)$. By compactness of $\Theta$ and continuity of $Q_0$, $\delta := \inf_{\theta \in B_\varepsilon^c} Q_0(\theta, W) > 0$. On the failure event $\{\hat\theta_{W_n} \in B_\varepsilon^c\}$, the argmin definition and Step 2 give $Q_0(\hat\theta_{W_n}, W) \le 2 \sup_\theta |Q_n - Q_0|$. So $\delta \le 2 \sup_\theta |Q_n - Q_0|$, which holds with probability going to zero by Step 2. $P(\|\hat\theta_{W_n} - \theta_0\| > \varepsilon) \to 0$.
+</TheoremBlock>
+
+*(Originally Hansen 1982; the textbook treatment with these regularity conditions follows Newey & McFadden 1994 §2.)* The proof carries a useful geometric reading. The sample criterion tracks the population criterion uniformly; the population criterion has a strict global minimum at $\theta_0$ separated by a positive gap from any point outside the $\varepsilon$-neighborhood; therefore the sample minimizer must eventually fall inside the $\varepsilon$-neighborhood. Compactness of $\Theta$ guarantees the positive gap; the uniform LLN guarantees the sample criterion tracks the population criterion *everywhere* on $\Theta$, not just near the truth.
+
+<ConsistencyCloudExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/04_consistency.png"
+  alt="Log-log RMSE convergence for identity and efficient weighting on the running example, with sampling-distribution clouds at three sample sizes"
+  caption="Figure 4.1 — Consistency at the parametric rate. Left: log-log RMSE follows the n^{-1/2} reference dashed line for both identity and efficient weighting; the efficient line sits below. Right: sampling-distribution clouds shrink toward θ₀ as n grows from 25 → 200 → 1000."
+/>
+
+Two consequences worth noting before §5. **Robustness to the weighting matrix.** Theorem 4.1 imposes no special structure on $W$ beyond positive-definiteness — *any* positive-definite limiting weighting matrix gives a consistent estimator. The first-step identity-weight GMM and the second-step efficient $\hat\Omega^{-1}$-weighted GMM are *both* consistent. **The proof template generalizes.** The four-step proof — uniform LLN on the integrand, uniform convergence of the criterion, identification of the population minimizer, argmin convergence — is the template for proving consistency of every extremum estimator in statistics: MLE, M-estimators, GEL, sieve estimators, neural-network ERM. GMM is the prototype.
+
+### 4.4 What can go wrong
+
+Four failure modes, each illustrating which assumption above is doing the work.
+
+**Global identification failure.** If the population moment $m(\theta) = 0$ has multiple solutions, $\theta_0$ is not the unique minimizer of $Q_0$ — assumption (iii) breaks. The sample criterion has multiple local minima of comparable depth, and the argmin is not a well-defined limit object. Mitigation: re-parametrize to break the symmetry, or use a sign-restricted optimizer.
+
+**Rank deficiency.** If $G_0$ has rank $< k$, the population criterion is *flat* along the null direction of $G_0^\top W G_0$ near $\theta_0$. The sample criterion inherits a near-flat ridge, the argmin is non-unique up to motion along the ridge, and the asymptotic variance in §5 blows up.
+
+**Weak identification.** $G_0$ has full column rank but is *nearly* rank-deficient. Consistency still holds in principle (Theorem 4.1 applies — the rank condition is local-identification, not consistency), but the rate of convergence is governed by $\lambda_{\min}(G_0^\top W G_0)^{-1/2}$. At finite samples, the consistency-implied Gaussian approximation breaks down — the sampling distribution has heavy tails and CI coverage drops. §9.4 develops the linear-IV special case.
+
+**Dependent data.** For non-i.i.d. data — time series, clustered samples — the LLN still applies under standard mixing or ergodicity conditions, but the moment-covariance $\Omega$ in §5 must account for autocorrelation (HAC / Newey–West estimators replace the simple sample covariance). Consistency *direction* (Theorem 4.1) carries over with minimal modification; the asymptotic variance does not.
+
+---
+
+## §5 — Asymptotic normality of GMM estimators
+
+§4 established that $\hat\theta_W \to_p \theta_0$. We now refine that result with the rate and limit distribution: $\sqrt{n}(\hat\theta_W - \theta_0) \to_d \mathcal{N}(0, V_W)$, where $V_W$ is the **sandwich variance** that gives Hansen's framework its characteristic asymptotic structure. Three ingredients — the Jacobian $G_0$, the weighting matrix $W$, and the moment-covariance $\Omega$ — enter the formula, and reading their interactions sets up the efficient-weighting choice of §6 and the J-statistic of §8.
+
+### 5.1 The sandwich variance formula
+
+<TheoremBlock type="theorem" number={5.1} title="Asymptotic normality of GMM">
+In addition to the consistency conditions of Theorem 4.1, assume (vii) $\theta_0$ lies in the interior of $\Theta$; (viii) $\mathbb{E}[\|g(X, \theta_0)\|^2] < \infty$ and $\Omega := \mathbb{E}[g(X, \theta_0)\, g(X, \theta_0)^\top]$ is positive-definite; (ix) $g(X, \cdot)$ is continuously differentiable on a neighborhood $\mathcal{N} \ni \theta_0$ for $P_0$-a.e. $X$, with a Jacobian uniform LLN and dominating function; (x) $G_0 := \mathbb{E}[\partial g(X, \theta_0) / \partial \theta^\top]$ has full column rank $k$. Then
+
+$$
+\sqrt{n}\,(\hat\theta_W - \theta_0) \;\to_d\; \mathcal{N}(0, V_W), \qquad
+V_W \;=\; (G_0^\top W G_0)^{-1} \, G_0^\top W \Omega W G_0 \, (G_0^\top W G_0)^{-1}.
+$$
+</TheoremBlock>
+
+The factor $G_0^\top W G_0$ is the **bread**; the factor $G_0^\top W \Omega W G_0$ is the **meat**. The bread appears twice (once on each side of the meat) because the GMM normal equations are obtained by left-multiplying the moment residual by $G_n^\top W$, so the inverse Hessian of the criterion enters the variance once for each application.
+
+Two special cases collapse the sandwich. In the **just-identified case** ($L = k$), $G_0$ is $k \times k$ and invertible by (x). Algebraic cancellation gives $V_W = G_0^{-1}\, \Omega \, G_0^{-\top}$ — the weighting matrix drops out, recovering the §2.3 just-identified-MoM variance. Under **efficient weighting** ($W = \Omega^{-1}$), the sandwich collapses to $V_{\Omega^{-1}} = (G_0^\top \Omega^{-1} G_0)^{-1}$. §6 will show this is the Loewner-minimum of $V_W$ over all positive-definite $W$ — Hansen's efficiency bound.
+
+### 5.2 Proof via Taylor expansion of the first-order conditions
+
+<TheoremBlock type="proof">
+The GMM estimator satisfies the first-order conditions $G_n(\hat\theta_W)^\top \, W_n \, \bar g_n(\hat\theta_W) = 0$. By consistency, $\hat\theta_W$ lies in the differentiability neighborhood $\mathcal{N}$ eventually. Five steps complete the argument.
+
+**Step 1 — mean-value expansion.** By the mean-value theorem applied component-wise to $\bar g_n$,
+
+$$
+\bar g_n(\hat\theta_W) \;=\; \bar g_n(\theta_0) \;+\; G_n(\bar\theta_n)\,(\hat\theta_W - \theta_0),
+$$
+
+where $\bar\theta_n$ lies on the segment from $\theta_0$ to $\hat\theta_W$.
+
+**Step 2 — substitute into the FOCs.** This gives $A_n \cdot (\hat\theta_W - \theta_0) = -G_n(\hat\theta_W)^\top W_n \bar g_n(\theta_0)$, where $A_n := G_n(\hat\theta_W)^\top W_n G_n(\bar\theta_n)$.
+
+**Step 3 — matrix convergence.** By consistency, the Jacobian uniform LLN, and continuous mapping, $A_n \to_p G_0^\top W G_0$. The rank condition (x) makes this invertible, so $A_n^{-1} \to_p (G_0^\top W G_0)^{-1}$.
+
+**Step 4 — CLT on the moment vector at $\theta_0$.** $\sqrt{n}\, \bar g_n(\theta_0) \to_d \mathcal{N}(0, \Omega)$ by the classical CLT applied to i.i.d. $g(X_i, \theta_0)$ with mean 0 and covariance $\Omega$.
+
+**Step 5 — Slutsky.** $\sqrt{n}\,(\hat\theta_W - \theta_0) = -A_n^{-1} G_n(\hat\theta_W)^\top W_n \cdot \sqrt{n}\, \bar g_n(\theta_0)$. The limit is a linear transformation of a Gaussian: $LZ$ with $L = -(G_0^\top W G_0)^{-1} G_0^\top W$ and $Z \sim \mathcal{N}(0, \Omega)$, so $LZ \sim \mathcal{N}(0, L \Omega L^\top) = \mathcal{N}(0, V_W)$.
+</TheoremBlock>
+
+*(Hansen 1982; textbook treatment in Newey & McFadden 1994 §2 and Hayashi 2000 Ch. 3.)* The proof is structurally identical to the just-identified case of §2.3, with one substitution: instead of inverting $\bar g_n(\hat\theta_n) = 0$ directly (impossible in the over-identified case), we invert the first-order conditions $G_n^\top W_n \bar g_n(\hat\theta_W) = 0$. The mapping from "$L$ moment-condition equations" to "$k$ first-order-condition equations" is achieved by left-multiplying by $G_n^\top W_n$, projecting the $L$-dimensional moment residual onto the $k$-dimensional parameter-direction subspace. This projection lives in the bread of the sandwich.
+
+### 5.3 Reading the sandwich
+
+The variance $V_W$ has three ingredients, each contributing a specific piece of statistical content. The Jacobian $G_0 = \mathbb{E}[\partial g / \partial \theta^\top]$ measures **signal strength** — how strongly the population moment responds to a parameter perturbation at the truth. A large $G_0$ (well-identified parameter, strong instruments) gives small $V_W$. The covariance $\Omega = \mathbb{E}[g g^\top]$ is the **moment-noise covariance** — diagonal entries capture per-moment noise levels, off-diagonals capture cross-moment correlations. The weighting matrix $W$ is the only ingredient under the analyst's control: different $W$'s produce different consistent estimators with different $V_W$'s.
+
+Three weighting values of practical interest: identity ($W = I$, easy to compute, generally suboptimal); diagonal inverse-variance ($W = \mathrm{diag}(1/\mathrm{Var}(g_j))$, captures heteroskedasticity but ignores correlations); efficient ($W = \Omega^{-1}$, achieves the Hansen bound). For score moments $g = \nabla \log p$, the efficient sandwich collapses to $V_{\Omega^{-1}} = \mathcal{I}^{-1}$, the Cramér–Rao bound — maximum likelihood is efficient GMM with score moments. The viz below makes the three ingredients literal: it shows how the bread / meat / sandwich operator-norms shift across weighting choices, and how the resulting 95% confidence ellipses nest.
+
+<SandwichDecomposer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/05_loewner_ellipses.png"
+  alt="Three 95% confidence ellipses for identity, diagonal, and efficient weightings overlaid on a θ_1, θ_2 plane"
+  caption="Figure 5.1 — 95% confidence ellipses for three weighting matrices on the running example. Identity (gray) and diagonal-inverse-variance (gold) ellipses contain the efficient (accent) ellipse — the Loewner-ordering inclusions are visible by eye."
+/>
+
+In practice we don't know $G_0$ or $\Omega$ exactly. The natural plug-in estimators are
+
+$$
+\hat G_n \;=\; \frac{1}{n} \sum_{i=1}^n \frac{\partial g(X_i, \hat\theta_W)}{\partial \theta^\top}, \qquad
+\hat\Omega_n \;=\; \frac{1}{n} \sum_{i=1}^n g(X_i, \hat\theta_W)\, g(X_i, \hat\theta_W)^\top,
+$$
+
+and the plug-in sandwich is $\hat V_W = (\hat G_n^\top W_n \hat G_n)^{-1}\, \hat G_n^\top W_n \hat\Omega_n W_n \hat G_n\, (\hat G_n^\top W_n \hat G_n)^{-1}$. Under the regularity conditions of Theorem 5.1, $\hat V_W \to_p V_W$, so confidence intervals built from $\hat V_W$ have asymptotically correct coverage. For dependent data, $\hat\Omega_n$ is replaced by a HAC estimator like Newey–West.
+
+### 5.4 Loewner ordering on asymptotic variances
+
+Different choices of $W$ produce different asymptotic variances. We compare them via the **Loewner ordering** on positive-semidefinite matrices: $V_1 \preceq V_2 \iff V_2 - V_1 \succeq 0 \iff u^\top V_1 u \le u^\top V_2 u \;\forall u$. The Loewner ordering captures the variance comparison faithfully: $V_1 \preceq V_2$ means every linear combination of $\hat\theta$ has smaller asymptotic variance under $W_1$ than under $W_2$. Equivalently, every confidence ellipse from $V_1$ is contained in the corresponding ellipse from $V_2$. The ordering is partial: not every two asymptotic-variance matrices are comparable. But there is a unique smallest element.
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/05_qq_normality.png"
+  alt="Q-Q plot of standardized GMM estimator components against the standard normal distribution at three sample sizes"
+  caption="Figure 5.2 — Q-Q plot of √n(θ̂_W − θ₀) standardized by the sandwich variance, against the standard normal. The asymptotic-normal approximation tightens visibly from n = 50 to n = 500."
+/>
+
+**Question.** Is there a $W$ that achieves $V_W \preceq V_{W'}$ for all positive-definite $W'$?
+
+**Answer (proved in §6).** Yes. The efficient weighting matrix $W^\star = \Omega^{-1}$ uniquely (up to positive scaling) achieves the Loewner-minimum $V_{W^\star} = (G_0^\top \Omega^{-1} G_0)^{-1} \;\preceq\; V_W$ for every positive-definite $W$.
+
+---
+
+## §6 — Efficient weighting and the Hansen bound
+
+§5 derived the sandwich asymptotic variance $V_W$ for any positive-definite $W$ and noted in §5.4 that the family $\{V_W\}_{W \succ 0}$ has a Loewner-minimum. This section proves that the minimum is achieved uniquely (up to positive scaling) at $W^\star = \Omega^{-1}$, derives the resulting **Hansen efficiency bound** $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$, and connects the bound to the semiparametric efficiency machinery from the prerequisite *Semiparametric Inference*. The agreement between Hansen's purely algebraic argument and the Hilbert-space tangent-space construction of the semiparametric efficiency bound is one of the most satisfying results in this part of asymptotic statistics.
+
+### 6.1 Minimizing the asymptotic variance
+
+We want to find the positive-definite weighting matrix $W$ that minimizes $V_W$ in the Loewner order. Direct calculus on the matrix-valued objective $V_W$ is awkward — the cone of positive-definite matrices has no obvious differential structure that makes "differentiating $V_W$ with respect to $W$" tractable. The standard reduction is to *scalar* sub-problems: for every direction $u \in \mathbb{R}^k \setminus \{0\}$, find the $W$ that minimizes the scalar variance $u^\top V_W u$. If a single $W^\star$ minimizes $u^\top V_W u$ for *every* $u$ simultaneously, that $W^\star$ is the Loewner-minimum of the family.
+
+The strategy is global rather than local: we will not differentiate at all. Instead we exhibit $W^\star$ directly and verify the Loewner inequality $V_W \succeq V_{W^\star}$ via a matrix Cauchy–Schwarz argument. This is Hansen's original 1982 proof technique, and it generalizes the classical Gauss–Markov / Aitken theorem to nonlinear moment-condition models.
+
+### 6.2 The efficient weighting matrix theorem
+
+<TheoremBlock type="theorem" number={6.1} title="Efficiency of Ω⁻¹-weighted GMM">
+Under the conditions of Theorem 5.1, for every positive-definite $W \in \mathbb{R}^{L \times L}$,
+
+$$
+V_W \;\succeq\; V^\star \;:=\; (G_0^\top \Omega^{-1} G_0)^{-1},
+$$
+
+with equality if and only if $W = c \Omega^{-1}$ for some scalar $c > 0$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We invert and use matrix Cauchy–Schwarz, which is the cleaner form of the algebra.
+
+**Step 1 — whitening.** Let $\Omega = L L^\top$ be the Cholesky decomposition. Define $\tilde G := L^{-1} G_0$ and $\tilde W := L^\top W L$. Then $\tilde W$ is symmetric positive-definite, $\tilde G$ has full column rank $k$, and
+
+$$
+G_0^\top W G_0 = \tilde G^\top \tilde W \tilde G, \quad G_0^\top W \Omega W G_0 = \tilde G^\top \tilde W^2 \tilde G, \quad G_0^\top \Omega^{-1} G_0 = \tilde G^\top \tilde G.
+$$
+
+So $V_W^{-1} = \tilde G^\top \tilde W \tilde G \cdot (\tilde G^\top \tilde W^2 \tilde G)^{-1} \cdot \tilde G^\top \tilde W \tilde G$ and $V^{\star -1} = \tilde G^\top \tilde G$.
+
+**Step 2 — matrix Cauchy–Schwarz.** For any matrices $A, B$ with $B^\top B$ invertible,
+
+$$
+A^\top B \, (B^\top B)^{-1} \, B^\top A \;\preceq\; A^\top A,
+$$
+
+with equality iff $\mathrm{col}(A) \subseteq \mathrm{col}(B)$. Proof: $P_B := B (B^\top B)^{-1} B^\top$ is the orthogonal projection onto $\mathrm{col}(B)$, so $I - P_B$ is positive semi-definite, and $A^\top A - A^\top B (B^\top B)^{-1} B^\top A = A^\top (I - P_B) A \succeq 0$.
+
+**Step 3 — apply with $A = \tilde G$, $B = \tilde W \tilde G$.** The pieces compute to $V_W^{-1} \preceq V^{\star -1}$. Inverting reverses the Loewner order:
+
+$$
+V_W \;\succeq\; V^\star.
+$$
+
+**Step 4 — uniqueness.** Equality requires $\mathrm{col}(\tilde G) \subseteq \mathrm{col}(\tilde W \tilde G)$, which forces $\tilde W = c I_L$ for some $c > 0$ on $\mathrm{col}(\tilde G)$. Translating back, $W = c \Omega^{-1}$.
+</TheoremBlock>
+
+*(Hansen 1982; textbook treatment in Newey & McFadden 1994 §2.3.)*
+
+### 6.3 The Hansen efficiency bound
+
+The single-matrix form $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$ — the **Hansen efficiency bound** — is structurally cleaner than the sandwich $V_W$. The collapse from "bread × meat × bread" to a single matrix happens because under efficient weighting the meat equals the bread:
+
+$$
+G_0^\top W^\star \Omega W^\star G_0 \;=\; G_0^\top \Omega^{-1} \Omega \Omega^{-1} G_0 \;=\; G_0^\top \Omega^{-1} G_0 \;=\; (V^\star)^{-1}.
+$$
+
+The visualization below makes this concrete. Panel A: a scatter of $(\log \det V_W, \mathrm{tr}\, V_W)$ over 200 random positive-definite weighting matrices drawn from a Wishart distribution. $V^\star$ sits at the southwest extreme — there is no $W$ that yields a smaller uncertainty volume *and* a smaller total uncertainty. Panel B: nested 95% confidence ellipses for the interpolation $W_\alpha = (1 - \alpha) I + \alpha \Omega^{-1}$ as $\alpha$ slides from 0 (identity) to 1 (efficient).
+
+<EfficiencyFrontierExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/06_hansen_bound.png"
+  alt="Histogram of det(V*)/det(V_W) ratios across random PD W's, with nested ellipses showing W_alpha shrinkage"
+  caption="Figure 6.1 — Hansen-bound visualization. Left: histogram of det(V*)/det(V_W) across 5000 Wishart-sampled W's — the ratio is always ≤ 1, confirming V* is the determinant minimum. Right: nested ellipses for W_α = (1−α) I + α Ω⁻¹ as α varies from 0 to 1; the ellipse shrinks monotonically by Theorem 6.1."
+/>
+
+### 6.4 Connection to the semiparametric efficiency bound
+
+The Hansen bound $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$ admits a second derivation — entirely independent of Hansen's algebra — from the semiparametric efficiency machinery developed in the prerequisite *Semiparametric Inference*. The two derivations are different proof technologies but they yield the *same* lower bound.
+
+For the moment-condition model $\mathcal{P} = \{P : \mathbb{E}_P[g(X, \theta(P))] = 0\}$, the efficient influence function (EIF) for $\theta_0$ at $P_0$ is (Bickel–Klaassen–Ritov–Wellner 1993, Theorem 5.1)
+
+$$
+\phi^\star(X) \;=\; -(G_0^\top \Omega^{-1} G_0)^{-1} \, G_0^\top \Omega^{-1} \, g(X, \theta_0).
+$$
+
+Computing its variance:
+
+$$
+V_{\rm sp}^\star \;=\; \mathbb{E}[\phi^\star \phi^{\star\top}] \;=\; (G_0^\top \Omega^{-1} G_0)^{-1} G_0^\top \Omega^{-1} \cdot \Omega \cdot \Omega^{-1} G_0 (G_0^\top \Omega^{-1} G_0)^{-1} \;=\; (G_0^\top \Omega^{-1} G_0)^{-1} \;=\; V^\star.
+$$
+
+The semiparametric bound equals the Hansen bound. Efficient GMM is therefore not merely efficient *within the GMM family* (Theorem 6.1) — it is efficient *within the entire semiparametric class of RAL estimators of $\theta_0$ under the moment-condition restriction*. No future ML, nonparametric, or regularized estimator can asymptotically beat $V^\star$ on this model class. This is the rigorous statement of what makes GMM the canonical estimator for moment-condition models: it is information-theoretically optimal in the strongest sense available.
+
+---
+
+## §7 — Two-step feasible efficient GMM
+
+§6 proved that $W^\star = \Omega^{-1}$ achieves the Hansen efficiency bound. But $\Omega = \mathbb{E}[g(X, \theta_0)\, g(X, \theta_0)^\top]$ is a population object we do not observe. The **two-step feasible efficient GMM** procedure resolves this: run GMM once with some preliminary weighting to get a consistent first-step estimate $\hat\theta^{(1)}$, use those residuals to construct $\hat\Omega_n$, then run GMM again with $\hat W = \hat\Omega_n^{-1}$. The second-step estimator $\hat\theta^{(2)}$ inherits the efficiency bound asymptotically. This is *the* practical algorithm of applied GMM; almost every GMM regression run in econometrics today follows this two-step structure.
+
+### 7.1 The two-step algorithm
+
+<TheoremBlock type="algorithm" number={7.1} title="Two-step efficient GMM (Hansen 1982)">
+Given a sample $X_1, \dots, X_n$ and a moment function $g(X, \theta) \in \mathbb{R}^L$ with $L \ge k$:
+
+1. **Choose** a first-step weighting matrix $W^{(1)}$, positive-definite and not depending on the parameter. Common choices: $W^{(1)} = I_L$ (always works), or $W^{(1)} = (Z^\top Z / n)^{-1}$ for linear IV.
+2. **First-step GMM:** $\hat\theta^{(1)} = \arg\min_{\theta \in \Theta} n \, \bar g_n(\theta)^\top W^{(1)} \bar g_n(\theta)$.
+3. **Estimate $\Omega$ from first-step residuals:** $\hat\Omega_n = (1/n) \sum_{i=1}^n g(X_i, \hat\theta^{(1)})\, g(X_i, \hat\theta^{(1)})^\top$.
+4. **Second-step GMM with $\hat W = \hat\Omega_n^{-1}$:** $\hat\theta^{(2)} = \arg\min_{\theta \in \Theta} n \, \bar g_n(\theta)^\top \hat\Omega_n^{-1} \bar g_n(\theta)$.
+5. **Return** $\hat\theta^{(2)}$ as the efficient estimator, with asymptotic variance $\hat V^{(2)} = (\hat G_n^\top \hat\Omega_n^{-1} \hat G_n)^{-1}$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={7.1} title="Efficiency of the two-step estimator">
+Under the conditions of Theorem 5.1, the two-step estimator from Algorithm 7.1 satisfies
+
+$$
+\sqrt{n}\,(\hat\theta^{(2)} - \theta_0) \;\to_d\; \mathcal{N}(0, V^\star), \qquad V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Two steps. **Step 1:** $\hat\Omega_n \to_p \Omega$ by consistency of $\hat\theta^{(1)}$ (Theorem 4.1) combined with a uniform mean-value bound on $g g^\top$ over the neighborhood $\mathcal{N}$. **Step 2:** Apply Theorem 5.1 with $W_n = \hat\Omega_n^{-1} \to_p \Omega^{-1} = W^\star$ (continuous mapping). The limit variance is $V_{W^\star} = V^\star$.
+</TheoremBlock>
+
+The proof carries the central insight: the first-step weighting matrix doesn't need to be efficient — it just needs to deliver consistency. *Any* positive-definite $W^{(1)}$ does the job. The efficiency comes entirely from the second-step weighting $\hat\Omega_n^{-1}$.
+
+The visualization below traces Algorithm 7.1 end-to-end on the running example. Three stacked panels: (a) the step-1 criterion surface $J_n(\theta, I)$ with the step-1 estimate marked; (b) the estimated $\hat\Omega_n$ shown as a heatmap (off-diagonals capture cross-sensor moment correlations); (c) the step-2 criterion surface $J_n(\theta, \hat\Omega_n^{-1})$, with step-1 and step-2 estimates overlaid. Raise $\sigma_3$ to make the step-1 / step-2 ellipse shapes visibly different.
+
+<TwoStepGMMWalkthrough client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/07_two_step_surfaces.png"
+  alt="Side-by-side criterion surfaces for step 1 (W = I) and step 2 (W = Ω̂⁻¹) on the running example"
+  caption="Figure 7.1 — Criterion surface deformation from step 1 to step 2. Identity weighting produces nearly circular contours; the efficient weighting Ω̂⁻¹ elongates the contours along the direction the moment data most strongly informs, tightening the resulting confidence ellipse."
+/>
+
+### 7.2 Estimating Ω from first-step residuals
+
+For i.i.d. data the uncentered estimator $\hat\Omega_n = (1/n) \sum_i g_i g_i^\top$ (with $g_i := g(X_i, \hat\theta^{(1)})$) is the natural choice — uncentered because $\mathbb{E}[g(X, \theta_0)] = 0$ by the moment-condition restriction. Some software packages center anyway (subtract $\bar g_n$) as a defensive measure against misspecification; for correctly-specified models the two estimators are asymptotically equivalent.
+
+For dependent data — time series, clustered samples — the simple covariance estimator is *inconsistent* because it ignores the contributions of $\mathbb{E}[g_i g_j^\top]$ at lags $|i - j| > 0$. The **HAC estimator** (Newey–West 1987; Andrews–Monahan 1991) generalizes:
+
+$$
+\hat\Omega_n^{\rm HAC} \;=\; \hat\Gamma_0 \;+\; \sum_{\ell=1}^{L_n} k\!\left(\frac{\ell}{L_n}\right) (\hat\Gamma_\ell + \hat\Gamma_\ell^\top),
+$$
+
+where $\hat\Gamma_\ell$ are sample auto-covariances, $L_n \sim n^{1/3}$ is a bandwidth, and $k(\cdot)$ is a kernel ensuring positive-definiteness. The canonical applied workflow: use Newey–West for time series, use the plain sample covariance for i.i.d. cross-sections.
+
+### 7.3 Iterated GMM and convergence
+
+The two-step procedure stops after one update of $\hat W$. **Iterated GMM** keeps going: re-estimate $\hat\Omega^{(t)}$ from residuals at $\hat\theta^{(t)}$, set $W^{(t+1)} = (\hat\Omega^{(t)})^{-1}$, recompute $\hat\theta^{(t+1)}$, and iterate to a fixed point. Iterated GMM is a Picard iteration on the update map $T(\theta) = \arg\min_\theta J_n(\theta, \hat\Omega(\theta)^{-1})$.
+
+Three properties: (a) **asymptotic equivalence** — both $\hat\theta^{(2)}$ and $\hat\theta^{\rm iter}$ converge at rate $n^{-1/2}$ with the same asymptotic variance $V^\star$; (b) **invariance** — $\hat\theta^{\rm iter}$ depends only on the sample and the moment function, not on $W^{(1)}$; (c) **fixed-point characterization** — for affine moment functions, this fixed point coincides with the continuous-updating estimator (CUE) of §10. In applied practice, two-step is the default; iterated GMM is used when reviewers ask for "specification-agnostic" results; CUE / EL / GEL (§10) are used when two-step bias matters.
+
+### 7.4 Finite-sample bias of two-step GMM — the Hansen–Heaton–Yaron critique
+
+Hansen, Heaton, and Yaron (1996) found that the estimated $\hat\Omega_n$ depends on the *same data* used in step 2, inducing a finite-sample bias of order $O(L / n)$. The mechanism: $\hat\Omega_n$ is constructed from $\hat\theta^{(1)}$, which is a function of the sample; using it as the weighting matrix in step 2 creates a correlation between $\hat\Omega_n^{-1}$ and $\bar g_n$ in the FOCs that classical asymptotics ignores.
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/07_finite_sample_bias.png"
+  alt="Two-step, iterated, and oracle GMM bias at small n with L = 4 moment conditions"
+  caption="Figure 7.2 — Finite-sample bias hierarchy. The oracle estimator (efficient weighting at the unknown true Ω) is unbiased to leading order; iterated GMM reduces two-step bias by a constant factor (∼ 30-50%); both decay at rate O(L/n). The gap closes as n grows."
+/>
+
+Three responses to the HHY critique shape the modern literature: iterated GMM mitigates but does not eliminate (bias drops by a constant factor); continuous-updating (CUE) jointly optimizes $\theta$ and $W(\theta)$ with smaller higher-order bias; empirical likelihood (EL) has the smallest higher-order bias in the GEL class (Newey–Smith 2004). §10 develops all three.
+
+---
+
+## §8 — The Hansen J-statistic and over-identification testing
+
+The two-step procedure of §7 produces, almost as a by-product, a *test of correct specification*. The minimum value of the efficient-weight GMM criterion — the **Hansen J-statistic** — has an asymptotic $\chi^2_{L - k}$ distribution under correct specification. The same machinery that produces the point estimate produces a free specification test.
+
+### 8.1 The J-statistic as a quadratic form
+
+After running two-step (or iterated) efficient GMM, the **Hansen J-statistic** is
+
+$$
+\hat J \;:=\; J_n\!\left(\hat\theta^{(2)}, \, \hat\Omega_n^{-1}\right) \;=\; n \cdot \bar g_n(\hat\theta^{(2)})^\top \, \hat\Omega_n^{-1} \, \bar g_n(\hat\theta^{(2)}).
+$$
+
+Under correct specification ($\mathbb{E}_{P_0}[g(X, \theta_0)] = 0$), $\bar g_n(\hat\theta^{(2)}) = O_p(n^{-1/2})$, so $\hat J = O_p(1)$ — bounded in probability, with the $\chi^2_{L-k}$ distribution below. Under misspecification (no $\theta$ satisfies the population moment condition), $\bar g_n(\hat\theta^{(2)})$ is bounded away from zero, so $\hat J = O_p(n)$ — the criterion diverges, and the test rejects with probability tending to 1.
+
+### 8.2 Asymptotic distribution under H₀
+
+<TheoremBlock type="theorem" number={8.1} title="Asymptotic distribution of the J-statistic">
+Under the conditions of Theorem 5.1, with two-step or iterated efficient GMM weighting,
+
+$$
+\hat J \;\to_d\; \chi^2_{L - k}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Four steps.
+
+**Step 1 — linearize $\bar g_n(\hat\theta^{(2)})$ around $\theta_0$.** From the proof of Theorem 5.1, $\sqrt{n}(\hat\theta^{(2)} - \theta_0) = -(G_0^\top \Omega^{-1} G_0)^{-1} G_0^\top \Omega^{-1} \cdot \sqrt{n}\, \bar g_n(\theta_0) + o_p(1)$. Mean-value expansion of $\bar g_n$ then gives
+
+$$
+\sqrt{n}\, \bar g_n(\hat\theta^{(2)}) \;=\; M_0 \cdot \sqrt{n}\, \bar g_n(\theta_0) \;+\; o_p(1),
+$$
+
+where $M_0 := I_L - G_0\, (G_0^\top \Omega^{-1} G_0)^{-1} G_0^\top \Omega^{-1}$ is the **residual-projection matrix**.
+
+**Step 2 — CLT.** $\sqrt{n}\, \bar g_n(\theta_0) \to_d Z \sim \mathcal{N}(0, \Omega)$. By continuous mapping and $\hat\Omega_n \to_p \Omega$, $\hat J \to_d (M_0 Z)^\top \Omega^{-1} (M_0 Z)$.
+
+**Step 3 — whitening.** Let $\Omega = L L^\top$ and $\tilde Z := L^{-1} Z \sim \mathcal{N}(0, I_L)$, $\tilde G := L^{-1} G_0$. Then $M_0 Z = L \cdot M_{\tilde G} \tilde Z$, where $M_{\tilde G} := I_L - \tilde G (\tilde G^\top \tilde G)^{-1} \tilde G^\top$ is the standard Euclidean orthogonal projection onto $\mathrm{col}(\tilde G)^\perp$, a symmetric idempotent matrix of rank $L - k$.
+
+**Step 4 — compute.** $(M_0 Z)^\top \Omega^{-1} (M_0 Z) = (L M_{\tilde G} \tilde Z)^\top L^{-\top} L^{-1} (L M_{\tilde G} \tilde Z) = \|M_{\tilde G} \tilde Z\|^2$. Since $\tilde Z \sim \mathcal{N}(0, I_L)$ and $M_{\tilde G}$ is an orthogonal projection of rank $L - k$, $\|M_{\tilde G} \tilde Z\|^2 \sim \chi^2_{L - k}$.
+</TheoremBlock>
+
+*(Hansen 1982; the residual-projection proof is the canonical textbook treatment.)* Geometric reading: the sample-moment vector at the GMM optimum is the residual after projecting the $L$-dimensional moment-noise vector onto the $k$-dimensional parameter-identifying subspace $\mathrm{col}(G_0)$. The $k$ projection components are absorbed into $\hat\theta^{(2)}$; the $L - k$ residual components are what $\hat J$ measures. A just-identified model ($L = k$) has *zero* over-identifying restrictions, $\hat J \equiv 0$ exactly, and there is no specification test. Over-identification is precisely the resource the J-test exploits.
+
+The visualization below runs the J-statistic Monte Carlo on the running example. Top panel: empirical density of $\hat J$ over 400 two-step replicates at the user's chosen $n$, with the $\chi^2_2$ theoretical density overlaid. The empirical 95th percentile and Type-I rate are reported. Bottom panel: power curve — the empirical rejection rate at $\alpha = 0.05$ as we shift sensor 3's true mean away from its $\theta_0$-implied value by $\delta$. At $\delta = 0$ the rate hovers near $\alpha$; as $\delta$ grows the rate rises toward 1, consistent with the consistency of the J-test against fixed misspecifications.
+
+<JStatisticDistributionExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/08_J_under_H0.png"
+  alt="Empirical histogram of the J-statistic under H₀ overlaid with the χ²_{L-k} density"
+  caption="Figure 8.1 — Empirical Ĵ distribution under correct specification, B = 5000 replicates at n = 500. The histogram tracks the χ²₂ density closely; Q-Q-plot inset (right) shows the asymptotic-normal approximation is essentially exact at this sample size."
+/>
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/08_J_power_curve.png"
+  alt="J-test power curve as misspecification amplitude grows"
+  caption="Figure 8.2 — Power against misspecification of moment g₃. Each curve corresponds to a different sample size; all converge to 1 as δ grows. The δ = 0 curve hovers at the nominal α = 0.05, confirming correct Type-I control."
+/>
+
+### 8.3 Power against misspecification
+
+The J-test is *consistent* against any fixed misspecification: if the model is wrong, the test rejects with probability tending to 1.
+
+**Fixed alternatives.** Suppose the true distribution $P_0$ satisfies $m(\theta) \ne 0$ for *every* $\theta \in \Theta$. The "pseudo-true" parameter $\theta_0^\star := \arg\min_\theta m(\theta)^\top \Omega^{-1} m(\theta)$ is the limit of $\hat\theta^{(2)}$, and the population objective at this point is strictly positive. So $\hat J / n \to_p Q_0(\theta_0^\star) > 0$, $\hat J \to_p \infty$ at rate $n$, and the test rejects with probability tending to 1.
+
+**Local alternatives (Pitman drift).** Suppose the true population moment is $m(\theta_0) = n^{-1/2} \delta$ for some fixed direction $\delta \in \mathbb{R}^L \setminus \mathrm{col}(G_0)$. Following the proof of Theorem 8.1 with the local-alternative drift, the limiting distribution is
+
+$$
+\hat J \;\to_d\; \chi^2_{L - k}(\lambda), \qquad \lambda = \delta^\top \Omega^{-1} \delta
+$$
+
+— a *non-central* chi-squared. Power increases with $\lambda$: the J-test is most powerful against misspecifications $\delta$ that are *large in the $\Omega^{-1}$ norm* and *orthogonal* (in that norm) to the parameter-identifying subspace.
+
+**Where the J-test is blind.** A misspecification $\delta \in \mathrm{col}(G_0)$ — a deviation in the parameter-direction subspace — is absorbed by the GMM optimizer into a shift of $\hat\theta^{(2)}$ and contributes nothing to $\hat J$. The J-test cannot detect *parametric misspecification within the model's identification capacity*; it only detects mismatches *orthogonal to* the parameter-direction subspace.
+
+### 8.4 Reading a J-test in practice
+
+The standard reporting convention is the **p-value**: $p_{\hat J} = P(\chi^2_{L-k} > \hat J)$. Reject $H_0$ at level $\alpha$ if $p_{\hat J} < \alpha$. Three practical pitfalls.
+
+**Pitfall 1: "Low J → correctly specified" is a Type II error trap.** A non-rejecting J-test is consistent with correct specification but does not prove it. Power against subtle misspecifications can be low at moderate $n$.
+
+**Pitfall 2: A significant J does not localize the culprit.** The J-statistic is a single scalar; it does not localize the problem to a specific moment condition. To diagnose, examine individual moment residuals $\bar g_n(\hat\theta^{(2)})_j$; the component(s) with the largest standardized residuals point to candidate misspecified moments. Newey (1985) develops formal tests of subsets of moment conditions.
+
+**Pitfall 3: Weak identification inflates the false-rejection rate.** When $G_0$ is near-singular, the asymptotic $\chi^2_{L-k}$ approximation breaks down. The Anderson–Rubin test (§9.4) provides a weak-instrument-robust alternative.
+
+**Relationship to other specification tests.** The **Sargan test** (Sargan 1958) is the J-test specialized to linear IV — same statistic, same null distribution, older econometric name. The **Hausman test** (Hausman 1978) tests whether two consistent estimators agree — a specification check based on the *difference* between estimators. **Conditional moment tests** (Newey 1985) test *subsets* of moment conditions, useful for localizing the source of a significant J-statistic.
+
+---
+
+## §9 — Linear GMM, instrumental variables, and 2SLS
+
+This section makes the abstract framework concrete via the canonical applied case: **linear instrumental-variables regression**. The IV setting is where GMM was born — Hansen and Singleton's (1982) Euler equations are nonlinear IV — and where the framework continues to do most of its applied work.
+
+### 9.1 The linear IV model
+
+The structural equation is $Y_i = X_i^\top \theta_0 + \varepsilon_i$, $i = 1, \dots, n$, where $X_i \in \mathbb{R}^k$ is a vector of regressors with some component endogenous, $\mathbb{E}[X_i \varepsilon_i] \ne 0$. OLS is biased because the orthogonality condition fails.
+
+The fix is an **instrument vector** $Z_i \in \mathbb{R}^L$ with $L \ge k$ satisfying two conditions: **exogeneity** $\mathbb{E}[Z_i \varepsilon_i] = 0$ and **relevance** $\mathbb{E}[Z_i X_i^\top] \in \mathbb{R}^{L \times k}$ has rank $k$. Given $(Y_i, X_i, Z_i)$, the GMM **moment function** is $g(Y_i, X_i, Z_i; \theta) = Z_i \,(Y_i - X_i^\top \theta) \in \mathbb{R}^L$. By exogeneity, $\mathbb{E}[g(Y, X, Z; \theta_0)] = 0$ at the truth. By relevance, $G_0 = -\mathbb{E}[Z X^\top]$ has full column rank $k$. The over-identification degree is $L - k$.
+
+The sample-moment vector is $\bar g_n(\theta) = (1/n) Z^\top (Y - X \theta)$ where $Z, X, Y$ stack rows. The sample Jacobian is $G_n = -(1/n) Z^\top X$, independent of $\theta$ (the moment function is affine in $\theta$).
+
+The visualization below sets $k = 1$ (one endogenous regressor) and $L = 4$ (four instruments), with a heteroskedasticity-controlled error variance. As you raise endogeneity $\rho$, the OLS sampling distribution drifts away from $\theta_0 = 1$. As you raise heteroskedasticity $\gamma$, the efficient-GMM advantage over 2SLS grows.
+
+<LinearIVPlayground client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/09_linear_iv_sampling.png"
+  alt="Three sampling distributions overlaid: OLS biased, 2SLS unbiased but spread, efficient GMM unbiased and tighter"
+  caption="Figure 9.1 — Linear IV sampling distributions at n = 500, L = 4 instruments, ρ = 0.5 endogeneity, γ = 1.5 heteroskedasticity. OLS is biased toward the confounded mean; 2SLS is consistent for θ₀ = 1 but inefficient; efficient GMM tightens the distribution by exploiting the heteroskedasticity through Ω̂⁻¹ weighting."
+/>
+
+### 9.2 2SLS as $(Z^\top Z / n)^{-1}$-weighted GMM
+
+The GMM estimator with a generic weighting matrix $W$ is
+
+$$
+\hat\theta_W \;=\; (X^\top Z \, W \, Z^\top X)^{-1} X^\top Z \, W \, Z^\top Y, \qquad\qquad (9.1)
+$$
+
+closed-form because $g$ is affine in $\theta$.
+
+<TheoremBlock type="theorem" number={9.1} title="2SLS as GMM">
+The two-stage least squares estimator is the GMM estimator with weighting matrix $W = (Z^\top Z / n)^{-1}$:
+
+$$
+\hat\theta_{2SLS} \;=\; (X^\top P_Z X)^{-1} X^\top P_Z Y, \qquad P_Z = Z (Z^\top Z)^{-1} Z^\top.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Substitute $W = n (Z^\top Z)^{-1}$ into (9.1); the scalar $n$ cancels, leaving $(X^\top Z (Z^\top Z)^{-1} Z^\top X)^{-1} X^\top Z (Z^\top Z)^{-1} Z^\top Y = (X^\top P_Z X)^{-1} X^\top P_Z Y$.
+</TheoremBlock>
+
+The textbook "two-stage" interpretation: $P_Z X = \hat X$ is the OLS prediction of $X$ from $Z$ (first stage), and $\hat\theta_{2SLS}$ is the OLS regression of $Y$ on $\hat X$ (second stage). Under homoskedasticity $\mathbb{E}[\varepsilon^2 | Z] = \sigma_\varepsilon^2$, $\Omega = \sigma_\varepsilon^2 \cdot \mathbb{E}[Z Z^\top]$, and $W = (Z^\top Z / n)^{-1}$ differs from $W^\star = \Omega^{-1}$ only by the scalar $\sigma_\varepsilon^2$. So **2SLS is efficient GMM under homoskedasticity**. The Hansen bound becomes $V^\star_{\rm 2SLS} = \sigma_\varepsilon^2 \cdot (\mathbb{E}[X Z^\top] (\mathbb{E}[Z Z^\top])^{-1} \mathbb{E}[Z X^\top])^{-1}$, estimated as $\hat V_{\rm 2SLS} = \hat\sigma_\varepsilon^2 \cdot (X^\top P_Z X / n)^{-1}$ — the standard 2SLS variance formula.
+
+### 9.3 Efficient GMM under heteroskedasticity
+
+When $\mathbb{E}[\varepsilon^2 | Z]$ depends on $Z$, $\Omega$ is no longer proportional to $\mathbb{E}[Z Z^\top]$, and 2SLS is *inefficient*. The fix is the two-step procedure of §7 specialized to linear IV.
+
+<TheoremBlock type="algorithm" number={9.1} title="Heteroskedasticity-robust efficient GMM">
+1. Run 2SLS to obtain $\hat\theta_{2SLS}$.
+2. Compute residuals $\hat e_i = Y_i - X_i^\top \hat\theta_{2SLS}$.
+3. Estimate the heteroskedasticity-robust moment covariance: $\hat\Omega_n = (1/n) \sum_{i=1}^n Z_i Z_i^\top \hat e_i^2$.
+4. Re-estimate GMM with $\hat W = \hat\Omega_n^{-1}$: $\hat\theta^{\rm eff} = (X^\top Z \hat W Z^\top X)^{-1} X^\top Z \hat W Z^\top Y$.
+5. The plug-in efficient variance is $\hat V^{\rm eff} = ((X^\top Z / n) \, \hat W \, (Z^\top X / n))^{-1}$.
+</TheoremBlock>
+
+This estimator goes by several names: **efficient GMM** (Hansen 1982), **heteroskedasticity-robust 2SLS** (applied econometrics), **White (1980) estimator** in the just-identified case $L = k$, or **sandwich estimator** (statistical learning).
+
+### 9.4 Weak instruments and near-identification
+
+For a scalar endogenous regressor ($k = 1$), the first-stage equation is $X_i = Z_i^\top \pi + v_i$. The strength of the instruments is measured by the **concentration parameter** $\mu^2 = \pi^\top (Z^\top Z) \pi / \sigma_v^2$. The first-stage F-statistic is $F = \mu^2 / L$ (large-$n$ approximation), an asymptotic chi-squared random variable under the null that all $\pi_j = 0$.
+
+Staiger and Stock (1997, *Econometrica* 65(3): 557–586) proposed the most-cited rule of thumb — **first-stage F > 10** as a working threshold separating "strong" from "weak" identification — based on simulation evidence that the 2SLS asymptotic-normal approximation deteriorates below this point. Stock and Yogo (2005) subsequently formalized the threshold via tabulated critical values: under their bias-bound criterion (2SLS bias $\le 10\%$ of OLS bias) at $L = 1$ instrument, the 5%-level critical value is approximately 11.0; values for other $(L, k)$ pairs are in Stock-Yogo Tables 1–2.
+
+When the first-stage F is below 10, two pathologies appear. **Bias:** 2SLS becomes biased toward OLS in finite samples, with bias of order $O(1/F)$. **Standard-error distortion:** the 2SLS asymptotic-normal CI undercovers — the nominal-95% CI may have actual coverage of 80% or less.
+
+The **Anderson–Rubin test** (Anderson and Rubin 1949) introduced a test that *does not condition on estimating $\theta$* and is therefore robust to weak instruments. The AR statistic at a hypothesized value $\theta^\star$ is
+
+$$
+\mathrm{AR}(\theta^\star) \;=\; n \cdot \bar g_n(\theta^\star)^\top \hat\Omega(\theta^\star)^{-1} \bar g_n(\theta^\star),
+$$
+
+where $\hat\Omega(\theta^\star)$ is the moment-covariance estimated *under $H_0: \theta = \theta^\star$*. Under $H_0$, by the same residual-projection argument as §8.2 *but without subtracting the $k$ parameter-estimation degrees of freedom*,
+
+$$
+\mathrm{AR}(\theta^\star) \;\to_d\; \chi^2_L \qquad (\text{not } \chi^2_{L-k}).
+$$
+
+The AR confidence set is $\mathrm{CR}_{1-\alpha}^{\rm AR} = \{ \theta^\star : \mathrm{AR}(\theta^\star) < \chi^2_{L, \, 1-\alpha} \}$ — robust to weak instruments. Kleibergen (2002) developed the K-statistic and Moreira (2003) the conditional-likelihood-ratio test as closely related weak-instrument-robust alternatives.
+
+The visualization below makes the weak-instrument failure mode visible. Slide the first-stage strength $\tau$ down toward zero: the 2SLS sampling distribution develops bias toward OLS and heavy tails, while the AR confidence set widens dramatically (often spanning the whole real line) to honestly reflect the lost identification. The 2SLS Wald 95% CI under-covers — its width does not grow as $\tau$ shrinks.
+
+<WeakInstrumentDiagnostics client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/09_weak_instruments.png"
+  alt="Three-panel diagnostic showing first-stage F, 2SLS bias, and AR set width as instrument strength scales"
+  caption="Figure 9.2 — Weak-instrument diagnostics. As the first-stage strength scale τ shrinks: F-statistic drops below the SY-10 threshold; 2SLS becomes biased toward OLS with heavier tails; the AR set widens to honestly reflect lost identification, while the 2SLS Wald CI under-covers."
+/>
+
+For ML / causal-inference applications with strong, theory-motivated instruments (e.g., randomized experiments treated as instruments for compliance), weak instruments are rarely binding. For applied micro applications relying on borderline-relevant instruments, the weak-instrument diagnostics are essential.
+
+---
+
+## §10 — Modern GMM: CUE, empirical likelihood, and GEL
+
+Three modern estimators — the **continuous-updating estimator** (CUE), Owen's **empirical likelihood** (EL), and the **generalized empirical likelihood** (GEL) family unifying both — provide alternatives to two-step GMM with the same first-order asymptotic efficiency but provably smaller higher-order bias. Newey and Smith (2004) gave the unifying analysis: CUE, EL, and exponential tilting (ET) are all members of a single one-parameter family with a *bias hierarchy* where EL is strictly preferred.
+
+### 10.1 The continuous-updating estimator (CUE)
+
+CUE collapses the two steps into a single joint optimization:
+
+$$
+\hat\theta_{\rm CUE} \;:=\; \arg\min_{\theta \in \Theta} \; n \cdot \bar g_n(\theta)^\top \, \hat\Omega_n(\theta)^{-1} \, \bar g_n(\theta),
+$$
+
+where $\hat\Omega_n(\theta) = (1/n) \sum_i g(X_i, \theta) g(X_i, \theta)^\top$ is recomputed at every $\theta$. The criterion is genuinely nonlinear, even when $g$ is affine in $\theta$.
+
+Three properties of CUE: **(a) smaller higher-order bias than two-step GMM** — CUE breaks the $\bar g_n$–$\hat\Omega$ asymmetry; **(b) reparametrization invariance** — invariant to smooth invertible $\theta \mapsto h(\theta)$; **(c) computational cost** — nonlinear optimization (BFGS or Newton) starting from the two-step estimate; typically $\sim 10$ iterations. Under standard regularity $\sqrt{n}(\hat\theta_{\rm CUE} - \theta_0) \to_d \mathcal{N}(0, V^\star)$ with the same $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$ as two-step.
+
+### 10.2 Empirical likelihood (Owen 1988, 1990, 2001)
+
+Empirical likelihood replaces the parametric likelihood with a nonparametric likelihood defined over discrete distributions supported on the data. Given probability weights $p_1, \dots, p_n$, define the empirical likelihood $L(p) = \prod_i p_i$ subject to $p_i \ge 0$, $\sum p_i = 1$, and $\sum p_i g(X_i, \theta) = 0$.
+
+**Profile empirical likelihood.** At each $\theta$, profile out $p$. The Lagrangian KKT conditions give $p_i(\theta, \lambda) = 1 / (n \,(1 + \lambda^\top g(X_i, \theta)))$, where $\lambda = \lambda(\theta)$ solves the inner moment constraint
+
+$$
+\sum_{i=1}^n \frac{g(X_i, \theta)}{1 + \lambda^\top g(X_i, \theta)} \;=\; 0. \qquad\qquad (10.1)
+$$
+
+The inner problem (10.1) is the FOC of a convex optimization over $\lambda$ — minimize $-\sum_i \log(1 + \lambda^\top g(X_i, \theta))$ — with unique interior solution. Newton-Raphson with backtracking (to maintain $1 + \lambda^\top g_i > 0$) converges in $\sim 5$ iterations.
+
+The profile empirical-likelihood-ratio statistic is $\ell_R(\theta) := 2 \sum_i \log(1 + \lambda(\theta)^\top g(X_i, \theta))$, and the **empirical likelihood estimator** is $\hat\theta_{\rm EL} = \arg\min_\theta \ell_R(\theta)$.
+
+<TheoremBlock type="theorem" number={10.1} title="Wilks' theorem for empirical likelihood (Owen 1990)">
+Under the conditions of Theorem 5.1, $\ell_R(\theta_0) \to_d \chi^2_k$ — the *parametric* Wilks asymptotic, despite the nonparametric construction. The EL over-identification statistic satisfies $\ell_R(\hat\theta_{\rm EL}) \to_d \chi^2_{L-k}$ — the same degrees of freedom as Hansen's J-statistic.
+</TheoremBlock>
+
+EL confidence regions $\mathrm{CR}_{1-\alpha}^{\rm EL} = \{\theta : \ell_R(\theta) < \chi^2_{k, 1-\alpha}\}$ are *transformation-invariant*, have *data-determined shape*, and have *better finite-sample coverage* in many settings (DiCiccio-Hall-Romano 1991).
+
+### 10.3 Generalized empirical likelihood (GEL): the Newey–Smith unification
+
+Newey-Smith (2004) observed that CUE, EL, and ET all fit a single GEL family. Let $\rho: \mathbb{R} \to \mathbb{R}$ be twice continuously differentiable, concave on a neighborhood of zero, with $\rho'(0) = \rho''(0) = -1$. The **GEL estimator** with carrier $\rho$ is
+
+$$
+\hat\theta_{\rm GEL} \;:=\; \arg\min_\theta \, \max_\lambda \;\; \frac{1}{n} \sum_{i=1}^n \rho\!\bigl(\lambda^\top g(X_i, \theta)\bigr).
+$$
+
+Three canonical members of the Cressie-Read family $\rho_\gamma(v) = -((1 + \gamma v)^{(\gamma+1)/\gamma} - 1)/(\gamma+1)$:
+
+| $\gamma$ | $\rho_\gamma(v)$ | Estimator | Source |
+|---|---|---|---|
+| $1$ | $-v^2/2 - v$ | **CUE** | Hansen-Heaton-Yaron 1996 |
+| $0$ | $\log(1 - v)$ | **EL** | Owen 1988, 1990 |
+| $-1$ | $-\exp(v) + v + 1$ (centered) | **ET** | Imbens 1997; Kitamura-Stutzer 1997 |
+
+All GEL estimators have $\sqrt{n}(\hat\theta_{\rm GEL} - \theta_0) \to_d \mathcal{N}(0, V^\star)$ — first-order equivalent.
+
+### 10.4 Higher-order properties and the Newey–Smith bias hierarchy
+
+Newey-Smith (2004) computed the $O(1/n)$ bias for each estimator and proved a strict ordering:
+
+$$
+\text{bias}_{\rm 2step}(n) \;\gtrsim\; \text{bias}_{\rm iterated}(n) \;\gtrsim\; \text{bias}_{\rm CUE}(n) \;\gtrsim\; \text{bias}_{\rm ET}(n) \;\gtrsim\; \text{bias}_{\rm EL}(n).
+$$
+
+The visualization below makes the hierarchy visible. Panel A: the Cressie-Read carrier $\rho_\gamma(v)$ morphs as you slide $\gamma$ — at $\gamma=0$ it's the EL log carrier; at $\gamma=1$ the CUE quadratic; at $\gamma=-1$ the ET exponential. Panel B: an empirical bar chart of mean $\|\hat\theta - \theta_0\|$ for two-step, iterated, CUE, and EL on the running example at small $n$ where the gap is visible.
+
+<GELFamilyExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/10_bias_hierarchy.png"
+  alt="Bias hierarchy bar chart: two-step ≥ iterated ≥ CUE ≥ ET ≥ EL"
+  caption="Figure 10.1 — Newey-Smith bias hierarchy on the extended L = 8 running example at n = 50. The ordering is exactly as the theory predicts; the gap between two-step and EL is ∼ 30% in this regime."
+/>
+
+**Computational hierarchy:**
+
+| Estimator | Implementation | Per-replicate cost |
+|---|---|---|
+| Two-step GMM | Closed-form (linear) / 2 BFGS (nonlinear) | $O(L^2 k)$ |
+| Iterated GMM | Picard iteration | $O(t \cdot L^2 k)$ |
+| CUE | Single BFGS with $\theta$-dependent $W$ | $O(t \cdot L^3)$ |
+| EL | Nested BFGS + Newton on $\lambda$ | $O(t_{\rm out} \cdot t_{\rm in} \cdot nL^2)$ |
+| ET | Same as EL with exponential carrier | similar to EL |
+
+**Recommendation.** Modern applied workflow: (1) always report two-step efficient GMM as the baseline; (2) also report CUE or EL when $L - k$ is large or $L/n > 0.05$; (3) use EL-based confidence regions when interest centers on a nonlinear function of $\theta$.
+
+---
+
+## §11 — GMM and maximum likelihood
+
+Maximum likelihood is the canonical estimator of parametric statistics. GMM is the canonical estimator of moment-condition models. **ML is just-identified GMM with the score equations as moment conditions**, and the Cramér–Rao bound is the Hansen efficiency bound under score moments. Conversely, when the assumed likelihood is *wrong*, the resulting "quasi-MLE" is consistent for a pseudo-true parameter but inherits the GMM sandwich variance rather than the Fisher-information inverse. Every **M-estimator** — MLE, OLS, quantile regression, Huber regression, quasi-MLE — is just-identified GMM with a specific score-like moment function. GMM extends M-estimation by allowing $L > k$.
+
+### 11.1 ML as just-identified GMM
+
+The MLE solves $\sum_i \nabla_\theta \log p(X_i; \hat\theta_{\mathrm{MLE}}) = 0$. Identify the score with the moment function: $g(X, \theta) := \nabla_\theta \log p(X; \theta) \in \mathbb{R}^k$. The MLE is the *just-identified GMM estimator* with $L = k$. Under regularity:
+- $\mathbb{E}_{\theta_0}[g(X, \theta_0)] = 0$ (the score has mean zero at the truth).
+- $G_0 = \mathbb{E}_{\theta_0}[\partial^2 \log p / \partial \theta \partial \theta^\top] = -\mathcal{I}(\theta_0)$ (Hessian of the log-likelihood in expectation = negative Fisher information).
+- $\Omega = \mathbb{E}_{\theta_0}[\nabla \log p \cdot \nabla \log p^\top] = \mathcal{I}(\theta_0)$ (the **information matrix equality**; Fisher 1925).
+
+Substituting into the just-identified sandwich:
+
+$$
+V \;=\; G_0^{-1} \, \Omega \, G_0^{-\top} \;=\; (-\mathcal{I})^{-1} \, \mathcal{I} \, (-\mathcal{I})^{-\top} \;=\; \mathcal{I}^{-1}.
+$$
+
+The MLE achieves the **Cramér–Rao lower bound**. From the §6 perspective: $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1} = (\mathcal{I} \cdot \mathcal{I}^{-1} \cdot \mathcal{I})^{-1} = \mathcal{I}^{-1}$. So MLE is efficient GMM with score moments — and the Cramér–Rao bound is the moment-condition special case of the Hansen efficiency bound.
+
+### 11.2 Quasi-MLE and the sandwich variance
+
+What if we maximize a *wrong* likelihood? Suppose the data come from $P_0$ but we maximize $\sum \log q(X_i; \theta)$ for a *working* density $q(\cdot; \theta) \ne p_{P_0}$. The estimator solves $\sum_i \nabla_\theta \log q(X_i; \hat\theta) = 0$ and is called the **quasi-MLE**.
+
+The quasi-MLE is consistent for the *pseudo-true parameter* $\theta_0^\star := \arg\max_\theta \mathbb{E}_{P_0}[\log q(X; \theta)]$. Under misspecification, the information matrix equality fails: $G_0^\star := \mathbb{E}_{P_0}[\partial^2 \log q / \partial \theta \partial \theta^\top] \ne -\mathbb{E}_{P_0}[\nabla \log q \cdot \nabla \log q^\top] =: -\Omega^\star$. The quasi-MLE asymptotic variance is the GMM sandwich:
+
+$$
+V_{\mathrm{QMLE}} \;=\; (G_0^\star)^{-1} \, \Omega^\star \, (G_0^\star)^{-\top}.
+$$
+
+This is the **Eicker–Huber–White sandwich** (Eicker 1967; Huber 1967; White 1980), familiar as "robust standard errors" or `vcov_type='HC0'`.
+
+**Canonical example: heteroskedastic OLS.** $Y = X^\top \theta_0 + \varepsilon$ under the working assumption of homoskedastic Gaussian errors. OLS is the quasi-MLE. Under homoskedasticity, the information matrix equality holds and the naive CI has correct coverage. Under heteroskedasticity, the equality fails and the naive CI under-covers; the sandwich CI restores nominal coverage. The visualization below makes this concrete: slide the heteroskedasticity scale up and watch the naive coverage drop while the sandwich stays near 95%.
+
+<SandwichSavesCoverage client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/11_quasi_mle_coverage.png"
+  alt="Coverage rates of naive vs sandwich CIs for OLS under varying heteroskedasticity"
+  caption="Figure 11.1 — Empirical 95% CI coverage at n = 200, B = 1000. Naive (homoskedastic) CIs under-cover by 10–20 percentage points under strong heteroskedasticity; sandwich CIs hold the nominal rate throughout."
+/>
+
+### 11.3 M-estimation as a unifying framework
+
+Pick a loss function $\rho$ and define $\hat\theta_M := \arg\min_\theta (1/n) \sum_i \rho(X_i, \theta)$. The FOC $\sum_i \psi(X_i, \hat\theta_M) = 0$ with $\psi := \nabla_\theta \rho$ is just-identified GMM with $g = \psi$. The asymptotic variance is the sandwich $V_M = G_0^{-1} \, \Omega \, G_0^{-\top}$.
+
+Five M-estimators:
+
+| Estimator | $\rho(x, \theta)$ | $\psi(x, \theta)$ | Information identity holds? |
+|---|---|---|---|
+| MLE | $-\log p(x; \theta)$ | $-\nabla \log p$ | Yes (correctly specified) |
+| Quasi-MLE | $-\log q(x; \theta)$ | $-\nabla \log q$ | No (misspecified) |
+| OLS | $(y - x^\top \theta)^2 / 2$ | $-x(y - x^\top \theta)$ | Only under homoskedastic Gaussian |
+| Quantile regression ($\tau$) | $\rho_\tau(y - x^\top \theta)$ | $x \cdot (\tau - \mathbb{I}[y < x^\top \theta])$ | No (non-smooth) |
+| Huber regression | $\rho_H(y - x^\top \theta)$ | $x \cdot \psi_H(y - x^\top \theta)$ | No |
+
+where $\rho_\tau(r) = r(\tau - \mathbb{I}[r < 0])$ (Koenker-Bassett 1978) and $\rho_H$ is the Huber loss (Huber 1964). **Where GMM extends M-estimation.** The over-identified case $L > k$ has no counterpart in classical M-estimation: there is no $\rho$ whose gradient is the full $L$-vector $g$. GMM absorbs M-estimation when $L = k$ and strictly generalizes it when $L > k$ by introducing the weighting matrix $W$. In modern causal inference (§12), this generalization is the substantive value of GMM.
+
+---
+
+## §12 — GMM in modern causal inference
+
+The most active recent application of GMM is in **causal inference with machine-learned nuisance functions** — what Chernozhukov, Chetverikov, Demirer, Duflo, Hansen, Newey, and Robins (2018) call **double / debiased machine learning** (DML). We want to estimate a low-dimensional causal parameter $\theta_0 \in \mathbb{R}^k$ but identification requires high-dimensional nuisance functions $\eta_0(W)$ estimated with ML at sub-parametric rates. DML answers: *how can we plug ML-estimated $\hat\eta$ into a target-parameter estimator and still get $\sqrt{n}$-consistent, asymptotically-normal $\hat\theta_n$?*
+
+The answer combines two ideas: **Neyman orthogonality** — design $g(O; \theta, \eta)$ so that $\partial_\eta \mathbb{E}[g(O; \theta_0, \eta_0)]|_{\eta = \eta_0} = 0$ — and **cross-fitting** — estimate $\hat\eta$ on one fold, evaluate $g$ on another fold. Under both, $\hat\theta_n$ achieves $\sqrt{n}$-consistency and asymptotic normality even when $\hat\eta$ converges at $n^{-1/4}$ rate, and the asymptotic variance is the semiparametric efficiency bound.
+
+### 12.1 Doubly robust estimation as GMM
+
+**The partial-linear model.** Observe $O_i = (Y_i, X_i, W_i)$ where
+
+$$
+Y_i \;=\; X_i\, \theta_0 + g_0(W_i) + \varepsilon_i, \quad X_i \;=\; m_0(W_i) + v_i, \quad \mathbb{E}[\varepsilon_i | X_i, W_i] = 0, \;\; \mathbb{E}[v_i | W_i] = 0.
+$$
+
+Nuisances $\eta_0 = (\ell_0, m_0)$ where $\ell_0(W) := \mathbb{E}[Y | W]$. The **Robinson (1988) partialling-out construction**: given $\hat\ell, \hat m$, form residuals $\tilde Y_i := Y_i - \hat \ell(W_i)$, $\tilde X_i := X_i - \hat m(W_i)$. The estimator is the simple OLS slope $\hat\theta_{\rm partial} := \sum_i \tilde X_i \tilde Y_i / \sum_i \tilde X_i^2$. This is GMM with the **Robinson moment** $g(O; \theta, \eta) = \tilde X (\tilde Y - \theta \tilde X)$.
+
+For the **average treatment effect** with binary treatment $A \in \{0, 1\}$, the **AIPW moment** is
+
+$$
+g_{\rm DR}(O; \theta, \eta) \;=\; \mu_1(W) - \mu_0(W) \;+\; \frac{A\,(Y - \mu_1(W))}{e(W)} \;-\; \frac{(1-A)\,(Y - \mu_0(W))}{1 - e(W)} \;-\; \theta,
+$$
+
+with $\eta = (\mu_0, \mu_1, e)$. The estimator has the **double robustness** property: consistent if *either* the outcome regressions $\hat\mu_a$ are consistent *or* the propensity $\hat e$ is consistent.
+
+### 12.2 Double machine learning
+
+<TheoremBlock type="algorithm" number={12.1} title="DML, K-fold cross-fitting">
+1. **Partition** the data into $K$ folds $\mathcal{I}_1, \dots, \mathcal{I}_K$.
+2. **For each $k = 1, \dots, K$:** estimate $\hat\eta^{(-k)}$ on observations outside fold $k$; evaluate $g(O_i; \theta, \hat\eta^{(-k)})$ on observations in fold $k$.
+3. **Solve** the cross-fitted moment equation $(1/n) \sum_k \sum_{i \in \mathcal{I}_k} g(O_i; \hat\theta_{\rm DML}, \hat\eta^{(-k)}) = 0$ for $\hat\theta_{\rm DML}$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={12.1} title="Chernozhukov et al. (2018)">
+Assume the moment function $g$ is Neyman-orthogonal (§12.3) and the **product of nuisance estimation errors** satisfies $\|\hat g^{(-k)} - g_0\|_{L^2(P)} \cdot \|\hat m^{(-k)} - m_0\|_{L^2(P)} = o_p(n^{-1/2})$ — the **mixed-bias** condition (a standard sufficient condition is $\|\hat\eta_j^{(-k)} - \eta_{j,0}\|_{L^2(P)} = o_p(n^{-1/4})$ for each nuisance). Under standard regularity (smooth $g$, bounded moments, identification at $\theta_0$),
+
+$$
+\sqrt{n}\,(\hat\theta_{\rm DML} - \theta_0) \;\to_d\; \mathcal{N}(0, V^\star),
+$$
+
+where $V^\star$ is the semiparametric efficiency bound.
+</TheoremBlock>
+
+The result is striking. With ML nuisance estimators converging at $n^{-1/4}$ rather than the parametric $n^{-1/2}$, the DML point estimator still attains $n^{-1/2}$-rate and Gaussian asymptotic inference, and achieves the semiparametric efficiency bound. The "double" in DML refers to the **mixed-bias product condition**: the *product* of the two nuisance error rates only needs to be $o_p(n^{-1/2})$ — a substantially weaker requirement than the $o_p(n^{-1/2})$-each rate the naive plug-in argument would demand.
+
+The visualization below illustrates the bias hierarchy on a partial-linear DGP with nonlinear nuisances $g_0(W) = \sin(\pi W)$, $m_0(W) = W^2$, fit with degree-4 polynomial regression (a simpler-than-RF nuisance estimator that still exhibits the asymptotic story). The bar chart shows $|$bias$|$ and SD across replicates for the three estimators; the histogram shows the sampling distributions overlaid. OLS is biased because it doesn't adjust for $W$; naive plug-in is biased at moderate $n$ because the same data fits nuisances and structural estimator; DML cross-fits and the bias collapses.
+
+<DMLBiasComparison client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/12_dml_partial_linear.png"
+  alt="DML vs naive plug-in vs OLS Monte Carlo bias comparison on partial-linear model with random-forest nuisances"
+  caption="Figure 12.1 — DML vs naive plug-in vs OLS on the partial-linear DGP with random-forest nuisances. DML eliminates the bias from same-sample nuisance estimation; naive plug-in retains a noticeable residual bias even with the same nuisance functional form."
+/>
+
+### 12.3 Neyman orthogonality: the central design constraint
+
+The DML construction works because $g(O; \theta, \eta)$ satisfies **Neyman orthogonality**:
+
+$$
+\frac{\partial}{\partial t}\, \mathbb{E}\!\left[g(O; \theta_0, \eta_0 + t \cdot (\eta - \eta_0))\right] \Bigg|_{t = 0} \;=\; 0 \quad \text{for all admissible } \eta. \qquad (\star)
+$$
+
+This is a **pathwise / Gâteaux derivative** condition: small perturbations of $\eta$ around $\eta_0$ leave the population expectation of $g$ unchanged to first order. The plug-in estimator $\bar g_n(\theta; \hat\eta)$ is therefore *first-order insensitive* to $\hat\eta - \eta_0$.
+
+**Verifying orthogonality for the Robinson moment.** With $g(O; \theta, \eta) = (X - m(W))(Y - \ell(W) - \theta(X - m(W)))$, perturbing $\ell$ gives $\partial g / \partial \ell |_{\eta_0} = -(X - m_0(W)) = -v$, with $\mathbb{E}[-v(\ell - \ell_0)] = \mathbb{E}[(\ell-\ell_0) \cdot \mathbb{E}[-v|W]] = 0$ using $\mathbb{E}[v|W] = 0$. Similarly $\partial g/\partial m|_{\eta_0} = \theta_0 v - \varepsilon$, with $\mathbb{E}[\theta_0 v - \varepsilon | W] = 0$. The Robinson moment is Neyman orthogonal *by construction*.
+
+**Constructing orthogonal moments via the EIF.** Start with a "naive" moment $g_0(O; \theta, \eta)$ satisfying $\mathbb{E}[g_0(O; \theta_0, \eta_0)] = 0$ but *not* Neyman orthogonal. The **orthogonalized moment** is $g(O; \theta, \eta) = g_0(O; \theta, \eta) + \phi^\star(O; \theta, \eta)$, where $\phi^\star$ is the EIF of the nuisance-correction term from the semiparametric efficiency machinery (§6.4). This **Neyman orthogonalization** is the same operation that produces AIPW from naive outcome regression, Robinson partialling-out from naive OLS, targeted minimum-loss from naive plug-in, and most modern doubly-robust estimators.
+
+Three reasons GMM-with-ML-nuisances is the modern frontier: (1) asymptotic theory is portable — Theorem 5.1's sandwich, §6's efficiency bound, §8's J-statistic all generalize; (2) multiple identifying moments combine optimally — efficient GMM with the union of moments achieves the semiparametric efficiency bound; (3) specification testing is free — Hansen's J-statistic generalizes to the DML setting (Chernozhukov-Newey-Singh 2022).
+
+---
+
+## §13 — Computational notes, limits, and connections
+
+### 13.1 Numerical optimization tips
+
+**Affine moment functions: use the closed form.** `numpy.linalg.solve(A.T @ W @ A, A.T @ W @ b)` computes the GMM estimate in microseconds. Do not call `scipy.optimize.minimize` on a linear problem. For smooth nonlinear moments, `scipy.optimize.minimize(method='BFGS')` with the two-step estimate as starting value is the practical default; pass analytic gradients via `jac=` when available.
+
+The CUE objective is generally *nonconvex* even for affine moments. Starting from the two-step estimate $\hat\theta^{(2)}$ — asymptotically equivalent to CUE — typically lands in the convex basin of the global minimum. For EL, use nested optimization with a convex inner problem: Newton-Raphson with line search on the inner $\lambda$ (converges in $\sim 5$ iterations), BFGS on the profile $\ell_R(\theta)$ as the outer loop.
+
+Convergence diagnostics: monitor the norm of the FOC residual $\|G_n^\top W \bar g_n(\theta)\|$ at the optimum (should be near machine epsilon), the condition number of $G_n^\top W G_n$ (large = weak identification), and the J-statistic value vs $\chi^2_{L-k}$ critical (large = specification rejection). Multi-start optimization is the standard defensive strategy for nonconvex problems.
+
+### 13.2 Bootstrap for GMM and the J-statistic
+
+The naïve nonparametric bootstrap *fails for GMM* because the bootstrap moment condition is not zero at $\theta = \hat\theta_n$ in the over-identified case. The **Brown-Newey (1995) / Hall-Horowitz (1996) recentered bootstrap** fixes this: define $g^\star(X^\star, \theta) := g(X^\star, \theta) - \bar g_n(\hat\theta_n)$ and run GMM on $g^\star$. Hall and Horowitz (1996) proved that the recentered bootstrap yields an *asymptotic refinement*: bootstrap CIs and J-test critical values have coverage error $O(n^{-1})$ vs $O(n^{-1/2})$ asymptotic. Modern variants: wild bootstrap (Davidson-MacKinnon 2010) for heteroskedasticity-robust refinement; block bootstrap (Künsch 1989) for time-series GMM. Default for most applied work: recentered bootstrap with $B \sim 1000$.
+
+### 13.3 Bayesian GMM via Chernozhukov–Hong (2003)
+
+Chernozhukov-Hong define a **Laplace-type estimator (LTE)** by treating the GMM criterion as a quasi-log-likelihood:
+
+$$
+\pi^\star(\theta \mid \text{data}) \;\propto\; \exp\!\left(-\frac{1}{2} J_n(\theta, W)\right) \cdot \pi(\theta).
+$$
+
+Under standard regularity, the posterior mean is consistent, posterior variance equals the GMM sandwich variance, and posterior credible regions equal asymptotic confidence regions to first order. The visualization below runs a 2D random-walk Metropolis sampler from this quasi-posterior on the running example. Top panel: the LTE sample cloud overlaid with the frequentist sandwich 95% ellipse — the two agree at moderate $n$. Bottom panel: marginal posterior densities for $\theta_1$ and $\theta_2$, with the Gaussian asymptotic curves overlaid.
+
+<LaplaceTypeEstimatorComparison client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/13_lte_quasi_posterior.png"
+  alt="2D Metropolis quasi-posterior cloud with frequentist sandwich 95% ellipse overlay"
+  caption="Figure 13.1 — Laplace-type estimator quasi-posterior vs frequentist sandwich at n = 500. The MH sample cloud and the sandwich ellipse agree to first order; the LTE provides a Bayesian-flavored uncertainty quantification without specifying a full likelihood model."
+/>
+
+LTE is useful when: the GMM criterion is non-smooth (quantile IV, M-estimation with non-differentiable loss); the criterion is multimodal; the model is weakly identified and MCMC reveals the indeterminate direction; informative prior information is available.
+
+### 13.4 Cross-site connections and further reading
+
+**Inbound connections from sister sites.** The just-identified predecessor is <ExternalLink href="https://formalstatistics.com/topics/method-of-moments" site="formalstatistics" topic="method-of-moments" />, which develops the §2 Pearson construction in detail. The deferred reciprocal in `docs/plans/deferred-reciprocals.md` auto-discharges via the `formalstatisticsPrereqs` reciprocal on ship.
+
+**Outbound connections within formalML.** Three previously-shipped topics underwrite GMM's machinery: *Concentration Inequalities* (uniform-LLN bridge for the §4 consistency proof), *Convex Analysis* (convex-quadratic geometry of the GMM criterion), and *Semiparametric Inference* (efficient influence function and the semiparametric efficiency bound that equals the Hansen bound). Two planned formalML topics will pick up where GMM leaves off: **Causal Inference Methods** *(coming soon)* — doubly-robust estimation, double machine learning, Neyman orthogonality, AIPW; and **Empirical Processes** *(coming soon)* — formal development of uniform LLN and Glivenko-Cantelli machinery.
+
+**Recommended further reading.** *Original sources:* Hansen (1982), Hansen-Singleton (1982), Owen (1988). *Textbook treatments:* Hayashi (2000) Ch. 3-5; Hansen B.E. (2022) Ch. 13-15 (free online); Newey-McFadden (1994). *Modern developments:* Newey-Smith (2004) for GEL unification; Chernozhukov et al. (2018) for DML; Kennedy (2022) for EIF formulas. *Software:* `linearmodels` (Python); `gmm` package (R); `statsmodels.sandbox.regression.gmm` (Python); `ivreg2` (Stata). For DML: `econml` (Microsoft); `doubleml` (CRAN/PyPI).
+
+**Closing remark.** GMM is one of the few estimation frameworks that has stayed central through forty years of changing computational tools. Pearson's method of moments (1894) became Hansen's GMM (1982) became Newey-Smith's GEL (2004) became Chernozhukov et al.'s DML (2018). Each generation built on the same algebraic core — minimize a weighted quadratic in the sample-moment vector — and adapted it to the computational reality of the day. The modern incarnation, GMM with cross-fitted ML nuisances, is the framework that lets us put random forests inside causal-inference confidence intervals without giving up the $\sqrt{n}$-consistency that classical statistics requires.

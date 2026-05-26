@@ -1,0 +1,1732 @@
+// =============================================================================
+// Shared helpers for the Generalized Method of Moments topic.
+//
+// Implements the numerical toolkit that all GMM viz components and the
+// verify-suite import from. Computations are pure TypeScript (no React, no
+// d3, no SciPy/NumPy bridge) so the verify-suite can run as a standalone
+// tsx script.
+//
+// Wave 1: RNG (mulberry32), Gaussian/Gamma samplers, closed-form MoM and MLE
+//   for Gaussian and Gamma, affine GMM criterion + estimator, basic matrix
+//   linear algebra (matMul, matVec, matTranspose, matInverse via LU, Cholesky),
+//   symmetric eigenvalues via Jacobi rotations, the running-example design
+//   matrix A ∈ R^{4×2}, and the digamma function used by Gamma MLE.
+//
+// Future waves extend this module:
+//   Wave 2 — sampleSensorObservations, sandwichVariance, loewnerCompare,
+//            efficientWeight, hansenBound, sampleWishart.
+//   Wave 3 — twoStepGMM, iteratedGMM, jStatistic, chi2Cdf, chi2Quantile.
+//   Wave 4 — simulateLinearIV, twoStageLeastSquares, efficientGMM_IV,
+//            andersonRubinSet, firstStageF.
+//   Wave 5 — elProfileLambda, elLogR, gelProfile, partialLinearMoment,
+//            dmlEstimateFromPrecomputed.
+//   Wave 6 — lteFromPrecomputed.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Vector / matrix shorthand types and basic operations.
+// -----------------------------------------------------------------------------
+
+export type Vec = number[];
+export type Mat = number[][];
+
+export function zeros(n: number): Vec {
+  return new Array(n).fill(0);
+}
+
+export function zerosMat(rows: number, cols: number): Mat {
+  return Array.from({ length: rows }, () => new Array(cols).fill(0));
+}
+
+export function identityMat(n: number): Mat {
+  const M = zerosMat(n, n);
+  for (let i = 0; i < n; i++) M[i][i] = 1;
+  return M;
+}
+
+export function matVec(A: Mat, v: Vec): Vec {
+  const rows = A.length;
+  const cols = A[0].length;
+  if (v.length !== cols) throw new Error(`matVec dim mismatch: A is ${rows}x${cols}, v is ${v.length}`);
+  const out = zeros(rows);
+  for (let i = 0; i < rows; i++) {
+    let s = 0;
+    const Ai = A[i];
+    for (let j = 0; j < cols; j++) s += Ai[j] * v[j];
+    out[i] = s;
+  }
+  return out;
+}
+
+export function matMul(A: Mat, B: Mat): Mat {
+  const m = A.length;
+  const n = B[0].length;
+  const k = B.length;
+  if (A[0].length !== k) throw new Error(`matMul dim mismatch: ${m}x${A[0].length} times ${k}x${n}`);
+  const out = zerosMat(m, n);
+  for (let i = 0; i < m; i++) {
+    const Ai = A[i];
+    const Oi = out[i];
+    for (let l = 0; l < k; l++) {
+      const a = Ai[l];
+      const Bl = B[l];
+      for (let j = 0; j < n; j++) Oi[j] += a * Bl[j];
+    }
+  }
+  return out;
+}
+
+export function matTranspose(A: Mat): Mat {
+  const rows = A.length;
+  const cols = A[0].length;
+  const out = zerosMat(cols, rows);
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) out[j][i] = A[i][j];
+  }
+  return out;
+}
+
+export function vecSub(a: Vec, b: Vec): Vec {
+  const out = new Array(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = a[i] - b[i];
+  return out;
+}
+
+export function vecDot(a: Vec, b: Vec): number {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  return s;
+}
+
+export function quadForm(W: Mat, v: Vec): number {
+  // v^T W v
+  return vecDot(v, matVec(W, v));
+}
+
+// -----------------------------------------------------------------------------
+// Matrix inverse via LU decomposition with partial pivoting. Works for any
+// square nonsingular matrix; the verify suite tests both PD (Hansen weighting)
+// and indefinite (Jacobian) cases.
+// -----------------------------------------------------------------------------
+
+export function matInverse(A: Mat): Mat {
+  const n = A.length;
+  if (A[0].length !== n) throw new Error(`matInverse: not square ${n}x${A[0].length}`);
+  // Augment [A | I] and reduce.
+  const aug: number[][] = Array.from({ length: n }, (_, i) => {
+    const row = new Array(2 * n).fill(0);
+    for (let j = 0; j < n; j++) row[j] = A[i][j];
+    row[n + i] = 1;
+    return row;
+  });
+  for (let col = 0; col < n; col++) {
+    // Partial pivot.
+    let maxRow = col;
+    let maxAbs = Math.abs(aug[col][col]);
+    for (let r = col + 1; r < n; r++) {
+      const v = Math.abs(aug[r][col]);
+      if (v > maxAbs) {
+        maxAbs = v;
+        maxRow = r;
+      }
+    }
+    if (maxAbs < 1e-14) throw new Error(`matInverse: singular at column ${col}`);
+    if (maxRow !== col) {
+      const tmp = aug[col];
+      aug[col] = aug[maxRow];
+      aug[maxRow] = tmp;
+    }
+    // Normalize pivot row.
+    const pivot = aug[col][col];
+    const augCol = aug[col];
+    for (let j = 0; j < 2 * n; j++) augCol[j] /= pivot;
+    // Eliminate other rows.
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = aug[r][col];
+      if (factor === 0) continue;
+      const augR = aug[r];
+      for (let j = 0; j < 2 * n; j++) augR[j] -= factor * augCol[j];
+    }
+  }
+  const inv = zerosMat(n, n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) inv[i][j] = aug[i][n + j];
+  }
+  return inv;
+}
+
+// -----------------------------------------------------------------------------
+// Cholesky decomposition for symmetric positive-definite matrices.
+// Returns lower-triangular L with A = L L^T. Useful for the §6 efficient
+// weighting (Omega^{-1} via solve), §10 GEL inner-Newton step, and Wave 2
+// sampling (sampleWishart uses Cholesky-of-scale).
+// -----------------------------------------------------------------------------
+
+export function cholesky(A: Mat): Mat {
+  const n = A.length;
+  const L = zerosMat(n, n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      let s = A[i][j];
+      for (let k = 0; k < j; k++) s -= L[i][k] * L[j][k];
+      if (i === j) {
+        if (s <= 0) throw new Error(`cholesky: not positive definite at row ${i} (diag=${s})`);
+        L[i][j] = Math.sqrt(s);
+      } else {
+        L[i][j] = s / L[j][j];
+      }
+    }
+  }
+  return L;
+}
+
+// -----------------------------------------------------------------------------
+// Symmetric eigenvalues via cyclic Jacobi rotations. Returns eigenvalues in
+// an arbitrary (rotation-order) sequence — caller must sort if needed.
+// Used for IdentificationRankInspector and the §5 Loewner ordering tests.
+// CLAUDE.md: "Jacobi eigendecomp output is unsorted."
+// -----------------------------------------------------------------------------
+
+export function eigvalsSymmetric(A: Mat, maxIter = 200, tol = 1e-12): Vec {
+  const n = A.length;
+  // Copy A — Jacobi rotates in place.
+  const M: number[][] = Array.from({ length: n }, (_, i) => A[i].slice());
+  for (let iter = 0; iter < maxIter; iter++) {
+    // Find off-diagonal element with largest absolute value.
+    let p = 0;
+    let q = 1;
+    let maxOff = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const v = Math.abs(M[i][j]);
+        if (v > maxOff) {
+          maxOff = v;
+          p = i;
+          q = j;
+        }
+      }
+    }
+    if (maxOff < tol) break;
+    // Compute Givens rotation that zeros M[p][q].
+    const app = M[p][p];
+    const aqq = M[q][q];
+    const apq = M[p][q];
+    let theta: number;
+    if (Math.abs(app - aqq) < 1e-30) {
+      theta = Math.PI / 4;
+    } else {
+      theta = 0.5 * Math.atan2(2 * apq, app - aqq);
+    }
+    const c = Math.cos(theta);
+    const s = Math.sin(theta);
+    // Update M = R^T M R where R is the (p, q)-Givens rotation.
+    for (let i = 0; i < n; i++) {
+      const Mip = M[i][p];
+      const Miq = M[i][q];
+      M[i][p] = c * Mip + s * Miq;
+      M[i][q] = -s * Mip + c * Miq;
+    }
+    for (let j = 0; j < n; j++) {
+      const Mpj = M[p][j];
+      const Mqj = M[q][j];
+      M[p][j] = c * Mpj + s * Mqj;
+      M[q][j] = -s * Mpj + c * Mqj;
+    }
+  }
+  const eigs = new Array<number>(n);
+  for (let i = 0; i < n; i++) eigs[i] = M[i][i];
+  return eigs;
+}
+
+// -----------------------------------------------------------------------------
+// PRNG — mulberry32, returning a callable rng() in [0, 1). Reused unchanged
+// from src/components/viz/shared/always-valid-inference.ts to keep MC seeds
+// consistent across topics in the same browser session.
+// -----------------------------------------------------------------------------
+
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return function (): number {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Gaussian sampler via Box–Muller, lazy paired so each call returns one draw.
+// -----------------------------------------------------------------------------
+
+export function gaussianFrom(rng: () => number): () => number {
+  let cached: number | null = null;
+  return function (): number {
+    if (cached !== null) {
+      const v = cached;
+      cached = null;
+      return v;
+    }
+    let u1 = 0;
+    let u2 = 0;
+    while (u1 === 0) u1 = rng();
+    while (u2 === 0) u2 = rng();
+    const r = Math.sqrt(-2 * Math.log(u1));
+    const theta = 2 * Math.PI * u2;
+    cached = r * Math.sin(theta);
+    return r * Math.cos(theta);
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Gamma sampler — Marsaglia & Tsang (2000) acceptance/rejection. Handles all
+// α > 0; for α < 1 we boost via the standard x = u^{1/α} trick on the α + 1
+// draw. Density: f(x; α, β) = β^α x^{α-1} e^{-β x} / Γ(α).
+// -----------------------------------------------------------------------------
+
+export function gammaFrom(rng: () => number, alpha: number, beta: number): () => number {
+  if (alpha <= 0 || beta <= 0) throw new Error(`gammaFrom: bad parameters α=${alpha}, β=${beta}`);
+  const gauss = gaussianFrom(rng);
+  const boost = alpha < 1;
+  const a = boost ? alpha + 1 : alpha;
+  const d = a - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  return function (): number {
+    while (true) {
+      let x: number;
+      let v: number;
+      do {
+        x = gauss();
+        v = 1 + c * x;
+      } while (v <= 0);
+      v = v * v * v;
+      const u = rng();
+      const x2 = x * x;
+      if (u < 1 - 0.0331 * x2 * x2) {
+        const sample = (d * v) / beta;
+        if (boost) {
+          const boostU = rng() || Number.MIN_VALUE;
+          return sample * Math.pow(boostU, 1 / alpha);
+        }
+        return sample;
+      }
+      if (Math.log(u) < 0.5 * x2 + d * (1 - v + Math.log(v))) {
+        const sample = (d * v) / beta;
+        if (boost) {
+          const boostU = rng() || Number.MIN_VALUE;
+          return sample * Math.pow(boostU, 1 / alpha);
+        }
+        return sample;
+      }
+    }
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Digamma function ψ(x) = Γ'(x)/Γ(x) via the standard asymptotic expansion
+// after shifting to x ≥ 6. Used by Gamma MLE (Newton iteration on the
+// digamma equation) and by the verify-suite anchors.
+// Accuracy: ~1e-10 on x ∈ [0.1, 100].
+// -----------------------------------------------------------------------------
+
+export function digamma(x: number): number {
+  if (x <= 0) throw new Error(`digamma: requires x > 0, got ${x}`);
+  let result = 0;
+  let z = x;
+  while (z < 6) {
+    result -= 1 / z;
+    z += 1;
+  }
+  // Asymptotic: ψ(z) ≈ log z - 1/(2z) - 1/(12z²) + 1/(120 z⁴) - 1/(252 z⁶)
+  const invZ = 1 / z;
+  const invZ2 = invZ * invZ;
+  result += Math.log(z) - 0.5 * invZ
+    - invZ2 * (1 / 12 - invZ2 * (1 / 120 - invZ2 / 252));
+  return result;
+}
+
+// -----------------------------------------------------------------------------
+// Gaussian MoM and MLE on (μ, σ²). Both estimators coincide (sufficient
+// statistics are sample mean and biased sample variance). §2.2 anchor.
+// -----------------------------------------------------------------------------
+
+export interface GaussianFit {
+  mu: number;
+  sigma2: number; // biased estimator with divisor n
+}
+
+export function gaussianMoM(samples: Vec): GaussianFit {
+  const n = samples.length;
+  if (n === 0) return { mu: 0, sigma2: 0 };
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += samples[i];
+  const mu = sum / n;
+  let sumSq = 0;
+  for (let i = 0; i < n; i++) {
+    const d = samples[i] - mu;
+    sumSq += d * d;
+  }
+  return { mu, sigma2: sumSq / n };
+}
+
+export const gaussianMLE = gaussianMoM;
+
+// -----------------------------------------------------------------------------
+// Gamma MoM (closed-form) and MLE (Newton on digamma equation). §2.2 anchor.
+//
+// MoM:  β̂ = x̄ / S²,   α̂ = x̄² / S²   where S² = (1/n) Σ (xᵢ - x̄)².
+// MLE:  solve log α - ψ(α) = log x̄ - (1/n) Σ log xᵢ for α via Newton; then
+//       β̂ = α̂ / x̄.
+// -----------------------------------------------------------------------------
+
+export interface GammaFit {
+  alpha: number;
+  beta: number;
+}
+
+export function gammaMoM(samples: Vec): GammaFit {
+  const n = samples.length;
+  if (n === 0) return { alpha: 0, beta: 0 };
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += samples[i];
+  const mean = sum / n;
+  let sumSq = 0;
+  for (let i = 0; i < n; i++) {
+    const d = samples[i] - mean;
+    sumSq += d * d;
+  }
+  const variance = sumSq / n;
+  if (variance <= 0) return { alpha: 0, beta: 0 };
+  return { beta: mean / variance, alpha: (mean * mean) / variance };
+}
+
+// Trigamma ψ'(x) via the same shift-then-asymptotic trick, for Newton's
+// step in the Gamma MLE.
+export function trigamma(x: number): number {
+  if (x <= 0) throw new Error(`trigamma: requires x > 0, got ${x}`);
+  let result = 0;
+  let z = x;
+  while (z < 6) {
+    result += 1 / (z * z);
+    z += 1;
+  }
+  const invZ = 1 / z;
+  const invZ2 = invZ * invZ;
+  // ψ'(z) ≈ 1/z + 1/(2z²) + 1/(6 z³) - 1/(30 z⁵) + 1/(42 z⁷)
+  result += invZ + 0.5 * invZ2 + invZ * invZ2 * (1 / 6 - invZ2 * (1 / 30 - invZ2 / 42));
+  return result;
+}
+
+export function gammaMLE(samples: Vec, tol = 1e-10, maxIter = 50): GammaFit {
+  const n = samples.length;
+  if (n === 0) return { alpha: 0, beta: 0 };
+  let sum = 0;
+  let sumLog = 0;
+  for (let i = 0; i < n; i++) {
+    if (samples[i] <= 0) throw new Error(`gammaMLE: positive support required, sample[${i}] = ${samples[i]}`);
+    sum += samples[i];
+    sumLog += Math.log(samples[i]);
+  }
+  const mean = sum / n;
+  const logMean = Math.log(mean);
+  const meanLog = sumLog / n;
+  const s = logMean - meanLog;
+  // Degenerate sample (all values identical) ⇒ s = 0 and the Minka initial
+  // estimate divides by zero. Returning MoM β = mean is the sensible limit
+  // (α → ∞ in the parametric family is degenerate).
+  if (s <= 1e-15) {
+    throw new Error(`gammaMLE: degenerate samples (sample variance underflow, s = ${s})`);
+  }
+  // Initial estimate via Minka (2002).
+  let alpha = (3 - s + Math.sqrt((s - 3) * (s - 3) + 24 * s)) / (12 * s);
+  for (let iter = 0; iter < maxIter; iter++) {
+    const f = Math.log(alpha) - digamma(alpha) - s;
+    const fPrime = 1 / alpha - trigamma(alpha);
+    const step = f / fPrime;
+    alpha -= step;
+    if (Math.abs(step) < tol * Math.abs(alpha)) break;
+  }
+  return { alpha, beta: alpha / mean };
+}
+
+// -----------------------------------------------------------------------------
+// Asymptotic variances for §2 examples.
+//
+// Just-identified MoM variance: V = G⁻¹ Ω G⁻ᵀ where G = E[∂g/∂θᵀ] and
+// Ω = E[g gᵀ] at θ₀. The two §2 worked examples have analytic closed forms.
+// -----------------------------------------------------------------------------
+
+// Gaussian MoM on (μ, σ²) — both MoM and MLE achieve V_MLE = diag(σ², 2σ⁴).
+export function gaussianMoMVariance(sigma2: number): Mat {
+  return [
+    [sigma2, 0],
+    [0, 2 * sigma2 * sigma2],
+  ];
+}
+
+// Gamma MoM on (α, β) — derived from delta method on (x̄, S²) → (α̂, β̂).
+// Var(α̂) = α(α+1) · (3α+2) / n;  Var(β̂) = β²(α+1)(2α+3) / (α·n);  these
+// are the asymptotic values used by §2.3 verification.
+// MLE: V_MLE has inverse Fisher information I⁻¹ where
+//   I(α, β) = [[ ψ'(α),  -1/β ], [ -1/β,  α/β² ]].
+// The asymptotic-relative-efficiency ARE = det(I⁻¹) / det(V_MoM) is < 1 for
+// all α > 0, confirming MoM is inefficient relative to MLE on the Gamma.
+export function gammaFisherInfo(alpha: number, beta: number): Mat {
+  return [
+    [trigamma(alpha), -1 / beta],
+    [-1 / beta, alpha / (beta * beta)],
+  ];
+}
+
+export function gammaMLEVariance(alpha: number, beta: number): Mat {
+  return matInverse(gammaFisherInfo(alpha, beta));
+}
+
+// -----------------------------------------------------------------------------
+// The §3-§8 running example design matrix. Four sensors, two parameters.
+// E[X_1] = θ_1, E[X_2] = θ_2, E[X_3] = θ_1 + θ_2, E[X_4] = 2θ_1 - θ_2.
+// Moment function: g(X, θ) = X - A θ ∈ R⁴.
+// -----------------------------------------------------------------------------
+
+export const RUNNING_EXAMPLE_A: Mat = [
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [2, -1],
+];
+
+export const RUNNING_EXAMPLE_THETA0: Vec = [1.0, 1.0];
+
+// -----------------------------------------------------------------------------
+// Affine GMM criterion and closed-form estimator for g(X, θ) = X - A θ.
+//
+// J_n(θ, W) = n · (X̄ - A θ)ᵀ W (X̄ - A θ).
+// θ̂_W = (Aᵀ W A)⁻¹ Aᵀ W X̄  — generalized least squares.
+//
+// In the just-identified case L = k, A is k×k invertible and θ̂_W = A⁻¹ X̄
+// (the weighting matrix drops out). In the over-identified case L > k, the
+// weighting matrix shapes the projection.
+// -----------------------------------------------------------------------------
+
+export function gmmCriterion(theta: Vec, A: Mat, Xbar: Vec, W: Mat, n = 1): number {
+  // Returns J_n; pass n to recover the n-scaled value, default n=1 returns
+  // the population-scale criterion Q_n(θ, W) used in the contour viz.
+  const residual = vecSub(Xbar, matVec(A, theta));
+  return n * quadForm(W, residual);
+}
+
+export function gmmEstimateAffine(A: Mat, Xbar: Vec, W: Mat): Vec {
+  // (Aᵀ W A)⁻¹ Aᵀ W X̄
+  const At = matTranspose(A);
+  const AtW = matMul(At, W);
+  const AtWA = matMul(AtW, A);
+  const AtWXbar = matVec(AtW, Xbar);
+  const AtWAinv = matInverse(AtWA);
+  return matVec(AtWAinv, AtWXbar);
+}
+
+// Gradient of J_n w.r.t. θ at the affine moment function:
+//   ∇_θ J_n = -2 n Aᵀ W (X̄ - A θ).
+// Useful for FOC sanity checks (the gradient should be machine-zero at θ̂_W).
+export function gmmCriterionGradient(theta: Vec, A: Mat, Xbar: Vec, W: Mat, n = 1): Vec {
+  const residual = vecSub(Xbar, matVec(A, theta));
+  const At = matTranspose(A);
+  const AtW = matMul(At, W);
+  const out = matVec(AtW, residual);
+  for (let i = 0; i < out.length; i++) out[i] *= -2 * n;
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Sample-mean helper. Returns X̄ for either a flat array (one moment) or a
+// matrix (rows = observations, columns = moments — what the running example
+// uses with L = 4).
+// -----------------------------------------------------------------------------
+
+export function sampleMean(samples: Vec | Mat): Vec | number {
+  if (samples.length === 0) return 0;
+  if (typeof samples[0] === 'number') {
+    const v = samples as Vec;
+    let s = 0;
+    for (let i = 0; i < v.length; i++) s += v[i];
+    return s / v.length;
+  }
+  const M = samples as Mat;
+  const L = M[0].length;
+  const out = zeros(L);
+  for (let i = 0; i < M.length; i++) {
+    const row = M[i];
+    for (let j = 0; j < L; j++) out[j] += row[j];
+  }
+  for (let j = 0; j < L; j++) out[j] /= M.length;
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Criterion-surface evaluation — sample J_n on a 2D grid in (θ_1, θ_2).
+// Returns a row-major matrix Z[i][j] = J_n((θ_1[j], θ_2[i]), W) suitable
+// for passing to d3-contour.
+// -----------------------------------------------------------------------------
+
+export interface CriterionGrid {
+  theta1: Vec; // x-axis grid
+  theta2: Vec; // y-axis grid
+  J: Mat; // J[i][j] = J_n at (theta1[j], theta2[i])
+  argmin: Vec; // optional reference minimum (theta_hat)
+  minVal: number;
+}
+
+export function affineCriterionSurface(
+  A: Mat,
+  Xbar: Vec,
+  W: Mat,
+  theta1Bounds: [number, number],
+  theta2Bounds: [number, number],
+  resolution = 50,
+  nScale = 1
+): CriterionGrid {
+  const theta1: Vec = [];
+  const theta2: Vec = [];
+  const dx = (theta1Bounds[1] - theta1Bounds[0]) / (resolution - 1);
+  const dy = (theta2Bounds[1] - theta2Bounds[0]) / (resolution - 1);
+  for (let i = 0; i < resolution; i++) {
+    theta1.push(theta1Bounds[0] + i * dx);
+    theta2.push(theta2Bounds[0] + i * dy);
+  }
+  const J: Mat = zerosMat(resolution, resolution);
+  let argmin: Vec = [theta1[0], theta2[0]];
+  let minVal = Infinity;
+  for (let i = 0; i < resolution; i++) {
+    for (let j = 0; j < resolution; j++) {
+      const v = gmmCriterion([theta1[j], theta2[i]], A, Xbar, W, nScale);
+      J[i][j] = v;
+      if (v < minVal) {
+        minVal = v;
+        argmin = [theta1[j], theta2[i]];
+      }
+    }
+  }
+  return { theta1, theta2, J, argmin, minVal };
+}
+
+// -----------------------------------------------------------------------------
+// Identification rank check. For the running example the Jacobian is G = -A,
+// so the rank-of-identification question reduces to rank(A). We return the
+// numerically-relevant condition number (max eigenvalue / min eigenvalue of
+// AᵀA) and the smallest eigenvalue (small = nearly rank-deficient).
+// -----------------------------------------------------------------------------
+
+export interface RankDiagnostic {
+  eigvals: Vec; // sorted ascending — eigvals of AᵀA
+  smallest: number;
+  largest: number;
+  conditionNumber: number;
+  effectiveRank: number; // count of eigvals > (largest * 1e-12)
+}
+
+export function rankDiagnostic(A: Mat): RankDiagnostic {
+  const At = matTranspose(A);
+  const AtA = matMul(At, A);
+  const raw = eigvalsSymmetric(AtA).slice().sort((a, b) => a - b);
+  const largest = raw[raw.length - 1];
+  const smallest = raw[0];
+  const threshold = largest * 1e-12;
+  let rank = 0;
+  for (const e of raw) if (e > threshold) rank++;
+  return {
+    eigvals: raw,
+    smallest,
+    largest,
+    conditionNumber: largest / Math.max(smallest, 1e-30),
+    effectiveRank: rank,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Generate the running-example data. Each X_i ∈ R^4 is drawn as A θ_0 + ε_i
+// where ε_i has independent Gaussian components with optional per-component
+// noise σ_j. Returns the n × L data matrix.
+// -----------------------------------------------------------------------------
+
+export function sampleSensorObservations(
+  rng: () => number,
+  theta0: Vec,
+  A: Mat,
+  n: number,
+  sigma: Vec = [1, 1, 1, 1]
+): Mat {
+  const L = A.length;
+  if (sigma.length !== L) throw new Error(`sampleSensorObservations: σ length ${sigma.length} ≠ ${L}`);
+  const gauss = gaussianFrom(rng);
+  const mu = matVec(A, theta0); // length L
+  const X: Mat = zerosMat(n, L);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < L; j++) {
+      X[i][j] = mu[j] + sigma[j] * gauss();
+    }
+  }
+  return X;
+}
+
+// =============================================================================
+// Wave 2 — sandwich variance, Loewner ordering, efficient weighting, Wishart.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Sandwich asymptotic variance V_W = (GᵀWG)⁻¹ GᵀWΩWG (GᵀWG)⁻¹.
+// G is the population Jacobian E[∂g/∂θᵀ] (L × k), Ω the moment covariance
+// (L × L), W the weighting (L × L). For the running example G = -A.
+// -----------------------------------------------------------------------------
+
+export function sandwichVariance(G: Mat, W: Mat, Omega: Mat): Mat {
+  const Gt = matTranspose(G);
+  const GtW = matMul(Gt, W); // k × L
+  const bread = matMul(GtW, G); // k × k
+  const breadInv = matInverse(bread);
+  const meatRight = matMul(W, G); // L × k
+  const meatMid = matMul(Omega, meatRight); // L × k
+  const meat = matMul(GtW, meatMid); // k × k
+  // V = breadInv · meat · breadInv
+  return matMul(breadInv, matMul(meat, breadInv));
+}
+
+// Efficient weighting W* = Ω⁻¹ via Cholesky-backsolve.
+export function efficientWeight(Omega: Mat): Mat {
+  return matInverse(Omega);
+}
+
+// Hansen efficiency bound V* = (Gᵀ Ω⁻¹ G)⁻¹.
+export function hansenBound(G: Mat, Omega: Mat): Mat {
+  const OmegaInv = matInverse(Omega);
+  const Gt = matTranspose(G);
+  const GtOmegaInv = matMul(Gt, OmegaInv);
+  return matInverse(matMul(GtOmegaInv, G));
+}
+
+// -----------------------------------------------------------------------------
+// Loewner ordering check on symmetric matrices. Returns the qualitative
+// answer (A ⪯ B, B ⪯ A, or incomparable) via eigenvalues of B - A and A - B.
+// Tolerance accounts for floating-point noise: an eigenvalue within ε of zero
+// counts as zero.
+// -----------------------------------------------------------------------------
+
+export type LoewnerResult = 'A_le_B' | 'B_le_A' | 'incomparable' | 'equal';
+
+export function loewnerCompare(A: Mat, B: Mat, eps = 1e-10): LoewnerResult {
+  const n = A.length;
+  const diffBA: Mat = zerosMat(n, n);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) diffBA[i][j] = B[i][j] - A[i][j];
+  const eigs = eigvalsSymmetric(diffBA);
+  const minE = Math.min(...eigs);
+  const maxE = Math.max(...eigs);
+  if (Math.abs(minE) <= eps && Math.abs(maxE) <= eps) return 'equal';
+  if (minE >= -eps) return 'A_le_B';
+  if (maxE <= eps) return 'B_le_A';
+  return 'incomparable';
+}
+
+// -----------------------------------------------------------------------------
+// Wishart sampler — draws a random L × L positive-definite matrix from the
+// Wishart(df, scale) distribution by sampling Y_i ~ N(0, scale) for i = 1..df
+// and forming Σ Y_i Y_iᵀ. Used by the §6 efficiency-frontier viz to draw the
+// scatter of random PD weighting matrices.
+// -----------------------------------------------------------------------------
+
+export function sampleWishart(rng: () => number, df: number, scale: Mat): Mat {
+  const L = scale.length;
+  const cholS = cholesky(scale);
+  const gauss = gaussianFrom(rng);
+  const W: Mat = zerosMat(L, L);
+  for (let i = 0; i < df; i++) {
+    // y = cholS · z, where z ~ N(0, I_L)
+    const z = new Array(L);
+    for (let j = 0; j < L; j++) z[j] = gauss();
+    const y = matVec(cholS, z);
+    for (let a = 0; a < L; a++) {
+      for (let b = 0; b < L; b++) {
+        W[a][b] += y[a] * y[b];
+      }
+    }
+  }
+  return W;
+}
+
+// -----------------------------------------------------------------------------
+// 95% confidence ellipse parameters from a 2×2 covariance matrix V. Returns
+// semi-major / semi-minor axes (in θ-space units, suitable for D3 ellipse
+// drawing) and the rotation angle (radians) of the major axis from horizontal.
+// At 95% confidence with k = 2 degrees of freedom, the scaling factor is
+// √(χ²₂,₀.₉₅) ≈ √5.991 ≈ 2.4477.
+// -----------------------------------------------------------------------------
+
+export interface EllipseParams {
+  rx: number; // half-major axis length (data units)
+  ry: number; // half-minor axis length
+  angle: number; // radians, CCW from horizontal
+}
+
+export function confidenceEllipse2D(V: Mat, alpha = 0.05, nForSqrtNScale = 1): EllipseParams {
+  // χ²₂(1-α) critical values for the most common α.
+  const chiCrit = alpha === 0.05 ? 5.991464547107981 : alpha === 0.01 ? 9.21034037197618 : alpha === 0.10 ? 4.605170185988091 : 5.991464547107981;
+  const scale = Math.sqrt(chiCrit / nForSqrtNScale);
+  const a = V[0][0];
+  const b = V[1][1];
+  const c = V[0][1];
+  const trace = a + b;
+  const det = a * b - c * c;
+  const sqrtDisc = Math.sqrt(Math.max(0, (trace * trace) / 4 - det));
+  const lam1 = trace / 2 + sqrtDisc; // larger eigenvalue
+  const lam2 = trace / 2 - sqrtDisc; // smaller eigenvalue
+  const rx = scale * Math.sqrt(Math.max(lam1, 0));
+  const ry = scale * Math.sqrt(Math.max(lam2, 0));
+  // Rotation angle of the major axis: eigenvector of V at lam1.
+  const angle = Math.abs(c) < 1e-12 ? (a >= b ? 0 : Math.PI / 2) : Math.atan2(lam1 - a, c);
+  return { rx, ry, angle };
+}
+
+// -----------------------------------------------------------------------------
+// Operator (spectral) norm of a symmetric matrix = largest absolute eigenvalue.
+// Used by SandwichDecomposer to show bread / meat / V_W magnitudes on bars.
+// -----------------------------------------------------------------------------
+
+export function operatorNorm(A: Mat): number {
+  const eigs = eigvalsSymmetric(A);
+  let m = 0;
+  for (const e of eigs) {
+    const a = Math.abs(e);
+    if (a > m) m = a;
+  }
+  return m;
+}
+
+// Trace and determinant of a 2×2 matrix (used as scalar summaries for the
+// efficiency-frontier scatter — det V is "uncertainty volume", tr V is
+// "total uncertainty"). Generic determinant via LU isn't worth the code for
+// 2×2; we keep this specialized.
+export function trace2x2(A: Mat): number {
+  return A[0][0] + A[1][1];
+}
+
+export function det2x2(A: Mat): number {
+  return A[0][0] * A[1][1] - A[0][1] * A[1][0];
+}
+
+// =============================================================================
+// Wave 3 — two-step + iterated GMM, J-statistic, χ² CDF / quantile.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Two-step feasible efficient GMM (Algorithm 7.1, Hansen 1982).
+//
+// Step 1: θ̂^(1) = argmin J_n(θ, W^(1))         where W^(1) is identity by default
+// Step 2: Ω̂_n  = (1/n) Σ g_i g_i^T              evaluated at θ̂^(1)
+// Step 3: θ̂^(2) = argmin J_n(θ, Ω̂_n^{-1})
+//
+// Returns both estimates, the estimated Ω̂_n (and its inverse — the step-2
+// weighting), the step-2 sandwich variance, and the J-statistic at θ̂^(2).
+// For the linear running example this is all closed-form.
+// -----------------------------------------------------------------------------
+
+export interface TwoStepResult {
+  theta1: Vec;
+  theta2: Vec;
+  OmegaHat: Mat; // n^{-1} sum g_i g_i^T at θ̂^(1)
+  OmegaHatInv: Mat; // step-2 weighting matrix
+  V2: Mat; // step-2 sandwich variance (asymptotic)
+  Jhat: number; // J_n(θ̂^(2), Ω̂_n^{-1})
+}
+
+export function twoStepAffineGMM(X: Mat, A: Mat, W1?: Mat): TwoStepResult {
+  const n = X.length;
+  const L = A.length;
+  const W = W1 ?? identityMat(L);
+  // X̄
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  // Step 1.
+  const theta1 = gmmEstimateAffine(A, Xbar, W);
+  // Step 2: residuals e_i = X_i - A θ̂^(1). Ω̂ is symmetric — fill the lower
+  // triangle in the inner accumulation and mirror once at the end. The `e`
+  // buffer is hoisted out of the loop to avoid per-iteration allocation.
+  const Atheta1 = matVec(A, theta1);
+  const OmegaHat: Mat = zerosMat(L, L);
+  const e: Vec = new Array(L);
+  for (let i = 0; i < n; i++) {
+    const Xi = X[i];
+    for (let j = 0; j < L; j++) e[j] = Xi[j] - Atheta1[j];
+    for (let a = 0; a < L; a++) {
+      const ea = e[a];
+      const OmegaA = OmegaHat[a];
+      for (let b = 0; b <= a; b++) OmegaA[b] += ea * e[b];
+    }
+  }
+  for (let a = 0; a < L; a++) {
+    const OmegaA = OmegaHat[a];
+    for (let b = 0; b < a; b++) OmegaHat[b][a] = OmegaA[b];
+  }
+  for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] /= n;
+  const OmegaHatInv = matInverse(OmegaHat);
+  // Step 3.
+  const theta2 = gmmEstimateAffine(A, Xbar, OmegaHatInv);
+  // Step-2 sandwich variance — for affine g, G = -A, and at efficient weighting
+  // the sandwich collapses to (A^T Ω̂^{-1} A)^{-1}.
+  const G: Mat = A.map((row) => row.map((v) => -v));
+  const V2 = hansenBound(G, OmegaHat);
+  // J-statistic at θ̂^(2).
+  const Jhat = gmmCriterion(theta2, A, Xbar, OmegaHatInv, n);
+  return { theta1, theta2, OmegaHat, OmegaHatInv, V2, Jhat };
+}
+
+// -----------------------------------------------------------------------------
+// Iterated GMM — Picard iteration on the two-step update. Returns the full
+// trajectory of estimates plus the converged fixed point. Convergence is
+// declared when ‖θ̂^(t+1) − θ̂^(t)‖ < tol or after maxIter passes.
+// -----------------------------------------------------------------------------
+
+export interface IteratedResult {
+  trajectory: Vec[]; // ordered list of θ̂^(0), θ̂^(1), ...
+  fixedPoint: Vec;
+  iterations: number;
+  converged: boolean;
+}
+
+export function iteratedAffineGMM(X: Mat, A: Mat, W1?: Mat, tol = 1e-6, maxIter = 30): IteratedResult {
+  const n = X.length;
+  const L = A.length;
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  let W = W1 ?? identityMat(L);
+  let theta = gmmEstimateAffine(A, Xbar, W);
+  const trajectory: Vec[] = [theta.slice()];
+  for (let t = 1; t <= maxIter; t++) {
+    const Atheta = matVec(A, theta);
+    const OmegaHat: Mat = zerosMat(L, L);
+    for (let i = 0; i < n; i++) {
+      const e: Vec = new Array(L);
+      for (let j = 0; j < L; j++) e[j] = X[i][j] - Atheta[j];
+      for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] += e[a] * e[b];
+    }
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] /= n;
+    W = matInverse(OmegaHat);
+    const next = gmmEstimateAffine(A, Xbar, W);
+    trajectory.push(next.slice());
+    const step = Math.hypot(next[0] - theta[0], next[1] - theta[1]);
+    theta = next;
+    if (step < tol) return { trajectory, fixedPoint: theta, iterations: t, converged: true };
+  }
+  return { trajectory, fixedPoint: theta, iterations: maxIter, converged: false };
+}
+
+// -----------------------------------------------------------------------------
+// Hansen J-statistic. J = n · ḡ_n(θ̂)' W ḡ_n(θ̂) at the GMM solution θ̂_W.
+// For the §8 distributional theory, W must be the consistent estimate Ω̂^{-1}
+// (so that under H₀ and efficient weighting, J →_d χ²_{L-k}).
+// -----------------------------------------------------------------------------
+
+export function jStatisticAffine(theta: Vec, A: Mat, Xbar: Vec, OmegaInv: Mat, n: number): number {
+  return gmmCriterion(theta, A, Xbar, OmegaInv, n);
+}
+
+// -----------------------------------------------------------------------------
+// χ² CDF and quantile — pure JS implementations (no scipy). The χ² CDF is
+// the regularized lower incomplete gamma:  P(df/2, x/2).
+//
+// Implementation notes:
+// • For x < a + 1 use the series; for x ≥ a + 1 use the continued fraction.
+//   (Numerical Recipes pattern; both converge geometrically.)
+// • lgamma is the Lanczos approximation; accurate to ~1e-14 on x > 0.
+// • Used by JStatisticDistributionExplorer to draw the χ²_{L-k} density and
+//   evaluate the critical value at α = 0.05.
+// -----------------------------------------------------------------------------
+
+export function lgamma(z: number): number {
+  // Lanczos coefficients, g = 7.
+  const g = 7;
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  if (z < 0.5) {
+    return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
+  }
+  z -= 1;
+  let x = c[0];
+  for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
+  const t = z + g + 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+
+function regularizedGammaP(a: number, x: number): number {
+  if (x < 0 || a <= 0) return NaN;
+  if (x === 0) return 0;
+  if (x < a + 1) {
+    // Series.
+    let ap = a;
+    let sum = 1 / a;
+    let term = sum;
+    for (let n = 1; n < 200; n++) {
+      ap += 1;
+      term *= x / ap;
+      sum += term;
+      if (Math.abs(term) < Math.abs(sum) * 1e-14) break;
+    }
+    return sum * Math.exp(-x + a * Math.log(x) - lgamma(a));
+  }
+  // Continued fraction for Q = 1 - P, then return 1 - Q.
+  let b = x + 1 - a;
+  let c = 1e30;
+  let d = 1 / b;
+  let h = d;
+  for (let i = 1; i < 200; i++) {
+    const an = -i * (i - a);
+    b += 2;
+    d = an * d + b;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = b + an / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d;
+    const delta = d * c;
+    h *= delta;
+    if (Math.abs(delta - 1) < 1e-14) break;
+  }
+  const Q = Math.exp(-x + a * Math.log(x) - lgamma(a)) * h;
+  return 1 - Q;
+}
+
+export function chi2Cdf(x: number, df: number): number {
+  if (x <= 0) return 0;
+  return regularizedGammaP(df / 2, x / 2);
+}
+
+export function chi2Pdf(x: number, df: number): number {
+  if (x <= 0) return 0;
+  const k = df / 2;
+  return Math.exp((k - 1) * Math.log(x) - x / 2 - lgamma(k) - k * Math.log(2));
+}
+
+// Standard normal quantile — Beasley–Springer–Moro for the inverse normal CDF.
+// Reused locally for the Wilson-Hilferty chi-squared quantile initial guess.
+function normalQuantile(p: number): number {
+  // From Wichura (1988), AS 241. Accurate to ~1e-9 on (0, 1).
+  if (p <= 0 || p >= 1) return p <= 0 ? -Infinity : Infinity;
+  const q = p - 0.5;
+  if (Math.abs(q) <= 0.425) {
+    const r = 0.180625 - q * q;
+    const a = [3.387132872796366608, 133.14166789178437745, 1971.5909503065514427, 13731.693765509461125, 45921.953931549871457, 67265.770927008700853, 33430.575583588128105, 2509.0809287301226727];
+    const b = [1, 42.313330701600911252, 687.1870074920579083, 5394.1960214247511077, 21213.794301586595867, 39307.89580009271061, 28729.085735721942674, 5226.495278852854561];
+    const num = ((((((a[7] * r + a[6]) * r + a[5]) * r + a[4]) * r + a[3]) * r + a[2]) * r + a[1]) * r + a[0];
+    const den = ((((((b[7] * r + b[6]) * r + b[5]) * r + b[4]) * r + b[3]) * r + b[2]) * r + b[1]) * r + b[0];
+    return q * num / den;
+  }
+  let r = p < 0.5 ? p : 1 - p;
+  r = Math.sqrt(-Math.log(r));
+  let z: number;
+  if (r <= 5) {
+    r -= 1.6;
+    const c = [1.42343711074968357734, 4.6303378461565452959, 5.7694972214606914055, 3.64784832476320460504, 1.27045825245236838258, 0.24178072517745061177, 0.0227238449892691845833, 7.7454501427834140764e-4];
+    const d = [1, 2.05319162663775882187, 1.6763848301838038494, 0.68976733498510000455, 0.14810397642748007459, 0.0151986665636164571966, 5.475938084995344946e-4, 1.05075007164441684324e-9];
+    const num = ((((((c[7] * r + c[6]) * r + c[5]) * r + c[4]) * r + c[3]) * r + c[2]) * r + c[1]) * r + c[0];
+    const den = ((((((d[7] * r + d[6]) * r + d[5]) * r + d[4]) * r + d[3]) * r + d[2]) * r + d[1]) * r + d[0];
+    z = num / den;
+  } else {
+    r -= 5;
+    const e = [6.6579046435011037772, 5.4637849111641143699, 1.7848265399172913358, 0.29656057182850489123, 0.026532189526576123093, 0.0012426609473880784386, 2.71155556874348757815e-5, 2.01033439929228813265e-7];
+    const f = [1, 0.59983220655588793769, 0.13692988092273580531, 0.0148753612908506148525, 7.868691311456132591e-4, 1.8463183175100546818e-5, 1.4215117583164458887e-7, 2.04426310338993978564e-15];
+    const num = ((((((e[7] * r + e[6]) * r + e[5]) * r + e[4]) * r + e[3]) * r + e[2]) * r + e[1]) * r + e[0];
+    const den = ((((((f[7] * r + f[6]) * r + f[5]) * r + f[4]) * r + f[3]) * r + f[2]) * r + f[1]) * r + f[0];
+    z = num / den;
+  }
+  return p < 0.5 ? -z : z;
+}
+
+export function chi2Quantile(p: number, df: number): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return Infinity;
+  // Wilson-Hilferty initial guess: chi²_df ≈ df · (1 - 2/(9df) + z_p · sqrt(2/(9df)))^3.
+  const z = normalQuantile(p);
+  const w = 1 - 2 / (9 * df) + z * Math.sqrt(2 / (9 * df));
+  let x = df * w * w * w;
+  if (x <= 0) x = 0.5 * df;
+  // Newton iteration on chi2Cdf(x) − p = 0.
+  for (let it = 0; it < 30; it++) {
+    const cdf = chi2Cdf(x, df);
+    const pdf = chi2Pdf(x, df);
+    if (pdf < 1e-30) break;
+    const step = (cdf - p) / pdf;
+    x -= step;
+    if (x <= 0) x = 1e-6;
+    if (Math.abs(step) < 1e-10 * Math.max(1, x)) break;
+  }
+  return x;
+}
+
+// =============================================================================
+// Wave 4 — Linear instrumental-variables simulator, 2SLS, efficient GMM
+// under heteroskedasticity, first-stage F, Anderson-Rubin confidence set.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Linear IV data-generating process. Scalar endogenous regressor X, L
+// instruments Z, structural parameter θ₀.
+//
+//   Y_i = X_i · θ_0 + ε_i              (structural equation)
+//   X_i = Z_iᵀ π + v_i                  (first-stage)
+//   (ε_i, v_i) ~ N(0, [[σ_ε², ρ σ_ε σ_v], [⋅, σ_v²]])
+//   ε_i conditional std = σ_ε(1 + γ |Z_{i,1}|)  (heteroskedastic)
+//
+// First-stage strength is controlled by τ (with π = τ · π_unit). Endogeneity
+// by ρ ∈ (-1, 1). Heteroskedasticity by γ ≥ 0 (γ = 0 is homoskedastic).
+// -----------------------------------------------------------------------------
+
+export interface IVData {
+  Y: Vec;
+  X: Vec; // scalar regressor (length n)
+  Z: Mat; // n × L instrument matrix
+}
+
+export function simulateLinearIV(
+  rng: () => number,
+  theta0: number,
+  n: number,
+  L: number,
+  rho: number,
+  gamma: number,
+  tau: number,
+  piUnit?: Vec,
+): IVData {
+  const gauss = gaussianFrom(rng);
+  const pi: Vec = (piUnit ?? new Array(L).fill(1 / Math.sqrt(L))).map((p) => p * tau);
+  const Z: Mat = zerosMat(n, L);
+  const Y: Vec = new Array(n);
+  const X: Vec = new Array(n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < L; j++) Z[i][j] = gauss();
+    // (ε, v) drawn from the correlated bivariate Gaussian.
+    const u1 = gauss();
+    const u2 = gauss();
+    const eps0 = u1; // standard normal
+    const v = rho * u1 + Math.sqrt(Math.max(1 - rho * rho, 0)) * u2;
+    const sigmaEps = 1 + gamma * Math.abs(Z[i][0]);
+    const eps = sigmaEps * eps0;
+    let zPi = 0;
+    for (let j = 0; j < L; j++) zPi += Z[i][j] * pi[j];
+    X[i] = zPi + v;
+    Y[i] = X[i] * theta0 + eps;
+  }
+  return { Y, X, Z };
+}
+
+// -----------------------------------------------------------------------------
+// OLS on Y ~ X. Biased under endogeneity (cov(X, ε) ≠ 0).
+// -----------------------------------------------------------------------------
+
+export function olsScalar(Y: Vec, X: Vec): { theta: number; resid: Vec } {
+  const n = Y.length;
+  let xx = 0;
+  let xy = 0;
+  for (let i = 0; i < n; i++) {
+    xx += X[i] * X[i];
+    xy += X[i] * Y[i];
+  }
+  const theta = xy / xx;
+  const resid: Vec = new Array(n);
+  for (let i = 0; i < n; i++) resid[i] = Y[i] - X[i] * theta;
+  return { theta, resid };
+}
+
+// -----------------------------------------------------------------------------
+// 2SLS = GMM with W = (Z'Z/n)^{-1}. Closed form for scalar X:
+//   θ̂_2SLS = (Xᵀ P_Z X)^{-1} Xᵀ P_Z Y,    P_Z = Z (ZᵀZ)^{-1} Zᵀ.
+//
+// We compute via the canonical "two-stage" interpretation: regress X on Z to
+// get X̂ = P_Z X (first stage), then OLS of Y on X̂.
+// -----------------------------------------------------------------------------
+
+export function twoStageLeastSquares(Y: Vec, X: Vec, Z: Mat): { theta: number; Xhat: Vec; resid: Vec; firstStageR2: number } {
+  const n = Y.length;
+  const L = Z[0].length;
+  // ZᵀZ (L × L) and ZᵀX (L × 1).
+  const ZtZ: Mat = zerosMat(L, L);
+  const ZtX: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < L; a++) {
+      ZtX[a] += Z[i][a] * X[i];
+      for (let b = 0; b < L; b++) ZtZ[a][b] += Z[i][a] * Z[i][b];
+    }
+  }
+  const ZtZinv = matInverse(ZtZ);
+  const piHat = matVec(ZtZinv, ZtX); // first-stage OLS coefficients
+  // X̂ = Z · π̂.
+  const Xhat: Vec = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let a = 0; a < L; a++) s += Z[i][a] * piHat[a];
+    Xhat[i] = s;
+  }
+  // OLS of Y on X̂.
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += Xhat[i] * Y[i];
+    den += Xhat[i] * Xhat[i];
+  }
+  const theta = num / den;
+  const resid: Vec = new Array(n);
+  for (let i = 0; i < n; i++) resid[i] = Y[i] - X[i] * theta;
+  // First-stage R² as a sanity / strength readout.
+  let xbar = 0;
+  for (const x of X) xbar += x;
+  xbar /= n;
+  let tss = 0;
+  let rss = 0;
+  for (let i = 0; i < n; i++) {
+    tss += (X[i] - xbar) * (X[i] - xbar);
+    const e = X[i] - Xhat[i];
+    rss += e * e;
+  }
+  const firstStageR2 = 1 - rss / Math.max(tss, 1e-12);
+  return { theta, Xhat, resid, firstStageR2 };
+}
+
+// -----------------------------------------------------------------------------
+// First-stage F-statistic. Under H₀: π = 0, F ~ F_{L, n-L-1}; large F means
+// strong instruments. Staiger-Stock (1997) rule of thumb: F > 10 ⇒ strong.
+// -----------------------------------------------------------------------------
+
+export function firstStageF(X: Vec, Z: Mat): number {
+  const n = X.length;
+  const L = Z[0].length;
+  const { Xhat } = twoStageLeastSquares(X, X, Z); // hack: regress X on Z directly
+  let ess = 0;
+  let rss = 0;
+  let xbar = 0;
+  for (const x of X) xbar += x;
+  xbar /= n;
+  for (let i = 0; i < n; i++) {
+    ess += (Xhat[i] - xbar) * (Xhat[i] - xbar);
+    rss += (X[i] - Xhat[i]) * (X[i] - Xhat[i]);
+  }
+  const df1 = L;
+  const df2 = Math.max(n - L - 1, 1);
+  return (ess / df1) / (rss / df2);
+}
+
+// -----------------------------------------------------------------------------
+// Heteroskedasticity-robust efficient GMM for linear IV. Algorithm 9.1:
+//   1. 2SLS to get θ̂_2SLS and residuals ê = Y - X θ̂_2SLS.
+//   2. Ω̂ = (1/n) Σ Z_i Z_iᵀ ê_i².
+//   3. Efficient GMM with Ŵ = Ω̂⁻¹.
+//
+// Returns the efficient estimate and its plug-in sandwich variance.
+// -----------------------------------------------------------------------------
+
+export interface EfficientIVResult {
+  theta: number;
+  V: number; // scalar asymptotic variance
+  J: number; // J-statistic at efficient weighting
+  OmegaHat: Mat;
+}
+
+export function efficientGMM_IV(Y: Vec, X: Vec, Z: Mat): EfficientIVResult {
+  const n = Y.length;
+  const L = Z[0].length;
+  const tsls = twoStageLeastSquares(Y, X, Z);
+  // Ω̂ from 2SLS residuals.
+  const OmegaHat: Mat = zerosMat(L, L);
+  for (let i = 0; i < n; i++) {
+    const e = tsls.resid[i];
+    const w = e * e;
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] += Z[i][a] * Z[i][b] * w;
+  }
+  for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] /= n;
+  const W = matInverse(OmegaHat);
+  // Efficient closed form: (X' Z W Z' X)^{-1} X' Z W Z' Y.
+  const ZtX: Vec = new Array(L).fill(0);
+  const ZtY: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < L; a++) {
+      ZtX[a] += Z[i][a] * X[i];
+      ZtY[a] += Z[i][a] * Y[i];
+    }
+  }
+  const WZtX = matVec(W, ZtX);
+  const WZtY = matVec(W, ZtY);
+  let num = 0;
+  let den = 0;
+  for (let a = 0; a < L; a++) {
+    num += ZtX[a] * WZtY[a];
+    den += ZtX[a] * WZtX[a];
+  }
+  const theta = num / den;
+  // V = n · ((X'Z/n)' W (Z'X/n))^{-1} = (1/n) · n² / den · ... — using the
+  // sandwich at efficient weighting, V̂ = ( (X'Z/n) Ω̂⁻¹ (Z'X/n) )^{-1} / n.
+  const ZtXn = ZtX.map((v) => v / n);
+  const WZtXn = matVec(W, ZtXn);
+  let breadEff = 0;
+  for (let a = 0; a < L; a++) breadEff += ZtXn[a] * WZtXn[a];
+  const V = 1 / (n * breadEff);
+  // J at efficient θ:  J = n · g_n(θ)' W g_n(θ),  g_n(θ) = (1/n) Σ Z_i (Y_i - X_i θ).
+  const gn: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) {
+    const e = Y[i] - X[i] * theta;
+    for (let a = 0; a < L; a++) gn[a] += Z[i][a] * e;
+  }
+  for (let a = 0; a < L; a++) gn[a] /= n;
+  let J = 0;
+  const Wgn = matVec(W, gn);
+  for (let a = 0; a < L; a++) J += gn[a] * Wgn[a];
+  J *= n;
+  return { theta, V, J, OmegaHat };
+}
+
+// -----------------------------------------------------------------------------
+// Anderson-Rubin confidence set. For each θ in a grid, compute
+//   AR(θ) = n · ḡ_n(θ)' Ω̂(θ)^{-1} ḡ_n(θ),   ḡ_n(θ) = (1/n) Σ Z_i (Y_i - X_i θ).
+// Accept θ if AR(θ) < χ²_L(1 - α). Returns the boundary indices.
+//
+// Robust to weak instruments because AR does not condition on estimating θ.
+// -----------------------------------------------------------------------------
+
+export interface ARResult {
+  thetaGrid: Vec;
+  arValues: Vec;
+  accepted: boolean[];
+  crit: number; // χ²_L(0.95)
+  lower: number | null;
+  upper: number | null;
+}
+
+// =============================================================================
+// Wave 5 — Empirical likelihood (Owen 1988, 1990), CUE, Robinson partial-linear
+// moment + simple DML estimator for in-browser MC, heteroskedastic OLS sandwich.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Empirical likelihood inner-Newton on λ. At fixed θ, solve
+//   minimize over λ ∈ R^L: -(1/n) Σ log(1 + λ' g_i(θ)),
+// constraint 1 + λ' g_i > 0 for all i. Newton step:
+//   λ_{t+1} = λ_t + H^{-1} grad, where
+//   grad = (1/n) Σ g_i / (1 + λ' g_i),  H = (1/n) Σ g_i g_i' / (1 + λ' g_i)^2.
+// Backtrack the step to maintain feasibility.
+// -----------------------------------------------------------------------------
+
+export function elInnerLambda(gAtTheta: Mat, tol = 1e-8, maxIter = 50): Vec {
+  const n = gAtTheta.length;
+  const L = gAtTheta[0].length;
+  let lambda: Vec = new Array(L).fill(0);
+  for (let iter = 0; iter < maxIter; iter++) {
+    const grad: Vec = new Array(L).fill(0);
+    const H: Mat = zerosMat(L, L);
+    for (let i = 0; i < n; i++) {
+      let dot = 0;
+      for (let a = 0; a < L; a++) dot += lambda[a] * gAtTheta[i][a];
+      const denom = 1 + dot;
+      if (denom <= 0) return lambda; // give up at the boundary
+      for (let a = 0; a < L; a++) grad[a] += gAtTheta[i][a] / denom;
+      for (let a = 0; a < L; a++)
+        for (let b = 0; b < L; b++)
+          H[a][b] += (gAtTheta[i][a] * gAtTheta[i][b]) / (denom * denom);
+    }
+    for (let a = 0; a < L; a++) grad[a] /= n;
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) H[a][b] /= n;
+    // Newton step (note: −∇² of the objective is the H above; Newton update is +H^{-1} grad).
+    let step: Vec;
+    try {
+      step = matVec(matInverse(H), grad);
+    } catch {
+      return lambda;
+    }
+    // Backtrack to keep 1 + (λ + α·step)' g_i > 0 for all i.
+    let alpha = 1.0;
+    let accepted = false;
+    for (let bt = 0; bt < 20; bt++) {
+      let feasible = true;
+      const lambdaNext = lambda.map((v, a) => v + alpha * step[a]);
+      for (let i = 0; i < n; i++) {
+        let dot = 0;
+        for (let a = 0; a < L; a++) dot += lambdaNext[a] * gAtTheta[i][a];
+        if (1 + dot <= 0) { feasible = false; break; }
+      }
+      if (feasible) { lambda = lambdaNext; accepted = true; break; }
+      alpha *= 0.5;
+    }
+    if (!accepted) return lambda;
+    let stepNorm = 0;
+    for (let a = 0; a < L; a++) stepNorm += step[a] * step[a];
+    if (Math.sqrt(stepNorm) < tol) break;
+  }
+  return lambda;
+}
+
+// EL log-likelihood-ratio statistic at θ: 2 Σ log(1 + λ(θ)' g_i(θ)).
+export function elLogR(gAtTheta: Mat): number {
+  const lambda = elInnerLambda(gAtTheta);
+  const n = gAtTheta.length;
+  const L = gAtTheta[0].length;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    let dot = 0;
+    for (let a = 0; a < L; a++) dot += lambda[a] * gAtTheta[i][a];
+    sum += Math.log(Math.max(1 + dot, 1e-12));
+  }
+  return 2 * sum;
+}
+
+// EL estimator over θ via grid search on a 2D box (running example: k=2).
+// Affine moment function only. Returns the minimizer of elLogR(θ) over the
+// grid. For larger k, this needs a proper optimizer (BFGS).
+export function elAffineGridEstimate(X: Mat, A: Mat, thetaBounds: [number, number, number, number], resolution = 25): Vec {
+  const n = X.length;
+  const L = A.length;
+  const [t1Min, t1Max, t2Min, t2Max] = thetaBounds;
+  let best: Vec = [t1Min, t2Min];
+  let bestVal = Infinity;
+  for (let i = 0; i < resolution; i++) {
+    for (let j = 0; j < resolution; j++) {
+      const t1 = t1Min + (i / (resolution - 1)) * (t1Max - t1Min);
+      const t2 = t2Min + (j / (resolution - 1)) * (t2Max - t2Min);
+      const Atheta = matVec(A, [t1, t2]);
+      const gAt: Mat = X.map((row) => row.map((v, k) => v - Atheta[k]));
+      const val = elLogR(gAt);
+      if (val < bestVal) {
+        bestVal = val;
+        best = [t1, t2];
+      }
+    }
+  }
+  return best;
+}
+
+// -----------------------------------------------------------------------------
+// CUE estimator for affine moments — joint optimization over θ with W = Ω̂(θ)⁻¹.
+// Implemented as grid search on a 2D box for the running example. For
+// larger problems use BFGS.
+// -----------------------------------------------------------------------------
+
+export function cueAffineGridEstimate(X: Mat, A: Mat, thetaBounds: [number, number, number, number], resolution = 25): Vec {
+  const n = X.length;
+  const L = A.length;
+  const [t1Min, t1Max, t2Min, t2Max] = thetaBounds;
+  let best: Vec = [t1Min, t2Min];
+  let bestVal = Infinity;
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  for (let i = 0; i < resolution; i++) {
+    for (let j = 0; j < resolution; j++) {
+      const t1 = t1Min + (i / (resolution - 1)) * (t1Max - t1Min);
+      const t2 = t2Min + (j / (resolution - 1)) * (t2Max - t2Min);
+      const Atheta = matVec(A, [t1, t2]);
+      const Omega: Mat = zerosMat(L, L);
+      for (let r = 0; r < n; r++) {
+        for (let a = 0; a < L; a++)
+          for (let b = 0; b < L; b++)
+            Omega[a][b] += (X[r][a] - Atheta[a]) * (X[r][b] - Atheta[b]);
+      }
+      for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) Omega[a][b] /= n;
+      let W: Mat;
+      try {
+        W = matInverse(Omega);
+      } catch {
+        continue;
+      }
+      const val = gmmCriterion([t1, t2], A, Xbar, W, n);
+      if (val < bestVal) {
+        bestVal = val;
+        best = [t1, t2];
+      }
+    }
+  }
+  return best;
+}
+
+// -----------------------------------------------------------------------------
+// Heteroskedastic OLS sandwich for §11.2 viz. Estimator: ordinary OLS.
+// Naive (homoskedastic) variance: σ̂² (X'X)⁻¹.
+// Sandwich (Eicker-Huber-White): (X'X)⁻¹ X' diag(ê²) X (X'X)⁻¹.
+// Returns both, plus the 95% CI half-widths.
+// -----------------------------------------------------------------------------
+
+export interface SandwichCoverageResult {
+  beta: number;
+  varNaive: number;
+  varSandwich: number;
+  ciNaiveHW: number;
+  ciSandwichHW: number;
+}
+
+export function olsHetSandwich(Y: Vec, X: Vec): SandwichCoverageResult {
+  const n = Y.length;
+  let xx = 0;
+  let xy = 0;
+  for (let i = 0; i < n; i++) {
+    xx += X[i] * X[i];
+    xy += X[i] * Y[i];
+  }
+  const beta = xy / xx;
+  let rss = 0;
+  let meatSum = 0;
+  for (let i = 0; i < n; i++) {
+    const e = Y[i] - X[i] * beta;
+    rss += e * e;
+    meatSum += X[i] * X[i] * e * e;
+  }
+  const sigma2 = rss / (n - 1);
+  const varNaive = sigma2 / xx;
+  // (X'X)⁻¹ X' diag(ê²) X (X'X)⁻¹  = meatSum / xx²
+  const varSandwich = meatSum / (xx * xx);
+  const z = 1.959963984540054; // 95%
+  return {
+    beta,
+    varNaive,
+    varSandwich,
+    ciNaiveHW: z * Math.sqrt(varNaive),
+    ciSandwichHW: z * Math.sqrt(varSandwich),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Partial-linear DML for §12.2 viz. Polynomial-basis nuisance regression
+// (in lieu of random forests — keeps the viz CPU-cheap and self-contained).
+// Cross-fitting via K folds.
+// -----------------------------------------------------------------------------
+
+function polyBasis(w: number, deg: number): Vec {
+  const out: Vec = [1];
+  let cur = 1;
+  for (let d = 1; d <= deg; d++) {
+    cur *= w;
+    out.push(cur);
+  }
+  return out;
+}
+
+function polyOLS(W: Vec, Y: Vec, deg: number): Vec {
+  // Closed-form OLS of Y on polynomial(W). Accumulate XᵀX and XᵀY directly
+  // from the per-sample basis vector — avoids materialising the p × n design.
+  // XᵀX is symmetric; fill the lower triangle and mirror once at the end.
+  const n = W.length;
+  const p = deg + 1;
+  const XtX: Mat = zerosMat(p, p);
+  const XtY: Vec = new Array(p).fill(0);
+  for (let i = 0; i < n; i++) {
+    const phi = polyBasis(W[i], deg);
+    const yi = Y[i];
+    for (let a = 0; a < p; a++) {
+      const pa = phi[a];
+      XtY[a] += pa * yi;
+      const row = XtX[a];
+      for (let b = 0; b <= a; b++) row[b] += pa * phi[b];
+    }
+  }
+  for (let a = 0; a < p; a++) {
+    for (let b = 0; b < a; b++) XtX[b][a] = XtX[a][b];
+  }
+  // Tikhonov ridge for stability at small fold sizes.
+  for (let a = 0; a < p; a++) XtX[a][a] += 1e-6;
+  return matVec(matInverse(XtX), XtY);
+}
+
+function polyEval(W: number, coefs: Vec, deg: number): number {
+  const phi = polyBasis(W, deg);
+  let s = 0;
+  for (let a = 0; a < coefs.length; a++) s += coefs[a] * phi[a];
+  return s;
+}
+
+export interface DMLResult {
+  thetaDML: number;
+  thetaOLS: number;
+  thetaNaive: number;
+}
+
+export function dmlPartialLinear(
+  Y: Vec,
+  X: Vec,
+  W: Vec,
+  theta0: number,
+  K = 5,
+  deg = 4,
+): DMLResult {
+  const n = Y.length;
+  // Naive plug-in: estimate g, m on whole sample, residualize, OLS.
+  const cG = polyOLS(W, Y, deg);
+  const cM = polyOLS(W, X, deg);
+  let numNaive = 0;
+  let denNaive = 0;
+  for (let i = 0; i < n; i++) {
+    const yt = Y[i] - polyEval(W[i], cG, deg);
+    const xt = X[i] - polyEval(W[i], cM, deg);
+    numNaive += xt * yt;
+    denNaive += xt * xt;
+  }
+  const thetaNaive = numNaive / denNaive;
+  // DML cross-fitting. Folds are contiguous index ranges, so test membership
+  // directly with [foldStart, foldEnd) — no indices array, no Set allocation.
+  let numD = 0;
+  let denD = 0;
+  for (let k = 0; k < K; k++) {
+    const foldStart = Math.floor((k * n) / K);
+    const foldEnd = Math.floor(((k + 1) * n) / K);
+    const Wtr: Vec = []; const Ytr: Vec = []; const Xtr: Vec = [];
+    for (let i = 0; i < n; i++) {
+      if (i < foldStart || i >= foldEnd) {
+        Wtr.push(W[i]);
+        Ytr.push(Y[i]);
+        Xtr.push(X[i]);
+      }
+    }
+    const cGk = polyOLS(Wtr, Ytr, deg);
+    const cMk = polyOLS(Wtr, Xtr, deg);
+    for (let i = foldStart; i < foldEnd; i++) {
+      const yt = Y[i] - polyEval(W[i], cGk, deg);
+      const xt = X[i] - polyEval(W[i], cMk, deg);
+      numD += xt * yt;
+      denD += xt * xt;
+    }
+  }
+  const thetaDML = numD / denD;
+  // OLS (no nuisance correction).
+  let xy = 0; let xx = 0;
+  for (let i = 0; i < n; i++) { xy += X[i] * Y[i]; xx += X[i] * X[i]; }
+  return { thetaDML, thetaOLS: xy / xx, thetaNaive };
+}
+
+// =============================================================================
+// Wave 6 — Laplace-type estimator (Chernozhukov-Hong 2003) via 2D Metropolis
+// on the affine-GMM running example.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Random-walk Metropolis sampler from the quasi-posterior
+//   π*(θ) ∝ exp(-J_n(θ, Ω̂⁻¹)/2) · π(θ),
+// where J_n is the affine GMM criterion at the two-step efficient weighting.
+// Flat prior on the running example. Returns the MH chain after warmup +
+// thinning, plus the acceptance rate.
+// -----------------------------------------------------------------------------
+
+export interface LTESamples {
+  samples: Vec[]; // length nSamples
+  acceptanceRate: number;
+  thetaBar: Vec;
+  posteriorCov: Mat;
+}
+
+export function laplaceTypeMHAffine(
+  X: Mat,
+  A: Mat,
+  rng: () => number,
+  nSamples: number,
+  warmup = 500,
+  stepScale = 0.1,
+): LTESamples {
+  const n = X.length;
+  const L = A.length;
+  // Pre-compute X̄ and the two-step Ω̂⁻¹ for the J target.
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  const twoStep = twoStepAffineGMM(X, A);
+  const W = twoStep.OmegaHatInv;
+  const k = A[0].length;
+
+  let theta: Vec = twoStep.theta2.slice();
+  let logPi = -0.5 * gmmCriterion(theta, A, Xbar, W, n);
+  const gauss = gaussianFrom(rng);
+  let accepted = 0;
+  let proposed = 0;
+  const totalIter = warmup + nSamples;
+  const samples: Vec[] = [];
+  for (let t = 0; t < totalIter; t++) {
+    const prop: Vec = new Array(k);
+    for (let j = 0; j < k; j++) prop[j] = theta[j] + stepScale * gauss();
+    const logPiProp = -0.5 * gmmCriterion(prop, A, Xbar, W, n);
+    const logA = logPiProp - logPi;
+    proposed++;
+    if (logA >= 0 || Math.log(rng()) < logA) {
+      theta = prop;
+      logPi = logPiProp;
+      accepted++;
+    }
+    if (t >= warmup) samples.push(theta.slice());
+  }
+  // Posterior mean and covariance.
+  const thetaBar: Vec = new Array(k).fill(0);
+  for (const s of samples) for (let j = 0; j < k; j++) thetaBar[j] += s[j];
+  for (let j = 0; j < k; j++) thetaBar[j] /= samples.length;
+  const cov: Mat = zerosMat(k, k);
+  for (const s of samples) {
+    for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) cov[a][b] += (s[a] - thetaBar[a]) * (s[b] - thetaBar[b]);
+  }
+  for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) cov[a][b] /= Math.max(samples.length - 1, 1);
+  return { samples, acceptanceRate: accepted / proposed, thetaBar, posteriorCov: cov };
+}
+
+// Simulate the partial-linear DGP: Y = X θ_0 + g_0(W) + ε,  X = m_0(W) + v.
+// Closed-form g_0(W) = sin(πW), m_0(W) = W² as "smooth but nonlinear" nuisances.
+export function simulatePartialLinear(rng: () => number, theta0: number, n: number): { Y: Vec; X: Vec; W: Vec } {
+  const gauss = gaussianFrom(rng);
+  const W: Vec = []; const X: Vec = []; const Y: Vec = [];
+  for (let i = 0; i < n; i++) {
+    const w = (rng() - 0.5) * 2; // uniform on (-1, 1)
+    const v = 0.5 * gauss();
+    const eps = 0.5 * gauss();
+    const m0w = w * w;
+    const g0w = Math.sin(Math.PI * w);
+    const xi = m0w + v;
+    const yi = xi * theta0 + g0w + eps;
+    W.push(w); X.push(xi); Y.push(yi);
+  }
+  return { Y, X, W };
+}
+
+export function andersonRubinSet(Y: Vec, X: Vec, Z: Mat, thetaGrid: Vec, alpha = 0.05): ARResult {
+  const n = Y.length;
+  const L = Z[0].length;
+  const crit = chi2Quantile(1 - alpha, L);
+  const arValues: Vec = [];
+  const accepted: boolean[] = [];
+  for (const t of thetaGrid) {
+    const gn: Vec = new Array(L).fill(0);
+    for (let i = 0; i < n; i++) {
+      const e = Y[i] - X[i] * t;
+      for (let a = 0; a < L; a++) gn[a] += Z[i][a] * e;
+    }
+    for (let a = 0; a < L; a++) gn[a] /= n;
+    // Ω̂(θ) heteroskedasticity-robust at this θ.
+    const Omega: Mat = zerosMat(L, L);
+    for (let i = 0; i < n; i++) {
+      const w = (Y[i] - X[i] * t) ** 2;
+      for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) Omega[a][b] += Z[i][a] * Z[i][b] * w;
+    }
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) Omega[a][b] /= n;
+    let arVal: number;
+    try {
+      const Winv = matInverse(Omega);
+      const Wgn = matVec(Winv, gn);
+      let ar = 0;
+      for (let a = 0; a < L; a++) ar += gn[a] * Wgn[a];
+      arVal = n * ar;
+    } catch {
+      arVal = Infinity;
+    }
+    arValues.push(arVal);
+    accepted.push(arVal < crit);
+  }
+  // Locate contiguous accepted interval (the AR set may be the whole line for
+  // very weak instruments — we report the first / last accepted grid index).
+  let lower: number | null = null;
+  let upper: number | null = null;
+  for (let i = 0; i < accepted.length; i++) {
+    if (accepted[i]) {
+      if (lower === null) lower = thetaGrid[i];
+      upper = thetaGrid[i];
+    }
+  }
+  return { thetaGrid, arValues, accepted, crit, lower, upper };
+}
+
