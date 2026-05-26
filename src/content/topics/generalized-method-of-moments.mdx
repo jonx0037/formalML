@@ -209,6 +209,9 @@ import Figure from '../../components/ui/Figure.astro';
 import MoMEfficiencyExplorer from '../../components/viz/MoMEfficiencyExplorer.tsx';
 import GMMCriterionSurface from '../../components/viz/GMMCriterionSurface.tsx';
 import IdentificationRankInspector from '../../components/viz/IdentificationRankInspector.tsx';
+import ConsistencyCloudExplorer from '../../components/viz/ConsistencyCloudExplorer.tsx';
+import SandwichDecomposer from '../../components/viz/SandwichDecomposer.tsx';
+import EfficiencyFrontierExplorer from '../../components/viz/EfficiencyFrontierExplorer.tsx';
 
 ## §1 — Introduction and motivation
 
@@ -547,3 +550,259 @@ For the running example, $G_0 = -A$ has rank 2 iff the columns of $A$ are linear
 What can go wrong? If the four moment conditions were $\mathbb{E}[X_j] = \alpha_j \theta_{01} + \beta_j \theta_{02}$ with $(\alpha_j, \beta_j) = (1, 0.5), (2, 1), (3, 1.5), (4, 2)$ for all $j$, every row of $A$ would be a scalar multiple of $(1, 0.5)^\top$ — $A$ has rank 1, $\theta_{02}$ is not identified by these moments (only the linear combination $\theta_{01} + 0.5\,\theta_{02}$ is), and no amount of data rescues the estimator. The model is **under-identified** despite having $L = 4 > k = 2$ moment conditions. Over-identification counts equations, not information; the rank condition counts information.
 
 When the rank condition holds *exactly* but $G_0$ is *nearly* rank-deficient — the columns of $G_0$ are nearly collinear in the metric $W^{1/2}$ — we have **weakly-identified** parameters (in the IV setting, **weak instruments**). The asymptotic theory still goes through but the asymptotic-normal approximation deteriorates at finite samples, and standard errors can be wildly understated. §9 covers the diagnostics for this case (the Staiger–Stock F-statistic for linear IV, the Anderson–Rubin test as a weak-instrument-robust alternative).
+
+---
+
+## §4 — Consistency of GMM estimators
+
+We turn to the first asymptotic result: as $n \to \infty$, the GMM estimator $\hat\theta_{W_n}$ converges in probability to the true parameter $\theta_0$. The result is *almost free* in the sense that it requires no particular choice of weighting matrix — any positive-definite limiting $W$ delivers consistency — and depends only on global identification plus a uniform law of large numbers on the sample-moment vector. What does require care is the bridge from *pointwise* convergence of $\bar g_n(\theta)$ at each $\theta$ to *uniform* convergence over $\Theta$, which is what the consistency proof actually needs. The technical workhorse is the empirical-process machinery developed in *Concentration Inequalities*.
+
+### 4.1 Uniform laws of large numbers
+
+The ordinary LLN gives us $\bar g_n(\theta) \to_p m(\theta)$ for each *fixed* $\theta$ — pointwise convergence. But the GMM estimator is the argmin of a function of $\theta$, and pointwise convergence of the integrand is not enough to conclude that the argmin converges. A small pathological dip of $\bar g_n$ far from $\theta_0$ can fool the optimizer even when each $\bar g_n(\theta)$ is close to $m(\theta)$ in expectation; what we need is that *no* such dip happens *anywhere* in $\Theta$.
+
+A function class $\mathcal{F} = \{g(\cdot, \theta) : \theta \in \Theta\}$ obeys the **uniform law of large numbers** if
+
+$$
+\sup_{\theta \in \Theta} \|\bar g_n(\theta) - m(\theta)\| \;\to_p\; 0 \quad \text{as } n \to \infty.
+$$
+
+Two standard conditions, both inherited from *Concentration Inequalities*, deliver this. The **bracketing-entropy condition** asks that $\Theta$ be compact, $g(X, \cdot)$ be continuous in $\theta$ for $P_0$-a.e. $X$, and a *dominating function* $d(X)$ exist with $\sup_{\theta \in \Theta} \|g(X, \theta)\| \le d(X)$ and $\mathbb{E}[d(X)] < \infty$. This is the textbook Newey–McFadden setup (1994, Lemma 2.4); it gives $o_p(1)$ convergence with no explicit rate. The **Rademacher complexity condition** asks that the class $\mathcal{F}$ have Rademacher complexity $\mathfrak{R}_n(\mathcal{F})$ that vanishes with $n$. This gives an explicit rate $\sup_\theta \|\bar g_n - m\| = O_p(\mathfrak{R}_n(\mathcal{F}))$ — at the parametric $O_p(n^{-1/2})$ when $\mathcal{F}$ is VC or has bounded entropy.
+
+For the linear running example $g(X, \theta) = X - A\theta$, the function class is affine in $k$ parameters, has VC-dimension $O(k)$, and the uniform LLN holds at the optimal parametric rate $O_p(\sqrt{k/n})$. The connection to *Concentration Inequalities* is direct: the uniform LLN follows from concentration of the empirical-process supremum $\sup_\theta |\bar g_n(\theta) - m(\theta)|$, controlled by Talagrand's inequality, the bounded-differences inequality, or Massart's symmetrization argument applied to the function class $\mathcal{F}$.
+
+### 4.2 The population objective and global identification
+
+Define the **population criterion** as the limit of $J_n / n$:
+
+$$
+Q_0(\theta, W) \;:=\; m(\theta)^\top W m(\theta).
+$$
+
+Two properties drive consistency. First, $Q_0(\theta, W) \ge 0$ for all $\theta$, with equality iff $m(\theta) = 0$; this follows from positive-definiteness of $W$. Second, under the global-identification hypothesis $m(\theta) = 0 \iff \theta = \theta_0$, the population criterion has a unique minimizer at $\theta_0$, where $Q_0(\theta_0, W) = 0$.
+
+Combining: $\theta_0 = \arg\min_{\theta \in \Theta} Q_0(\theta, W)$ uniquely. Consistency reduces to verifying that the sample argmin $\hat\theta_W$ converges to the population argmin $\theta_0$ — a question for the *argmax theorem* (the consistency lemma for extremum estimators). The sample criterion is the empirical version of $Q_0$, scaled by $n$: $Q_n(\theta, W_n) := J_n(\theta, W_n)/n = \bar g_n(\theta)^\top W_n \bar g_n(\theta)$. The factor of $n$ does not move the argmin.
+
+### 4.3 The consistency theorem
+
+<TheoremBlock type="theorem" number={4.1} title="Consistency of GMM">
+Assume (i) i.i.d. sample; (ii) compact parameter space $\Theta \ni \theta_0$; (iii) global identification ($m(\theta) = 0 \iff \theta = \theta_0$); (iv) continuity of $g(X, \cdot)$ on $\Theta$ for $P_0$-a.e. $X$; (v) dominating function $\mathbb{E}\!\left[\sup_{\theta \in \Theta} \|g(X, \theta)\|\right] < \infty$; (vi) weighting $W_n \to_p W$ with $W$ symmetric positive-definite deterministic. Then
+
+$$
+\hat\theta_{W_n} \;:=\; \arg\min_{\theta \in \Theta} J_n(\theta, W_n) \;\to_p\; \theta_0.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Four steps.
+
+**Step 1: uniform LLN.** By (i), (iv), (v), the class $\mathcal{F} = \{g(\cdot, \theta) : \theta \in \Theta\}$ satisfies the bracketing-entropy condition and the uniform LLN holds: $\sup_{\theta \in \Theta} \|\bar g_n(\theta) - m(\theta)\| \to_p 0$.
+
+**Step 2: uniform convergence of the criterion.** We show $\sup_\theta |Q_n(\theta, W_n) - Q_0(\theta, W)| \to_p 0$. Using the symmetric-$W$ identity $a^\top W a - b^\top W b = (a - b)^\top W (a + b)$,
+
+$$
+\bar g_n^\top W_n \bar g_n - m^\top W m \;=\; \bar g_n^\top (W_n - W) \bar g_n \;+\; (\bar g_n - m)^\top W (\bar g_n + m).
+$$
+
+Take operator-norm bounds, sup over $\theta$, and apply Slutsky with Step 1's uniform LLN and assumption (vi). Result: $\sup_\theta |Q_n(\theta, W_n) - Q_0(\theta, W)| \to_p 0$.
+
+**Step 3: identification.** By (iii) and positive-definiteness of $W$, $Q_0(\theta, W) \ge \lambda_{\min}(W) \|m(\theta)\|^2 \ge 0$ with equality iff $\theta = \theta_0$. So $\theta_0$ is the unique minimizer of $Q_0$ on $\Theta$.
+
+**Step 4: argmin convergence.** Fix $\varepsilon > 0$ and let $B_\varepsilon^c = \Theta \setminus B(\theta_0, \varepsilon)$. By compactness of $\Theta$ and continuity of $Q_0$, $\delta := \inf_{\theta \in B_\varepsilon^c} Q_0(\theta, W) > 0$. On the failure event $\{\hat\theta_{W_n} \in B_\varepsilon^c\}$, the argmin definition and Step 2 give $Q_0(\hat\theta_{W_n}, W) \le 2 \sup_\theta |Q_n - Q_0|$. So $\delta \le 2 \sup_\theta |Q_n - Q_0|$, which holds with probability going to zero by Step 2. $P(\|\hat\theta_{W_n} - \theta_0\| > \varepsilon) \to 0$.
+</TheoremBlock>
+
+*(Originally Hansen 1982; the textbook treatment with these regularity conditions follows Newey & McFadden 1994 §2.)* The proof carries a useful geometric reading. The sample criterion tracks the population criterion uniformly; the population criterion has a strict global minimum at $\theta_0$ separated by a positive gap from any point outside the $\varepsilon$-neighborhood; therefore the sample minimizer must eventually fall inside the $\varepsilon$-neighborhood. Compactness of $\Theta$ guarantees the positive gap; the uniform LLN guarantees the sample criterion tracks the population criterion *everywhere* on $\Theta$, not just near the truth.
+
+<ConsistencyCloudExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/04_consistency.png"
+  alt="Log-log RMSE convergence for identity and efficient weighting on the running example, with sampling-distribution clouds at three sample sizes"
+  caption="Figure 4.1 — Consistency at the parametric rate. Left: log-log RMSE follows the n^{-1/2} reference dashed line for both identity and efficient weighting; the efficient line sits below. Right: sampling-distribution clouds shrink toward θ₀ as n grows from 25 → 200 → 1000."
+/>
+
+Two consequences worth noting before §5. **Robustness to the weighting matrix.** Theorem 4.1 imposes no special structure on $W$ beyond positive-definiteness — *any* positive-definite limiting weighting matrix gives a consistent estimator. The first-step identity-weight GMM and the second-step efficient $\hat\Omega^{-1}$-weighted GMM are *both* consistent. **The proof template generalizes.** The four-step proof — uniform LLN on the integrand, uniform convergence of the criterion, identification of the population minimizer, argmin convergence — is the template for proving consistency of every extremum estimator in statistics: MLE, M-estimators, GEL, sieve estimators, neural-network ERM. GMM is the prototype.
+
+### 4.4 What can go wrong
+
+Four failure modes, each illustrating which assumption above is doing the work.
+
+**Global identification failure.** If the population moment $m(\theta) = 0$ has multiple solutions, $\theta_0$ is not the unique minimizer of $Q_0$ — assumption (iii) breaks. The sample criterion has multiple local minima of comparable depth, and the argmin is not a well-defined limit object. Mitigation: re-parametrize to break the symmetry, or use a sign-restricted optimizer.
+
+**Rank deficiency.** If $G_0$ has rank $< k$, the population criterion is *flat* along the null direction of $G_0^\top W G_0$ near $\theta_0$. The sample criterion inherits a near-flat ridge, the argmin is non-unique up to motion along the ridge, and the asymptotic variance in §5 blows up.
+
+**Weak identification.** $G_0$ has full column rank but is *nearly* rank-deficient. Consistency still holds in principle (Theorem 4.1 applies — the rank condition is local-identification, not consistency), but the rate of convergence is governed by $\lambda_{\min}(G_0^\top W G_0)^{-1/2}$. At finite samples, the consistency-implied Gaussian approximation breaks down — the sampling distribution has heavy tails and CI coverage drops. §9.4 develops the linear-IV special case.
+
+**Dependent data.** For non-i.i.d. data — time series, clustered samples — the LLN still applies under standard mixing or ergodicity conditions, but the moment-covariance $\Omega$ in §5 must account for autocorrelation (HAC / Newey–West estimators replace the simple sample covariance). Consistency *direction* (Theorem 4.1) carries over with minimal modification; the asymptotic variance does not.
+
+---
+
+## §5 — Asymptotic normality of GMM estimators
+
+§4 established that $\hat\theta_W \to_p \theta_0$. We now refine that result with the rate and limit distribution: $\sqrt{n}(\hat\theta_W - \theta_0) \to_d \mathcal{N}(0, V_W)$, where $V_W$ is the **sandwich variance** that gives Hansen's framework its characteristic asymptotic structure. Three ingredients — the Jacobian $G_0$, the weighting matrix $W$, and the moment-covariance $\Omega$ — enter the formula, and reading their interactions sets up the efficient-weighting choice of §6 and the J-statistic of §8.
+
+### 5.1 The sandwich variance formula
+
+<TheoremBlock type="theorem" number={5.1} title="Asymptotic normality of GMM">
+In addition to the consistency conditions of Theorem 4.1, assume (vii) $\theta_0$ lies in the interior of $\Theta$; (viii) $\mathbb{E}[\|g(X, \theta_0)\|^2] < \infty$ and $\Omega := \mathbb{E}[g(X, \theta_0)\, g(X, \theta_0)^\top]$ is positive-definite; (ix) $g(X, \cdot)$ is continuously differentiable on a neighborhood $\mathcal{N} \ni \theta_0$ for $P_0$-a.e. $X$, with a Jacobian uniform LLN and dominating function; (x) $G_0 := \mathbb{E}[\partial g(X, \theta_0) / \partial \theta^\top]$ has full column rank $k$. Then
+
+$$
+\sqrt{n}\,(\hat\theta_W - \theta_0) \;\to_d\; \mathcal{N}(0, V_W), \qquad
+V_W \;=\; (G_0^\top W G_0)^{-1} \, G_0^\top W \Omega W G_0 \, (G_0^\top W G_0)^{-1}.
+$$
+</TheoremBlock>
+
+The factor $G_0^\top W G_0$ is the **bread**; the factor $G_0^\top W \Omega W G_0$ is the **meat**. The bread appears twice (once on each side of the meat) because the GMM normal equations are obtained by left-multiplying the moment residual by $G_n^\top W$, so the inverse Hessian of the criterion enters the variance once for each application.
+
+Two special cases collapse the sandwich. In the **just-identified case** ($L = k$), $G_0$ is $k \times k$ and invertible by (x). Algebraic cancellation gives $V_W = G_0^{-1}\, \Omega \, G_0^{-\top}$ — the weighting matrix drops out, recovering the §2.3 just-identified-MoM variance. Under **efficient weighting** ($W = \Omega^{-1}$), the sandwich collapses to $V_{\Omega^{-1}} = (G_0^\top \Omega^{-1} G_0)^{-1}$. §6 will show this is the Loewner-minimum of $V_W$ over all positive-definite $W$ — Hansen's efficiency bound.
+
+### 5.2 Proof via Taylor expansion of the first-order conditions
+
+<TheoremBlock type="proof">
+The GMM estimator satisfies the first-order conditions $G_n(\hat\theta_W)^\top \, W_n \, \bar g_n(\hat\theta_W) = 0$. By consistency, $\hat\theta_W$ lies in the differentiability neighborhood $\mathcal{N}$ eventually. Five steps complete the argument.
+
+**Step 1 — mean-value expansion.** By the mean-value theorem applied component-wise to $\bar g_n$,
+
+$$
+\bar g_n(\hat\theta_W) \;=\; \bar g_n(\theta_0) \;+\; G_n(\bar\theta_n)\,(\hat\theta_W - \theta_0),
+$$
+
+where $\bar\theta_n$ lies on the segment from $\theta_0$ to $\hat\theta_W$.
+
+**Step 2 — substitute into the FOCs.** This gives $A_n \cdot (\hat\theta_W - \theta_0) = -G_n(\hat\theta_W)^\top W_n \bar g_n(\theta_0)$, where $A_n := G_n(\hat\theta_W)^\top W_n G_n(\bar\theta_n)$.
+
+**Step 3 — matrix convergence.** By consistency, the Jacobian uniform LLN, and continuous mapping, $A_n \to_p G_0^\top W G_0$. The rank condition (x) makes this invertible, so $A_n^{-1} \to_p (G_0^\top W G_0)^{-1}$.
+
+**Step 4 — CLT on the moment vector at $\theta_0$.** $\sqrt{n}\, \bar g_n(\theta_0) \to_d \mathcal{N}(0, \Omega)$ by the classical CLT applied to i.i.d. $g(X_i, \theta_0)$ with mean 0 and covariance $\Omega$.
+
+**Step 5 — Slutsky.** $\sqrt{n}\,(\hat\theta_W - \theta_0) = -A_n^{-1} G_n(\hat\theta_W)^\top W_n \cdot \sqrt{n}\, \bar g_n(\theta_0)$. The limit is a linear transformation of a Gaussian: $LZ$ with $L = -(G_0^\top W G_0)^{-1} G_0^\top W$ and $Z \sim \mathcal{N}(0, \Omega)$, so $LZ \sim \mathcal{N}(0, L \Omega L^\top) = \mathcal{N}(0, V_W)$.
+</TheoremBlock>
+
+*(Hansen 1982; textbook treatment in Newey & McFadden 1994 §2 and Hayashi 2000 Ch. 3.)* The proof is structurally identical to the just-identified case of §2.3, with one substitution: instead of inverting $\bar g_n(\hat\theta_n) = 0$ directly (impossible in the over-identified case), we invert the first-order conditions $G_n^\top W_n \bar g_n(\hat\theta_W) = 0$. The mapping from "$L$ moment-condition equations" to "$k$ first-order-condition equations" is achieved by left-multiplying by $G_n^\top W_n$, projecting the $L$-dimensional moment residual onto the $k$-dimensional parameter-direction subspace. This projection lives in the bread of the sandwich.
+
+### 5.3 Reading the sandwich
+
+The variance $V_W$ has three ingredients, each contributing a specific piece of statistical content. The Jacobian $G_0 = \mathbb{E}[\partial g / \partial \theta^\top]$ measures **signal strength** — how strongly the population moment responds to a parameter perturbation at the truth. A large $G_0$ (well-identified parameter, strong instruments) gives small $V_W$. The covariance $\Omega = \mathbb{E}[g g^\top]$ is the **moment-noise covariance** — diagonal entries capture per-moment noise levels, off-diagonals capture cross-moment correlations. The weighting matrix $W$ is the only ingredient under the analyst's control: different $W$'s produce different consistent estimators with different $V_W$'s.
+
+Three weighting values of practical interest: identity ($W = I$, easy to compute, generally suboptimal); diagonal inverse-variance ($W = \mathrm{diag}(1/\mathrm{Var}(g_j))$, captures heteroskedasticity but ignores correlations); efficient ($W = \Omega^{-1}$, achieves the Hansen bound). For score moments $g = \nabla \log p$, the efficient sandwich collapses to $V_{\Omega^{-1}} = \mathcal{I}^{-1}$, the Cramér–Rao bound — maximum likelihood is efficient GMM with score moments. The viz below makes the three ingredients literal: it shows how the bread / meat / sandwich operator-norms shift across weighting choices, and how the resulting 95% confidence ellipses nest.
+
+<SandwichDecomposer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/05_loewner_ellipses.png"
+  alt="Three 95% confidence ellipses for identity, diagonal, and efficient weightings overlaid on a θ_1, θ_2 plane"
+  caption="Figure 5.1 — 95% confidence ellipses for three weighting matrices on the running example. Identity (gray) and diagonal-inverse-variance (gold) ellipses contain the efficient (accent) ellipse — the Loewner-ordering inclusions are visible by eye."
+/>
+
+In practice we don't know $G_0$ or $\Omega$ exactly. The natural plug-in estimators are
+
+$$
+\hat G_n \;=\; \frac{1}{n} \sum_{i=1}^n \frac{\partial g(X_i, \hat\theta_W)}{\partial \theta^\top}, \qquad
+\hat\Omega_n \;=\; \frac{1}{n} \sum_{i=1}^n g(X_i, \hat\theta_W)\, g(X_i, \hat\theta_W)^\top,
+$$
+
+and the plug-in sandwich is $\hat V_W = (\hat G_n^\top W_n \hat G_n)^{-1}\, \hat G_n^\top W_n \hat\Omega_n W_n \hat G_n\, (\hat G_n^\top W_n \hat G_n)^{-1}$. Under the regularity conditions of Theorem 5.1, $\hat V_W \to_p V_W$, so confidence intervals built from $\hat V_W$ have asymptotically correct coverage. For dependent data, $\hat\Omega_n$ is replaced by a HAC estimator like Newey–West.
+
+### 5.4 Loewner ordering on asymptotic variances
+
+Different choices of $W$ produce different asymptotic variances. We compare them via the **Loewner ordering** on positive-semidefinite matrices: $V_1 \preceq V_2 \iff V_2 - V_1 \succeq 0 \iff u^\top V_1 u \le u^\top V_2 u \;\forall u$. The Loewner ordering captures the variance comparison faithfully: $V_1 \preceq V_2$ means every linear combination of $\hat\theta$ has smaller asymptotic variance under $W_1$ than under $W_2$. Equivalently, every confidence ellipse from $V_1$ is contained in the corresponding ellipse from $V_2$. The ordering is partial: not every two asymptotic-variance matrices are comparable. But there is a unique smallest element.
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/05_qq_normality.png"
+  alt="Q-Q plot of standardized GMM estimator components against the standard normal distribution at three sample sizes"
+  caption="Figure 5.2 — Q-Q plot of √n(θ̂_W − θ₀) standardized by the sandwich variance, against the standard normal. The asymptotic-normal approximation tightens visibly from n = 50 to n = 500."
+/>
+
+**Question.** Is there a $W$ that achieves $V_W \preceq V_{W'}$ for all positive-definite $W'$?
+
+**Answer (proved in §6).** Yes. The efficient weighting matrix $W^\star = \Omega^{-1}$ uniquely (up to positive scaling) achieves the Loewner-minimum $V_{W^\star} = (G_0^\top \Omega^{-1} G_0)^{-1} \;\preceq\; V_W$ for every positive-definite $W$.
+
+---
+
+## §6 — Efficient weighting and the Hansen bound
+
+§5 derived the sandwich asymptotic variance $V_W$ for any positive-definite $W$ and noted in §5.4 that the family $\{V_W\}_{W \succ 0}$ has a Loewner-minimum. This section proves that the minimum is achieved uniquely (up to positive scaling) at $W^\star = \Omega^{-1}$, derives the resulting **Hansen efficiency bound** $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$, and connects the bound to the semiparametric efficiency machinery from the prerequisite *Semiparametric Inference*. The agreement between Hansen's purely algebraic argument and the Hilbert-space tangent-space construction of the semiparametric efficiency bound is one of the most satisfying results in this part of asymptotic statistics.
+
+### 6.1 Minimizing the asymptotic variance
+
+We want to find the positive-definite weighting matrix $W$ that minimizes $V_W$ in the Loewner order. Direct calculus on the matrix-valued objective $V_W$ is awkward — the cone of positive-definite matrices has no obvious differential structure that makes "differentiating $V_W$ with respect to $W$" tractable. The standard reduction is to *scalar* sub-problems: for every direction $u \in \mathbb{R}^k \setminus \{0\}$, find the $W$ that minimizes the scalar variance $u^\top V_W u$. If a single $W^\star$ minimizes $u^\top V_W u$ for *every* $u$ simultaneously, that $W^\star$ is the Loewner-minimum of the family.
+
+The strategy is global rather than local: we will not differentiate at all. Instead we exhibit $W^\star$ directly and verify the Loewner inequality $V_W \succeq V_{W^\star}$ via a matrix Cauchy–Schwarz argument. This is Hansen's original 1982 proof technique, and it generalizes the classical Gauss–Markov / Aitken theorem to nonlinear moment-condition models.
+
+### 6.2 The efficient weighting matrix theorem
+
+<TheoremBlock type="theorem" number={6.1} title="Efficiency of Ω⁻¹-weighted GMM">
+Under the conditions of Theorem 5.1, for every positive-definite $W \in \mathbb{R}^{L \times L}$,
+
+$$
+V_W \;\succeq\; V^\star \;:=\; (G_0^\top \Omega^{-1} G_0)^{-1},
+$$
+
+with equality if and only if $W = c \Omega^{-1}$ for some scalar $c > 0$.
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+We invert and use matrix Cauchy–Schwarz, which is the cleaner form of the algebra.
+
+**Step 1 — whitening.** Let $\Omega = L L^\top$ be the Cholesky decomposition. Define $\tilde G := L^{-1} G_0$ and $\tilde W := L^\top W L$. Then $\tilde W$ is symmetric positive-definite, $\tilde G$ has full column rank $k$, and
+
+$$
+G_0^\top W G_0 = \tilde G^\top \tilde W \tilde G, \quad G_0^\top W \Omega W G_0 = \tilde G^\top \tilde W^2 \tilde G, \quad G_0^\top \Omega^{-1} G_0 = \tilde G^\top \tilde G.
+$$
+
+So $V_W^{-1} = \tilde G^\top \tilde W \tilde G \cdot (\tilde G^\top \tilde W^2 \tilde G)^{-1} \cdot \tilde G^\top \tilde W \tilde G$ and $V^{\star -1} = \tilde G^\top \tilde G$.
+
+**Step 2 — matrix Cauchy–Schwarz.** For any matrices $A, B$ with $B^\top B$ invertible,
+
+$$
+A^\top B \, (B^\top B)^{-1} \, B^\top A \;\preceq\; A^\top A,
+$$
+
+with equality iff $\mathrm{col}(A) \subseteq \mathrm{col}(B)$. Proof: $P_B := B (B^\top B)^{-1} B^\top$ is the orthogonal projection onto $\mathrm{col}(B)$, so $I - P_B$ is positive semi-definite, and $A^\top A - A^\top B (B^\top B)^{-1} B^\top A = A^\top (I - P_B) A \succeq 0$.
+
+**Step 3 — apply with $A = \tilde G$, $B = \tilde W \tilde G$.** The pieces compute to $V_W^{-1} \preceq V^{\star -1}$. Inverting reverses the Loewner order:
+
+$$
+V_W \;\succeq\; V^\star.
+$$
+
+**Step 4 — uniqueness.** Equality requires $\mathrm{col}(\tilde G) \subseteq \mathrm{col}(\tilde W \tilde G)$, which forces $\tilde W = c I_L$ for some $c > 0$ on $\mathrm{col}(\tilde G)$. Translating back, $W = c \Omega^{-1}$.
+</TheoremBlock>
+
+*(Hansen 1982; textbook treatment in Newey & McFadden 1994 §2.3.)*
+
+### 6.3 The Hansen efficiency bound
+
+The single-matrix form $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$ — the **Hansen efficiency bound** — is structurally cleaner than the sandwich $V_W$. The collapse from "bread × meat × bread" to a single matrix happens because under efficient weighting the meat equals the bread:
+
+$$
+G_0^\top W^\star \Omega W^\star G_0 \;=\; G_0^\top \Omega^{-1} \Omega \Omega^{-1} G_0 \;=\; G_0^\top \Omega^{-1} G_0 \;=\; (V^\star)^{-1}.
+$$
+
+The visualization below makes this concrete. Panel A: a scatter of $(\log \det V_W, \mathrm{tr}\, V_W)$ over 200 random positive-definite weighting matrices drawn from a Wishart distribution. $V^\star$ sits at the southwest extreme — there is no $W$ that yields a smaller uncertainty volume *and* a smaller total uncertainty. Panel B: nested 95% confidence ellipses for the interpolation $W_\alpha = (1 - \alpha) I + \alpha \Omega^{-1}$ as $\alpha$ slides from 0 (identity) to 1 (efficient).
+
+<EfficiencyFrontierExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/06_hansen_bound.png"
+  alt="Histogram of det(V*)/det(V_W) ratios across random PD W's, with nested ellipses showing W_alpha shrinkage"
+  caption="Figure 6.1 — Hansen-bound visualization. Left: histogram of det(V*)/det(V_W) across 5000 Wishart-sampled W's — the ratio is always ≤ 1, confirming V* is the determinant minimum. Right: nested ellipses for W_α = (1−α) I + α Ω⁻¹ as α varies from 0 to 1; the ellipse shrinks monotonically by Theorem 6.1."
+/>
+
+### 6.4 Connection to the semiparametric efficiency bound
+
+The Hansen bound $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$ admits a second derivation — entirely independent of Hansen's algebra — from the semiparametric efficiency machinery developed in the prerequisite *Semiparametric Inference*. The two derivations are different proof technologies but they yield the *same* lower bound.
+
+For the moment-condition model $\mathcal{P} = \{P : \mathbb{E}_P[g(X, \theta(P))] = 0\}$, the efficient influence function (EIF) for $\theta_0$ at $P_0$ is (Bickel–Klaassen–Ritov–Wellner 1993, Theorem 5.1)
+
+$$
+\phi^\star(X) \;=\; -(G_0^\top \Omega^{-1} G_0)^{-1} \, G_0^\top \Omega^{-1} \, g(X, \theta_0).
+$$
+
+Computing its variance:
+
+$$
+V_{\rm sp}^\star \;=\; \mathbb{E}[\phi^\star \phi^{\star\top}] \;=\; (G_0^\top \Omega^{-1} G_0)^{-1} G_0^\top \Omega^{-1} \cdot \Omega \cdot \Omega^{-1} G_0 (G_0^\top \Omega^{-1} G_0)^{-1} \;=\; (G_0^\top \Omega^{-1} G_0)^{-1} \;=\; V^\star.
+$$
+
+The semiparametric bound equals the Hansen bound. Efficient GMM is therefore not merely efficient *within the GMM family* (Theorem 6.1) — it is efficient *within the entire semiparametric class of RAL estimators of $\theta_0$ under the moment-condition restriction*. No future ML, nonparametric, or regularized estimator can asymptotically beat $V^\star$ on this model class. This is the rigorous statement of what makes GMM the canonical estimator for moment-condition models: it is information-theoretically optimal in the strongest sense available.

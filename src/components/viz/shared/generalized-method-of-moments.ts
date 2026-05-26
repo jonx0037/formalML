@@ -662,3 +662,147 @@ export function sampleSensorObservations(
   }
   return X;
 }
+
+// =============================================================================
+// Wave 2 — sandwich variance, Loewner ordering, efficient weighting, Wishart.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Sandwich asymptotic variance V_W = (GᵀWG)⁻¹ GᵀWΩWG (GᵀWG)⁻¹.
+// G is the population Jacobian E[∂g/∂θᵀ] (L × k), Ω the moment covariance
+// (L × L), W the weighting (L × L). For the running example G = -A.
+// -----------------------------------------------------------------------------
+
+export function sandwichVariance(G: Mat, W: Mat, Omega: Mat): Mat {
+  const Gt = matTranspose(G);
+  const GtW = matMul(Gt, W); // k × L
+  const bread = matMul(GtW, G); // k × k
+  const breadInv = matInverse(bread);
+  const meatRight = matMul(W, G); // L × k
+  const meatMid = matMul(Omega, meatRight); // L × k
+  const meat = matMul(GtW, meatMid); // k × k
+  // V = breadInv · meat · breadInv
+  return matMul(breadInv, matMul(meat, breadInv));
+}
+
+// Efficient weighting W* = Ω⁻¹ via Cholesky-backsolve.
+export function efficientWeight(Omega: Mat): Mat {
+  return matInverse(Omega);
+}
+
+// Hansen efficiency bound V* = (Gᵀ Ω⁻¹ G)⁻¹.
+export function hansenBound(G: Mat, Omega: Mat): Mat {
+  const OmegaInv = matInverse(Omega);
+  const Gt = matTranspose(G);
+  const GtOmegaInv = matMul(Gt, OmegaInv);
+  return matInverse(matMul(GtOmegaInv, G));
+}
+
+// -----------------------------------------------------------------------------
+// Loewner ordering check on symmetric matrices. Returns the qualitative
+// answer (A ⪯ B, B ⪯ A, or incomparable) via eigenvalues of B - A and A - B.
+// Tolerance accounts for floating-point noise: an eigenvalue within ε of zero
+// counts as zero.
+// -----------------------------------------------------------------------------
+
+export type LoewnerResult = 'A_le_B' | 'B_le_A' | 'incomparable' | 'equal';
+
+export function loewnerCompare(A: Mat, B: Mat, eps = 1e-10): LoewnerResult {
+  const n = A.length;
+  const diffBA: Mat = zerosMat(n, n);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) diffBA[i][j] = B[i][j] - A[i][j];
+  const eigs = eigvalsSymmetric(diffBA);
+  const minE = Math.min(...eigs);
+  const maxE = Math.max(...eigs);
+  if (Math.abs(minE) <= eps && Math.abs(maxE) <= eps) return 'equal';
+  if (minE >= -eps) return 'A_le_B';
+  if (maxE <= eps) return 'B_le_A';
+  return 'incomparable';
+}
+
+// -----------------------------------------------------------------------------
+// Wishart sampler — draws a random L × L positive-definite matrix from the
+// Wishart(df, scale) distribution by sampling Y_i ~ N(0, scale) for i = 1..df
+// and forming Σ Y_i Y_iᵀ. Used by the §6 efficiency-frontier viz to draw the
+// scatter of random PD weighting matrices.
+// -----------------------------------------------------------------------------
+
+export function sampleWishart(rng: () => number, df: number, scale: Mat): Mat {
+  const L = scale.length;
+  const cholS = cholesky(scale);
+  const gauss = gaussianFrom(rng);
+  const W: Mat = zerosMat(L, L);
+  for (let i = 0; i < df; i++) {
+    // y = cholS · z, where z ~ N(0, I_L)
+    const z = new Array(L);
+    for (let j = 0; j < L; j++) z[j] = gauss();
+    const y = matVec(cholS, z);
+    for (let a = 0; a < L; a++) {
+      for (let b = 0; b < L; b++) {
+        W[a][b] += y[a] * y[b];
+      }
+    }
+  }
+  return W;
+}
+
+// -----------------------------------------------------------------------------
+// 95% confidence ellipse parameters from a 2×2 covariance matrix V. Returns
+// semi-major / semi-minor axes (in θ-space units, suitable for D3 ellipse
+// drawing) and the rotation angle (radians) of the major axis from horizontal.
+// At 95% confidence with k = 2 degrees of freedom, the scaling factor is
+// √(χ²₂,₀.₉₅) ≈ √5.991 ≈ 2.4477.
+// -----------------------------------------------------------------------------
+
+export interface EllipseParams {
+  rx: number; // half-major axis length (data units)
+  ry: number; // half-minor axis length
+  angle: number; // radians, CCW from horizontal
+}
+
+export function confidenceEllipse2D(V: Mat, alpha = 0.05, nForSqrtNScale = 1): EllipseParams {
+  // χ²₂(1-α) critical values for the most common α.
+  const chiCrit = alpha === 0.05 ? 5.991464547107981 : alpha === 0.01 ? 9.21034037197618 : alpha === 0.10 ? 4.605170185988091 : 5.991464547107981;
+  const scale = Math.sqrt(chiCrit / nForSqrtNScale);
+  const a = V[0][0];
+  const b = V[1][1];
+  const c = V[0][1];
+  const trace = a + b;
+  const det = a * b - c * c;
+  const sqrtDisc = Math.sqrt(Math.max(0, (trace * trace) / 4 - det));
+  const lam1 = trace / 2 + sqrtDisc; // larger eigenvalue
+  const lam2 = trace / 2 - sqrtDisc; // smaller eigenvalue
+  const rx = scale * Math.sqrt(Math.max(lam1, 0));
+  const ry = scale * Math.sqrt(Math.max(lam2, 0));
+  // Rotation angle of the major axis: eigenvector of V at lam1.
+  const angle = Math.abs(c) < 1e-12 ? (a >= b ? 0 : Math.PI / 2) : Math.atan2(lam1 - a, c);
+  return { rx, ry, angle };
+}
+
+// -----------------------------------------------------------------------------
+// Operator (spectral) norm of a symmetric matrix = largest absolute eigenvalue.
+// Used by SandwichDecomposer to show bread / meat / V_W magnitudes on bars.
+// -----------------------------------------------------------------------------
+
+export function operatorNorm(A: Mat): number {
+  const eigs = eigvalsSymmetric(A);
+  let m = 0;
+  for (const e of eigs) {
+    const a = Math.abs(e);
+    if (a > m) m = a;
+  }
+  return m;
+}
+
+// Trace and determinant of a 2×2 matrix (used as scalar summaries for the
+// efficiency-frontier scatter — det V is "uncertainty volume", tr V is
+// "total uncertainty"). Generic determinant via LU isn't worth the code for
+// 2×2; we keep this specialized.
+export function trace2x2(A: Mat): number {
+  return A[0][0] + A[1][1];
+}
+
+export function det2x2(A: Mat): number {
+  return A[0][0] * A[1][1] - A[0][1] * A[1][0];
+}
+

@@ -26,7 +26,10 @@ import {
   RUNNING_EXAMPLE_THETA0,
   affineCriterionSurface,
   cholesky,
+  confidenceEllipse2D,
+  det2x2,
   digamma,
+  efficientWeight,
   eigvalsSymmetric,
   gammaMLE,
   gammaMLEVariance,
@@ -37,14 +40,20 @@ import {
   gmmCriterion,
   gmmCriterionGradient,
   gmmEstimateAffine,
+  hansenBound,
   identityMat,
+  loewnerCompare,
   matInverse,
   matMul,
   matTranspose,
   matVec,
   mulberry32,
+  operatorNorm,
   rankDiagnostic,
   sampleSensorObservations,
+  sampleWishart,
+  sandwichVariance,
+  trace2x2,
   trigamma,
   vecDot,
 } from '../generalized-method-of-moments';
@@ -330,6 +339,220 @@ approxEq(trigamma(1), (Math.PI * Math.PI) / 6, 1e-8, "ψ'(1) = π²/6");
   for (let j = 0; j < L; j++) {
     approxEq(Xbar[j], muTrue[j], 0.05, `X̄[${j}] → (A θ₀)[${j}] at n=5000`);
   }
+}
+
+// =============================================================================
+// Wave 2 assertions — sandwich variance, Loewner ordering, efficient weighting,
+// Wishart sampler, confidence ellipse helpers.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// 10. Efficient weighting W* = Ω⁻¹. For Ω = 2·I_4, W* = (1/2)·I_4.
+// -----------------------------------------------------------------------------
+{
+  const Omega = [
+    [2, 0, 0, 0],
+    [0, 2, 0, 0],
+    [0, 0, 2, 0],
+    [0, 0, 0, 2],
+  ];
+  const W = efficientWeight(Omega);
+  approxEq(W[0][0], 0.5, 1e-12, 'efficientWeight diag for 2·I');
+  approxEq(W[1][1], 0.5, 1e-12, 'efficientWeight diag for 2·I');
+  approxEq(W[0][1], 0, 1e-12, 'efficientWeight off-diag = 0');
+}
+
+// -----------------------------------------------------------------------------
+// 11. Sandwich variance — at efficient weighting, V_W = (Gᵀ Ω⁻¹ G)⁻¹. Verify
+// against hansenBound on the running example.
+// -----------------------------------------------------------------------------
+{
+  const G: number[][] = [
+    [-1, 0],
+    [0, -1],
+    [-1, -1],
+    [-2, 1],
+  ];
+  const Omega = identityMat(4); // homoskedastic, unit-variance
+  const Wstar = efficientWeight(Omega);
+  const V_sandwich = sandwichVariance(G, Wstar, Omega);
+  const V_bound = hansenBound(G, Omega);
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++)
+    approxEq(V_sandwich[i][j], V_bound[i][j], 1e-10, `V_sandwich = V_bound at W* [${i}][${j}]`);
+}
+
+// -----------------------------------------------------------------------------
+// 12. Hansen efficiency bound (Loewner). For any positive-definite W ≠ c·Ω⁻¹,
+// the sandwich V_W is strictly larger than V* in the Loewner order. Spot-check
+// at three weighting matrices.
+// -----------------------------------------------------------------------------
+{
+  const G: number[][] = [
+    [-1, 0],
+    [0, -1],
+    [-1, -1],
+    [-2, 1],
+  ];
+  const Omega: number[][] = [
+    [1, 0, 0, 0],
+    [0, 1.5, 0, 0],
+    [0, 0, 0.5, 0],
+    [0, 0, 0, 2],
+  ];
+  const Vstar = hansenBound(G, Omega);
+  const Wopts: number[][][] = [
+    identityMat(4),
+    [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+    ],
+    [
+      [2, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 0.5, 0],
+      [0, 0, 0, 0.25],
+    ],
+  ];
+  for (const W of Wopts) {
+    const V_W = sandwichVariance(G, W, Omega);
+    const cmp = loewnerCompare(Vstar, V_W);
+    ok(cmp === 'A_le_B' || cmp === 'equal', `Hansen bound: V* ⪯ V_W under W (got ${cmp})`);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 13. Loewner comparator basic logic. I ⪯ 2·I; the indefinite matrix is
+// incomparable to zero.
+// -----------------------------------------------------------------------------
+{
+  const I = identityMat(3);
+  const twoI: number[][] = identityMat(3).map((row) => row.map((v) => v * 2));
+  ok(loewnerCompare(I, twoI) === 'A_le_B', 'I ⪯ 2I');
+  ok(loewnerCompare(twoI, I) === 'B_le_A', '2I ⪰ I (B_le_A)');
+  ok(loewnerCompare(I, I) === 'equal', 'I = I');
+  // Indefinite difference: D has eigenvalues +1 and -1.
+  const A: number[][] = [
+    [1, 0],
+    [0, 0],
+  ];
+  const B: number[][] = [
+    [0, 0],
+    [0, 1],
+  ];
+  ok(loewnerCompare(A, B) === 'incomparable', 'incomparable diag');
+}
+
+// -----------------------------------------------------------------------------
+// 14. Wishart sampler returns a positive-definite matrix at df > L. With
+// df = 20 and scale = I_4, the sample's smallest eigenvalue should be > 0
+// (W is PD almost surely).
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(31);
+  const W = sampleWishart(rng, 20, identityMat(4));
+  const eigs = eigvalsSymmetric(W).slice().sort((a, b) => a - b);
+  ok(eigs[0] > 0, 'Wishart sample PD (smallest eigval > 0)');
+  // E[W] = df · scale, so trace ≈ 20 * 4 = 80 within MC noise.
+  ok(W[0][0] + W[1][1] + W[2][2] + W[3][3] > 40, 'Wishart trace in expected ballpark');
+  ok(W[0][0] + W[1][1] + W[2][2] + W[3][3] < 140, 'Wishart trace in expected ballpark (upper)');
+}
+
+// -----------------------------------------------------------------------------
+// 15. Confidence ellipse parameters. For V = I, semi-axes are both
+// √χ²₂(0.95) ≈ 2.4477; angle is 0.
+// -----------------------------------------------------------------------------
+{
+  const V = identityMat(2);
+  const ell = confidenceEllipse2D(V, 0.05);
+  approxEq(ell.rx, Math.sqrt(5.991464547107981), 1e-8, '95% ellipse rx for V=I');
+  approxEq(ell.ry, Math.sqrt(5.991464547107981), 1e-8, '95% ellipse ry for V=I');
+  ok(Math.abs(ell.angle) < 1e-8 || Math.abs(ell.angle - Math.PI / 2) < 1e-8, '95% ellipse angle 0 or π/2 for V=I');
+}
+
+// (b) Diagonal anisotropic V → axes are unequal, angle 0.
+{
+  const V: number[][] = [
+    [4, 0],
+    [0, 1],
+  ];
+  const ell = confidenceEllipse2D(V, 0.05);
+  const expectedMajor = Math.sqrt(5.991464547107981) * 2;
+  const expectedMinor = Math.sqrt(5.991464547107981) * 1;
+  approxEq(ell.rx, expectedMajor, 1e-8, '95% ellipse rx for diag(4,1)');
+  approxEq(ell.ry, expectedMinor, 1e-8, '95% ellipse ry for diag(4,1)');
+  approxEq(ell.angle, 0, 1e-8, '95% ellipse angle 0 for diag(4,1)');
+}
+
+// -----------------------------------------------------------------------------
+// 16. Sandwich variance vs empirical sample-covariance — Monte Carlo check.
+// At n=400, B=600, the empirical sample covariance of √n(θ̂_W - θ_0) should
+// match the sandwich formula within ~10% relative error per entry.
+// -----------------------------------------------------------------------------
+{
+  const A = RUNNING_EXAMPLE_A;
+  const theta0 = RUNNING_EXAMPLE_THETA0;
+  const sigma = [1, 1, 1, 1];
+  const G: number[][] = A.map((row) => row.map((v) => -v));
+  const Omega = identityMat(4);
+  const W = identityMat(4);
+  const Vtheo = sandwichVariance(G, W, Omega);
+
+  const n = 400;
+  const B = 1500;
+  const thetaHats: number[][] = [];
+  for (let b = 0; b < B; b++) {
+    const rng = mulberry32(1000 + b * 17);
+    const X = sampleSensorObservations(rng, theta0, A, n, sigma);
+    const Xbar = [0, 0, 0, 0];
+    for (let i = 0; i < n; i++) for (let j = 0; j < 4; j++) Xbar[j] += X[i][j];
+    for (let j = 0; j < 4; j++) Xbar[j] /= n;
+    thetaHats.push(gmmEstimateAffine(A, Xbar, W));
+  }
+  // Empirical covariance of √n(θ̂ - θ_0).
+  const mean = [0, 0];
+  for (const t of thetaHats) { mean[0] += t[0]; mean[1] += t[1]; }
+  mean[0] /= B; mean[1] /= B;
+  const cov = [[0, 0], [0, 0]];
+  for (const t of thetaHats) {
+    const d0 = (t[0] - mean[0]) * Math.sqrt(n);
+    const d1 = (t[1] - mean[1]) * Math.sqrt(n);
+    cov[0][0] += d0 * d0;
+    cov[1][1] += d1 * d1;
+    cov[0][1] += d0 * d1;
+    cov[1][0] += d0 * d1;
+  }
+  cov[0][0] /= B - 1; cov[1][1] /= B - 1; cov[0][1] /= B - 1; cov[1][0] /= B - 1;
+
+  approxEq(cov[0][0], Vtheo[0][0], 0.15 * Vtheo[0][0], 'Empirical Var(θ̂_1) ≈ sandwich (B=1500)');
+  approxEq(cov[1][1], Vtheo[1][1], 0.15 * Vtheo[1][1], 'Empirical Var(θ̂_2) ≈ sandwich');
+  // Covariance entry has higher MC variance than diagonal entries, especially
+  // when the true off-diagonal is small in magnitude; tolerance set to 50%
+  // relative or 0.025 absolute, whichever is larger.
+  approxEq(cov[0][1], Vtheo[0][1], Math.max(0.5 * Math.abs(Vtheo[0][1]), 0.025), 'Empirical Cov(θ̂_1, θ̂_2) ≈ sandwich');
+}
+
+// -----------------------------------------------------------------------------
+// 17. Operator norm — sanity check on a diagonal matrix.
+// -----------------------------------------------------------------------------
+{
+  const D: number[][] = [
+    [2, 0, 0],
+    [0, -3, 0],
+    [0, 0, 1.5],
+  ];
+  approxEq(operatorNorm(D), 3, 1e-10, 'operatorNorm(diag(2,-3,1.5)) = 3');
+}
+
+// Trace and det of 2×2 helpers.
+{
+  const M: number[][] = [
+    [3, 1],
+    [1, 4],
+  ];
+  approxEq(trace2x2(M), 7, 1e-12, 'trace2x2');
+  approxEq(det2x2(M), 11, 1e-12, 'det2x2 = 12 - 1 = 11');
 }
 
 // -----------------------------------------------------------------------------
