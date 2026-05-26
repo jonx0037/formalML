@@ -1283,6 +1283,312 @@ export interface ARResult {
   upper: number | null;
 }
 
+// =============================================================================
+// Wave 5 — Empirical likelihood (Owen 1988, 1990), CUE, Robinson partial-linear
+// moment + simple DML estimator for in-browser MC, heteroskedastic OLS sandwich.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Empirical likelihood inner-Newton on λ. At fixed θ, solve
+//   minimize over λ ∈ R^L: -(1/n) Σ log(1 + λ' g_i(θ)),
+// constraint 1 + λ' g_i > 0 for all i. Newton step:
+//   λ_{t+1} = λ_t + H^{-1} grad, where
+//   grad = (1/n) Σ g_i / (1 + λ' g_i),  H = (1/n) Σ g_i g_i' / (1 + λ' g_i)^2.
+// Backtrack the step to maintain feasibility.
+// -----------------------------------------------------------------------------
+
+export function elInnerLambda(gAtTheta: Mat, tol = 1e-8, maxIter = 50): Vec {
+  const n = gAtTheta.length;
+  const L = gAtTheta[0].length;
+  let lambda: Vec = new Array(L).fill(0);
+  for (let iter = 0; iter < maxIter; iter++) {
+    const grad: Vec = new Array(L).fill(0);
+    const H: Mat = zerosMat(L, L);
+    for (let i = 0; i < n; i++) {
+      let dot = 0;
+      for (let a = 0; a < L; a++) dot += lambda[a] * gAtTheta[i][a];
+      const denom = 1 + dot;
+      if (denom <= 0) return lambda; // give up at the boundary
+      for (let a = 0; a < L; a++) grad[a] += gAtTheta[i][a] / denom;
+      for (let a = 0; a < L; a++)
+        for (let b = 0; b < L; b++)
+          H[a][b] += (gAtTheta[i][a] * gAtTheta[i][b]) / (denom * denom);
+    }
+    for (let a = 0; a < L; a++) grad[a] /= n;
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) H[a][b] /= n;
+    // Newton step (note: −∇² of the objective is the H above; Newton update is +H^{-1} grad).
+    let step: Vec;
+    try {
+      step = matVec(matInverse(H), grad);
+    } catch {
+      return lambda;
+    }
+    // Backtrack to keep 1 + (λ + α·step)' g_i > 0 for all i.
+    let alpha = 1.0;
+    let accepted = false;
+    for (let bt = 0; bt < 20; bt++) {
+      let feasible = true;
+      const lambdaNext = lambda.map((v, a) => v + alpha * step[a]);
+      for (let i = 0; i < n; i++) {
+        let dot = 0;
+        for (let a = 0; a < L; a++) dot += lambdaNext[a] * gAtTheta[i][a];
+        if (1 + dot <= 0) { feasible = false; break; }
+      }
+      if (feasible) { lambda = lambdaNext; accepted = true; break; }
+      alpha *= 0.5;
+    }
+    if (!accepted) return lambda;
+    let stepNorm = 0;
+    for (let a = 0; a < L; a++) stepNorm += step[a] * step[a];
+    if (Math.sqrt(stepNorm) < tol) break;
+  }
+  return lambda;
+}
+
+// EL log-likelihood-ratio statistic at θ: 2 Σ log(1 + λ(θ)' g_i(θ)).
+export function elLogR(gAtTheta: Mat): number {
+  const lambda = elInnerLambda(gAtTheta);
+  const n = gAtTheta.length;
+  const L = gAtTheta[0].length;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    let dot = 0;
+    for (let a = 0; a < L; a++) dot += lambda[a] * gAtTheta[i][a];
+    sum += Math.log(Math.max(1 + dot, 1e-12));
+  }
+  return 2 * sum;
+}
+
+// EL estimator over θ via grid search on a 2D box (running example: k=2).
+// Affine moment function only. Returns the minimizer of elLogR(θ) over the
+// grid. For larger k, this needs a proper optimizer (BFGS).
+export function elAffineGridEstimate(X: Mat, A: Mat, thetaBounds: [number, number, number, number], resolution = 25): Vec {
+  const n = X.length;
+  const L = A.length;
+  const [t1Min, t1Max, t2Min, t2Max] = thetaBounds;
+  let best: Vec = [t1Min, t2Min];
+  let bestVal = Infinity;
+  for (let i = 0; i < resolution; i++) {
+    for (let j = 0; j < resolution; j++) {
+      const t1 = t1Min + (i / (resolution - 1)) * (t1Max - t1Min);
+      const t2 = t2Min + (j / (resolution - 1)) * (t2Max - t2Min);
+      const Atheta = matVec(A, [t1, t2]);
+      const gAt: Mat = X.map((row) => row.map((v, k) => v - Atheta[k]));
+      const val = elLogR(gAt);
+      if (val < bestVal) {
+        bestVal = val;
+        best = [t1, t2];
+      }
+    }
+  }
+  return best;
+}
+
+// -----------------------------------------------------------------------------
+// CUE estimator for affine moments — joint optimization over θ with W = Ω̂(θ)⁻¹.
+// Implemented as grid search on a 2D box for the running example. For
+// larger problems use BFGS.
+// -----------------------------------------------------------------------------
+
+export function cueAffineGridEstimate(X: Mat, A: Mat, thetaBounds: [number, number, number, number], resolution = 25): Vec {
+  const n = X.length;
+  const L = A.length;
+  const [t1Min, t1Max, t2Min, t2Max] = thetaBounds;
+  let best: Vec = [t1Min, t2Min];
+  let bestVal = Infinity;
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  for (let i = 0; i < resolution; i++) {
+    for (let j = 0; j < resolution; j++) {
+      const t1 = t1Min + (i / (resolution - 1)) * (t1Max - t1Min);
+      const t2 = t2Min + (j / (resolution - 1)) * (t2Max - t2Min);
+      const Atheta = matVec(A, [t1, t2]);
+      const Omega: Mat = zerosMat(L, L);
+      for (let r = 0; r < n; r++) {
+        for (let a = 0; a < L; a++)
+          for (let b = 0; b < L; b++)
+            Omega[a][b] += (X[r][a] - Atheta[a]) * (X[r][b] - Atheta[b]);
+      }
+      for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) Omega[a][b] /= n;
+      let W: Mat;
+      try {
+        W = matInverse(Omega);
+      } catch {
+        continue;
+      }
+      const val = gmmCriterion([t1, t2], A, Xbar, W, n);
+      if (val < bestVal) {
+        bestVal = val;
+        best = [t1, t2];
+      }
+    }
+  }
+  return best;
+}
+
+// -----------------------------------------------------------------------------
+// Heteroskedastic OLS sandwich for §11.2 viz. Estimator: ordinary OLS.
+// Naive (homoskedastic) variance: σ̂² (X'X)⁻¹.
+// Sandwich (Eicker-Huber-White): (X'X)⁻¹ X' diag(ê²) X (X'X)⁻¹.
+// Returns both, plus the 95% CI half-widths.
+// -----------------------------------------------------------------------------
+
+export interface SandwichCoverageResult {
+  beta: number;
+  varNaive: number;
+  varSandwich: number;
+  ciNaiveHW: number;
+  ciSandwichHW: number;
+}
+
+export function olsHetSandwich(Y: Vec, X: Vec): SandwichCoverageResult {
+  const n = Y.length;
+  let xx = 0;
+  let xy = 0;
+  for (let i = 0; i < n; i++) {
+    xx += X[i] * X[i];
+    xy += X[i] * Y[i];
+  }
+  const beta = xy / xx;
+  let rss = 0;
+  let meatSum = 0;
+  for (let i = 0; i < n; i++) {
+    const e = Y[i] - X[i] * beta;
+    rss += e * e;
+    meatSum += X[i] * X[i] * e * e;
+  }
+  const sigma2 = rss / (n - 1);
+  const varNaive = sigma2 / xx;
+  // (X'X)⁻¹ X' diag(ê²) X (X'X)⁻¹  = meatSum / xx²
+  const varSandwich = meatSum / (xx * xx);
+  const z = 1.959963984540054; // 95%
+  return {
+    beta,
+    varNaive,
+    varSandwich,
+    ciNaiveHW: z * Math.sqrt(varNaive),
+    ciSandwichHW: z * Math.sqrt(varSandwich),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Partial-linear DML for §12.2 viz. Polynomial-basis nuisance regression
+// (in lieu of random forests — keeps the viz CPU-cheap and self-contained).
+// Cross-fitting via K folds.
+// -----------------------------------------------------------------------------
+
+function polyBasis(w: number, deg: number): Vec {
+  const out: Vec = [1];
+  let cur = 1;
+  for (let d = 1; d <= deg; d++) {
+    cur *= w;
+    out.push(cur);
+  }
+  return out;
+}
+
+function polyOLS(W: Vec, Y: Vec, deg: number): Vec {
+  // Closed-form OLS of Y on polynomial(W). Build the n × (deg+1) design and
+  // solve normal equations.
+  const n = W.length;
+  const p = deg + 1;
+  const Xt: Mat = zerosMat(p, n);
+  for (let i = 0; i < n; i++) {
+    const phi = polyBasis(W[i], deg);
+    for (let j = 0; j < p; j++) Xt[j][i] = phi[j];
+  }
+  const XtX: Mat = zerosMat(p, p);
+  const XtY: Vec = new Array(p).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < p; a++) {
+      XtY[a] += Xt[a][i] * Y[i];
+      for (let b = 0; b < p; b++) XtX[a][b] += Xt[a][i] * Xt[b][i];
+    }
+  }
+  // Tikhonov ridge for stability at small fold sizes.
+  for (let a = 0; a < p; a++) XtX[a][a] += 1e-6;
+  return matVec(matInverse(XtX), XtY);
+}
+
+function polyEval(W: number, coefs: Vec, deg: number): number {
+  const phi = polyBasis(W, deg);
+  let s = 0;
+  for (let a = 0; a < coefs.length; a++) s += coefs[a] * phi[a];
+  return s;
+}
+
+export interface DMLResult {
+  thetaDML: number;
+  thetaOLS: number;
+  thetaNaive: number;
+}
+
+export function dmlPartialLinear(
+  Y: Vec,
+  X: Vec,
+  W: Vec,
+  theta0: number,
+  K = 5,
+  deg = 4,
+): DMLResult {
+  const n = Y.length;
+  // Naive plug-in: estimate g, m on whole sample, residualize, OLS.
+  const cG = polyOLS(W, Y, deg);
+  const cM = polyOLS(W, X, deg);
+  let numNaive = 0;
+  let denNaive = 0;
+  for (let i = 0; i < n; i++) {
+    const yt = Y[i] - polyEval(W[i], cG, deg);
+    const xt = X[i] - polyEval(W[i], cM, deg);
+    numNaive += xt * yt;
+    denNaive += xt * xt;
+  }
+  const thetaNaive = numNaive / denNaive;
+  // DML cross-fitting.
+  let numD = 0;
+  let denD = 0;
+  const indices = Array.from({ length: n }, (_, i) => i);
+  for (let k = 0; k < K; k++) {
+    const foldStart = Math.floor((k * n) / K);
+    const foldEnd = Math.floor(((k + 1) * n) / K);
+    const inFold = new Set(indices.slice(foldStart, foldEnd));
+    const Wtr: Vec = []; const Ytr: Vec = []; const Xtr: Vec = [];
+    for (let i = 0; i < n; i++) if (!inFold.has(i)) { Wtr.push(W[i]); Ytr.push(Y[i]); Xtr.push(X[i]); }
+    const cGk = polyOLS(Wtr, Ytr, deg);
+    const cMk = polyOLS(Wtr, Xtr, deg);
+    for (let i = foldStart; i < foldEnd; i++) {
+      const yt = Y[i] - polyEval(W[i], cGk, deg);
+      const xt = X[i] - polyEval(W[i], cMk, deg);
+      numD += xt * yt;
+      denD += xt * xt;
+    }
+  }
+  const thetaDML = numD / denD;
+  // OLS (no nuisance correction).
+  let xy = 0; let xx = 0;
+  for (let i = 0; i < n; i++) { xy += X[i] * Y[i]; xx += X[i] * X[i]; }
+  return { thetaDML, thetaOLS: xy / xx, thetaNaive };
+}
+
+// Simulate the partial-linear DGP: Y = X θ_0 + g_0(W) + ε,  X = m_0(W) + v.
+// Closed-form g_0(W) = sin(πW), m_0(W) = W² as "smooth but nonlinear" nuisances.
+export function simulatePartialLinear(rng: () => number, theta0: number, n: number): { Y: Vec; X: Vec; W: Vec } {
+  const gauss = gaussianFrom(rng);
+  const W: Vec = []; const X: Vec = []; const Y: Vec = [];
+  for (let i = 0; i < n; i++) {
+    const w = (rng() - 0.5) * 2; // uniform on (-1, 1)
+    const v = 0.5 * gauss();
+    const eps = 0.5 * gauss();
+    const m0w = w * w;
+    const g0w = Math.sin(Math.PI * w);
+    const xi = m0w + v;
+    const yi = xi * theta0 + g0w + eps;
+    W.push(w); X.push(xi); Y.push(yi);
+  }
+  return { Y, X, W };
+}
+
 export function andersonRubinSet(Y: Vec, X: Vec, Z: Mat, thetaGrid: Vec, alpha = 0.05): ARResult {
   const n = Y.length;
   const L = Z[0].length;

@@ -216,6 +216,9 @@ import TwoStepGMMWalkthrough from '../../components/viz/TwoStepGMMWalkthrough.ts
 import JStatisticDistributionExplorer from '../../components/viz/JStatisticDistributionExplorer.tsx';
 import LinearIVPlayground from '../../components/viz/LinearIVPlayground.tsx';
 import WeakInstrumentDiagnostics from '../../components/viz/WeakInstrumentDiagnostics.tsx';
+import GELFamilyExplorer from '../../components/viz/GELFamilyExplorer.tsx';
+import SandwichSavesCoverage from '../../components/viz/SandwichSavesCoverage.tsx';
+import DMLBiasComparison from '../../components/viz/DMLBiasComparison.tsx';
 
 ## §1 — Introduction and motivation
 
@@ -1068,3 +1071,220 @@ The visualization below makes the weak-instrument failure mode visible. Slide th
 />
 
 For ML / causal-inference applications with strong, theory-motivated instruments (e.g., randomized experiments treated as instruments for compliance), weak instruments are rarely binding. For applied micro applications relying on borderline-relevant instruments, the weak-instrument diagnostics are essential.
+
+---
+
+## §10 — Modern GMM: CUE, empirical likelihood, and GEL
+
+Three modern estimators — the **continuous-updating estimator** (CUE), Owen's **empirical likelihood** (EL), and the **generalized empirical likelihood** (GEL) family unifying both — provide alternatives to two-step GMM with the same first-order asymptotic efficiency but provably smaller higher-order bias. Newey and Smith (2004) gave the unifying analysis: CUE, EL, and exponential tilting (ET) are all members of a single one-parameter family with a *bias hierarchy* where EL is strictly preferred.
+
+### 10.1 The continuous-updating estimator (CUE)
+
+CUE collapses the two steps into a single joint optimization:
+
+$$
+\hat\theta_{\rm CUE} \;:=\; \arg\min_{\theta \in \Theta} \; n \cdot \bar g_n(\theta)^\top \, \hat\Omega_n(\theta)^{-1} \, \bar g_n(\theta),
+$$
+
+where $\hat\Omega_n(\theta) = (1/n) \sum_i g(X_i, \theta) g(X_i, \theta)^\top$ is recomputed at every $\theta$. The criterion is genuinely nonlinear, even when $g$ is affine in $\theta$.
+
+Three properties of CUE: **(a) smaller higher-order bias than two-step GMM** — CUE breaks the $\bar g_n$–$\hat\Omega$ asymmetry; **(b) reparametrization invariance** — invariant to smooth invertible $\theta \mapsto h(\theta)$; **(c) computational cost** — nonlinear optimization (BFGS or Newton) starting from the two-step estimate; typically $\sim 10$ iterations. Under standard regularity $\sqrt{n}(\hat\theta_{\rm CUE} - \theta_0) \to_d \mathcal{N}(0, V^\star)$ with the same $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}$ as two-step.
+
+### 10.2 Empirical likelihood (Owen 1988, 1990, 2001)
+
+Empirical likelihood replaces the parametric likelihood with a nonparametric likelihood defined over discrete distributions supported on the data. Given probability weights $p_1, \dots, p_n$, define the empirical likelihood $L(p) = \prod_i p_i$ subject to $p_i \ge 0$, $\sum p_i = 1$, and $\sum p_i g(X_i, \theta) = 0$.
+
+**Profile empirical likelihood.** At each $\theta$, profile out $p$. The Lagrangian KKT conditions give $p_i(\theta, \lambda) = 1 / (n \,(1 + \lambda^\top g(X_i, \theta)))$, where $\lambda = \lambda(\theta)$ solves the inner moment constraint
+
+$$
+\sum_{i=1}^n \frac{g(X_i, \theta)}{1 + \lambda^\top g(X_i, \theta)} \;=\; 0. \qquad\qquad (10.1)
+$$
+
+The inner problem (10.1) is the FOC of a convex optimization over $\lambda$ — minimize $-\sum_i \log(1 + \lambda^\top g(X_i, \theta))$ — with unique interior solution. Newton-Raphson with backtracking (to maintain $1 + \lambda^\top g_i > 0$) converges in $\sim 5$ iterations.
+
+The profile empirical-likelihood-ratio statistic is $\ell_R(\theta) := 2 \sum_i \log(1 + \lambda(\theta)^\top g(X_i, \theta))$, and the **empirical likelihood estimator** is $\hat\theta_{\rm EL} = \arg\min_\theta \ell_R(\theta)$.
+
+<TheoremBlock type="theorem" number={10.1} title="Wilks' theorem for empirical likelihood (Owen 1990)">
+Under the conditions of Theorem 5.1, $\ell_R(\theta_0) \to_d \chi^2_k$ — the *parametric* Wilks asymptotic, despite the nonparametric construction. The EL over-identification statistic satisfies $\ell_R(\hat\theta_{\rm EL}) \to_d \chi^2_{L-k}$ — the same degrees of freedom as Hansen's J-statistic.
+</TheoremBlock>
+
+EL confidence regions $\mathrm{CR}_{1-\alpha}^{\rm EL} = \{\theta : \ell_R(\theta) < \chi^2_{k, 1-\alpha}\}$ are *transformation-invariant*, have *data-determined shape*, and have *better finite-sample coverage* in many settings (DiCiccio-Hall-Romano 1991).
+
+### 10.3 Generalized empirical likelihood (GEL): the Newey–Smith unification
+
+Newey-Smith (2004) observed that CUE, EL, and ET all fit a single GEL family. Let $\rho: \mathbb{R} \to \mathbb{R}$ be twice continuously differentiable, concave on a neighborhood of zero, with $\rho'(0) = \rho''(0) = -1$. The **GEL estimator** with carrier $\rho$ is
+
+$$
+\hat\theta_{\rm GEL} \;:=\; \arg\min_\theta \, \max_\lambda \;\; \frac{1}{n} \sum_{i=1}^n \rho\!\bigl(\lambda^\top g(X_i, \theta)\bigr).
+$$
+
+Three canonical members of the Cressie-Read family $\rho_\gamma(v) = -((1 + \gamma v)^{(\gamma+1)/\gamma} - 1)/(\gamma+1)$:
+
+| $\gamma$ | $\rho_\gamma(v)$ | Estimator | Source |
+|---|---|---|---|
+| $1$ | $-v^2/2 - v$ | **CUE** | Hansen-Heaton-Yaron 1996 |
+| $0$ | $\log(1 - v)$ | **EL** | Owen 1988, 1990 |
+| $-1$ | $-\exp(v) + v + 1$ (centered) | **ET** | Imbens 1997; Kitamura-Stutzer 1997 |
+
+All GEL estimators have $\sqrt{n}(\hat\theta_{\rm GEL} - \theta_0) \to_d \mathcal{N}(0, V^\star)$ — first-order equivalent.
+
+### 10.4 Higher-order properties and the Newey–Smith bias hierarchy
+
+Newey-Smith (2004) computed the $O(1/n)$ bias for each estimator and proved a strict ordering:
+
+$$
+\text{bias}_{\rm 2step}(n) \;\gtrsim\; \text{bias}_{\rm iterated}(n) \;\gtrsim\; \text{bias}_{\rm CUE}(n) \;\gtrsim\; \text{bias}_{\rm ET}(n) \;\gtrsim\; \text{bias}_{\rm EL}(n).
+$$
+
+The visualization below makes the hierarchy visible. Panel A: the Cressie-Read carrier $\rho_\gamma(v)$ morphs as you slide $\gamma$ — at $\gamma=0$ it's the EL log carrier; at $\gamma=1$ the CUE quadratic; at $\gamma=-1$ the ET exponential. Panel B: an empirical bar chart of mean $\|\hat\theta - \theta_0\|$ for two-step, iterated, CUE, and EL on the running example at small $n$ where the gap is visible.
+
+<GELFamilyExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/10_bias_hierarchy.png"
+  alt="Bias hierarchy bar chart: two-step ≥ iterated ≥ CUE ≥ ET ≥ EL"
+  caption="Figure 10.1 — Newey-Smith bias hierarchy on the extended L = 8 running example at n = 50. The ordering is exactly as the theory predicts; the gap between two-step and EL is ∼ 30% in this regime."
+/>
+
+**Computational hierarchy:**
+
+| Estimator | Implementation | Per-replicate cost |
+|---|---|---|
+| Two-step GMM | Closed-form (linear) / 2 BFGS (nonlinear) | $O(L^2 k)$ |
+| Iterated GMM | Picard iteration | $O(t \cdot L^2 k)$ |
+| CUE | Single BFGS with $\theta$-dependent $W$ | $O(t \cdot L^3)$ |
+| EL | Nested BFGS + Newton on $\lambda$ | $O(t_{\rm out} \cdot t_{\rm in} \cdot nL^2)$ |
+| ET | Same as EL with exponential carrier | similar to EL |
+
+**Recommendation.** Modern applied workflow: (1) always report two-step efficient GMM as the baseline; (2) also report CUE or EL when $L - k$ is large or $L/n > 0.05$; (3) use EL-based confidence regions when interest centers on a nonlinear function of $\theta$.
+
+---
+
+## §11 — GMM and maximum likelihood
+
+Maximum likelihood is the canonical estimator of parametric statistics. GMM is the canonical estimator of moment-condition models. **ML is just-identified GMM with the score equations as moment conditions**, and the Cramér–Rao bound is the Hansen efficiency bound under score moments. Conversely, when the assumed likelihood is *wrong*, the resulting "quasi-MLE" is consistent for a pseudo-true parameter but inherits the GMM sandwich variance rather than the Fisher-information inverse. Every **M-estimator** — MLE, OLS, quantile regression, Huber regression, quasi-MLE — is just-identified GMM with a specific score-like moment function. GMM extends M-estimation by allowing $L > k$.
+
+### 11.1 ML as just-identified GMM
+
+The MLE solves $\sum_i \nabla_\theta \log p(X_i; \hat\theta_{\mathrm{MLE}}) = 0$. Identify the score with the moment function: $g(X, \theta) := \nabla_\theta \log p(X; \theta) \in \mathbb{R}^k$. The MLE is the *just-identified GMM estimator* with $L = k$. Under regularity:
+- $\mathbb{E}_{\theta_0}[g(X, \theta_0)] = 0$ (the score has mean zero at the truth).
+- $G_0 = \mathbb{E}_{\theta_0}[\partial^2 \log p / \partial \theta \partial \theta^\top] = -\mathcal{I}(\theta_0)$ (Hessian of the log-likelihood in expectation = negative Fisher information).
+- $\Omega = \mathbb{E}_{\theta_0}[\nabla \log p \cdot \nabla \log p^\top] = \mathcal{I}(\theta_0)$ (the **information matrix equality**; Fisher 1925).
+
+Substituting into the just-identified sandwich:
+
+$$
+V \;=\; G_0^{-1} \, \Omega \, G_0^{-\top} \;=\; (-\mathcal{I})^{-1} \, \mathcal{I} \, (-\mathcal{I})^{-\top} \;=\; \mathcal{I}^{-1}.
+$$
+
+The MLE achieves the **Cramér–Rao lower bound**. From the §6 perspective: $V^\star = (G_0^\top \Omega^{-1} G_0)^{-1} = (\mathcal{I} \cdot \mathcal{I}^{-1} \cdot \mathcal{I})^{-1} = \mathcal{I}^{-1}$. So MLE is efficient GMM with score moments — and the Cramér–Rao bound is the moment-condition special case of the Hansen efficiency bound.
+
+### 11.2 Quasi-MLE and the sandwich variance
+
+What if we maximize a *wrong* likelihood? Suppose the data come from $P_0$ but we maximize $\sum \log q(X_i; \theta)$ for a *working* density $q(\cdot; \theta) \ne p_{P_0}$. The estimator solves $\sum_i \nabla_\theta \log q(X_i; \hat\theta) = 0$ and is called the **quasi-MLE**.
+
+The quasi-MLE is consistent for the *pseudo-true parameter* $\theta_0^\star := \arg\max_\theta \mathbb{E}_{P_0}[\log q(X; \theta)]$. Under misspecification, the information matrix equality fails: $G_0^\star := \mathbb{E}_{P_0}[\partial^2 \log q / \partial \theta \partial \theta^\top] \ne -\mathbb{E}_{P_0}[\nabla \log q \cdot \nabla \log q^\top] =: -\Omega^\star$. The quasi-MLE asymptotic variance is the GMM sandwich:
+
+$$
+V_{\mathrm{QMLE}} \;=\; (G_0^\star)^{-1} \, \Omega^\star \, (G_0^\star)^{-\top}.
+$$
+
+This is the **Eicker–Huber–White sandwich** (Eicker 1967; Huber 1967; White 1980), familiar as "robust standard errors" or `vcov_type='HC0'`.
+
+**Canonical example: heteroskedastic OLS.** $Y = X^\top \theta_0 + \varepsilon$ under the working assumption of homoskedastic Gaussian errors. OLS is the quasi-MLE. Under homoskedasticity, the information matrix equality holds and the naive CI has correct coverage. Under heteroskedasticity, the equality fails and the naive CI under-covers; the sandwich CI restores nominal coverage. The visualization below makes this concrete: slide the heteroskedasticity scale up and watch the naive coverage drop while the sandwich stays near 95%.
+
+<SandwichSavesCoverage client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/11_quasi_mle_coverage.png"
+  alt="Coverage rates of naive vs sandwich CIs for OLS under varying heteroskedasticity"
+  caption="Figure 11.1 — Empirical 95% CI coverage at n = 200, B = 1000. Naive (homoskedastic) CIs under-cover by 10–20 percentage points under strong heteroskedasticity; sandwich CIs hold the nominal rate throughout."
+/>
+
+### 11.3 M-estimation as a unifying framework
+
+Pick a loss function $\rho$ and define $\hat\theta_M := \arg\min_\theta (1/n) \sum_i \rho(X_i, \theta)$. The FOC $\sum_i \psi(X_i, \hat\theta_M) = 0$ with $\psi := \nabla_\theta \rho$ is just-identified GMM with $g = \psi$. The asymptotic variance is the sandwich $V_M = G_0^{-1} \, \Omega \, G_0^{-\top}$.
+
+Five M-estimators:
+
+| Estimator | $\rho(x, \theta)$ | $\psi(x, \theta)$ | Information identity holds? |
+|---|---|---|---|
+| MLE | $-\log p(x; \theta)$ | $-\nabla \log p$ | Yes (correctly specified) |
+| Quasi-MLE | $-\log q(x; \theta)$ | $-\nabla \log q$ | No (misspecified) |
+| OLS | $(y - x^\top \theta)^2 / 2$ | $-x(y - x^\top \theta)$ | Only under homoskedastic Gaussian |
+| Quantile regression ($\tau$) | $\rho_\tau(y - x^\top \theta)$ | $x \cdot (\tau - \mathbb{I}[y < x^\top \theta])$ | No (non-smooth) |
+| Huber regression | $\rho_H(y - x^\top \theta)$ | $x \cdot \psi_H(y - x^\top \theta)$ | No |
+
+where $\rho_\tau(r) = r(\tau - \mathbb{I}[r < 0])$ (Koenker-Bassett 1978) and $\rho_H$ is the Huber loss (Huber 1964). **Where GMM extends M-estimation.** The over-identified case $L > k$ has no counterpart in classical M-estimation: there is no $\rho$ whose gradient is the full $L$-vector $g$. GMM absorbs M-estimation when $L = k$ and strictly generalizes it when $L > k$ by introducing the weighting matrix $W$. In modern causal inference (§12), this generalization is the substantive value of GMM.
+
+---
+
+## §12 — GMM in modern causal inference
+
+The most active recent application of GMM is in **causal inference with machine-learned nuisance functions** — what Chernozhukov, Chetverikov, Demirer, Duflo, Hansen, Newey, and Robins (2018) call **double / debiased machine learning** (DML). We want to estimate a low-dimensional causal parameter $\theta_0 \in \mathbb{R}^k$ but identification requires high-dimensional nuisance functions $\eta_0(W)$ estimated with ML at sub-parametric rates. DML answers: *how can we plug ML-estimated $\hat\eta$ into a target-parameter estimator and still get $\sqrt{n}$-consistent, asymptotically-normal $\hat\theta_n$?*
+
+The answer combines two ideas: **Neyman orthogonality** — design $g(O; \theta, \eta)$ so that $\partial_\eta \mathbb{E}[g(O; \theta_0, \eta_0)]|_{\eta = \eta_0} = 0$ — and **cross-fitting** — estimate $\hat\eta$ on one fold, evaluate $g$ on another fold. Under both, $\hat\theta_n$ achieves $\sqrt{n}$-consistency and asymptotic normality even when $\hat\eta$ converges at $n^{-1/4}$ rate, and the asymptotic variance is the semiparametric efficiency bound.
+
+### 12.1 Doubly robust estimation as GMM
+
+**The partial-linear model.** Observe $O_i = (Y_i, X_i, W_i)$ where
+
+$$
+Y_i \;=\; X_i\, \theta_0 + g_0(W_i) + \varepsilon_i, \quad X_i \;=\; m_0(W_i) + v_i, \quad \mathbb{E}[\varepsilon_i | X_i, W_i] = 0, \;\; \mathbb{E}[v_i | W_i] = 0.
+$$
+
+Nuisances $\eta_0 = (\ell_0, m_0)$ where $\ell_0(W) := \mathbb{E}[Y | W]$. The **Robinson (1988) partialling-out construction**: given $\hat\ell, \hat m$, form residuals $\tilde Y_i := Y_i - \hat \ell(W_i)$, $\tilde X_i := X_i - \hat m(W_i)$. The estimator is the simple OLS slope $\hat\theta_{\rm partial} := \sum_i \tilde X_i \tilde Y_i / \sum_i \tilde X_i^2$. This is GMM with the **Robinson moment** $g(O; \theta, \eta) = \tilde X (\tilde Y - \theta \tilde X)$.
+
+For the **average treatment effect** with binary treatment $A \in \{0, 1\}$, the **AIPW moment** is
+
+$$
+g_{\rm DR}(O; \theta, \eta) \;=\; \mu_1(W) - \mu_0(W) \;+\; \frac{A\,(Y - \mu_1(W))}{e(W)} \;-\; \frac{(1-A)\,(Y - \mu_0(W))}{1 - e(W)} \;-\; \theta,
+$$
+
+with $\eta = (\mu_0, \mu_1, e)$. The estimator has the **double robustness** property: consistent if *either* the outcome regressions $\hat\mu_a$ are consistent *or* the propensity $\hat e$ is consistent.
+
+### 12.2 Double machine learning
+
+<TheoremBlock type="algorithm" number={12.1} title="DML, K-fold cross-fitting">
+1. **Partition** the data into $K$ folds $\mathcal{I}_1, \dots, \mathcal{I}_K$.
+2. **For each $k = 1, \dots, K$:** estimate $\hat\eta^{(-k)}$ on observations outside fold $k$; evaluate $g(O_i; \theta, \hat\eta^{(-k)})$ on observations in fold $k$.
+3. **Solve** the cross-fitted moment equation $(1/n) \sum_k \sum_{i \in \mathcal{I}_k} g(O_i; \hat\theta_{\rm DML}, \hat\eta^{(-k)}) = 0$ for $\hat\theta_{\rm DML}$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={12.1} title="Chernozhukov et al. (2018)">
+Assume the moment function $g$ is Neyman-orthogonal (§12.3) and the **product of nuisance estimation errors** satisfies $\|\hat g^{(-k)} - g_0\|_{L^2(P)} \cdot \|\hat m^{(-k)} - m_0\|_{L^2(P)} = o_p(n^{-1/2})$ — the **mixed-bias** condition (a standard sufficient condition is $\|\hat\eta_j^{(-k)} - \eta_{j,0}\|_{L^2(P)} = o_p(n^{-1/4})$ for each nuisance). Under standard regularity (smooth $g$, bounded moments, identification at $\theta_0$),
+
+$$
+\sqrt{n}\,(\hat\theta_{\rm DML} - \theta_0) \;\to_d\; \mathcal{N}(0, V^\star),
+$$
+
+where $V^\star$ is the semiparametric efficiency bound.
+</TheoremBlock>
+
+The result is striking. With ML nuisance estimators converging at $n^{-1/4}$ rather than the parametric $n^{-1/2}$, the DML point estimator still attains $n^{-1/2}$-rate and Gaussian asymptotic inference, and achieves the semiparametric efficiency bound. The "double" in DML refers to the **mixed-bias product condition**: the *product* of the two nuisance error rates only needs to be $o_p(n^{-1/2})$ — a substantially weaker requirement than the $o_p(n^{-1/2})$-each rate the naive plug-in argument would demand.
+
+The visualization below illustrates the bias hierarchy on a partial-linear DGP with nonlinear nuisances $g_0(W) = \sin(\pi W)$, $m_0(W) = W^2$, fit with degree-4 polynomial regression (a simpler-than-RF nuisance estimator that still exhibits the asymptotic story). The bar chart shows $|$bias$|$ and SD across replicates for the three estimators; the histogram shows the sampling distributions overlaid. OLS is biased because it doesn't adjust for $W$; naive plug-in is biased at moderate $n$ because the same data fits nuisances and structural estimator; DML cross-fits and the bias collapses.
+
+<DMLBiasComparison client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/12_dml_partial_linear.png"
+  alt="DML vs naive plug-in vs OLS Monte Carlo bias comparison on partial-linear model with random-forest nuisances"
+  caption="Figure 12.1 — DML vs naive plug-in vs OLS on the partial-linear DGP with random-forest nuisances. DML eliminates the bias from same-sample nuisance estimation; naive plug-in retains a noticeable residual bias even with the same nuisance functional form."
+/>
+
+### 12.3 Neyman orthogonality: the central design constraint
+
+The DML construction works because $g(O; \theta, \eta)$ satisfies **Neyman orthogonality**:
+
+$$
+\frac{\partial}{\partial t}\, \mathbb{E}\!\left[g(O; \theta_0, \eta_0 + t \cdot (\eta - \eta_0))\right] \Bigg|_{t = 0} \;=\; 0 \quad \text{for all admissible } \eta. \qquad (\star)
+$$
+
+This is a **pathwise / Gâteaux derivative** condition: small perturbations of $\eta$ around $\eta_0$ leave the population expectation of $g$ unchanged to first order. The plug-in estimator $\bar g_n(\theta; \hat\eta)$ is therefore *first-order insensitive* to $\hat\eta - \eta_0$.
+
+**Verifying orthogonality for the Robinson moment.** With $g(O; \theta, \eta) = (X - m(W))(Y - \ell(W) - \theta(X - m(W)))$, perturbing $\ell$ gives $\partial g / \partial \ell |_{\eta_0} = -(X - m_0(W)) = -v$, with $\mathbb{E}[-v(\ell - \ell_0)] = \mathbb{E}[(\ell-\ell_0) \cdot \mathbb{E}[-v|W]] = 0$ using $\mathbb{E}[v|W] = 0$. Similarly $\partial g/\partial m|_{\eta_0} = \theta_0 v - \varepsilon$, with $\mathbb{E}[\theta_0 v - \varepsilon | W] = 0$. The Robinson moment is Neyman orthogonal *by construction*.
+
+**Constructing orthogonal moments via the EIF.** Start with a "naive" moment $g_0(O; \theta, \eta)$ satisfying $\mathbb{E}[g_0(O; \theta_0, \eta_0)] = 0$ but *not* Neyman orthogonal. The **orthogonalized moment** is $g(O; \theta, \eta) = g_0(O; \theta, \eta) + \phi^\star(O; \theta, \eta)$, where $\phi^\star$ is the EIF of the nuisance-correction term from the semiparametric efficiency machinery (§6.4). This **Neyman orthogonalization** is the same operation that produces AIPW from naive outcome regression, Robinson partialling-out from naive OLS, targeted minimum-loss from naive plug-in, and most modern doubly-robust estimators.
+
+Three reasons GMM-with-ML-nuisances is the modern frontier: (1) asymptotic theory is portable — Theorem 5.1's sandwich, §6's efficiency bound, §8's J-statistic all generalize; (2) multiple identifying moments combine optimally — efficient GMM with the union of moments achieves the semiparametric efficiency bound; (3) specification testing is free — Hansen's J-statistic generalizes to the DML setting (Chernozhukov-Newey-Singh 2022).

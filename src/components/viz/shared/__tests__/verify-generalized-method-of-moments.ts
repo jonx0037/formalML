@@ -69,6 +69,13 @@ import {
   olsScalar,
   firstStageF,
   andersonRubinSet,
+  elInnerLambda,
+  elLogR,
+  elAffineGridEstimate,
+  cueAffineGridEstimate,
+  olsHetSandwich,
+  dmlPartialLinear,
+  simulatePartialLinear,
 } from '../generalized-method-of-moments';
 
 let pass = 0;
@@ -791,6 +798,104 @@ function zerosMat(rows: number, cols: number): number[][] {
   if (ar.lower !== null && ar.upper !== null) {
     ok(ar.lower <= 1.0 && ar.upper >= 1.0, `AR set [${ar.lower.toFixed(3)}, ${ar.upper.toFixed(3)}] contains θ_0=1`);
   }
+}
+
+// =============================================================================
+// Wave 5 assertions — EL inner-λ Newton, CUE, OLS sandwich, DML.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// 31. elInnerLambda zero-finder: when g̅(θ) = 0 already (saturated moments),
+// λ should be near zero.
+// -----------------------------------------------------------------------------
+{
+  // Construct g such that the mean is exactly zero: alternating +1, -1.
+  const n = 100;
+  const gAt: number[][] = [];
+  for (let i = 0; i < n; i++) gAt.push([i % 2 === 0 ? 1 : -1, i % 2 === 0 ? -0.5 : 0.5]);
+  const lambda = elInnerLambda(gAt);
+  ok(Math.hypot(lambda[0], lambda[1]) < 1e-4, 'EL λ ≈ 0 when g̅ = 0');
+  const logR = elLogR(gAt);
+  approxEq(logR, 0, 1e-6, 'EL log-R ≈ 0 when λ ≈ 0');
+}
+
+// -----------------------------------------------------------------------------
+// 32. EL estimator on running example. At n=500, EL should land within 0.1
+// of θ_0 = (1, 1).
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(60000);
+  const X = sampleSensorObservations(rng, RUNNING_EXAMPLE_THETA0, RUNNING_EXAMPLE_A, 500, [1, 1, 1, 1]);
+  const thetaEL = elAffineGridEstimate(X, RUNNING_EXAMPLE_A, [0.6, 1.4, 0.6, 1.4], 21);
+  approxEqVec(thetaEL, RUNNING_EXAMPLE_THETA0, 0.12, 'EL θ̂ near truth on running example');
+}
+
+// -----------------------------------------------------------------------------
+// 33. CUE estimator on running example. Same tolerance as EL.
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(60001);
+  const X = sampleSensorObservations(rng, RUNNING_EXAMPLE_THETA0, RUNNING_EXAMPLE_A, 500, [1, 1, 1, 1]);
+  const thetaCUE = cueAffineGridEstimate(X, RUNNING_EXAMPLE_A, [0.6, 1.4, 0.6, 1.4], 21);
+  approxEqVec(thetaCUE, RUNNING_EXAMPLE_THETA0, 0.12, 'CUE θ̂ near truth on running example');
+}
+
+// -----------------------------------------------------------------------------
+// 34. OLS sandwich coverage. Under heteroskedasticity, the naive CI under-
+// covers. Construct a heteroskedastic DGP with eps_i ~ N(0, |X_i|²) and
+// compare empirical coverage. At B = 500, n = 200, naive coverage should be
+// noticeably below 0.95 while sandwich coverage stays near 0.95.
+// -----------------------------------------------------------------------------
+{
+  const B = 500;
+  const n = 200;
+  const truth = 1.0;
+  let coverNaive = 0;
+  let coverSand = 0;
+  for (let b = 0; b < B; b++) {
+    const rng = mulberry32(70000 + b * 11);
+    const gauss = gaussianFrom(rng);
+    const X: number[] = [];
+    const Y: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const x = (rng() - 0.5) * 4; // U(-2, 2)
+      X.push(x);
+      const sigma = Math.abs(x); // strong heteroskedasticity
+      Y.push(x * truth + sigma * gauss());
+    }
+    const r = olsHetSandwich(Y, X);
+    if (Math.abs(r.beta - truth) < r.ciNaiveHW) coverNaive++;
+    if (Math.abs(r.beta - truth) < r.ciSandwichHW) coverSand++;
+  }
+  const cN = coverNaive / B;
+  const cS = coverSand / B;
+  ok(cS > cN, `Sandwich coverage ${cS.toFixed(3)} > naive ${cN.toFixed(3)} under heteroskedasticity`);
+  ok(cS > 0.88, `Sandwich coverage ${cS.toFixed(3)} > 0.88 (close to nominal 0.95)`);
+}
+
+// -----------------------------------------------------------------------------
+// 35. DML reduces bias vs OLS on the partial-linear DGP. At n=300, B=80,
+// the mean |bias| of DML should be smaller than OLS.
+// -----------------------------------------------------------------------------
+{
+  const B = 80;
+  const n = 300;
+  const truth = 1.0;
+  let mseOLS = 0; let mseDML = 0; let mseNaive = 0;
+  for (let b = 0; b < B; b++) {
+    const rng = mulberry32(90000 + b * 7);
+    const data = simulatePartialLinear(rng, truth, n);
+    const r = dmlPartialLinear(data.Y, data.X, data.W, truth, 5, 4);
+    mseOLS += (r.thetaOLS - truth) ** 2;
+    mseDML += (r.thetaDML - truth) ** 2;
+    mseNaive += (r.thetaNaive - truth) ** 2;
+  }
+  const rmseOLS = Math.sqrt(mseOLS / B);
+  const rmseDML = Math.sqrt(mseDML / B);
+  const rmseNaive = Math.sqrt(mseNaive / B);
+  ok(rmseDML < rmseOLS, `DML RMSE ${rmseDML.toFixed(3)} < OLS RMSE ${rmseOLS.toFixed(3)}`);
+  // DML should be at least as good as naive plug-in (often better at small n).
+  ok(rmseDML < rmseNaive * 1.5, `DML RMSE ${rmseDML.toFixed(3)} ≲ 1.5 × naive ${rmseNaive.toFixed(3)}`);
 }
 
 // -----------------------------------------------------------------------------
