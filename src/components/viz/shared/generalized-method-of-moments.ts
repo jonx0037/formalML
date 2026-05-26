@@ -806,3 +806,244 @@ export function det2x2(A: Mat): number {
   return A[0][0] * A[1][1] - A[0][1] * A[1][0];
 }
 
+// =============================================================================
+// Wave 3 — two-step + iterated GMM, J-statistic, χ² CDF / quantile.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Two-step feasible efficient GMM (Algorithm 7.1, Hansen 1982).
+//
+// Step 1: θ̂^(1) = argmin J_n(θ, W^(1))         where W^(1) is identity by default
+// Step 2: Ω̂_n  = (1/n) Σ g_i g_i^T              evaluated at θ̂^(1)
+// Step 3: θ̂^(2) = argmin J_n(θ, Ω̂_n^{-1})
+//
+// Returns both estimates, the estimated Ω̂_n (and its inverse — the step-2
+// weighting), the step-2 sandwich variance, and the J-statistic at θ̂^(2).
+// For the linear running example this is all closed-form.
+// -----------------------------------------------------------------------------
+
+export interface TwoStepResult {
+  theta1: Vec;
+  theta2: Vec;
+  OmegaHat: Mat; // n^{-1} sum g_i g_i^T at θ̂^(1)
+  OmegaHatInv: Mat; // step-2 weighting matrix
+  V2: Mat; // step-2 sandwich variance (asymptotic)
+  Jhat: number; // J_n(θ̂^(2), Ω̂_n^{-1})
+}
+
+export function twoStepAffineGMM(X: Mat, A: Mat, W1?: Mat): TwoStepResult {
+  const n = X.length;
+  const L = A.length;
+  const W = W1 ?? identityMat(L);
+  // X̄
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  // Step 1.
+  const theta1 = gmmEstimateAffine(A, Xbar, W);
+  // Step 2: residuals e_i = X_i - A θ̂^(1).
+  const Atheta1 = matVec(A, theta1);
+  const OmegaHat: Mat = zerosMat(L, L);
+  for (let i = 0; i < n; i++) {
+    const e: Vec = new Array(L);
+    for (let j = 0; j < L; j++) e[j] = X[i][j] - Atheta1[j];
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] += e[a] * e[b];
+  }
+  for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] /= n;
+  const OmegaHatInv = matInverse(OmegaHat);
+  // Step 3.
+  const theta2 = gmmEstimateAffine(A, Xbar, OmegaHatInv);
+  // Step-2 sandwich variance — for affine g, G = -A, and at efficient weighting
+  // the sandwich collapses to (A^T Ω̂^{-1} A)^{-1}.
+  const G: Mat = A.map((row) => row.map((v) => -v));
+  const V2 = hansenBound(G, OmegaHat);
+  // J-statistic at θ̂^(2).
+  const Jhat = gmmCriterion(theta2, A, Xbar, OmegaHatInv, n);
+  return { theta1, theta2, OmegaHat, OmegaHatInv, V2, Jhat };
+}
+
+// -----------------------------------------------------------------------------
+// Iterated GMM — Picard iteration on the two-step update. Returns the full
+// trajectory of estimates plus the converged fixed point. Convergence is
+// declared when ‖θ̂^(t+1) − θ̂^(t)‖ < tol or after maxIter passes.
+// -----------------------------------------------------------------------------
+
+export interface IteratedResult {
+  trajectory: Vec[]; // ordered list of θ̂^(0), θ̂^(1), ...
+  fixedPoint: Vec;
+  iterations: number;
+  converged: boolean;
+}
+
+export function iteratedAffineGMM(X: Mat, A: Mat, W1?: Mat, tol = 1e-6, maxIter = 30): IteratedResult {
+  const n = X.length;
+  const L = A.length;
+  const Xbar: Vec = new Array(L).fill(0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < L; j++) Xbar[j] += X[i][j];
+  for (let j = 0; j < L; j++) Xbar[j] /= n;
+  let W = W1 ?? identityMat(L);
+  let theta = gmmEstimateAffine(A, Xbar, W);
+  const trajectory: Vec[] = [theta.slice()];
+  for (let t = 1; t <= maxIter; t++) {
+    const Atheta = matVec(A, theta);
+    const OmegaHat: Mat = zerosMat(L, L);
+    for (let i = 0; i < n; i++) {
+      const e: Vec = new Array(L);
+      for (let j = 0; j < L; j++) e[j] = X[i][j] - Atheta[j];
+      for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] += e[a] * e[b];
+    }
+    for (let a = 0; a < L; a++) for (let b = 0; b < L; b++) OmegaHat[a][b] /= n;
+    W = matInverse(OmegaHat);
+    const next = gmmEstimateAffine(A, Xbar, W);
+    trajectory.push(next.slice());
+    const step = Math.hypot(next[0] - theta[0], next[1] - theta[1]);
+    theta = next;
+    if (step < tol) return { trajectory, fixedPoint: theta, iterations: t, converged: true };
+  }
+  return { trajectory, fixedPoint: theta, iterations: maxIter, converged: false };
+}
+
+// -----------------------------------------------------------------------------
+// Hansen J-statistic. J = n · ḡ_n(θ̂)' W ḡ_n(θ̂) at the GMM solution θ̂_W.
+// For the §8 distributional theory, W must be the consistent estimate Ω̂^{-1}
+// (so that under H₀ and efficient weighting, J →_d χ²_{L-k}).
+// -----------------------------------------------------------------------------
+
+export function jStatisticAffine(theta: Vec, A: Mat, Xbar: Vec, OmegaInv: Mat, n: number): number {
+  return gmmCriterion(theta, A, Xbar, OmegaInv, n);
+}
+
+// -----------------------------------------------------------------------------
+// χ² CDF and quantile — pure JS implementations (no scipy). The χ² CDF is
+// the regularized lower incomplete gamma:  P(df/2, x/2).
+//
+// Implementation notes:
+// • For x < a + 1 use the series; for x ≥ a + 1 use the continued fraction.
+//   (Numerical Recipes pattern; both converge geometrically.)
+// • lgamma is the Lanczos approximation; accurate to ~1e-14 on x > 0.
+// • Used by JStatisticDistributionExplorer to draw the χ²_{L-k} density and
+//   evaluate the critical value at α = 0.05.
+// -----------------------------------------------------------------------------
+
+export function lgamma(z: number): number {
+  // Lanczos coefficients, g = 7.
+  const g = 7;
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  if (z < 0.5) {
+    return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
+  }
+  z -= 1;
+  let x = c[0];
+  for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
+  const t = z + g + 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+
+function regularizedGammaP(a: number, x: number): number {
+  if (x < 0 || a <= 0) return NaN;
+  if (x === 0) return 0;
+  if (x < a + 1) {
+    // Series.
+    let ap = a;
+    let sum = 1 / a;
+    let term = sum;
+    for (let n = 1; n < 200; n++) {
+      ap += 1;
+      term *= x / ap;
+      sum += term;
+      if (Math.abs(term) < Math.abs(sum) * 1e-14) break;
+    }
+    return sum * Math.exp(-x + a * Math.log(x) - lgamma(a));
+  }
+  // Continued fraction for Q = 1 - P, then return 1 - Q.
+  let b = x + 1 - a;
+  let c = 1e30;
+  let d = 1 / b;
+  let h = d;
+  for (let i = 1; i < 200; i++) {
+    const an = -i * (i - a);
+    b += 2;
+    d = an * d + b;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = b + an / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d;
+    const delta = d * c;
+    h *= delta;
+    if (Math.abs(delta - 1) < 1e-14) break;
+  }
+  const Q = Math.exp(-x + a * Math.log(x) - lgamma(a)) * h;
+  return 1 - Q;
+}
+
+export function chi2Cdf(x: number, df: number): number {
+  if (x <= 0) return 0;
+  return regularizedGammaP(df / 2, x / 2);
+}
+
+export function chi2Pdf(x: number, df: number): number {
+  if (x <= 0) return 0;
+  const k = df / 2;
+  return Math.exp((k - 1) * Math.log(x) - x / 2 - lgamma(k) - k * Math.log(2));
+}
+
+// Standard normal quantile — Beasley–Springer–Moro for the inverse normal CDF.
+// Reused locally for the Wilson-Hilferty chi-squared quantile initial guess.
+function normalQuantile(p: number): number {
+  // From Wichura (1988), AS 241. Accurate to ~1e-9 on (0, 1).
+  if (p <= 0 || p >= 1) return p <= 0 ? -Infinity : Infinity;
+  const q = p - 0.5;
+  if (Math.abs(q) <= 0.425) {
+    const r = 0.180625 - q * q;
+    const a = [3.387132872796366608, 133.14166789178437745, 1971.5909503065514427, 13731.693765509461125, 45921.953931549871457, 67265.770927008700853, 33430.575583588128105, 2509.0809287301226727];
+    const b = [1, 42.313330701600911252, 687.1870074920579083, 5394.1960214247511077, 21213.794301586595867, 39307.89580009271061, 28729.085735721942674, 5226.495278852854561];
+    const num = ((((((a[7] * r + a[6]) * r + a[5]) * r + a[4]) * r + a[3]) * r + a[2]) * r + a[1]) * r + a[0];
+    const den = ((((((b[7] * r + b[6]) * r + b[5]) * r + b[4]) * r + b[3]) * r + b[2]) * r + b[1]) * r + b[0];
+    return q * num / den;
+  }
+  let r = p < 0.5 ? p : 1 - p;
+  r = Math.sqrt(-Math.log(r));
+  let z: number;
+  if (r <= 5) {
+    r -= 1.6;
+    const c = [1.42343711074968357734, 4.6303378461565452959, 5.7694972214606914055, 3.64784832476320460504, 1.27045825245236838258, 0.24178072517745061177, 0.0227238449892691845833, 7.7454501427834140764e-4];
+    const d = [1, 2.05319162663775882187, 1.6763848301838038494, 0.68976733498510000455, 0.14810397642748007459, 0.0151986665636164571966, 5.475938084995344946e-4, 1.05075007164441684324e-9];
+    const num = ((((((c[7] * r + c[6]) * r + c[5]) * r + c[4]) * r + c[3]) * r + c[2]) * r + c[1]) * r + c[0];
+    const den = ((((((d[7] * r + d[6]) * r + d[5]) * r + d[4]) * r + d[3]) * r + d[2]) * r + d[1]) * r + d[0];
+    z = num / den;
+  } else {
+    r -= 5;
+    const e = [6.6579046435011037772, 5.4637849111641143699, 1.7848265399172913358, 0.29656057182850489123, 0.026532189526576123093, 0.0012426609473880784386, 2.71155556874348757815e-5, 2.01033439929228813265e-7];
+    const f = [1, 0.59983220655588793769, 0.13692988092273580531, 0.0148753612908506148525, 7.868691311456132591e-4, 1.8463183175100546818e-5, 1.4215117583164458887e-7, 2.04426310338993978564e-15];
+    const num = ((((((e[7] * r + e[6]) * r + e[5]) * r + e[4]) * r + e[3]) * r + e[2]) * r + e[1]) * r + e[0];
+    const den = ((((((f[7] * r + f[6]) * r + f[5]) * r + f[4]) * r + f[3]) * r + f[2]) * r + f[1]) * r + f[0];
+    z = num / den;
+  }
+  return p < 0.5 ? -z : z;
+}
+
+export function chi2Quantile(p: number, df: number): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return Infinity;
+  // Wilson-Hilferty initial guess: chi²_df ≈ df · (1 - 2/(9df) + z_p · sqrt(2/(9df)))^3.
+  const z = normalQuantile(p);
+  const w = 1 - 2 / (9 * df) + z * Math.sqrt(2 / (9 * df));
+  let x = df * w * w * w;
+  if (x <= 0) x = 0.5 * df;
+  // Newton iteration on chi2Cdf(x) − p = 0.
+  for (let it = 0; it < 30; it++) {
+    const cdf = chi2Cdf(x, df);
+    const pdf = chi2Pdf(x, df);
+    if (pdf < 1e-30) break;
+    const step = (cdf - p) / pdf;
+    x -= step;
+    if (x <= 0) x = 1e-6;
+    if (Math.abs(step) < 1e-10 * Math.max(1, x)) break;
+  }
+  return x;
+}
+

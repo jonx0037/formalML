@@ -212,6 +212,8 @@ import IdentificationRankInspector from '../../components/viz/IdentificationRank
 import ConsistencyCloudExplorer from '../../components/viz/ConsistencyCloudExplorer.tsx';
 import SandwichDecomposer from '../../components/viz/SandwichDecomposer.tsx';
 import EfficiencyFrontierExplorer from '../../components/viz/EfficiencyFrontierExplorer.tsx';
+import TwoStepGMMWalkthrough from '../../components/viz/TwoStepGMMWalkthrough.tsx';
+import JStatisticDistributionExplorer from '../../components/viz/JStatisticDistributionExplorer.tsx';
 
 ## §1 — Introduction and motivation
 
@@ -806,3 +808,165 @@ V_{\rm sp}^\star \;=\; \mathbb{E}[\phi^\star \phi^{\star\top}] \;=\; (G_0^\top \
 $$
 
 The semiparametric bound equals the Hansen bound. Efficient GMM is therefore not merely efficient *within the GMM family* (Theorem 6.1) — it is efficient *within the entire semiparametric class of RAL estimators of $\theta_0$ under the moment-condition restriction*. No future ML, nonparametric, or regularized estimator can asymptotically beat $V^\star$ on this model class. This is the rigorous statement of what makes GMM the canonical estimator for moment-condition models: it is information-theoretically optimal in the strongest sense available.
+
+---
+
+## §7 — Two-step feasible efficient GMM
+
+§6 proved that $W^\star = \Omega^{-1}$ achieves the Hansen efficiency bound. But $\Omega = \mathbb{E}[g(X, \theta_0)\, g(X, \theta_0)^\top]$ is a population object we do not observe. The **two-step feasible efficient GMM** procedure resolves this: run GMM once with some preliminary weighting to get a consistent first-step estimate $\hat\theta^{(1)}$, use those residuals to construct $\hat\Omega_n$, then run GMM again with $\hat W = \hat\Omega_n^{-1}$. The second-step estimator $\hat\theta^{(2)}$ inherits the efficiency bound asymptotically. This is *the* practical algorithm of applied GMM; almost every GMM regression run in econometrics today follows this two-step structure.
+
+### 7.1 The two-step algorithm
+
+<TheoremBlock type="algorithm" number={7.1} title="Two-step efficient GMM (Hansen 1982)">
+Given a sample $X_1, \dots, X_n$ and a moment function $g(X, \theta) \in \mathbb{R}^L$ with $L \ge k$:
+
+1. **Choose** a first-step weighting matrix $W^{(1)}$, positive-definite and not depending on the parameter. Common choices: $W^{(1)} = I_L$ (always works), or $W^{(1)} = (Z^\top Z / n)^{-1}$ for linear IV.
+2. **First-step GMM:** $\hat\theta^{(1)} = \arg\min_{\theta \in \Theta} n \, \bar g_n(\theta)^\top W^{(1)} \bar g_n(\theta)$.
+3. **Estimate $\Omega$ from first-step residuals:** $\hat\Omega_n = (1/n) \sum_{i=1}^n g(X_i, \hat\theta^{(1)})\, g(X_i, \hat\theta^{(1)})^\top$.
+4. **Second-step GMM with $\hat W = \hat\Omega_n^{-1}$:** $\hat\theta^{(2)} = \arg\min_{\theta \in \Theta} n \, \bar g_n(\theta)^\top \hat\Omega_n^{-1} \bar g_n(\theta)$.
+5. **Return** $\hat\theta^{(2)}$ as the efficient estimator, with asymptotic variance $\hat V^{(2)} = (\hat G_n^\top \hat\Omega_n^{-1} \hat G_n)^{-1}$.
+</TheoremBlock>
+
+<TheoremBlock type="theorem" number={7.1} title="Efficiency of the two-step estimator">
+Under the conditions of Theorem 5.1, the two-step estimator from Algorithm 7.1 satisfies
+
+$$
+\sqrt{n}\,(\hat\theta^{(2)} - \theta_0) \;\to_d\; \mathcal{N}(0, V^\star), \qquad V^\star = (G_0^\top \Omega^{-1} G_0)^{-1}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Two steps. **Step 1:** $\hat\Omega_n \to_p \Omega$ by consistency of $\hat\theta^{(1)}$ (Theorem 4.1) combined with a uniform mean-value bound on $g g^\top$ over the neighborhood $\mathcal{N}$. **Step 2:** Apply Theorem 5.1 with $W_n = \hat\Omega_n^{-1} \to_p \Omega^{-1} = W^\star$ (continuous mapping). The limit variance is $V_{W^\star} = V^\star$.
+</TheoremBlock>
+
+The proof carries the central insight: the first-step weighting matrix doesn't need to be efficient — it just needs to deliver consistency. *Any* positive-definite $W^{(1)}$ does the job. The efficiency comes entirely from the second-step weighting $\hat\Omega_n^{-1}$.
+
+The visualization below traces Algorithm 7.1 end-to-end on the running example. Three stacked panels: (a) the step-1 criterion surface $J_n(\theta, I)$ with the step-1 estimate marked; (b) the estimated $\hat\Omega_n$ shown as a heatmap (off-diagonals capture cross-sensor moment correlations); (c) the step-2 criterion surface $J_n(\theta, \hat\Omega_n^{-1})$, with step-1 and step-2 estimates overlaid. Raise $\sigma_3$ to make the step-1 / step-2 ellipse shapes visibly different.
+
+<TwoStepGMMWalkthrough client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/07_two_step_surfaces.png"
+  alt="Side-by-side criterion surfaces for step 1 (W = I) and step 2 (W = Ω̂⁻¹) on the running example"
+  caption="Figure 7.1 — Criterion surface deformation from step 1 to step 2. Identity weighting produces nearly circular contours; the efficient weighting Ω̂⁻¹ elongates the contours along the direction the moment data most strongly informs, tightening the resulting confidence ellipse."
+/>
+
+### 7.2 Estimating Ω from first-step residuals
+
+For i.i.d. data the uncentered estimator $\hat\Omega_n = (1/n) \sum_i g_i g_i^\top$ (with $g_i := g(X_i, \hat\theta^{(1)})$) is the natural choice — uncentered because $\mathbb{E}[g(X, \theta_0)] = 0$ by the moment-condition restriction. Some software packages center anyway (subtract $\bar g_n$) as a defensive measure against misspecification; for correctly-specified models the two estimators are asymptotically equivalent.
+
+For dependent data — time series, clustered samples — the simple covariance estimator is *inconsistent* because it ignores the contributions of $\mathbb{E}[g_i g_j^\top]$ at lags $|i - j| > 0$. The **HAC estimator** (Newey–West 1987; Andrews–Monahan 1991) generalizes:
+
+$$
+\hat\Omega_n^{\rm HAC} \;=\; \hat\Gamma_0 \;+\; \sum_{\ell=1}^{L_n} k\!\left(\frac{\ell}{L_n}\right) (\hat\Gamma_\ell + \hat\Gamma_\ell^\top),
+$$
+
+where $\hat\Gamma_\ell$ are sample auto-covariances, $L_n \sim n^{1/3}$ is a bandwidth, and $k(\cdot)$ is a kernel ensuring positive-definiteness. The canonical applied workflow: use Newey–West for time series, use the plain sample covariance for i.i.d. cross-sections.
+
+### 7.3 Iterated GMM and convergence
+
+The two-step procedure stops after one update of $\hat W$. **Iterated GMM** keeps going: re-estimate $\hat\Omega^{(t)}$ from residuals at $\hat\theta^{(t)}$, set $W^{(t+1)} = (\hat\Omega^{(t)})^{-1}$, recompute $\hat\theta^{(t+1)}$, and iterate to a fixed point. Iterated GMM is a Picard iteration on the update map $T(\theta) = \arg\min_\theta J_n(\theta, \hat\Omega(\theta)^{-1})$.
+
+Three properties: (a) **asymptotic equivalence** — both $\hat\theta^{(2)}$ and $\hat\theta^{\rm iter}$ converge at rate $n^{-1/2}$ with the same asymptotic variance $V^\star$; (b) **invariance** — $\hat\theta^{\rm iter}$ depends only on the sample and the moment function, not on $W^{(1)}$; (c) **fixed-point characterization** — for affine moment functions, this fixed point coincides with the continuous-updating estimator (CUE) of §10. In applied practice, two-step is the default; iterated GMM is used when reviewers ask for "specification-agnostic" results; CUE / EL / GEL (§10) are used when two-step bias matters.
+
+### 7.4 Finite-sample bias of two-step GMM — the Hansen–Heaton–Yaron critique
+
+Hansen, Heaton, and Yaron (1996) found that the estimated $\hat\Omega_n$ depends on the *same data* used in step 2, inducing a finite-sample bias of order $O(L / n)$. The mechanism: $\hat\Omega_n$ is constructed from $\hat\theta^{(1)}$, which is a function of the sample; using it as the weighting matrix in step 2 creates a correlation between $\hat\Omega_n^{-1}$ and $\bar g_n$ in the FOCs that classical asymptotics ignores.
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/07_finite_sample_bias.png"
+  alt="Two-step, iterated, and oracle GMM bias at small n with L = 4 moment conditions"
+  caption="Figure 7.2 — Finite-sample bias hierarchy. The oracle estimator (efficient weighting at the unknown true Ω) is unbiased to leading order; iterated GMM reduces two-step bias by a constant factor (∼ 30-50%); both decay at rate O(L/n). The gap closes as n grows."
+/>
+
+Three responses to the HHY critique shape the modern literature: iterated GMM mitigates but does not eliminate (bias drops by a constant factor); continuous-updating (CUE) jointly optimizes $\theta$ and $W(\theta)$ with smaller higher-order bias; empirical likelihood (EL) has the smallest higher-order bias in the GEL class (Newey–Smith 2004). §10 develops all three.
+
+---
+
+## §8 — The Hansen J-statistic and over-identification testing
+
+The two-step procedure of §7 produces, almost as a by-product, a *test of correct specification*. The minimum value of the efficient-weight GMM criterion — the **Hansen J-statistic** — has an asymptotic $\chi^2_{L - k}$ distribution under correct specification. The same machinery that produces the point estimate produces a free specification test.
+
+### 8.1 The J-statistic as a quadratic form
+
+After running two-step (or iterated) efficient GMM, the **Hansen J-statistic** is
+
+$$
+\hat J \;:=\; J_n\!\left(\hat\theta^{(2)}, \, \hat\Omega_n^{-1}\right) \;=\; n \cdot \bar g_n(\hat\theta^{(2)})^\top \, \hat\Omega_n^{-1} \, \bar g_n(\hat\theta^{(2)}).
+$$
+
+Under correct specification ($\mathbb{E}_{P_0}[g(X, \theta_0)] = 0$), $\bar g_n(\hat\theta^{(2)}) = O_p(n^{-1/2})$, so $\hat J = O_p(1)$ — bounded in probability, with the $\chi^2_{L-k}$ distribution below. Under misspecification (no $\theta$ satisfies the population moment condition), $\bar g_n(\hat\theta^{(2)})$ is bounded away from zero, so $\hat J = O_p(n)$ — the criterion diverges, and the test rejects with probability tending to 1.
+
+### 8.2 Asymptotic distribution under H₀
+
+<TheoremBlock type="theorem" number={8.1} title="Asymptotic distribution of the J-statistic">
+Under the conditions of Theorem 5.1, with two-step or iterated efficient GMM weighting,
+
+$$
+\hat J \;\to_d\; \chi^2_{L - k}.
+$$
+</TheoremBlock>
+
+<TheoremBlock type="proof">
+Four steps.
+
+**Step 1 — linearize $\bar g_n(\hat\theta^{(2)})$ around $\theta_0$.** From the proof of Theorem 5.1, $\sqrt{n}(\hat\theta^{(2)} - \theta_0) = -(G_0^\top \Omega^{-1} G_0)^{-1} G_0^\top \Omega^{-1} \cdot \sqrt{n}\, \bar g_n(\theta_0) + o_p(1)$. Mean-value expansion of $\bar g_n$ then gives
+
+$$
+\sqrt{n}\, \bar g_n(\hat\theta^{(2)}) \;=\; M_0 \cdot \sqrt{n}\, \bar g_n(\theta_0) \;+\; o_p(1),
+$$
+
+where $M_0 := I_L - G_0\, (G_0^\top \Omega^{-1} G_0)^{-1} G_0^\top \Omega^{-1}$ is the **residual-projection matrix**.
+
+**Step 2 — CLT.** $\sqrt{n}\, \bar g_n(\theta_0) \to_d Z \sim \mathcal{N}(0, \Omega)$. By continuous mapping and $\hat\Omega_n \to_p \Omega$, $\hat J \to_d (M_0 Z)^\top \Omega^{-1} (M_0 Z)$.
+
+**Step 3 — whitening.** Let $\Omega = L L^\top$ and $\tilde Z := L^{-1} Z \sim \mathcal{N}(0, I_L)$, $\tilde G := L^{-1} G_0$. Then $M_0 Z = L \cdot M_{\tilde G} \tilde Z$, where $M_{\tilde G} := I_L - \tilde G (\tilde G^\top \tilde G)^{-1} \tilde G^\top$ is the standard Euclidean orthogonal projection onto $\mathrm{col}(\tilde G)^\perp$, a symmetric idempotent matrix of rank $L - k$.
+
+**Step 4 — compute.** $(M_0 Z)^\top \Omega^{-1} (M_0 Z) = (L M_{\tilde G} \tilde Z)^\top L^{-\top} L^{-1} (L M_{\tilde G} \tilde Z) = \|M_{\tilde G} \tilde Z\|^2$. Since $\tilde Z \sim \mathcal{N}(0, I_L)$ and $M_{\tilde G}$ is an orthogonal projection of rank $L - k$, $\|M_{\tilde G} \tilde Z\|^2 \sim \chi^2_{L - k}$.
+</TheoremBlock>
+
+*(Hansen 1982; the residual-projection proof is the canonical textbook treatment.)* Geometric reading: the sample-moment vector at the GMM optimum is the residual after projecting the $L$-dimensional moment-noise vector onto the $k$-dimensional parameter-identifying subspace $\mathrm{col}(G_0)$. The $k$ projection components are absorbed into $\hat\theta^{(2)}$; the $L - k$ residual components are what $\hat J$ measures. A just-identified model ($L = k$) has *zero* over-identifying restrictions, $\hat J \equiv 0$ exactly, and there is no specification test. Over-identification is precisely the resource the J-test exploits.
+
+The visualization below runs the J-statistic Monte Carlo on the running example. Top panel: empirical density of $\hat J$ over 400 two-step replicates at the user's chosen $n$, with the $\chi^2_2$ theoretical density overlaid. The empirical 95th percentile and Type-I rate are reported. Bottom panel: power curve — the empirical rejection rate at $\alpha = 0.05$ as we shift sensor 3's true mean away from its $\theta_0$-implied value by $\delta$. At $\delta = 0$ the rate hovers near $\alpha$; as $\delta$ grows the rate rises toward 1, consistent with the consistency of the J-test against fixed misspecifications.
+
+<JStatisticDistributionExplorer client:visible />
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/08_J_under_H0.png"
+  alt="Empirical histogram of the J-statistic under H₀ overlaid with the χ²_{L-k} density"
+  caption="Figure 8.1 — Empirical Ĵ distribution under correct specification, B = 5000 replicates at n = 500. The histogram tracks the χ²₂ density closely; Q-Q-plot inset (right) shows the asymptotic-normal approximation is essentially exact at this sample size."
+/>
+
+<Figure
+  src="/images/topics/generalized-method-of-moments/08_J_power_curve.png"
+  alt="J-test power curve as misspecification amplitude grows"
+  caption="Figure 8.2 — Power against misspecification of moment g₃. Each curve corresponds to a different sample size; all converge to 1 as δ grows. The δ = 0 curve hovers at the nominal α = 0.05, confirming correct Type-I control."
+/>
+
+### 8.3 Power against misspecification
+
+The J-test is *consistent* against any fixed misspecification: if the model is wrong, the test rejects with probability tending to 1.
+
+**Fixed alternatives.** Suppose the true distribution $P_0$ satisfies $m(\theta) \ne 0$ for *every* $\theta \in \Theta$. The "pseudo-true" parameter $\theta_0^\star := \arg\min_\theta m(\theta)^\top \Omega^{-1} m(\theta)$ is the limit of $\hat\theta^{(2)}$, and the population objective at this point is strictly positive. So $\hat J / n \to_p Q_0(\theta_0^\star) > 0$, $\hat J \to_p \infty$ at rate $n$, and the test rejects with probability tending to 1.
+
+**Local alternatives (Pitman drift).** Suppose the true population moment is $m(\theta_0) = n^{-1/2} \delta$ for some fixed direction $\delta \in \mathbb{R}^L \setminus \mathrm{col}(G_0)$. Following the proof of Theorem 8.1 with the local-alternative drift, the limiting distribution is
+
+$$
+\hat J \;\to_d\; \chi^2_{L - k}(\lambda), \qquad \lambda = \delta^\top \Omega^{-1} \delta
+$$
+
+— a *non-central* chi-squared. Power increases with $\lambda$: the J-test is most powerful against misspecifications $\delta$ that are *large in the $\Omega^{-1}$ norm* and *orthogonal* (in that norm) to the parameter-identifying subspace.
+
+**Where the J-test is blind.** A misspecification $\delta \in \mathrm{col}(G_0)$ — a deviation in the parameter-direction subspace — is absorbed by the GMM optimizer into a shift of $\hat\theta^{(2)}$ and contributes nothing to $\hat J$. The J-test cannot detect *parametric misspecification within the model's identification capacity*; it only detects mismatches *orthogonal to* the parameter-direction subspace.
+
+### 8.4 Reading a J-test in practice
+
+The standard reporting convention is the **p-value**: $p_{\hat J} = P(\chi^2_{L-k} > \hat J)$. Reject $H_0$ at level $\alpha$ if $p_{\hat J} < \alpha$. Three practical pitfalls.
+
+**Pitfall 1: "Low J → correctly specified" is a Type II error trap.** A non-rejecting J-test is consistent with correct specification but does not prove it. Power against subtle misspecifications can be low at moderate $n$.
+
+**Pitfall 2: A significant J does not localize the culprit.** The J-statistic is a single scalar; it does not localize the problem to a specific moment condition. To diagnose, examine individual moment residuals $\bar g_n(\hat\theta^{(2)})_j$; the component(s) with the largest standardized residuals point to candidate misspecified moments. Newey (1985) develops formal tests of subsets of moment conditions.
+
+**Pitfall 3: Weak identification inflates the false-rejection rate.** When $G_0$ is near-singular, the asymptotic $\chi^2_{L-k}$ approximation breaks down. The Anderson–Rubin test (§9.4) provides a weak-instrument-robust alternative.
+
+**Relationship to other specification tests.** The **Sargan test** (Sargan 1958) is the J-test specialized to linear IV — same statistic, same null distribution, older econometric name. The **Hausman test** (Hausman 1978) tests whether two consistent estimators agree — a specification check based on the *difference* between estimators. **Conditional moment tests** (Newey 1985) test *subsets* of moment conditions, useful for localizing the source of a significant J-statistic.

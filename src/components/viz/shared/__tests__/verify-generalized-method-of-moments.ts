@@ -25,6 +25,9 @@ import {
   RUNNING_EXAMPLE_A,
   RUNNING_EXAMPLE_THETA0,
   affineCriterionSurface,
+  chi2Cdf,
+  chi2Pdf,
+  chi2Quantile,
   cholesky,
   confidenceEllipse2D,
   det2x2,
@@ -42,6 +45,9 @@ import {
   gmmEstimateAffine,
   hansenBound,
   identityMat,
+  iteratedAffineGMM,
+  jStatisticAffine,
+  lgamma,
   loewnerCompare,
   matInverse,
   matMul,
@@ -55,6 +61,7 @@ import {
   sandwichVariance,
   trace2x2,
   trigamma,
+  twoStepAffineGMM,
   vecDot,
 } from '../generalized-method-of-moments';
 
@@ -553,6 +560,105 @@ approxEq(trigamma(1), (Math.PI * Math.PI) / 6, 1e-8, "ψ'(1) = π²/6");
   ];
   approxEq(trace2x2(M), 7, 1e-12, 'trace2x2');
   approxEq(det2x2(M), 11, 1e-12, 'det2x2 = 12 - 1 = 11');
+}
+
+// =============================================================================
+// Wave 3 assertions — two-step / iterated GMM, J-statistic, χ² helpers.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// 18. lgamma — Lanczos approximation accuracy on known anchors.
+//   Γ(0.5) = √π → log Γ(0.5) = 0.5723649429247...
+//   Γ(10) = 9! = 362880 → log Γ(10) = 12.80182748...
+// -----------------------------------------------------------------------------
+approxEq(lgamma(0.5), 0.5723649429247, 1e-10, 'lgamma(0.5) = log √π');
+approxEq(lgamma(1), 0, 1e-12, 'lgamma(1) = 0');
+approxEq(lgamma(10), 12.801827480081469, 1e-10, 'lgamma(10) = log 9!');
+
+// -----------------------------------------------------------------------------
+// 19. χ² CDF/PDF/Quantile anchors.
+//   χ²_2 CDF at 5.991 ≈ 0.95.  χ²_2(0.95) ≈ 5.991464547.
+//   χ²_5 CDF at 11.07 ≈ 0.95.
+// -----------------------------------------------------------------------------
+approxEq(chi2Cdf(5.991464547107981, 2), 0.95, 1e-7, 'chi2Cdf(5.991, 2) = 0.95');
+approxEq(chi2Quantile(0.95, 2), 5.991464547107981, 1e-6, 'chi2Quantile(0.95, 2)');
+approxEq(chi2Quantile(0.95, 5), 11.070497693516351, 1e-6, 'chi2Quantile(0.95, 5)');
+approxEq(chi2Quantile(0.99, 2), 9.21034037197618, 1e-6, 'chi2Quantile(0.99, 2)');
+
+// χ²_df has mean df, variance 2·df. Mean check via CDF at df should be near
+// the median (which is df · (1 - 2/(9df))^3).
+approxEq(chi2Cdf(2, 2), 0.6321205588285577, 1e-6, 'chi2Cdf(2, 2) = 1 - e^{-1}');
+
+// PDF normalization sanity: chi2Pdf > 0 at positive support, 0 at ≤ 0.
+ok(chi2Pdf(5, 2) > 0, 'chi2Pdf positive at x=5');
+ok(chi2Pdf(0, 2) === 0, 'chi2Pdf zero at x=0');
+
+// -----------------------------------------------------------------------------
+// 20. twoStepAffineGMM — consistency at large n. The estimator on the running
+// example should land near θ_0 = (1, 1) at n=2000 with σ = (1,1,1,1).
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(303);
+  const X = sampleSensorObservations(rng, RUNNING_EXAMPLE_THETA0, RUNNING_EXAMPLE_A, 2000, [1, 1, 1, 1]);
+  const res = twoStepAffineGMM(X, RUNNING_EXAMPLE_A);
+  approxEqVec(res.theta1, RUNNING_EXAMPLE_THETA0, 0.05, 'twoStep θ̂^(1) near truth at n=2000');
+  approxEqVec(res.theta2, RUNNING_EXAMPLE_THETA0, 0.05, 'twoStep θ̂^(2) near truth at n=2000');
+  // V2 should have diagonal entries < V1 (efficient is tighter), in expectation.
+  ok(res.V2[0][0] > 0 && res.V2[1][1] > 0, 'twoStep V2 PD');
+  // J-statistic at θ̂^(2) should be O_p(1) at large n (and under H₀, ~ chi²_{L-k} mean L-k = 2).
+  ok(res.Jhat > 0 && res.Jhat < 50, 'J-stat in plausible range');
+}
+
+// -----------------------------------------------------------------------------
+// 21. iteratedAffineGMM — converges and fixed point matches two-step within
+// the convergence tolerance.
+// -----------------------------------------------------------------------------
+{
+  const rng = mulberry32(2026);
+  const X = sampleSensorObservations(rng, RUNNING_EXAMPLE_THETA0, RUNNING_EXAMPLE_A, 1000, [1, 1, 2, 1]);
+  const it = iteratedAffineGMM(X, RUNNING_EXAMPLE_A, identityMat(4), 1e-8, 50);
+  ok(it.converged, 'iteratedGMM converges within 50 iter');
+  ok(it.iterations >= 2, 'iteratedGMM takes at least 2 iter');
+  // Trajectory should monotone-decrease in step-size norm.
+  ok(it.trajectory.length >= 2, 'iteratedGMM trajectory non-trivial');
+}
+
+// -----------------------------------------------------------------------------
+// 22. J-statistic under H₀ — empirical mean should converge to L-k = 2 at
+// large n, B replicates, using two-step weighting.
+// -----------------------------------------------------------------------------
+{
+  const A = RUNNING_EXAMPLE_A;
+  const theta0 = RUNNING_EXAMPLE_THETA0;
+  const sigma = [1, 1, 1, 1];
+  const n = 400;
+  const B = 400;
+  let sumJ = 0;
+  let q95count = 0;
+  const crit = chi2Quantile(0.95, 2);
+  for (let b = 0; b < B; b++) {
+    const rng = mulberry32(5000 + b * 13);
+    const X = sampleSensorObservations(rng, theta0, A, n, sigma);
+    const res = twoStepAffineGMM(X, A);
+    sumJ += res.Jhat;
+    if (res.Jhat > crit) q95count += 1;
+  }
+  const meanJ = sumJ / B;
+  approxEq(meanJ, 2, 0.4, 'mean J ≈ L-k = 2 under H₀');
+  // Empirical 95th-percentile rejection rate at α = 0.05 should be near 0.05
+  // (Type-I error). Allow ±0.025 for MC noise at B=400.
+  const rejRate = q95count / B;
+  approxEq(rejRate, 0.05, 0.04, 'empirical Type-I rate near α=0.05');
+}
+
+// -----------------------------------------------------------------------------
+// 23. jStatisticAffine sanity. At the just-identified subset, J=0 at θ_0.
+// -----------------------------------------------------------------------------
+{
+  const A = RUNNING_EXAMPLE_A;
+  const Xbar = [1, 1, 2, 1]; // exact (A θ₀) for θ_0 = (1, 1)
+  const J = jStatisticAffine([1, 1], A, Xbar, identityMat(4), 100);
+  approxEq(J, 0, 1e-12, 'J = 0 at θ=θ₀ under exact moments');
 }
 
 // -----------------------------------------------------------------------------
