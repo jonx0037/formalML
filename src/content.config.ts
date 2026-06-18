@@ -64,8 +64,7 @@ const topics = defineCollection({
     formalcalculusConnections: z.array(crossSiteRef).optional(),
     formalstatisticsConnections: z.array(crossSiteRef).optional(),
     // formalRAG is downstream of ML: topics here link to it via Connections
-    // ("where this is applied"), not Prereqs.
-    formalragPrereqs: z.array(crossSiteRef).optional(),
+    // ("where this is applied") only — never as a prerequisite.
     formalragConnections: z.array(crossSiteRef).optional(),
   }),
 });

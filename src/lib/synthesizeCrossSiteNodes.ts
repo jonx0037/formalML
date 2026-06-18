@@ -13,7 +13,6 @@ interface PublishedTopic {
   data: {
     formalcalculusPrereqs?: CrossSiteRef[];
     formalstatisticsPrereqs?: CrossSiteRef[];
-    formalragPrereqs?: CrossSiteRef[];
   };
 }
 
@@ -96,7 +95,6 @@ export function synthesizeCrossSiteNodes(
     const refs: Array<{ refs: CrossSiteRef[] | undefined; site: CrossSiteSite }> = [
       { refs: topic.data.formalcalculusPrereqs, site: 'formalcalculus' },
       { refs: topic.data.formalstatisticsPrereqs, site: 'formalstatistics' },
-      { refs: topic.data.formalragPrereqs, site: 'formalrag' },
     ];
 
     for (const { refs: list, site } of refs) {

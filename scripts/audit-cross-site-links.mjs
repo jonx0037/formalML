@@ -51,7 +51,6 @@ const CROSS_SITE_FIELDS = [
   'formalcalculusConnections',
   'formalstatisticsPrereqs',
   'formalstatisticsConnections',
-  'formalragPrereqs',
   'formalragConnections',
   'formalmlPrereqs',
   'formalmlConnections',
