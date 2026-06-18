@@ -34,12 +34,15 @@ const REPOS = {
     process.env.FORMAL_CALCULUS_PATH ?? join(REPO_ROOT, '../formalCalculus'),
   formalstatistics:
     process.env.FORMAL_STATISTICS_PATH ?? join(REPO_ROOT, '../formalStatistics'),
+  formalrag:
+    process.env.FORMAL_RAG_PATH ?? join(REPO_ROOT, '../formalRAG'),
   formalml: REPO_ROOT,
 };
 
 const SITE_LABELS = {
   formalcalculus: 'formalCalculus',
   formalstatistics: 'formalStatistics',
+  formalrag: 'formalRAG',
   formalml: 'formalML',
 };
 
@@ -48,6 +51,8 @@ const CROSS_SITE_FIELDS = [
   'formalcalculusConnections',
   'formalstatisticsPrereqs',
   'formalstatisticsConnections',
+  'formalragPrereqs',
+  'formalragConnections',
   'formalmlPrereqs',
   'formalmlConnections',
 ];
@@ -56,7 +61,7 @@ const OUTPUT_DIR = join(REPO_ROOT, 'docs/plans/audit-output');
 const REPORT_PATH = join(REPO_ROOT, 'docs/plans/cross-site-audit-report.md');
 const DEFERRED_PATH = join(REPO_ROOT, 'docs/plans/deferred-reciprocals.md');
 
-const FIELD_RE = /^(formalcalculus|formalstatistics|formalml)(Prereqs|Connections)$/;
+const FIELD_RE = /^(formalcalculus|formalstatistics|formalrag|formalml)(Prereqs|Connections)$/;
 
 function parseField(field) {
   const m = field.match(FIELD_RE);

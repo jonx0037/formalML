@@ -1,6 +1,6 @@
 import type { DAGEdge, DAGNode } from '../components/viz/shared/types';
 
-type CrossSiteSite = 'formalcalculus' | 'formalstatistics';
+type CrossSiteSite = 'formalcalculus' | 'formalstatistics' | 'formalrag';
 
 interface CrossSiteRef {
   topic: string;
@@ -13,6 +13,7 @@ interface PublishedTopic {
   data: {
     formalcalculusPrereqs?: CrossSiteRef[];
     formalstatisticsPrereqs?: CrossSiteRef[];
+    formalragPrereqs?: CrossSiteRef[];
   };
 }
 
@@ -26,6 +27,7 @@ export interface ExternalNode extends DAGNode {
 const SITE_DOMAINS: Record<CrossSiteSite, string> = {
   formalcalculus: 'https://formalcalculus.com',
   formalstatistics: 'https://formalstatistics.com',
+  formalrag: 'https://formalrag.com',
 };
 
 // Lowercase tokens we want preserved as uppercase when humanizing a slug.
@@ -94,6 +96,7 @@ export function synthesizeCrossSiteNodes(
     const refs: Array<{ refs: CrossSiteRef[] | undefined; site: CrossSiteSite }> = [
       { refs: topic.data.formalcalculusPrereqs, site: 'formalcalculus' },
       { refs: topic.data.formalstatisticsPrereqs, site: 'formalstatistics' },
+      { refs: topic.data.formalragPrereqs, site: 'formalrag' },
     ];
 
     for (const { refs: list, site } of refs) {
