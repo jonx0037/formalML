@@ -87,8 +87,8 @@ ENSEMBLE_K = 10                  # deep ensemble size
 NNGP_WIDTHS = [50, 100, 200, 500, 1000, 2000]
 NNGP_SAMPLES_PER_WIDTH = 200
 NNGP_SIGMA_W2 = 2.0
-NNGP_SIGMA_B2 = 0.1
-NNGP_NOISE = 0.05                # GP regression noise variance
+NNGP_SIGMA_B2 = 0.05             # matches notebook cell 20 (SIGMA_B2)
+NNGP_NOISE = 0.1**2              # GP regression noise variance: sigma_n = 0.1, the y-noise scale (notebook cell 20)
 
 OUT_DIRS = [
     REPO_ROOT / "src" / "data" / "sampleData" / SLUG,
@@ -624,14 +624,27 @@ t0 = time.time()
 
 
 def arc_cosine_kernel(X, Xp, sigma_w2: float = NNGP_SIGMA_W2, sigma_b2: float = NNGP_SIGMA_B2) -> np.ndarray:
-    norms_X = np.linalg.norm(X, axis=1)
-    norms_Xp = np.linalg.norm(Xp, axis=1)
-    dot = X @ Xp.T
-    norm_outer = np.maximum(norms_X[:, None] * norms_Xp[None, :], EIGENVALUE_FLOOR)
-    cos_theta = np.clip(dot / norm_outer, -1, 1)
+    """One-hidden-layer ReLU NNGP kernel — the Remark 9.1 recursion with L = 1.
+
+    k0(x, x') = sigma_b2 + sigma_w2 * <x, x'> / d                (input-layer pre-activations)
+    k1(x, x') = sigma_b2 + sigma_w2/(2 pi) * sqrt(k0(x,x) k0(x',x')) * (sin t + (pi - t) cos t),
+    t = arccos(k0(x, x') / sqrt(k0(x,x) k0(x',x')))              (Cho & Saul 2009 arc-cosine)
+
+    The input-layer bias inside k0 is essential: without it, for 1-D inputs the angle t is
+    either 0 or pi and the kernel collapses to rank 3 (a constant plus independent slopes on
+    x > 0 and x < 0), so the GP posterior is two straight lines. Mirrors notebook cell 20's
+    nngp_kernel_1layer (which has d = 1 there).
+    """
+    X = np.asarray(X, dtype=np.float64)
+    Xp = np.asarray(Xp, dtype=np.float64)
+    d = X.shape[1]
+    k0_xx = sigma_b2 + sigma_w2 * np.sum(X * X, axis=1) / d
+    k0_pp = sigma_b2 + sigma_w2 * np.sum(Xp * Xp, axis=1) / d
+    k0_xp = sigma_b2 + sigma_w2 * (X @ Xp.T) / d
+    norm_outer = np.maximum(np.sqrt(np.outer(k0_xx, k0_pp)), EIGENVALUE_FLOOR)
+    cos_theta = np.clip(k0_xp / norm_outer, -1, 1)
     theta = np.arccos(cos_theta)
-    K = (sigma_w2 / (2 * np.pi)) * norm_outer * (np.sin(theta) + (np.pi - theta) * np.cos(theta))
-    return K + sigma_b2
+    return sigma_b2 + (sigma_w2 / (2 * np.pi)) * norm_outer * (np.sin(theta) + (np.pi - theta) * cos_theta)
 
 
 def empirical_finite_width_kernel(width: int, n_samples: int, X: np.ndarray) -> float:
@@ -641,9 +654,9 @@ def empirical_finite_width_kernel(width: int, n_samples: int, X: np.ndarray) -> 
     x0 = X[0:1]
     for _ in range(n_samples):
         W1 = rng.normal(size=(2, width)) * sigma_w / np.sqrt(2)
-        b1 = rng.normal(size=width) * np.sqrt(0.1)
+        b1 = rng.normal(size=width) * np.sqrt(NNGP_SIGMA_B2)
         W2 = rng.normal(size=(width, 1)) * sigma_w / np.sqrt(width)
-        b2 = rng.normal(size=1) * np.sqrt(0.1)
+        b2 = rng.normal(size=1) * np.sqrt(NNGP_SIGMA_B2)
         h = np.maximum(x0 @ W1 + b1, 0)
         f = h @ W2 + b2
         f_origin.append(float(f[0, 0]))
@@ -660,9 +673,10 @@ print("  empirical Var f(x_0):")
 for entry in width_convergence:
     print(f"    width={entry['width']:>4d}: empirical={entry['empirical']:.4f}")
 
-rng_reg = np.random.default_rng(SEED + 600)
-X_reg = np.linspace(-2.5, 2.5, 8).reshape(-1, 1).astype(np.float32)
-y_reg = (np.sin(X_reg) + 0.1 * rng_reg.normal(size=X_reg.shape)).ravel().astype(np.float32)
+# Toy 1-D regression problem — identical to notebook cell 20 (same inputs, same legacy-RNG
+# noise stream as its np.random.seed(SEED + 7)), so this viz matches the static Figure 9b.
+X_reg = np.array([[-2.0], [-1.5], [-0.5], [0.0], [0.7], [1.2], [1.8], [2.5]], dtype=np.float32)
+y_reg = np.sin(X_reg.ravel()) + 0.1 * np.random.RandomState(SEED + 7).normal(size=len(X_reg))
 
 X_grid = np.linspace(-3, 3, 80).reshape(-1, 1).astype(np.float32)
 K_train = arc_cosine_kernel(X_reg, X_reg) + NNGP_NOISE * np.eye(len(X_reg))

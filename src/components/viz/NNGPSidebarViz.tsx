@@ -50,8 +50,8 @@ export default function NNGPSidebarViz() {
       dataPath="/sample-data/bayesian-neural-networks/nngp.json"
       initialState={initialState}
       figurePath="/images/topics/bayesian-neural-networks/09_nngp_sidebar.png"
-      alt="Two panels: panel (a) bar chart of empirical Var f(x_0) at six widths h ∈ {50, 100, 200, 500, 1000, 2000} with a horizontal reference line for the closed-form NNGP arc-cosine kernel value at x_0; panel (b) NNGP-kernel GP regression posterior on a small synthetic regression dataset showing posterior mean and ±2σ band, with uncertainty growing between training points."
-      caption="Figure 9. The function-space view. (a) Empirical Var f(x_0) of finite-width MLPs converges to the closed-form arc-cosine NNGP kernel value as h grows. (b) NNGP-kernel GP regression — closed-form, no-training, with uncertainty growing between training points. Toggle 95% bands; click a bar to highlight that width's deviation from the limit."
+      alt="Two panels: panel (a) bar chart of empirical Var f(x_0) at six widths h ∈ {50, 100, 200, 500, 1000, 2000} with a horizontal reference line for the closed-form NNGP arc-cosine kernel value at x_0; panel (b) NNGP-kernel GP regression posterior on a small synthetic regression dataset showing posterior mean and ±2σ band, narrow near the training data and widening away from it, most visibly beyond the ends of the data."
+      caption="Figure 9. The function-space view. (a) Empirical Var f(x_0) of finite-width MLPs converges to the closed-form arc-cosine NNGP kernel value as h grows. (b) One-hidden-layer ReLU NNGP-kernel GP regression — closed-form, no training; the band is narrow near the data and widens away from it, most visibly beyond the ends of the data. Toggle 95% bands; click a bar to highlight that width's deviation from the limit."
       ariaLabel="Figure 9: Interactive NNGP convergence and arc-cosine kernel regression"
       controls={(s, setS) => <NNGPControls state={s} setState={setS} />}
       chart={(data, s, w, setS) => (
