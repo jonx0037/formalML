@@ -68,6 +68,14 @@ Add the reciprocal pointer back to:
   - Reciprocal field on the new topic: `formalcalculusPrereqs`
   - Source-side prose (use as a starting point, rewrite from new topic's vantage): _UCB confidence intervals are union bounds across arms and time. The 'union bound + tail concentration' pattern in §9 is the same machinery._
 
+## When `formalml/mutual-information` ships
+
+Add the reciprocal pointer back to:
+
+- **formalRAG/product-quantization** declares `formalmlConnections` → `mutual-information` (connections)
+  - Reciprocal field on the new topic: `formalragPrereqs`
+  - Source-side prose (use as a starting point, rewrite from new topic's vantage): _product quantization assumes the subspaces are statistically independent, and the distortion gap it pays relative to a full joint codebook is governed by the mutual information across subspaces — t…_
+
 ## When `formalml/neural-network-basics` ships
 
 Add the reciprocal pointer back to:
