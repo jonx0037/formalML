@@ -36,6 +36,7 @@ export const domainColorScale = d3
     'formalcalculus',
     'formalstatistics',
     'formalrag',
+    'formalnlp',
   ])
   .range([
     ...d3.schemeTableau10.slice(0, 8),
@@ -47,4 +48,5 @@ export const domainColorScale = d3
     '#9ca3af',
     '#6b7280',
     '#818cf8',
+    '#a3324a',
   ]);

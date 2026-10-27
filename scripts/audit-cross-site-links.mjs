@@ -2,7 +2,7 @@
 /**
  * audit-cross-site-links.mjs — Cross-repo reciprocity validator.
  *
- * Walks src/content/topics/ in each of the three formal* sibling repos,
+ * Walks src/content/topics/ in each of the formal* sibling repos,
  * extracts cross-site frontmatter entries, builds a unified edge map, then
  * checks every edge has a reciprocal with opposite direction (Prereqs ↔
  * Connections) on the target side.
@@ -11,6 +11,8 @@
  *   $REPO_ROOT/src/content/topics/*.mdx                  — formalml (script's own checkout)
  *   $FORMAL_CALCULUS_PATH or ../formalCalculus/...       — formalcalculus
  *   $FORMAL_STATISTICS_PATH or ../formalStatistics/...   — formalstatistics
+ *   $FORMAL_RAG_PATH or ../formalRAG/...                 — formalrag
+ *   $FORMAL_NLP_PATH or ../formalNLP/...                 — formalnlp
  *
  * Outputs (written under the script's own checkout):
  *   docs/plans/audit-output/<site>-references.json     — per-site edge dump
@@ -36,6 +38,8 @@ const REPOS = {
     process.env.FORMAL_STATISTICS_PATH ?? join(REPO_ROOT, '../formalStatistics'),
   formalrag:
     process.env.FORMAL_RAG_PATH ?? join(REPO_ROOT, '../formalRAG'),
+  formalnlp:
+    process.env.FORMAL_NLP_PATH ?? join(REPO_ROOT, '../formalNLP'),
   formalml: REPO_ROOT,
 };
 
@@ -43,6 +47,7 @@ const SITE_LABELS = {
   formalcalculus: 'formalCalculus',
   formalstatistics: 'formalStatistics',
   formalrag: 'formalRAG',
+  formalnlp: 'formalNLP',
   formalml: 'formalML',
 };
 
@@ -52,6 +57,8 @@ const CROSS_SITE_FIELDS = [
   'formalstatisticsPrereqs',
   'formalstatisticsConnections',
   'formalragConnections',
+  'formalnlpPrereqs',
+  'formalnlpConnections',
   'formalmlPrereqs',
   'formalmlConnections',
 ];
@@ -60,7 +67,7 @@ const OUTPUT_DIR = join(REPO_ROOT, 'docs/plans/audit-output');
 const REPORT_PATH = join(REPO_ROOT, 'docs/plans/cross-site-audit-report.md');
 const DEFERRED_PATH = join(REPO_ROOT, 'docs/plans/deferred-reciprocals.md');
 
-const FIELD_RE = /^(formalcalculus|formalstatistics|formalrag|formalml)(Prereqs|Connections)$/;
+const FIELD_RE = /^(formalcalculus|formalstatistics|formalrag|formalnlp|formalml)(Prereqs|Connections)$/;
 
 function parseField(field) {
   const m = field.match(FIELD_RE);

@@ -4,7 +4,7 @@ import { z } from 'astro/zod';
 
 const crossSiteRef = z.object({
   topic: z.string(),
-  site: z.enum(['formalcalculus', 'formalstatistics', 'formalrag']),
+  site: z.enum(['formalcalculus', 'formalstatistics', 'formalrag', 'formalnlp']),
   relationship: z.string().min(40),
 });
 
@@ -66,6 +66,10 @@ const topics = defineCollection({
     // formalRAG is downstream of ML: topics here link to it via Connections
     // ("where this is applied") only — never as a prerequisite.
     formalragConnections: z.array(crossSiteRef).optional(),
+    // formalNLP both builds on ML topics (Connections: "where this is applied")
+    // and develops results that ML topics cite back (Prereqs), so it needs both.
+    formalnlpPrereqs: z.array(crossSiteRef).optional(),
+    formalnlpConnections: z.array(crossSiteRef).optional(),
   }),
 });
 

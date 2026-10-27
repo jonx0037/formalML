@@ -1,6 +1,6 @@
 import type { DAGEdge, DAGNode } from '../components/viz/shared/types';
 
-type CrossSiteSite = 'formalcalculus' | 'formalstatistics' | 'formalrag';
+type CrossSiteSite = 'formalcalculus' | 'formalstatistics' | 'formalrag' | 'formalnlp';
 
 interface CrossSiteRef {
   topic: string;
@@ -13,6 +13,7 @@ interface PublishedTopic {
   data: {
     formalcalculusPrereqs?: CrossSiteRef[];
     formalstatisticsPrereqs?: CrossSiteRef[];
+    formalnlpPrereqs?: CrossSiteRef[];
   };
 }
 
@@ -27,6 +28,7 @@ const SITE_DOMAINS: Record<CrossSiteSite, string> = {
   formalcalculus: 'https://formalcalculus.com',
   formalstatistics: 'https://formalstatistics.com',
   formalrag: 'https://formalrag.com',
+  formalnlp: 'https://www.formalnlp.com',
 };
 
 // Lowercase tokens we want preserved as uppercase when humanizing a slug.
@@ -44,11 +46,14 @@ const ACRONYMS = new Set([
   'hmc',
   'iid',
   'kl',
+  'lda',
+  'lm',
   'ks',
   'map',
   'mcmc',
   'ml',
   'mle',
+  'nlp',
   'ode',
   'pac',
   'pca',
@@ -56,6 +61,7 @@ const ACRONYMS = new Set([
   'pdf',
   'pi',
   'pmf',
+  'ppmi',
   'sgd',
   'sgld',
   'svd',
@@ -95,6 +101,7 @@ export function synthesizeCrossSiteNodes(
     const refs: Array<{ refs: CrossSiteRef[] | undefined; site: CrossSiteSite }> = [
       { refs: topic.data.formalcalculusPrereqs, site: 'formalcalculus' },
       { refs: topic.data.formalstatisticsPrereqs, site: 'formalstatistics' },
+      { refs: topic.data.formalnlpPrereqs, site: 'formalnlp' },
     ];
 
     for (const { refs: list, site } of refs) {

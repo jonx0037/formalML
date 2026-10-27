@@ -262,7 +262,11 @@ export default function CurriculumGraph({ nodes, edges }: CurriculumGraphProps) 
   // Domain legend data — exclude site domains from the per-track legend; they
   // get their own "Cross-site" entry below.
   const domains = [...new Set(nodes.map((n) => n.domain))].filter(
-    (d) => d !== 'formalcalculus' && d !== 'formalstatistics' && d !== 'formalrag'
+    (d) =>
+      d !== 'formalcalculus' &&
+      d !== 'formalstatistics' &&
+      d !== 'formalrag' &&
+      d !== 'formalnlp'
   );
   const hasExternal = nodes.some((n) => n.external);
 
