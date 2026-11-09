@@ -2,22 +2,30 @@ import { useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
+import {
+  fitReverseKL,
+  forwardKLFit as momentMatch,
+  lockedComponent,
+  type MixtureComponent,
+} from './shared/reverseKLFit';
 
 // =============================================================================
 // ForwardVsReverseKL — embedded in §1.3 of the variational-inference topic.
 // One panel: a bimodal Gaussian-mixture target p(θ) = w₁ N(−Δ/2, 1) + (1−w₁)
 // N(+Δ/2, 1), overlaid with two Gaussian projections — the forward-KL
-// minimizer q_F (closed-form moment matching: mean and variance of p) and a
-// reverse-KL minimizer q_R (analytic "lock-on-the-heavier-mode" approximation
-// of the local minimizer). Drag the mode-separation slider Δ from 1 to 8 and
-// the weight slider w₁ from 0.1 to 0.9. Reader sees:
-//   - small Δ: q_F and q_R coincide (target is essentially unimodal)
-//   - large Δ: q_F is wide and dips between modes (mode-covering)
-//                q_R locks onto one mode (mode-seeking)
-//   - asymmetric w₁: q_F shifts toward the heavier mode; q_R sits on it
+// minimizer q_F (closed-form moment matching: mean and variance of p) and the
+// reverse-KL minimizer q_R, found by numerical minimization of KL(q ∥ p) over
+// (μ, σ) (shared/reverseKLFit.ts: grid search plus local refinement from both
+// modes and the center, keeping the global minimum). Reader sees:
+//   - Δ below ≈ 5.6 (w₁ = 0.5): q_R is itself a single wide Gaussian between
+//     the modes, narrower than q_F; the lock-on fits are only local minima
+//   - Δ above ≈ 5.6: q_R locks onto one mode (mode-seeking) while q_F stays
+//     wide and puts mass in the trough (mode-covering)
+//   - asymmetric w₁: q_R locks onto the heavier mode at a smaller Δ
+// When another local minimum exists it is drawn dotted, with its KL, so the
+// switch between the covering and mode-locked solutions is visible.
 //
-// KL values are displayed numerically — KL(p ∥ q_F) and KL(q_R ∥ p) — computed
-// by trapezoidal integration on a fine θ grid.
+// KL values — KL(p ∥ q_F) and KL(q_R ∥ p) — are computed by quadrature.
 // =============================================================================
 
 const PANEL_HEIGHT = 360;
@@ -44,20 +52,11 @@ function targetPdf(x: number, sep: number, w1: number): number {
   );
 }
 
-// Forward-KL minimizer: moment matching. m* = E_p[θ], s² = Var_p[θ].
-function forwardKLFit(sep: number, w1: number): { mu: number; sigma: number } {
-  const m = w1 * (-sep / 2) + (1 - w1) * (sep / 2);
-  const m1Term = w1 * (SIGMA * SIGMA + (-sep / 2 - m) ** 2);
-  const m2Term = (1 - w1) * (SIGMA * SIGMA + (sep / 2 - m) ** 2);
-  return { mu: m, sigma: Math.sqrt(m1Term + m2Term) };
-}
-
-// Reverse-KL minimizer (mode-locked approximation): center on the heavier
-// mode, width ≈ local Gaussian width. For w1 = 0.5 the two modes are
-// symmetric optima; we pick the right mode by convention.
-function reverseKLFit(sep: number, w1: number): { mu: number; sigma: number } {
-  const mu = w1 > 0.5 ? -sep / 2 : sep / 2;
-  return { mu, sigma: SIGMA };
+function mixture(sep: number, w1: number): MixtureComponent[] {
+  return [
+    { w: w1, mu: -sep / 2, sigma: SIGMA },
+    { w: 1 - w1, mu: sep / 2, sigma: SIGMA },
+  ];
 }
 
 // Trapezoidal integration of f(x) over x ∈ [a, b] with N intervals.
@@ -75,7 +74,8 @@ function trapInt(
 
 export default function ForwardVsReverseKL() {
   const { ref: containerRef, width } = useResizeObserver<HTMLDivElement>();
-  const [separation, setSeparation] = useState<number>(4);
+  // Default Δ = 6 is past the ≈ 5.6 switch, so the opening view is mode-seeking.
+  const [separation, setSeparation] = useState<number>(6);
   const [weight1, setWeight1] = useState<number>(0.5);
 
   const xGrid = useMemo<Float64Array>(() => {
@@ -92,14 +92,25 @@ export default function ForwardVsReverseKL() {
     return c;
   }, [xGrid, separation, weight1]);
 
-  const fwdFit = useMemo(
-    () => forwardKLFit(separation, weight1),
-    [separation, weight1],
-  );
-  const revFit = useMemo(
-    () => reverseKLFit(separation, weight1),
-    [separation, weight1],
-  );
+  const comps = useMemo(() => mixture(separation, weight1), [separation, weight1]);
+  const fwdFit = useMemo(() => momentMatch(comps), [comps]);
+  const revResult = useMemo(() => fitReverseKL(comps), [comps]);
+  const revFit = revResult.best;
+  // The competing local minimum drawn dotted: the lowest-KL one that is not
+  // the best fit's mirror twin (at w₁ = 0.5 the two mode-locked fits tie, and
+  // the covering fit is the instructive competitor); the twin if it is alone.
+  const altFit = useMemo(() => {
+    const rest = revResult.minima.slice(1);
+    return rest.find((m) => m.kl - revFit.kl > 1e-6) ?? rest[0] ?? null;
+  }, [revResult, revFit]);
+  const revLocked = lockedComponent(revFit, comps) >= 0;
+
+  const altCurve = useMemo<Float64Array | null>(() => {
+    if (!altFit) return null;
+    const c = new Float64Array(N_GRID);
+    for (let i = 0; i < N_GRID; i++) c[i] = normalPdf(xGrid[i], altFit.mu, altFit.sigma);
+    return c;
+  }, [xGrid, altFit]);
 
   const fwdCurve = useMemo<Float64Array>(() => {
     const c = new Float64Array(N_GRID);
@@ -130,20 +141,8 @@ export default function ForwardVsReverseKL() {
     );
   }, [separation, weight1, fwdFit]);
 
-  // KL(q_R ∥ p): the divergence reverse-KL minimizes.
-  const klQrP = useMemo<number>(() => {
-    return trapInt(
-      (x) => {
-        const qx = normalPdf(x, revFit.mu, revFit.sigma);
-        if (qx <= 0) return 0;
-        const px = targetPdf(x, separation, weight1);
-        return qx * Math.log(qx / Math.max(px, 1e-300));
-      },
-      X_DOMAIN[0],
-      X_DOMAIN[1],
-      N_GRID,
-    );
-  }, [separation, weight1, revFit]);
+  // KL(q_R ∥ p): the divergence reverse-KL minimizes (from the minimizer).
+  const klQrP = revFit.kl;
 
   const yMax = useMemo<number>(() => {
     let m = 0;
@@ -151,9 +150,10 @@ export default function ForwardVsReverseKL() {
       if (targetCurve[i] > m) m = targetCurve[i];
       if (fwdCurve[i] > m) m = fwdCurve[i];
       if (revCurve[i] > m) m = revCurve[i];
+      if (altCurve && altCurve[i] > m) m = altCurve[i];
     }
     return m * 1.1;
-  }, [targetCurve, fwdCurve, revCurve]);
+  }, [targetCurve, fwdCurve, revCurve, altCurve]);
 
   const ref = useD3(
     (svg) => {
@@ -236,25 +236,54 @@ export default function ForwardVsReverseKL() {
         .attr('stroke-dasharray', '6 4')
         .attr('d', lineFn(COLORS.reverseKL, '6 4'));
 
+      // Competing local minimum of KL(q ∥ p), dotted.
+      if (altCurve) {
+        root
+          .append('path')
+          .datum(Array.from(altCurve))
+          .attr('fill', 'none')
+          .attr('stroke', COLORS.reverseKL)
+          .attr('stroke-opacity', 0.55)
+          .attr('stroke-width', 1.4)
+          .attr('stroke-dasharray', '1.5 3')
+          .attr('d', lineFn(COLORS.reverseKL, '1.5 3'));
+      }
+
       // Legend.
-      const legendItems = [
-        { label: 'Target p(θ)', color: COLORS.target, dash: false },
+      const legendItems: { label: string; color: string; dash: string | null }[] = [
+        { label: 'Target p(θ)', color: COLORS.target, dash: null },
         {
           label: `Forward-KL  q_F = N(${fwdFit.mu.toFixed(2)}, ${fwdFit.sigma.toFixed(
             2,
           )}²)`,
           color: COLORS.forwardKL,
-          dash: false,
+          dash: null,
         },
         {
           label: `Reverse-KL  q_R = N(${revFit.mu.toFixed(2)}, ${revFit.sigma.toFixed(
             2,
           )}²)`,
           color: COLORS.reverseKL,
-          dash: true,
+          dash: '6 4',
         },
       ];
+      if (altFit) {
+        legendItems.push({
+          label: `local min  N(${altFit.mu.toFixed(2)}, ${altFit.sigma.toFixed(2)}²), KL ${altFit.kl.toFixed(3)}`,
+          color: COLORS.reverseKL,
+          dash: '1.5 3',
+        });
+      }
       const legend = root.append('g').attr('transform', `translate(${innerW - 280}, 6)`);
+      legend
+        .append('rect')
+        .attr('x', -6)
+        .attr('y', -2)
+        .attr('width', 284)
+        .attr('height', legendItems.length * 18 + 4)
+        .attr('rx', 4)
+        .attr('fill', 'var(--color-bg, #fafaf8)')
+        .attr('fill-opacity', 0.88);
       legendItems.forEach((item, i) => {
         const row = legend.append('g').attr('transform', `translate(0,${i * 18})`);
         row
@@ -265,7 +294,7 @@ export default function ForwardVsReverseKL() {
           .attr('y2', 8)
           .attr('stroke', item.color)
           .attr('stroke-width', 2.2)
-          .attr('stroke-dasharray', item.dash ? '6 4' : null);
+          .attr('stroke-dasharray', item.dash);
         row
           .append('text')
           .attr('x', 30)
@@ -278,6 +307,8 @@ export default function ForwardVsReverseKL() {
       targetCurve,
       fwdCurve,
       revCurve,
+      altCurve,
+      altFit,
       yMax,
       width,
       fwdFit.mu,
@@ -331,16 +362,23 @@ export default function ForwardVsReverseKL() {
         <span>
           <strong style={{ color: COLORS.reverseKL }}>KL(q_R ∥ p)</strong> ={' '}
           <span className="tabular-nums">{klQrP.toFixed(3)}</span>{' '}
-          — what reverse-KL minimizes
+          — what reverse-KL minimizes (global minimum over μ, σ)
+        </span>
+        <span>
+          q_R here: <strong>{revLocked ? 'locked onto one mode' : 'spans both modes'}</strong>
         </span>
       </div>
       <div className="mt-2 text-xs text-[var(--color-text-muted)] leading-relaxed">
         Forward-KL <em>moment-matches</em> the target — a wide Gaussian that
         spans both modes and necessarily places density in the trough between
-        them. Reverse-KL <em>locks onto a single mode</em> — a narrow Gaussian
-        that puts near-zero density on the other mode. As Δ → 0 the two fits
-        coincide (target is essentially unimodal); as Δ grows the divergence in
-        their qualitative behavior is the {' '}
+        them. Reverse-KL, once the modes are far enough apart,{' '}
+        <em>locks onto a single mode</em> — a narrow Gaussian that puts
+        near-zero density on the other mode. Lock-on is a threshold effect: with
+        unit-width modes and w₁ = 0.5 the reverse-KL optimum switches from a
+        single wide Gaussian between the modes (still narrower than q_F) to a
+        mode-locked fit near Δ ≈ 5.6. Drag Δ across it and watch the dotted
+        local minimum and the dashed global one trade places. That divergence
+        in qualitative behavior is the{' '}
         <em>mode-covering vs mode-seeking</em> trade-off that defines the
         choice of variational divergence.
       </div>

@@ -1868,6 +1868,55 @@ export function dirichletEnergy(H: number[][], L: number[][]): number {
   return energy;
 }
 
+/**
+ * Normalized Dirichlet energy Ẽ(H) = tr(Hᵀ (I − Â) H) for a symmetric
+ * propagation matrix Â (the GCN renormalized adjacency). Unlike
+ * tr(Hᵀ L H), it vanishes on the over-smoothing limit v₁v₁ᵀH even when the
+ * graph is irregular (the limit rows are scaled by √d̃_v, which L penalizes).
+ */
+export function normalizedDirichletEnergy(H: number[][], Ahat: number[][]): number {
+  const n = H.length;
+  const d = H[0].length;
+  let energy = 0;
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < d; k++) {
+      let ah = 0;
+      for (let j = 0; j < n; j++) ah += Ahat[i][j] * H[j][k];
+      energy += H[i][k] * (H[i][k] - ah);
+    }
+  }
+  return energy;
+}
+
+export interface GcnSmoothingTrace {
+  energy: number[]; // Ẽ(H^(ℓ)) at each layer
+  mu2: number; // |μ₂| = max_{k≥2} |μ_k(Â)|
+  spectralGap: number; // γ = 1 − |μ₂|
+  overSmoothingDepth: number; // first ℓ with Ẽ < 0.01·Ẽ₀ (layers if never)
+}
+
+/**
+ * Over-smoothing diagnostics for GCN propagation H^(ℓ) = Â^ℓ H^(0), in the
+ * quantities of Theorem 6 (message-passing): the normalized energy Ẽ, which
+ * obeys Ẽ(H^(ℓ)) ≤ |μ₂|^{2ℓ} Ẽ(H^(0)), and the gap γ = 1 − |μ₂| of Â.
+ */
+export function gcnSmoothingTrace(graph: Graph, features: number[][][]): GcnSmoothingTrace {
+  const Ahat = renormalizedAdjacency(graph);
+  const energy = features.map((H) => normalizedDirichletEnergy(H, Ahat));
+  const mus = jacobiEigen(Ahat).eigenvalues; // ascending; μ₁ = 1 is last
+  let mu2 = 0;
+  for (let k = 0; k < mus.length - 1; k++) mu2 = Math.max(mu2, Math.abs(mus[k]));
+  const layers = features.length - 1;
+  let overSmoothingDepth = layers;
+  for (let ell = 1; ell <= layers; ell++) {
+    if (energy[ell] < 0.01 * energy[0]) {
+      overSmoothingDepth = ell;
+      break;
+    }
+  }
+  return { energy, mu2, spectralGap: 1 - mu2, overSmoothingDepth };
+}
+
 /** Mean Average Distance of node features. */
 export function meanAverageDistance(H: number[][]): number {
   const n = H.length;
