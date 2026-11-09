@@ -221,9 +221,9 @@ In general, $D_{\mathrm{KL}}(p \| q) \neq D_{\mathrm{KL}}(q \| p)$.
 
 **Counterexample.** Let $p = (0.9, 0.1)$ and $q = (0.5, 0.5)$. Then:
 
-$$D_{\mathrm{KL}}(p \| q) = 0.9 \log_2 \frac{0.9}{0.5} + 0.1 \log_2 \frac{0.1}{0.5} \approx 0.368 \text{ bits}$$
+$$D_{\mathrm{KL}}(p \| q) = 0.9 \log_2 \frac{0.9}{0.5} + 0.1 \log_2 \frac{0.1}{0.5} \approx 0.531 \text{ bits}$$
 
-$$D_{\mathrm{KL}}(q \| p) = 0.5 \log_2 \frac{0.5}{0.9} + 0.5 \log_2 \frac{0.5}{0.1} \approx 0.795 \text{ bits}$$
+$$D_{\mathrm{KL}}(q \| p) = 0.5 \log_2 \frac{0.5}{0.9} + 0.5 \log_2 \frac{0.5}{0.1} \approx 0.737 \text{ bits}$$
 
 The asymmetry is not a defect — it encodes fundamentally different information about the relationship between $p$ and $q$. The direction you choose determines the *fitting behavior*, as we explore in the next section.
 
@@ -329,7 +329,7 @@ The following table shows six important special cases, each recoverable by choos
 - **$\chi^2$ divergence:** $f(t) = (t - 1)^2$ gives $\sum (p(x) - q(x))^2/q(x)$
 - **Squared Hellinger:** $f(t) = (\sqrt{t} - 1)^2$ gives $\sum (\sqrt{p(x)} - \sqrt{q(x)})^2$
 - **Total variation:** $f(t) = |t - 1|/2$ gives $\frac{1}{2}\sum |p(x) - q(x)|$
-- **Jensen–Shannon:** $f(t) = t \log\frac{2t}{t+1} + \log\frac{2}{t+1}$ gives $\frac{1}{2}D_{\mathrm{KL}}(p \| m) + \frac{1}{2}D_{\mathrm{KL}}(q \| m)$
+- **Jensen–Shannon:** $f(t) = \frac{1}{2}\left[t \log\frac{2t}{t+1} + \log\frac{2}{t+1}\right]$ gives $\frac{1}{2}D_{\mathrm{KL}}(p \| m) + \frac{1}{2}D_{\mathrm{KL}}(q \| m)$
 
 where $m = (p + q)/2$ in the Jensen–Shannon case.
 
@@ -376,8 +376,8 @@ f_reverse_kl = lambda t: -np.log(t) if t > 0 else np.inf
 f_chi_sq     = lambda t: (t - 1) ** 2
 f_hellinger  = lambda t: (np.sqrt(max(t, 0)) - 1) ** 2
 f_tv         = lambda t: abs(t - 1) / 2
-f_js         = lambda t: (t * np.log(t / ((t + 1) / 2)) + np.log(1 / ((t + 1) / 2))
-                          if t > 0 else np.log(2))
+f_js         = lambda t: (0.5 * (t * np.log(t / ((t + 1) / 2)) + np.log(1 / ((t + 1) / 2)))
+                          if t > 0 else 0.5 * np.log(2))
 ```
 
 ---
@@ -451,10 +451,10 @@ Pinsker's inequality provides a bridge between KL divergence and total variation
 <TheoremBlock type="theorem" number={4} title="Pinsker's Inequality">
 $$\mathrm{TV}(p, q) \leq \sqrt{\frac{1}{2} D_{\mathrm{KL}}(p \| q)}$$
 
-or equivalently, $\mathrm{TV}(p, q)^2 \leq \frac{1}{2} D_{\mathrm{KL}}(p \| q)$.
+or equivalently, $\mathrm{TV}(p, q)^2 \leq \frac{1}{2} D_{\mathrm{KL}}(p \| q)$, with $D_{\mathrm{KL}}$ measured in nats. (With $D_{\mathrm{KL}}$ in bits the bound still holds, but its right side is inflated by a factor of $1/\ln 2 \approx 1.44$.)
 </TheoremBlock>
 
-The proof involves a careful comparison of the generator functions for TV and KL via a quadratic bound on $t \log t$ near $t = 1$ (see Cover & Thomas, Ch. 11, or Tsybakov, 2009). The bound is tight: equality is approached as $p$ and $q$ become close.
+The proof involves a careful comparison of the generator functions for TV and KL via a quadratic bound on $t \log t$ near $t = 1$ (see Cover & Thomas, Ch. 11, or Tsybakov, 2009). The constant $\frac{1}{2}$ cannot be improved: for two Bernoulli distributions both close to $(\frac{1}{2}, \frac{1}{2})$, the ratio $\mathrm{TV}^2 / \frac{1}{2} D_{\mathrm{KL}}$ approaches $1$. For other nearby pairs the bound can stay loose.
 
 Pinsker's inequality is practically important: total variation has a clean interpretation (maximum probability difference over events) but is hard to work with in optimization; KL divergence has a clean optimization theory (convexity, connections to MLE) but a less transparent geometric interpretation. Pinsker's inequality lets us convert bounds between them.
 
@@ -545,15 +545,15 @@ For fixed distributions $p$ and $q$, the map $\alpha \mapsto D_\alpha(p \| q)$ i
 </TheoremBlock>
 
 <TheoremBlock type="proof">
-Define $M(\alpha) = \sum_x p(x)^\alpha q(x)^{1-\alpha}$, so $D_\alpha = \log M(\alpha) / (\alpha - 1)$. Taking the derivative and applying Hölder's inequality shows $d D_\alpha / d\alpha \geq 0$. The key step uses the log-convexity of $M(\alpha)$ — a consequence of Hölder's inequality applied to the sum $\sum p^\alpha q^{1-\alpha}$ with conjugate exponents $1/\alpha$ and $1/(1-\alpha)$.
+Define $M(\alpha) = \sum_x p(x)^\alpha q(x)^{1-\alpha}$, so $D_\alpha = \log M(\alpha) / (\alpha - 1)$. Taking the derivative and applying Hölder's inequality shows $d D_\alpha / d\alpha \geq 0$. The key step uses the log-convexity of $M(\alpha)$ on all of $(0, \infty)$: for $\alpha = \theta \alpha_1 + (1-\theta)\alpha_2$ with $\theta \in (0, 1)$, write $p^\alpha q^{1-\alpha} = \big(p^{\alpha_1} q^{1-\alpha_1}\big)^{\theta} \big(p^{\alpha_2} q^{1-\alpha_2}\big)^{1-\theta}$ and apply Hölder's inequality with conjugate exponents $1/\theta$ and $1/(1-\theta)$, giving $M(\alpha) \leq M(\alpha_1)^{\theta} M(\alpha_2)^{1-\theta}$.
 
 $\square$
 </TheoremBlock>
 
 This monotonicity has important consequences:
 
-- **Differential privacy:** The $(\varepsilon, \delta)$-DP guarantee is controlled by the max-divergence ($\alpha = \infty$). Rényi DP (Mironov, 2017) uses finite $\alpha$ to get tighter composition bounds, leveraging the monotonicity to relate different privacy definitions.
-- **Hypothesis testing:** The Chernoff information, which governs the optimal Bayesian error exponent, is $\min_\alpha D_\alpha(p \| q)$.
+- **Differential privacy:** The pure $\varepsilon$-DP guarantee is exactly a bound on the max-divergence ($\alpha = \infty$) between the output distributions on neighboring datasets; approximate $(\varepsilon, \delta)$-DP relaxes it. Rényi DP (Mironov, 2017) uses finite $\alpha$ to get tighter composition bounds, leveraging the monotonicity to relate different privacy definitions.
+- **Hypothesis testing:** The Chernoff information, which governs the optimal Bayesian error exponent, is $\max_{\lambda \in (0,1)} (1-\lambda) D_\lambda(p \| q) = \max_{\lambda \in (0,1)} \big[-\log \sum_x p(x)^\lambda q(x)^{1-\lambda}\big]$. (It is not $\min_\alpha D_\alpha$: by monotonicity, that minimum is the $\alpha \to 0$ limit.)
 
 ![Rényi divergence — monotonicity in α, convergence to KL at α = 1, and ordering of special cases](/images/topics/kl-divergence/renyi-divergence.png)
 

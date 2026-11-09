@@ -74,9 +74,10 @@ const DIVERGENCES: DivDef[] = [
     label: 'Jensen–Shannon',
     color: '#7C3AED',
     generator: (t) => {
-      if (t <= 0) return Math.log(2);
+      // Halved generator: without the ½ this generates 2·JS, not JS.
+      if (t <= 0) return Math.log(2) / 2;
       const m = (t + 1) / 2;
-      return t * Math.log(t / m) + Math.log(1 / m);
+      return 0.5 * (t * Math.log(t / m) + Math.log(1 / m));
     },
     compute: (p, q) => jensenShannonDivergence(p, q) * Math.LN2,
   },
