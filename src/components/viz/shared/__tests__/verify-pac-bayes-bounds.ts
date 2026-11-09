@@ -118,6 +118,8 @@ approxEq('klInversionUpper(0, 0.5) closed form', klInversionUpper(0, 0.5), 1 - M
 approxEq('klInversionUpper(0, 1.0)', klInversionUpper(0, 1.0), 1 - Math.exp(-1.0), 1e-9, '1 - e^{-1}');
 approxEq('klInversionUpper vacuous detection', klInversionUpper(0.5, 10), 1, 1e-14, 'huge c returns 1');
 approxEq('klInversionUpper round-trip', binaryKL(0.05, klInversionUpper(0.05, 0.0427)), 0.0427, 1e-10, 'kl(p,q*)=c');
+// c above −log(1 − p̂) still has a root below 1 (kl(p̂ ∥ q) → ∞ as q → 1).
+approxEq('klInversionUpper root past −log(1−p̂)', binaryKL(0.083, klInversionUpper(0.083, 0.158)), 0.158, 1e-10, 'kl(p,q*)=c, q*<1');
 
 approxEq('normalCdf(0) = 0.5', normalCdf(0), 0.5, 1e-6, 'Φ(0)');
 approxEq('normalCdf(1.96)', normalCdf(1.96), 0.9750021, 5e-6, 'Φ(1.96)');
