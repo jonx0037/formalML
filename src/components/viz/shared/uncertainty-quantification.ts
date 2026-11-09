@@ -903,6 +903,26 @@ export type EnsemblePayloadShape = {
   aleatoric: { centers: number[]; vals: number[] };
 };
 
+/** Envelope shape of the §8 conformal_ensemble.json payload. The members and
+ *  aleatoric bins are fit on the train fold only, so the calibration fold is
+ *  disjoint from everything the base predictor saw (notebook cell 43). */
+export type ConformalPayloadShape = {
+  seed: number;
+  split_seed: number;
+  n_running: number;
+  hidden: number[];
+  activation: 'tanh' | 'relu';
+  M: number;
+  train_idx: number[];
+  cal_idx: number[];
+  X_train: number[];
+  y_train: number[];
+  X_cal: number[];
+  y_cal: number[];
+  members: PayloadMember[];
+  aleatoric: { centers: number[]; vals: number[] };
+};
+
 /** Convert a JSON-loaded member into a fresh `MlpCoefs` object using the
  *  payload-level activation. Always returns a new object (no mutation of the
  *  React-state payload). Required activation argument — callers should pass
