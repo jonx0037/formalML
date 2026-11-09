@@ -17,7 +17,7 @@ import {
   splitConformalConstant,
   splitConformalLocallyWeighted,
   toMlpCoefs,
-  type EnsemblePayloadShape,
+  type ConformalPayloadShape,
 } from './shared/uncertainty-quantification';
 
 // =============================================================================
@@ -25,7 +25,10 @@ import {
 //
 // Pre vs post conformal coverage repair. Toggle base predictor (Laplace, deep
 // ensemble); toggle constant vs locally-weighted conformal; α slider. Reports
-// pre/post coverage and mean width. Consumes ensemble.json for the ensemble base.
+// pre/post coverage and mean width. Consumes conformal_ensemble.json: a 20-member
+// ensemble trained on a 100-point train fold of the §2 toy, plus the disjoint
+// 50-point calibration fold (notebook cell 43). Calibrating on points the
+// ensemble was trained on would shrink q̂ and under-cover.
 // Static fallback: public/images/topics/uncertainty-quantification/fig_08_pre_post_locally_weighted.png
 // =============================================================================
 
@@ -33,18 +36,18 @@ const HEIGHT = 460;
 const DEGREE = 7;
 const X_GRID = linspace(-3.2, 3.2, 200);
 
-type EnsemblePayload = EnsemblePayloadShape;
+type ConformalPayload = ConformalPayloadShape;
 
 export default function ConformalUQCalibrator() {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
-  const [payload, setPayload] = useState<EnsemblePayload | null>(null);
+  const [payload, setPayload] = useState<ConformalPayload | null>(null);
   const [base, setBase] = useState<'laplace' | 'ensemble'>('ensemble');
   const [locallyWeighted, setLocallyWeighted] = useState(true);
   const [alpha, setAlpha] = useState(0.10);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/sample-data/uncertainty-quantification/ensemble.json')
+    fetch('/sample-data/uncertainty-quantification/conformal_ensemble.json')
       .then((r) => r.json())
       .then((data) => { if (!cancelled) setPayload(data); })
       .catch((err) => console.error('[ConformalUQCalibrator] fetch failed:', err));
@@ -54,17 +57,12 @@ export default function ConformalUQCalibrator() {
   const stats = useMemo(() => {
     if (!payload) return null;
     const rng = mulberry32(20260514 + 21);
-    // Split payload.X, payload.y into 100/50/2000.
-    const n = payload.X.length;
-    const idx = Array.from({ length: n }, (_, i) => i);
-    for (let i = idx.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [idx[i], idx[j]] = [idx[j], idx[i]];
-    }
-    const Xtr = idx.slice(0, 100).map((i) => payload.X[i]);
-    const yTr = idx.slice(0, 100).map((i) => payload.y[i]);
-    const Xcal = idx.slice(100, 150).map((i) => payload.X[i]);
-    const yCal = idx.slice(100, 150).map((i) => payload.y[i]);
+    // Train (100) / calibration (50) folds come from the payload, so both base
+    // predictors are fit on the train fold only; eval (2000) is a fresh draw.
+    const Xtr = payload.X_train;
+    const yTr = payload.y_train;
+    const Xcal = payload.X_cal;
+    const yCal = payload.y_cal;
     const evalSet = sampleHetero(2000, -3, 3, rng);
     const aleGrid = interpAleatoricCenters(
       payload.aleatoric.centers, payload.aleatoric.vals, X_GRID);
@@ -85,7 +83,7 @@ export default function ConformalUQCalibrator() {
       muGrid = predGrid.fMean;
       sigmaGrid = predGrid.totalVar.map(Math.sqrt);
     } else {
-      const members = payload.members.slice(0, 20)
+      const members = payload.members
         .map((m) => toMlpCoefs(m, payload.activation));
       muFn = (XX) => ensemblePredict(XX, members).mean;
       sigmaFn = (XX) => {

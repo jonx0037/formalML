@@ -17,6 +17,8 @@
 // agreement and brief-stated tolerances.
 // =============================================================================
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   NOTEBOOK_SEED,
   POLY_SCALE,
@@ -34,12 +36,14 @@ import {
   crpsQuadrature,
   doubleDescentUqSweep,
   ece,
+  ensemblePredict,
   ensembleMixtureDensity,
   ensembleMixtureMeanVar,
   fitOlsPoly,
   fitTemperature,
   fTrue,
   gaussianFrom,
+  interpAleatoricCenters,
   invSPD,
   isotonicRecal,
   laplacePolynomial,
@@ -64,7 +68,9 @@ import {
   splitConformalLocallyWeighted,
   temperatureNll,
   temperatureScaleProb,
+  toMlpCoefs,
   wildBootstrapFit,
+  type ConformalPayloadShape,
 } from '../uncertainty-quantification';
 
 const failures: string[] = [];
@@ -493,6 +499,60 @@ console.log('\n--- §8 split conformal coverage ---');
     Math.abs(covLw - (1 - DEFAULT_ALPHA)) < 0.075,
     `coverage = ${covLw.toFixed(3)} (target 0.90, tol 0.075)`,
   );
+}
+
+// -----------------------------------------------------------------------------
+// 11b. §8 ConformalUQCalibrator payload: the calibration fold must be disjoint
+//      from the ensemble's training fold. Calibrating on training points
+//      shrinks q̂ (in-sample residuals are small) and under-covers. With a
+//      clean fold, coverage averaged over fresh 50-point calibration draws
+//      must sit at the finite-sample level ⌈(1−α)(n+1)⌉/(n+1) = 0.902.
+// -----------------------------------------------------------------------------
+console.log('\n--- §8 conformal payload (disjoint calibration fold) ---');
+{
+  const path = fileURLToPath(new URL(
+    '../../../../../public/sample-data/uncertainty-quantification/conformal_ensemble.json',
+    import.meta.url,
+  ));
+  const p = JSON.parse(readFileSync(path, 'utf8')) as ConformalPayloadShape;
+  const trainIdx = new Set(p.train_idx);
+  const trainX = new Set(p.X_train);
+  const overlap = p.cal_idx.filter((i) => trainIdx.has(i)).length
+    + p.X_cal.filter((x) => trainX.has(x)).length;
+  ok('§8 calibration fold disjoint from train fold', overlap === 0,
+    `overlap = ${overlap} (n_train = ${p.X_train.length}, n_cal = ${p.X_cal.length}, M = ${p.members.length})`);
+
+  const members = p.members.map((m) => toMlpCoefs(m, p.activation));
+  const muFn = (XX: number[]) => ensemblePredict(XX, members).mean;
+  const sigmaFn = (XX: number[]) => {
+    const pred = ensemblePredict(XX, members);
+    const ale = interpAleatoricCenters(p.aleatoric.centers, p.aleatoric.vals, XX);
+    return pred.variance.map((v, i) => Math.sqrt(v + ale[i]));
+  };
+  const test = sampleHetero(20000, -3, 3, mulberry32(NOTEBOOK_SEED + 81));
+  const muT = muFn(test.X);
+  const sgT = sigmaFn(test.X);
+  const rng = mulberry32(NOTEBOOK_SEED + 82);
+  const R = 200;
+  let covC = 0;
+  let covL = 0;
+  for (let r = 0; r < R; r++) {
+    const cal = sampleHetero(p.X_cal.length, -3, 3, rng);
+    const qC = splitConformalConstant(cal.X, cal.y, [], muFn, DEFAULT_ALPHA).qHat;
+    const qL = splitConformalLocallyWeighted(cal.X, cal.y, [], muFn, sigmaFn, DEFAULT_ALPHA).qHat;
+    covC += coverage(muT.map((m) => m - qC), muT.map((m) => m + qC), test.y);
+    covL += coverage(muT.map((m, i) => m - qL * sgT[i]), muT.map((m, i) => m + qL * sgT[i]), test.y);
+  }
+  covC /= R;
+  covL /= R;
+  // MC error over R = 200 calibration draws is ≈ 0.003; ±0.015 flags a
+  // broken payload or forward pass (the disjointness check guards the leak).
+  ok('§8 ensemble vanilla conformal: mean coverage over fresh cal draws',
+    Math.abs(covC - (1 - DEFAULT_ALPHA)) < 0.015,
+    `coverage = ${covC.toFixed(3)} (target 0.90, tol 0.015)`);
+  ok('§8 ensemble LW conformal: mean coverage over fresh cal draws',
+    Math.abs(covL - (1 - DEFAULT_ALPHA)) < 0.015,
+    `coverage = ${covL.toFixed(3)} (target 0.90, tol 0.015)`);
 }
 
 // -----------------------------------------------------------------------------

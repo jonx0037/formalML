@@ -6,17 +6,28 @@ The notebook is read-only; this side script rebuilds the §2 HETERO_TOY data
 serializes per-member ``coefs_`` / ``intercepts_`` plus the aleatoric
 heteroscedastic interpolator to JSON.
 
-Output: written to BOTH
-  * ``public/sample-data/uncertainty-quantification/ensemble.json`` (Astro
-    serves this at /sample-data/uncertainty-quantification/ensemble.json)
-  * ``src/data/sampleData/uncertainty-quantification/ensemble.json`` (build
+It also builds the §8 conformal payload (``conformal_ensemble.json``) for
+``ConformalUQCalibrator``. Split conformal is only valid when the calibration
+points are exchangeable with test points, so they must not have been used to
+train the base predictor. Mirroring notebook cell 43, HETERO_TOY is split into a
+100-point train fold and a 50-point calibration fold. A fresh 20-member
+ensemble, plus its aleatoric interpolator, is fit on the train fold only, and
+the calibration fold is shipped alongside it. (The full ensemble above is
+trained on all 200 points, so calibrating on any of those points would shrink
+q̂ and under-cover.)
+
+Output: each payload is written to BOTH
+  * ``public/sample-data/uncertainty-quantification/<name>.json`` (Astro
+    serves this at /sample-data/uncertainty-quantification/<name>.json)
+  * ``src/data/sampleData/uncertainty-quantification/<name>.json`` (build
     target — tracked but not served)
 
-Run:
-    cd notebooks/uncertainty-quantification && .venv/bin/python precompute_ensemble.py
+Run (``--only`` regenerates one payload and leaves the other file untouched):
+    cd notebooks/uncertainty-quantification && .venv/bin/python precompute_ensemble.py [--only full|conformal]
 """
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import warnings
@@ -41,6 +52,19 @@ M_FULL = 50
 HIDDEN = (16, 16)
 ACTIVATION = "tanh"
 MAX_ITER = 1000
+
+# §8 conformal fold (notebook cell 43): 100 train / 50 calibration, M = 20.
+# The split uses its own generator so the full-ensemble stream above is
+# unchanged by this payload.
+CONFORMAL_SPLIT_SEED = RANDOM_SEED + 43
+N_TR_CONF = 100
+N_CAL_CONF = 50
+M_CONF = 20
+
+OUT_DIRS = [
+    Path(__file__).resolve().parents[2] / "public" / "sample-data" / "uncertainty-quantification",
+    Path(__file__).resolve().parents[2] / "src" / "data" / "sampleData" / "uncertainty-quantification",
+]
 
 
 def f_true(x: np.ndarray) -> np.ndarray:
@@ -89,14 +113,9 @@ def to_jsonable(obj: Any) -> Any:
     return obj
 
 
-def main() -> None:
-    # Rebuild HETERO_TOY exactly as the notebook does.
-    X = rng.uniform(-3, 3, N_RUNNING)
-    y = f_true(X) + rng.normal(0, sigma_true(X))
-
-    # Train M_FULL independent MLP regressors.
-    print(f"Training {M_FULL} MLP members on HETERO_TOY (n={N_RUNNING})...")
-    seeds = rng.integers(0, 2**31 - 1, size=M_FULL)
+def fit_members(X: np.ndarray, y: np.ndarray, seeds: np.ndarray, label: str) -> list[dict]:
+    """Train one MLP per seed on (X, y) and serialize its weights."""
+    print(f"Training {len(seeds)} MLP members on {label} (n={len(X)})...")
     members = []
     for k, s in enumerate(seeds):
         mlp = MLPRegressor(
@@ -117,21 +136,36 @@ def main() -> None:
             "intercepts": [b.tolist() for b in mlp.intercepts_],
         })
         if (k + 1) % 10 == 0:
-            print(f"  trained {k + 1}/{M_FULL} members")
+            print(f"  trained {k + 1}/{len(seeds)} members")
+    return members
 
-    # Per-member predictions on the training set so the client can rebuild
-    # the §6 aleatoric interpolator without retraining.
-    preds_train = np.array([
-        # Replay sklearn predict via the serialized coefs to keep the
-        # NumPy-forward and sklearn-trained outputs in lockstep on the
-        # client side.
-        members_predict_sklearn(X, m)
-        for m in members
-    ])
-    mean_train = preds_train.mean(axis=0)
-    centers, vals = aleatoric_from_residuals(X, y, mean_train)
 
-    payload = {
+def ensemble_aleatoric(X: np.ndarray, y: np.ndarray, members: list[dict]):
+    """Aleatoric bins from the ensemble-mean residuals on (X, y), using the
+    NumPy forward pass the TS client also uses."""
+    preds = np.array([members_predict_sklearn(X, m) for m in members])
+    return aleatoric_from_residuals(X, y, preds.mean(axis=0))
+
+
+def write_payload(name: str, payload: dict) -> None:
+    out_payload = to_jsonable(payload)
+    for d in OUT_DIRS:
+        d.mkdir(parents=True, exist_ok=True)
+        out = d / f"{name}.json"
+        with out.open("w") as fh:
+            json.dump(out_payload, fh, allow_nan=False)
+        size_kb = out.stat().st_size / 1024
+        print(f"Wrote {out} ({size_kb:.1f} KB)")
+
+
+def build_full_payload(X: np.ndarray, y: np.ndarray) -> dict:
+    """§7/§9/§11 payload: M_FULL members trained on all of HETERO_TOY."""
+    seeds = rng.integers(0, 2**31 - 1, size=M_FULL)
+    members = fit_members(X, y, seeds, "HETERO_TOY")
+    # Aleatoric interpolator from the training-set residuals, so the client
+    # can rebuild the §6 interpolator without retraining.
+    centers, vals = ensemble_aleatoric(X, y, members)
+    return {
         "seed": RANDOM_SEED,
         "n_running": N_RUNNING,
         "hidden": list(HIDDEN),
@@ -144,19 +178,52 @@ def main() -> None:
         "aleatoric": {"centers": centers, "vals": vals},
     }
 
-    out_payload = to_jsonable(payload)
 
-    out_dirs = [
-        Path(__file__).resolve().parents[2] / "public" / "sample-data" / "uncertainty-quantification",
-        Path(__file__).resolve().parents[2] / "src" / "data" / "sampleData" / "uncertainty-quantification",
-    ]
-    for d in out_dirs:
-        d.mkdir(parents=True, exist_ok=True)
-        out = d / "ensemble.json"
-        with out.open("w") as fh:
-            json.dump(out_payload, fh, allow_nan=False)
-        size_kb = out.stat().st_size / 1024
-        print(f"Wrote {out} ({size_kb:.1f} KB)")
+def build_conformal_payload(X: np.ndarray, y: np.ndarray) -> dict:
+    """§8 payload: M_CONF members + aleatoric bins fit on the train fold only;
+    the calibration fold is disjoint from everything the predictor saw."""
+    split_rng = np.random.default_rng(CONFORMAL_SPLIT_SEED)
+    perm = split_rng.permutation(N_RUNNING)
+    train_idx = np.sort(perm[:N_TR_CONF])
+    cal_idx = np.sort(perm[N_TR_CONF:N_TR_CONF + N_CAL_CONF])
+    assert not set(train_idx.tolist()) & set(cal_idx.tolist())
+    X_tr, y_tr = X[train_idx], y[train_idx]
+    seeds = split_rng.integers(0, 2**31 - 1, size=M_CONF)
+    members = fit_members(X_tr, y_tr, seeds, "HETERO_TOY train fold")
+    centers, vals = ensemble_aleatoric(X_tr, y_tr, members)
+    return {
+        "seed": RANDOM_SEED,
+        "split_seed": CONFORMAL_SPLIT_SEED,
+        "n_running": N_RUNNING,
+        "hidden": list(HIDDEN),
+        "activation": ACTIVATION,
+        "M": M_CONF,
+        # Indices into HETERO_TOY (ensemble.json X / y), kept for provenance.
+        "train_idx": train_idx.tolist(),
+        "cal_idx": cal_idx.tolist(),
+        "X_train": X_tr.tolist(),
+        "y_train": y_tr.tolist(),
+        "X_cal": X[cal_idx].tolist(),
+        "y_cal": y[cal_idx].tolist(),
+        "members": members,
+        "aleatoric": {"centers": centers, "vals": vals},
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--only", choices=["full", "conformal"],
+                        help="regenerate a single payload (default: both)")
+    args = parser.parse_args()
+
+    # Rebuild HETERO_TOY exactly as the notebook does.
+    X = rng.uniform(-3, 3, N_RUNNING)
+    y = f_true(X) + rng.normal(0, sigma_true(X))
+
+    if args.only in (None, "full"):
+        write_payload("ensemble", build_full_payload(X, y))
+    if args.only in (None, "conformal"):
+        write_payload("conformal_ensemble", build_conformal_payload(X, y))
 
 
 def members_predict_sklearn(X: np.ndarray, member: dict) -> np.ndarray:
