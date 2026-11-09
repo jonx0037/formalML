@@ -266,7 +266,7 @@ What flows offer that the other two families don't is the conjunction: a sampler
 
 Before formalizing anything, here's the geometric picture flows operate by. Take a standard Gaussian $Z \sim \mathcal{N}(0, 1)$ on the line. Its density is the familiar bell. Now suppose our target $X$ is a two-mode mixture, $X \sim 0.5\,\mathcal{N}(-2, 0.5^2) + 0.5\,\mathcal{N}(2, 0.5^2)$ — two narrow bumps centered at $\pm 2$, with a valley in between. We'd like a smooth invertible map $T: \mathbb{R} \to \mathbb{R}$ that pushes the Gaussian mass into the bimodal shape.
 
-Geometrically, $T$ has to **stretch** the regions of the line where the target wants more mass (near $\pm 2$) and **squish** the regions where the target wants less (near $0$ and out in the tails). The change-of-variables formula will make this precise in §2: the Jacobian $T'(z)$ is exactly the local stretch factor, and the target density at $x = T(z)$ is $p_Z(z) / |T'(z)|$ — the base density divided by how much $T$ stretched the neighborhood around $z$. The whole machinery of flows is parameterizing the right $T$ and computing $T'$ (or $\det \partial T / \partial z$ in higher dimensions) efficiently.
+Geometrically, $T$ has to **squish** (compress) the parts of the line that must carry more target mass, so the mass piles up near $\pm 2$, and **stretch** the parts that must carry less, so it thins out near $0$ and out in the tails. The change-of-variables formula will make this precise in §2: the Jacobian $T'(z)$ is exactly the local stretch factor, and the target density at $x = T(z)$ is $p_Z(z) / |T'(z)|$ — the base density divided by how much $T$ stretched the neighborhood around $z$. The whole machinery of flows is parameterizing the right $T$ and computing $T'$ (or $\det \partial T / \partial z$ in higher dimensions) efficiently.
 
 <BimodalPreview client:visible />
 
@@ -280,7 +280,7 @@ The plan from here:
 - **§6** elaborates these for high-dimensional image data — Glow's multi-scale architecture.
 - **§7** is the training recipe — maximum likelihood, no ELBO needed.
 - **§8**, **§9**, and **§10** cover what flows can express, how they plug into variational inference, and how they compare to nonparametric density estimation.
-- **§11** is the full worked example: a six-layer affine-coupling RealNVP on 2-moons, end-to-end, in 30 seconds of CPU time.
+- **§11** is the full worked example: a six-layer affine-coupling RealNVP on 2-moons, end-to-end, in about 25 seconds of CPU time.
 - **§12** closes with applications, computational trade-offs, and the diffusion-model successor.
 
 ## Change of variables in $d$ dimensions
@@ -936,11 +936,11 @@ for step in range(n_steps):
 
 That's all. No ELBO, no adversarial discriminator, no separate KL term — just empirical NLL, gradient descent, and the closed-form log-det that came for free in the §4 architecture.
 
-The notebook trains a 4-layer affine-coupling RealNVP (`CouplingFlow(d=2, n_layers=4, hidden=32)`) on a 2-D bimodal target — two Gaussian blobs at $(\pm 2, 0)$ with $\sigma = 0.5$ — for 2000 Adam steps at learning rate $10^{-3}$, batch size 256. Total runtime: roughly 4 seconds on a 2020-era CPU. The training NLL drops monotonically from initialization to within $\sim 0.05$ nats of the target's negative differential entropy $-H[p_{\text{data}}]$ — the information-theoretic lower bound for any model.
+The notebook trains a 4-layer affine-coupling RealNVP (`CouplingFlow(d=2, n_layers=4, hidden=32)`) on a 2-D bimodal target — two Gaussian blobs at $(\pm 2, 0)$ with $\sigma = 0.5$ — for 2000 Adam steps at learning rate $10^{-3}$, batch size 256. Total runtime: roughly 4 seconds on a 2020-era CPU. The training NLL drops monotonically from initialization to within $\sim 0.05$ nats of the target's differential entropy $H[p_{\text{data}}]$ — the information-theoretic lower bound on expected NLL for any model.
 
 <Figure
   src="/images/topics/normalizing-flows/07_training_curve.png"
-  alt="Training-curve plot: NLL vs Adam step, dropping from ~3.5 nats at initialization to ~1.93 nats at convergence (2000 steps), with the information-theoretic floor -H[p_data] ≈ 1.88 marked."
+  alt="Training-curve plot: NLL vs Adam step, dropping from ~4.3 nats at initialization to ~2.14 nats at convergence (2000 steps), with the information-theoretic floor H[p_data] ≈ 2.13 marked."
   caption="2-D bimodal MLE training (§7.2). The flow converges to within ~0.05 nats of the information-theoretic floor in 2000 Adam steps (~4 s CPU)."
 />
 
@@ -1011,7 +1011,7 @@ What "universal" doesn't mean: it doesn't mean *any finite flow* fits *any* dens
 
 For practical flow training, the question becomes: how many coupling layers $K$ and how wide an $s/t$ MLP do we actually need? Theory gives bounds but not tight constants; the empirical answer comes from sweeping.
 
-The notebook trains flows of depth $K \in \{2, 4, 6, 8, 12\}$ on the §7 bimodal target — same training schedule, same data sampler, same architecture except for depth — and plots the final test NLL against depth. The standard pattern emerges: NLL drops sharply from $K = 2$ to $K = 4$, then continues decreasing with diminishing returns. By $K = 6$ the gap from the information-theoretic floor is under $0.05$ nats; by $K = 12$ it's under $0.03$. The marginal benefit per extra layer flatlines.
+The notebook trains flows of depth $K \in \{2, 4, 6, 8, 12\}$ on the §7 bimodal target — same training schedule, same data sampler, same architecture except for depth — and plots the final test NLL against depth. The standard pattern emerges: NLL drops sharply from $K = 2$ to $K = 4$, then continues decreasing with diminishing returns. By $K = 6$ the gap from the information-theoretic floor is about $0.06$ nats; by $K = 12$ it's under $0.03$. The marginal benefit per extra layer flatlines.
 
 This pattern generalizes. For 2-D toys, $K = 4$–$8$ is the practical sweet spot. For 10–50-dim density estimation (UCI tabular benchmarks; Papamakarios, Pavlakou, and Murray 2017), $K = 10$–$20$. For image data at $32 \times 32$, $K = 32$ across multiple scales (Glow's published configuration). The depth scaling is roughly logarithmic in data complexity: doubling the per-dim conditional flexibility you can approximate requires roughly doubling the depth.
 
@@ -1224,11 +1224,13 @@ $$
 
 where $K$ is a kernel (often $\mathcal{N}(0, I)$) and $h$ is a bandwidth selected by cross-validation or Silverman's rule. The estimator interpolates the empirical distribution, smoothing it by $h$.
 
-KDE's convergence properties are nonparametric. For a $\beta$-Hölder smooth target ($\beta = 2$ for $C^2$ targets — the standard assumption), the minimax rate in $L^2$ is
+KDE's convergence properties are nonparametric. For a $\beta$-Hölder smooth target ($\beta = 2$ for $C^2$ targets — the standard assumption), the minimax rate for the mean integrated squared error (the squared $L^2$ distance) is
 
 $$
-\|\hat p_h - p\|_{L^2} = O_p\!\left(n^{-2\beta / (2\beta + d)}\right). \qquad\qquad (10.2)
+\mathbb{E}\,\|\hat p_h - p\|_{L^2}^2 = O\!\left(n^{-2\beta / (2\beta + d)}\right), \qquad\qquad (10.2)
 $$
+
+so the $L^2$ distance itself shrinks at $n^{-\beta/(2\beta + d)}$.
 
 For $\beta = 2$:
 
@@ -1237,9 +1239,9 @@ For $\beta = 2$:
 - $d = 10$: $O(n^{-4/14}) \approx n^{-0.29}$
 - $d = 50$: $O(n^{-4/54}) \approx n^{-0.074}$ — barely any improvement with more data
 
-This is the **curse of dimensionality** for nonparametric density estimation: the rate degrades polynomially in $d$. To halve the error in $d = 10$ requires $\sim 2^{14/4} \approx 11\times$ more data; in $d = 50$, $\sim 2^{54/4} \approx 10^4\times$ more.
+This is the **curse of dimensionality** for nonparametric density estimation: the rate degrades polynomially in $d$. To halve the integrated squared error in $d = 10$ requires $\sim 2^{14/4} \approx 11\times$ more data; in $d = 50$, $\sim 2^{54/4} \approx 10^4\times$ more.
 
-Flows trade this for a *parametric* rate. Within the representable family, $\|\hat p_\phi - p\|_{TV} = O_p(n^{-1/2})$, independent of $d$. The catch: the approximation error of a fixed-architecture flow is a bias that doesn't shrink with $n$ — only with more flow capacity.
+Flows trade this for a *parametric* rate. Within the representable family, $\|\hat p_\phi - p\|_{TV} = O_p(n^{-1/2})$ (squared, $n^{-1}$), independent of $d$. The catch: the approximation error of a fixed-architecture flow is a bias that doesn't shrink with $n$ — only with more flow capacity.
 
 In practice:
 
@@ -1247,12 +1249,12 @@ In practice:
 - For high $d$ ($d \geq 20$) or large $n$, flows dominate — the curse hits KDE hard, and the flow's approximation bias becomes a smaller fraction of the total error.
 - The crossover depends on the data's smoothness, the flow's capacity, and the sample size.
 
-The notebook compares flow MLE against KDE on the §7 bimodal target ($d = 2$, $n \in \{100, 500, 2000, 5000\}$). The empirical pattern: KDE leads at $n = 100$ (the flow doesn't have enough data to estimate its $\sim 4500$ parameters), they cross around $n = 500$, and the flow approaches the information-theoretic floor faster than KDE for $n \geq 2000$.
+The notebook compares flow MLE against KDE on the §7 bimodal target ($d = 2$, $n \in \{100, 500, 2000, 5000\}$). The empirical pattern: on this target the flow beats KDE at every sample size tested — by about $0.19$ nats at $n = 100$, narrowing to about $0.04$ nats at $n = 5000$ — and by $n = 2000$ the flow sits within about $0.05$ nats of the information-theoretic floor while KDE is still about $0.15$ nats above it.
 
 <Figure
   src="/images/topics/normalizing-flows/10_kde_vs_flow.png"
-  alt="KDE-vs-flow test-NLL curves on the §7 bimodal target, with sample size n on the x-axis and test NLL on the y-axis; the flow curve crosses below the KDE curve around n=500."
-  caption="KDE vs flow MLE on a 2-D target (§10.2). KDE leads at small n; the flow takes over once n exceeds the flow's parameter count."
+  alt="KDE-vs-flow test-NLL curves on the §7 bimodal target, with sample size n on the x-axis and test NLL on the y-axis; the flow curve lies below the KDE curve at every n."
+  caption="KDE vs flow MLE on a 2-D target (§10.2). The flow sits below KDE at every n tested; KDE's gap to the floor closes more slowly."
 />
 
 ### Contrast with mixture models: flexibility, identifiability, mode merging

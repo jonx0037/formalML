@@ -470,7 +470,7 @@ $$
 
 Naive Bayes' estimated posterior $\hat\eta_{NB}(\mathbf{x})$ is *systematically* miscalibrated whenever the conditional-independence assumption is wrong. The intuition (formalized in §8.1): when features are positively correlated given the class, the product likelihood $\prod_j \hat p(x_j \mid y)$ multiplies redundant evidence as if it were independent, *amplifying* the log-likelihood and pushing the posterior toward 0 or 1.
 
-So $\hat\eta_{NB}(\mathbf{x})$ is typically much closer to 0 or 1 than the true $\eta(\mathbf{x})$ — that's the "overconfidence" failure mode. But **the sign of $\hat\eta_{NB} - 1/2$ often matches the sign of $\eta - 1/2$**. The plug-in classifier flips only when both posteriors lie strictly on the same side of $1/2$ but in different positions; the sign-match is robust to monotone-distorted probability estimates. This is why a model with terrible calibration can still classify almost as well as the Bayes classifier — Domingos and Pazzani (1997) prove this rigorously for an interesting class of misspecified naive-Bayes models, and we'll re-derive their result in §8.1.
+So $\hat\eta_{NB}(\mathbf{x})$ is typically much closer to 0 or 1 than the true $\eta(\mathbf{x})$ — that's the "overconfidence" failure mode. But **the sign of $\hat\eta_{NB} - 1/2$ often matches the sign of $\eta - 1/2$**. The plug-in classifier disagrees with the Bayes classifier only when the two posteriors lie strictly on opposite sides of $1/2$; the sign-match is robust to monotone-distorted probability estimates. This is why a model with terrible calibration can still classify almost as well as the Bayes classifier — Domingos and Pazzani (1997) prove this rigorously for an interesting class of misspecified naive-Bayes models, and we'll re-derive their result in §8.1.
 
 ## §4. Gaussian Naive Bayes
 
@@ -748,7 +748,7 @@ where $\sigma$ is the sigmoid. Standard MLE asymptotics: $\sqrt n (\hat{\mathbf{
 
 Gaussian NB with shared diagonal covariance estimates the per-coordinate class means and a shared per-coordinate variance. Under the Ng–Jordan setup the variance is known to be 1, so the only parameters are $\hat\mu_j^{+} := \frac{1}{n_1}\sum_{i:y_i=1} x_{ij}$ and $\hat\mu_j^{-} := \frac{1}{n_0}\sum_{i:y_i=0} x_{ij}$. The classifier output reduces to the sign of $\mathbf{x}^\top (\hat{\boldsymbol\mu}^+ - \hat{\boldsymbol\mu}^-)$.
 
-The estimate error decomposes per coordinate: $\hat\mu_j^+ - \mu_j$ is Gaussian with variance $1/n_1 \le 2/n$ (since $n_1 \ge n/4$ with high probability by Hoeffding). By a sub-Gaussian union bound, the max-coordinate error is
+The estimate error decomposes per coordinate: $\hat\mu_j^+ - \mu_j$ is Gaussian with variance $1/n_1 \le 4/n$ (since $n_1 \ge n/4$ with high probability by Hoeffding). By a sub-Gaussian union bound, the max-coordinate error is
 
 $$
 \max_{j \le d} |\hat\mu_j^+ - \mu_j| \;=\; O_p\!\left(\sqrt{\log d / n}\right).
@@ -764,7 +764,7 @@ This $\sqrt{\log d}$ instead of $\sqrt{d}$ is what makes GNB's rate dimension-li
 
 We run the Ng–Jordan §3 simulation: vary $n$ from 20 to 5000, fix $d = 100$ (a regime where $\log d \approx 4.6$ is much smaller than $d$), and plot test error for Gaussian NB and unregularized logistic regression across 15 replicates per sample size. The two rates predict that GNB approaches its asymptotic error *faster* than logistic regression — its learning curve should be steeper at small-to-moderate $n$ while logistic regression catches up only once $n / d$ is large.
 
-That's what the empirical curve shows. Between $n = 80$ and $n = 320$ — the sweet spot where the $\log d / n$ rate is favorable but $d / n$ is still pessimistic — GNB pulls ahead by about five percentage points (test error ≈ 0.22 vs ≈ 0.27 at $n = 320$). Both methods converge to the Bayes-error floor near $0.17$ once $n \gtrsim 1000$.
+That's what the empirical curve shows. Between $n = 80$ and $n = 320$ — the sweet spot where the $\log d / n$ rate is favorable but $d / n$ is still pessimistic — GNB pulls ahead by about five percentage points (test error ≈ 0.22 vs ≈ 0.27 at $n = 320$). Both methods level off just above the Bayes-error floor $\Phi(-1) \approx 0.16$ (since $\|\boldsymbol\mu\| = 1$): test error is near $0.17$ once $n \gtrsim 1000$, and the two curves coincide by $n = 2560$.
 
 At very small $n$ (here $n = 20$ to $40$), logistic regression edges out GNB by a thin margin. The theoretical asymptotics don't pin down constants, and at sample sizes barely larger than the feature count, the precise behavior depends on which estimator's per-coordinate variance bites first. The clean "NB wins at small $n$" story emerges most clearly at higher $d$ — toggle the viz to $d = 200$ to see the small-$n$ GNB-wins region widen substantially, exactly as the rate inequality predicts.
 
@@ -792,7 +792,7 @@ Three caveats on the §7.4 verification.
 
 A classifier is **calibrated** if, among the test examples for which it predicts $\hat P(Y = 1 \mid \mathbf{x}) = p$, the fraction with $Y = 1$ is approximately $p$. NB is rarely calibrated — its predicted probabilities cluster near 0 and 1 while the true posterior takes intermediate values for most inputs. The phenomenon is called **overconfidence**.
 
-The mechanism (Domingos–Pazzani 1997): the conditional-independence assumption *multiplies* log-likelihoods that aren't really independent, so correlated evidence is counted multiple times. Suppose two features $X_1, X_2$ are perfectly correlated within each class — the second feature carries no new information beyond the first — but NB treats them as independent. NB's log-likelihood ratio includes the same evidence twice, doubling its magnitude. Posteriors are pushed twice as far from $1/2$ as they should be: a true posterior of $0.7$ becomes an NB-estimated posterior of $\approx 0.91$.
+The mechanism (Domingos–Pazzani 1997): the conditional-independence assumption *multiplies* log-likelihoods that aren't really independent, so correlated evidence is counted multiple times. Suppose two features $X_1, X_2$ are perfectly correlated within each class — the second feature carries no new information beyond the first — but NB treats them as independent. NB's log-likelihood ratio includes the same evidence twice, doubling its magnitude. Log-odds are pushed twice as far from $0$ as they should be: a true posterior of $0.7$ (odds $7/3$) becomes an NB-estimated posterior with odds $(7/3)^2 = 49/9$, i.e. $49/58 \approx 0.84$.
 
 But the *sign* of the log-likelihood ratio is preserved. Overconfidence doesn't flip classifications; it just exaggerates them. That's why NB classifies well (rank-preserving) but calibrates poorly (magnitude-distorted). Theorem 3 of Domingos and Pazzani (1997) makes this precise for a class of correlated-feature NB models.
 

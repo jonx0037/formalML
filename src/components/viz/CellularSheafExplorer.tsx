@@ -26,7 +26,8 @@ const NODES: GraphNode[] = [
 const EDGES: GraphEdge[] = [
   { source: 'A', target: 'B', id: 'AB' },
   { source: 'B', target: 'C', id: 'BC' },
-  { source: 'A', target: 'C', id: 'AC' },
+  // Cyclic orientation A → B → C → A, so the loop holonomy is R(θ)³ = R(3θ) (Example 4).
+  { source: 'C', target: 'A', id: 'AC' },
 ];
 
 type SheafType = 'constant' | 'rotation';
@@ -112,7 +113,7 @@ function matrixLabel(M: number[][]): string {
 
 export default function CellularSheafExplorer() {
   const [sheafType, setSheafType] = useState<SheafType>('constant');
-  const [theta, setTheta] = useState(Math.PI / 3);
+  const [theta, setTheta] = useState((2 * Math.PI) / 3);
   const [nodeValues, setNodeValues] = useState<Record<string, number[]>>({
     A: [1, 0],
     B: [1, 0],

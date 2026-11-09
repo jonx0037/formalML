@@ -286,11 +286,11 @@ $$
 \end{aligned}
 $$
 
-Stacking all variables into $z = (\beta, u^+, u^-) \in \mathbb{R}^{p + 2n}$, this is a standard-form LP with cost $c = (0_p,\ \tau \mathbf{1}_n,\ (1 - \tau)\mathbf{1}_n)$, equality constraint $A_{\text{eq}}\, z = b_{\text{eq}}$ with $A_{\text{eq}} = [X,\ -I,\ I]$ and $b_{\text{eq}} = y$, and nonnegativity bounds on the slacks ($\beta$ is unbounded).
+Stacking all variables into $z = (\beta, u^+, u^-) \in \mathbb{R}^{p + 2n}$, this is a standard-form LP with cost $c = (0_p,\ \tau \mathbf{1}_n,\ (1 - \tau)\mathbf{1}_n)$, equality constraint $A_{\text{eq}}\, z = b_{\text{eq}}$ with $A_{\text{eq}} = [X,\ I,\ -I]$ and $b_{\text{eq}} = y$, and nonnegativity bounds on the slacks ($\beta$ is unbounded).
 </TheoremBlock>
 
 <TheoremBlock type="remark" number={5} title="Combinatorial structure of the LP optimum">
-A basic feasible solution of an LP has at most as many nonzero variables as constraints — $n$ here — so the optimal $(\beta, u^+, u^-)$ has at most $n$ nonzeros among the $2n$ slacks. But each row $i$ has exactly **one** of $u_i^+$, $u_i^-$ positive (both being positive would violate optimality: a quick swap reduces cost). So each observation contributes one slack. The remaining slack-degrees go to $\beta$ (which is $p$-dimensional). Hence: at exactly $p$ observations, $u_i^+ = u_i^- = 0$, i.e., the QR fit **interpolates** $p$ of the $n$ data points. This is unique to QR — OLS interpolates none in general, ridge interpolates all only in the limit.
+A basic feasible solution of an LP has at most as many nonzero variables as equality constraints — $n$ here — counted across all of $(\beta, u^+, u^-)$. In each row $i$ at most **one** of $u_i^+$, $u_i^-$ is positive (both being positive would violate optimality: lowering both by the smaller of the two keeps the constraint and reduces cost). In the non-degenerate case every basic variable is nonzero and the $p$ free coordinates of $\beta$ are basic, which leaves exactly $n - p$ nonzero slacks, one per observation. Hence at exactly $p$ observations, $u_i^+ = u_i^- = 0$, i.e., the QR fit **interpolates** $p$ of the $n$ data points. This is unique to QR — OLS interpolates none in general, ridge interpolates all only in the limit.
 </TheoremBlock>
 
 Solving this LP directly with `scipy.optimize.linprog` makes Definition 3 concrete; the result agrees with `QuantileRegressor` to machine precision since both call HiGHS.
@@ -610,7 +610,7 @@ def solve_lasso_qr_linprog(X, y, tau, lam, no_penalty_mask=None):
 
 We close the loop with the use that motivated this topic in the T4 track: quantile regression as the base learner inside [Conformalized Quantile Regression](/topics/conformal-prediction) (Topic 1, §6). CQR uses two QR fits — at levels $\alpha/2$ and $1 - \alpha/2$ — to produce a heteroscedastic prediction band, and then applies conformal calibration on top to guarantee finite-sample marginal coverage at level $1 - \alpha$. Conformal's coverage theorem holds for **any** base learner ([Conformal Prediction](/topics/conformal-prediction), Theorem 1); the role of QR specifically is to give the band the right **shape**.
 
-This is the division of labour:
+This is the division of labor:
 
 - **QR base fits provide the band SHAPE** — wide where conditional variance is large, narrow where it is small. A symmetric residual-conformal interval does not have this property; it produces constant-width bands.
 - **Conformal calibration provides the band WIDTH** — adjust the QR fits by an additive constant so that the empirical miscoverage rate on a held-out calibration set matches the target $\alpha$.

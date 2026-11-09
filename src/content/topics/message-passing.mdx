@@ -234,7 +234,7 @@ The **renormalization trick** replaces $I + D^{-1/2}AD^{-1/2}$ with $\tilde{D}^{
 
 $$H^{(\ell+1)} = \sigma\left(\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2} H^{(\ell)} W^{(\ell)}\right)$$
 
-*Proof.* The eigenvalues of $I + D^{-1/2}AD^{-1/2}$ lie in $[0, 2]$, which causes numerical instabilities under repeated application. Adding self-loops via $\tilde{A} = A + I$ shifts the spectrum: if $\mu$ is an eigenvalue of $D^{-1/2}AD^{-1/2}$, the corresponding eigenvalue of $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ is approximately $(1 + \mu)/(1 + 1) = (1 + \mu)/2 \in [0, 1]$. This keeps eigenvalues bounded and prevents gradient explosion under deep stacking. $\square$
+*Proof.* The eigenvalues of $I + D^{-1/2}AD^{-1/2}$ lie in $[0, 2]$, which causes numerical instabilities under repeated application. Adding self-loops via $\tilde{A} = A + I$ changes the spectrum: the eigenvalues of $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ lie in $(-1, 1]$, and the self-loops pull the bottom of the spectrum away from $-1$. On a $d$-regular graph, $\tilde{D} = (d+1)I$, so an eigenvalue $\mu$ of $D^{-1/2}AD^{-1/2}$ becomes exactly $(d\mu + 1)/(d + 1)$. The renormalized spectrum is not confined to $[0, 1]$: on the path $P_3$ its smallest eigenvalue is $-1/6$. Keeping every eigenvalue in $(-1, 1]$ keeps repeated application bounded and prevents gradient explosion under deep stacking. $\square$
 </TheoremBlock>
 
 <TheoremBlock type="remark" title="Remark — GCN is Laplacian Smoothing">
@@ -308,12 +308,12 @@ With injective aggregation (sum) and a sufficiently expressive update function (
 ### Limitations of 1-WL
 
 <TheoremBlock type="remark" title="Remark — Regular Graphs and 1-WL Failure">
-The 1-WL test cannot distinguish all non-isomorphic regular graphs. For example, the Rook's graph $K_3 \square K_3$ and the Paley graph of order 9 are both 4-regular on 9 vertices but not isomorphic — yet 1-WL assigns them identical color histograms. No standard MPNN can distinguish them either.
+The 1-WL test cannot distinguish all non-isomorphic regular graphs. For example, the Rook's graph $K_4 \square K_4$ and the Shrikhande graph are both 6-regular on 16 vertices (indeed strongly regular with the same parameters) but not isomorphic — yet 1-WL assigns them identical color histograms. No standard MPNN can distinguish them either.
 
 Higher-order WL tests ($k$-WL for $k \geq 2$) can distinguish more graphs by operating on $k$-tuples of vertices rather than individual vertices. $k$-WL GNNs are correspondingly more expressive but have $O(n^k)$ complexity.
 </TheoremBlock>
 
-![1-WL color refinement — C₆ vs two triangles, showing how the algorithm distinguishes the two graphs](/images/topics/message-passing/wl-color-refinement.png)
+![1-WL color refinement — C₆ vs two triangles: both graphs are 2-regular, so the algorithm cannot distinguish them](/images/topics/message-passing/wl-color-refinement.png)
 
 <WLExpressivenessExplorer client:visible />
 
@@ -336,9 +336,9 @@ where $\mathbf{a} \in \mathbb{R}^{2d'}$ is a learnable attention vector, $W \in 
 </TheoremBlock>
 
 <TheoremBlock type="theorem" title="Theorem 5 — GAT Generalizes GCN">
-When attention weights are set to $\alpha_{vu} = 1/\sqrt{\tilde{d}_v \tilde{d}_u}$ (inverse-degree normalization), the GAT layer reduces to the GCN layer. GCN is therefore GAT with uniform, structure-dependent attention.
+When the softmax attention weights are replaced by the fixed coefficients $\alpha_{vu} = 1/\sqrt{\tilde{d}_v \tilde{d}_u}$ over $u \in \mathcal{N}(v) \cup \{v\}$ (inverse-degree normalization), the attention layer reduces to the GCN layer. These coefficients are not a softmax — their rows sum to 1 only on regular graphs — so GCN is the fixed, structure-dependent case of the attention form rather than a member of the softmax GAT family.
 
-*Proof.* In GCN, the $(v, u)$ entry of $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ is $1/\sqrt{\tilde{d}_v \tilde{d}_u}$ for adjacent $u, v$ (including self-loops). Setting $\alpha_{vu}$ to this constant (independent of features) recovers the GCN update exactly. GAT generalizes this by making $\alpha_{vu}$ depend on node features, allowing the model to learn which neighbors are more relevant. $\square$
+*Proof.* In GCN, the $(v, u)$ entry of $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ is $1/\sqrt{\tilde{d}_v \tilde{d}_u}$ for adjacent $u, v$ (including self-loops). Setting $\alpha_{vu}$ to this constant (independent of features) recovers the GCN update exactly. GAT replaces it with a softmax over feature-dependent scores, allowing the model to learn which neighbors are more relevant. $\square$
 </TheoremBlock>
 
 ### Multi-Head Attention
@@ -382,11 +382,11 @@ where $\hat{A} = \tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$. Since $\hat{A}$ is 
 
 $$\lim_{\ell \to \infty} \hat{A}^\ell = \mathbf{v}_1 \mathbf{v}_1^T$$
 
-where $\mathbf{v}_1$ is the eigenvector corresponding to eigenvalue 1.
+where $\mathbf{v}_1 \propto \tilde{D}^{1/2}\mathbf{1}$ is the eigenvector corresponding to eigenvalue 1. Each node's features therefore converge to $\sqrt{\tilde{d}_v}$ times one common vector: identical rows on a regular graph, degree-scaled rows otherwise.
 
 *Proof.* By the [spectral decomposition](/topics/spectral-theorem), $\hat{A} = \sum_{k} \mu_k \mathbf{v}_k \mathbf{v}_k^T$ where $1 = \mu_1 > |\mu_2| \geq \cdots$. Then $\hat{A}^\ell = \sum_k \mu_k^\ell \mathbf{v}_k \mathbf{v}_k^T \to \mathbf{v}_1 \mathbf{v}_1^T$ since $|\mu_k|^\ell \to 0$ for $k \geq 2$. The rate of convergence is $|\mu_2|^\ell$, and the spectral gap of [the random walk](/topics/random-walks) is $\gamma = 1 - |\mu_2|$.
 
-The Dirichlet energy decays as $E(H^{(\ell)}) \leq |\mu_2|^{2\ell} \cdot E(H^{(0)})$. $\square$
+The normalized Dirichlet energy $\tilde{E}(H) = \text{tr}(H^T (I - \hat{A}) H)$, which vanishes exactly on this limit, decays as $\tilde{E}(H^{(\ell)}) \leq |\mu_2|^{2\ell} \cdot \tilde{E}(H^{(0)})$, where $|\mu_2| = \max_{k \geq 2} |\mu_k|$. (The unnormalized energy of Definition 7 need not vanish on an irregular graph, because the limit rows are scaled by $\sqrt{\tilde{d}_v}$.) $\square$
 </TheoremBlock>
 
 <TheoremBlock type="corollary" title="Corollary 1 — Over-Smoothing on Expanders">
@@ -447,7 +447,7 @@ $$\lambda_2(G') \geq \lambda_2(G) + \Omega(k / n)$$
 </TheoremBlock>
 
 <TheoremBlock type="remark" title="Remark — Connection to Expanders">
-The goal of spectral rewiring is to make the graph "more expander-like" — increasing $\lambda_2$ moves the graph toward the [Ramanujan bound](/topics/expander-graphs) $2\sqrt{d-1}$. A fully rewired graph with $\lambda_2 = \Theta(d)$ gives:
+The goal of spectral rewiring is to make the graph "more expander-like" — increasing the Laplacian $\lambda_2$ moves the graph toward the [Ramanujan regime](/topics/expander-graphs). For a $d$-regular graph, $\lambda_2(L) = d - \lambda_2(A)$, so the Ramanujan bound $\lambda_2(A) \leq 2\sqrt{d-1}$ on the adjacency eigenvalue corresponds to $\lambda_2(L) \geq d - 2\sqrt{d-1}$. A fully rewired graph with $\lambda_2 = \Theta(d)$ gives:
 
 - $O(\log n)$ receptive field (from expansion)
 - $O(\log n)$ over-smoothing depth (the tradeoff)
