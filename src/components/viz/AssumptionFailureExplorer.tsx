@@ -28,7 +28,7 @@ import {
 //   - band-type toggle (split conformal / pure QR / HL / CQR)
 //
 // Display: scatter + band, marginal coverage, 8-bin conditional coverage strip,
-// "Theorem 3 conditions met?" indicator.
+// "Definition 9 conditions met?" indicator.
 // =============================================================================
 
 type ResidDist = 'gaussian' | 'laplace' | 't3' | 't1' | 'chi3' | 'lognormal';
@@ -550,7 +550,7 @@ export default function AssumptionFailureExplorer() {
             border: `1px solid ${conditionsMet ? '#059669' : '#DC2626'}`,
           }}
         >
-          {conditionsMet ? '✓' : '✗'} Theorem 3 conditions{' '}
+          {conditionsMet ? '✓' : '✗'} Definition 9 conditions{' '}
           {conditionsMet ? 'met' : 'broken'}
         </span>
         <span>
@@ -562,9 +562,11 @@ export default function AssumptionFailureExplorer() {
 
       <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
         Try walking through the failure modes one at a time. With <code>HL</code> selected:
-        <em> symmetric residual + σ_max = 0</em> = green check (Theorem 3 holds), conditional
-        coverage flat near 0.9. Switch to centered χ² or lognormal: the indicator flips red and
-        marginal coverage drops well below 0.9. Or keep the Gaussian residual but push σ_max up:
+        <em> symmetric residual + σ_max = 0</em> = green check (Definition 9's conditions met), and the
+        strip chart is roughly flat — but below 0.9, with marginal coverage around 0.72–0.85 (the
+        below-nominal coverage §4's remark predicts — no HL coverage guarantee exists). Switch to centered χ² or lognormal: the indicator
+        flips red, yet marginal coverage stays in about the same range (≈ 0.72–0.82), so a single draw
+        does not isolate a symmetry effect (cf. Figure 10). Or keep the Gaussian residual but push σ_max up:
         the strip chart re-acquires the U-shape (constant-width can't track heteroscedasticity).
         Switch to CQR to recover conditional adaptivity in the heteroscedastic case.
       </p>

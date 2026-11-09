@@ -250,8 +250,8 @@ J, n_per_group = 6, np.array([4, 6, 8, 10, 12, 20])
 N = n_per_group.sum()
 classroom = np.repeat(np.arange(J), n_per_group)
 alpha_t, beta_t, tau_t, sigma_t = 50.0, 5.0, 5.0, 8.0
-a = rng.normal(0.0, tau_t, size=J)
 x = rng.uniform(0.0, 5.0, size=N)
+a = rng.normal(0.0, tau_t, size=J)
 y = alpha_t + beta_t * x + a[classroom] + rng.normal(0.0, sigma_t, size=N)
 data = pd.DataFrame({"y": y, "x": x, "classroom": classroom})
 
@@ -262,7 +262,7 @@ mlm = smf.mixedlm("y ~ x", data, groups="classroom").fit(        # partial pooli
 )
 ```
 
-The explicit `method=["powell"]` matters. statsmodels' default optimizer chain (`bfgs` / `lbfgs` / `cg`) silently returns `converged=False` on this small-$J$ data with the realized $\hat\tau^2$ near the boundary; Powell converges cleanly to the same REML optimum that §4's custom implementation finds independently. The shrinkage factors at the REML estimates are $\hat\lambda_j \approx (0.222, 0.298, 0.359, 0.412, 0.451, 0.588)$ across the six classrooms — small classrooms shrink hard, the largest shrinks visibly less.
+The explicit `method=["powell"]` matters. statsmodels' default optimizer chain (`bfgs` / `lbfgs` / `cg`) silently returns `converged=False` on this small-$J$ data with the realized $\hat\tau^2$ near the boundary; Powell converges cleanly to the same REML optimum that §4's custom implementation finds independently. The REML estimates are $\hat\tau^2 \approx 3.30$ and $\hat\sigma^2 \approx 46.2$, and the shrinkage factors $\hat\lambda_j = \hat\tau^2 / (\hat\tau^2 + \hat\sigma^2 / n_j)$ at those estimates are $\hat\lambda_j \approx (0.222, 0.300, 0.364, 0.417, 0.462, 0.588)$ across the six classrooms — small classrooms shrink hard, the largest shrinks visibly less.
 
 ## 2. The linear mixed model
 
@@ -613,7 +613,7 @@ For a numerical optimizer to find the REML optimum, plug (4.6) and Woodbury into
 
 Run both estimators on §1's data. Maximize the profile likelihood (4.3) for ML and the REML likelihood (4.4) for REML, both over the same $(\log\tau, \log\sigma)$ space, and compare. Two consistency checks the run should confirm: (i) $\hat\tau^2_{\mathrm{REML}} > \hat\tau^2_{\mathrm{ML}}$ and $\hat\sigma^2_{\mathrm{REML}} > \hat\sigma^2_{\mathrm{ML}}$ (REML's bias correction pushes both variance components up); (ii) the REML estimates match statsmodels to numerical precision.
 
-The visual story is in Figure 4. The two log-likelihood surfaces over $(\log\tau, \log\sigma)$ have different optima — REML's optimum sits at slightly larger variance components than ML's, exactly the bias correction (4.4) was designed to produce. In this particular six-classroom realization with $p = 2$, the upward shift in $\hat\sigma^2$ is only slight (well under 1% in the reported estimates), with a substantially larger relative shift in $\hat\tau^2$ because the $\log\det \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}$ term interacts nonlinearly with $\tau^2$. The relevant *expected* benchmark is the classical degrees-of-freedom heuristic: ML's variance estimate is biased downward by a factor of roughly $(N - p)/N$ — here on the order of a few percent — but that's the bias factor in expectation, not the exact gap any particular sample exhibits. On a study with $p = 10$ and $N = 30$, the same comparison produces ML estimates 30% lower than REML's, which is the regime where REML is non-negotiable.
+The visual story is in Figure 4. The two log-likelihood surfaces over $(\log\tau, \log\sigma)$ have different optima — REML's optimum sits at slightly larger variance components than ML's, exactly the bias correction (4.4) was designed to produce. In this particular six-classroom realization with $p = 2$, the upward shift in $\hat\sigma^2$ is only slight (about 2% in the reported estimates, $46.2$ versus $45.2$), with a substantially larger relative shift in $\hat\tau^2$ because the $\log\det \mathbf{X}^\top \mathbf{V}^{-1}\mathbf{X}$ term interacts nonlinearly with $\tau^2$. The relevant *expected* benchmark is the classical degrees-of-freedom heuristic: ML's variance estimate is biased downward by a factor of roughly $(N - p)/N$ — here on the order of a few percent — but that's the bias factor in expectation, not the exact gap any particular sample exhibits. On a study with $p = 10$ and $N = 30$, the same comparison produces ML estimates 30% lower than REML's, which is the regime where REML is non-negotiable.
 
 A note on degenerate optima. The REML log-likelihood for a random-intercept model can have $\hat\tau^2 = 0$ as a boundary optimum if the data shows little classroom-level variation — the case where the model "decides" classrooms don't matter. This is *not* a bug; it's the data telling us partial pooling collapses to complete pooling. `MixedLM` handles this gracefully (returns $\hat\tau^2 = 0$ and a warning); custom optimizers should optimize over $\log\tau \in [-\infty, \infty]$ with care at the lower bound. Our DGP has $\tau = 5 > 0$ and $J = 6$ classrooms, so the boundary case won't trigger here, but it's worth flagging because applied users encounter it routinely with small $J$ or weak between-group signal.
 
@@ -655,7 +655,7 @@ ml = minimize(neg_ell, x0, args=("ml",),   method="L-BFGS-B")
 re = minimize(neg_ell, x0, args=("reml",), method="L-BFGS-B")
 ```
 
-The custom REML fit returns $\hat\tau_{\mathrm{REML}}^2 \approx 3.30$ and $\hat\sigma_{\mathrm{REML}}^2 \approx 56.1$, agreeing with `mlm.cov_re.iloc[0,0]` and `mlm.scale` from §1's statsmodels fit to roughly $1.5 \times 10^{-3}$ — the two implementations solve the same optimization to the optimizer's tolerance. The ML estimates are $\hat\tau_{\mathrm{ML}}^2 \approx 2.70$, $\hat\sigma_{\mathrm{ML}}^2 \approx 56.0$ — both below REML's by the Bayesian-marginalization correction (4.4) introduces. The truth $(25, 64)$ sits in the right neighborhood; this realization happens to under-shoot $\tau^2$ (one of the regimes where the variance-component posterior has nontrivial mass near zero, as §5 will exhibit).
+The custom REML fit returns $\hat\tau_{\mathrm{REML}}^2 \approx 3.30$ and $\hat\sigma_{\mathrm{REML}}^2 \approx 46.2$, agreeing with `mlm.cov_re.iloc[0,0]` and `mlm.scale` from §1's statsmodels fit to roughly $1.5 \times 10^{-3}$ — the two implementations solve the same optimization to the optimizer's tolerance. The ML estimates are $\hat\tau_{\mathrm{ML}}^2 \approx 2.14$, $\hat\sigma_{\mathrm{ML}}^2 \approx 45.2$ — both below REML's by the Bayesian-marginalization correction (4.4) introduces. The truth $(25, 64)$ sits in the right neighborhood; this realization happens to under-shoot $\tau^2$ (one of the regimes where the variance-component posterior has nontrivial mass near zero, as §5 will exhibit).
 
 ## 5. The frequentist–Bayesian bridge
 

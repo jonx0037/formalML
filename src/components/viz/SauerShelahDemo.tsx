@@ -13,7 +13,8 @@ import {
 //
 // Two panels:
 //   (a) bounds vs n on log scale for selected d, with 2^n trivial line
-//   (b) ratio (en/d)^d / C(n,<=d) converging to Stirling factor e^d/sqrt(2 pi d)
+//   (b) ratio (en/d)^d / C(n,<=d) converging to its n -> infinity limit
+//       e^d d!/d^d (~ sqrt(2 pi d) by Stirling)
 // Static fallback: public/images/topics/vc-dimension/05_sauer_shelah_bounds.png
 // =============================================================================
 
@@ -22,8 +23,11 @@ const N_MAX = 30;
 
 const D_OPTIONS = [1, 2, 3, 4, 5, 10] as const;
 
+// Exact n -> infinity limit of (en/d)^d / C(n,<=d) = e^d d!/d^d  (~ sqrt(2 pi d) by Stirling).
 function stirlingFactor(d: number): number {
-  return Math.exp(d) / Math.sqrt(2 * Math.PI * d);
+  let fact = 1;
+  for (let k = 2; k <= d; k++) fact *= k;
+  return (Math.exp(d) * fact) / Math.pow(d, d);
 }
 
 export default function SauerShelahDemo() {
@@ -104,7 +108,7 @@ export default function SauerShelahDemo() {
       const lineRatio = d3.line<typeof data[number]>().x((d) => x(d.n)).y((d) => y(d.ratio));
       g.append('path').datum(xs).attr('d', lineRatio).attr('fill', 'none').attr('stroke', paletteVC.primary).attr('stroke-width', 2.4);
       g.append('line').attr('x1', 0).attr('x2', W).attr('y1', y(stirling)).attr('y2', y(stirling)).attr('stroke', paletteVC.emp).attr('stroke-dasharray', '4 4').attr('stroke-width', 1.6);
-      g.append('text').attr('x', W - 6).attr('y', y(stirling) - 4).attr('text-anchor', 'end').style('fill', paletteVC.emp).style('font-size', '10px').text(`Stirling: e^${d}/√(2π·${d}) ≈ ${stirling.toFixed(2)}`);
+      g.append('text').attr('x', W - 6).attr('y', y(stirling) - 4).attr('text-anchor', 'end').style('fill', paletteVC.emp).style('font-size', '10px').text(`limit e^${d}·${d}!/${d}^${d} ≈ ${stirling.toFixed(2)} (≈ √(2π·${d}))`);
     },
     [data, d, half, containerWidth],
   );
@@ -113,7 +117,7 @@ export default function SauerShelahDemo() {
     <div ref={containerRef} style={{ width: '100%' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
         <svg ref={refA} width={half} height={HEIGHT} role="img" aria-label="Sauer–Shelah bounds versus 2 to the n" />
-        <svg ref={refB} width={half} height={HEIGHT} role="img" aria-label="Ratio of closed form to binomial sum converging to the Stirling factor" />
+        <svg ref={refB} width={half} height={HEIGHT} role="img" aria-label="Ratio of closed form to binomial sum converging to its limit e^d d!/d^d" />
       </div>
       <div style={{ marginTop: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
         <label htmlFor="ss-d">VC dimension d: {d}</label>

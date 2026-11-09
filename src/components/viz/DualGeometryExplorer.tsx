@@ -362,8 +362,8 @@ export default function DualGeometryExplorer() {
             className="rounded border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-2 py-0.5 text-[var(--color-text-primary)]"
           >
             <option value="none">None</option>
-            <option value="theta">θ (natural params)</option>
-            <option value="eta">η (expectation params)</option>
+            <option value="theta">η (natural params)</option>
+            <option value="eta">μ (expectation params)</option>
           </select>
         </label>
       </div>
