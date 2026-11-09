@@ -246,8 +246,9 @@ export function binaryKL(p: number, q: number): number {
  * The function q ↦ kl(p̂ ∥ q) is strictly increasing on [p̂, 1), so bisection
  * converges monotonically to machine precision in ~52 iterations.
  *
- * Vacuous-regime detection: if c ≥ −log(1 − p̂), no finite q solves the equation
- * — return 1.
+ * For 0 < p̂ < 1, kl(p̂ ∥ q) → ∞ as q → 1, so a root q* < 1 exists for every
+ * finite c (there is no finite "vacuous" threshold on c). When q* is within
+ * 1e-9 of 1 the certificate is vacuous for every practical purpose — return 1.
  */
 export function klInversionUpper(pHat: number, c: number): number {
   if (c <= 0) return pHat;
@@ -256,8 +257,7 @@ export function klInversionUpper(pHat: number, c: number): number {
     // kl(0 ∥ q) = −log(1−q); solving = c gives q = 1 − e^(−c).
     return 1 - Math.exp(-c);
   }
-  const cVacuous = -Math.log(1 - pHat);
-  if (c >= cVacuous) return 1;
+  if (binaryKL(pHat, 1 - 1e-9) <= c) return 1;
   let lo = pHat;
   let hi = 1 - 1e-15;
   for (let iter = 0; iter < 80; iter++) {

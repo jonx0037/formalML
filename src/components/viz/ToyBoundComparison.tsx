@@ -22,7 +22,10 @@ import {
 // Panel A: Union vs McAllester vs Catoni-opt vs Seeger as n sweeps log-spaced,
 // fixed Q = Q_narrow.
 // Panel B: grouped bar chart at n = 200 across three posteriors: δ_{h_ERM},
-// Q_narrow, Q_broad.  The union-bound bars do not depend on Q.
+// Q_narrow, Q_broad.  The union-bound bars do not depend on Q: in both panels
+// the union curve/bar is the §10.1 certificate on the ERM point mass,
+// R̂_S(ĥ_ERM) + sqrt(log(2|H|/δ)/(2n)) — the same object as the §10.2 table's
+// union row (0.045 + 0.144 = 0.189 on the notebook's draw).
 // =============================================================================
 
 const N_BASE = 200;
@@ -66,6 +69,8 @@ export default function ToyBoundComparison() {
       nList[i] = Math.pow(10, nLo + (i / (N_GRID - 1)) * (nHi - nLo));
     }
     const pNarrow = posteriors[1];
+    // Union-bound floor: the ERM's empirical risk, shared by every posterior.
+    const ermRisk = posteriors[0].eHat;
     const sweep = {
       n: nList,
       union: new Float64Array(N_GRID),
@@ -75,7 +80,7 @@ export default function ToyBoundComparison() {
     };
     for (let i = 0; i < N_GRID; i++) {
       const n = nList[i];
-      sweep.union[i] = pNarrow.eHat + finiteClassUnionBound(grid.length, n, DELTA);
+      sweep.union[i] = ermRisk + finiteClassUnionBound(grid.length, n, DELTA);
       sweep.mcAllester[i] = mcAllesterCertificate(pNarrow.eHat, pNarrow.kl, n, DELTA);
       sweep.catoni[i] = catoniOptimizedCertificate(pNarrow.eHat, pNarrow.kl, n, DELTA);
       sweep.seeger[i] = seegerCertificate(pNarrow.eHat, pNarrow.kl, n, DELTA);
@@ -85,7 +90,7 @@ export default function ToyBoundComparison() {
     const bars = posteriors.map((q) => ({
       name: q.name,
       eHat: q.eHat,
-      union: q.eHat + finiteClassUnionBound(grid.length, N_BASE, DELTA),
+      union: ermRisk + finiteClassUnionBound(grid.length, N_BASE, DELTA),
       mcAllester: mcAllesterCertificate(q.eHat, q.kl, N_BASE, DELTA),
       catoni: catoniOptimizedCertificate(q.eHat, q.kl, N_BASE, DELTA),
       seeger: seegerCertificate(q.eHat, q.kl, N_BASE, DELTA),

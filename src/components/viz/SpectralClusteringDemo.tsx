@@ -4,7 +4,7 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   twoMoons, twoCircles, threeBlobs, spiral,
   knnGraph, epsilonBallGraph,
-  normalizedLaplacian, jacobiEigen,
+  laplacian, normalizedLaplacian, jacobiEigen,
   kMeans,
   type Graph,
 } from './shared/graphTheory';
@@ -44,7 +44,17 @@ function computeMedianPairwiseDist(points: [number, number][]): number {
   return dists[Math.floor(dists.length / 2)];
 }
 
-export default function SpectralClusteringDemo() {
+interface SpectralClusteringDemoProps {
+  /**
+   * Which Laplacian the embedding uses. 'normalized' (default) is
+   * L_sym = I − D^{-1/2} A D^{-1/2} (Ng–Jordan–Weiss, as in graph-laplacians);
+   * 'unnormalized' is L = D − A, matching the spectral-theorem article's
+   * algorithm and code.
+   */
+  laplacian?: 'normalized' | 'unnormalized';
+}
+
+export default function SpectralClusteringDemo({ laplacian: laplacianKind = 'normalized' }: SpectralClusteringDemoProps = {}) {
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
 
   const svgRef1 = useRef<SVGSVGElement>(null);
@@ -84,9 +94,11 @@ export default function SpectralClusteringDemo() {
   }, [points, graphMode]);
 
   const eigenResult = useMemo(() => {
-    const Lnorm = normalizedLaplacian(graph.adjacency);
-    return jacobiEigen(Lnorm);
-  }, [graph]);
+    const L = laplacianKind === 'unnormalized'
+      ? laplacian(graph.adjacency)
+      : normalizedLaplacian(graph.adjacency);
+    return jacobiEigen(L);
+  }, [graph, laplacianKind]);
 
   const spectralEmbedding = useMemo(() => {
     // eigenvectors[i] is the i-th eigenvector (sorted by ascending eigenvalue).
@@ -102,7 +114,7 @@ export default function SpectralClusteringDemo() {
       rows.push(row);
     }
 
-    // Ng-Jordan-Weiss: normalize each row to unit length
+    // Normalize each row of the embedding to unit length (Ng–Jordan–Weiss step)
     for (let i = 0; i < n; i++) {
       let norm = 0;
       for (let d = 0; d < rows[i].length; d++) norm += rows[i][d] * rows[i][d];
