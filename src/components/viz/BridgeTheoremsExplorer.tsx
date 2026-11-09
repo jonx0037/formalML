@@ -22,9 +22,9 @@ import {
 //   T5.2 — Heteroscedastic width comparison.
 //          Slider for σ_max ∈ [0, 1] on RE1; show CQR/SC width ratio against
 //          the theoretical E[σ(X)]/σ_+ prediction.
-//   T5.3 — HL/conformal asymptotic equivalence.
+//   T5.3 — HL/conformal asymptotic width ratio.
 //          Slider for n_cal ∈ [50, 2000] on RE2; show HL/SC width ratio
-//          approaching 1.
+//          approaching the t₃ limit q_{F*F}/q_F ≈ 0.743.
 // =============================================================================
 
 type Mode = 't51' | 't52' | 't53';
@@ -369,10 +369,10 @@ export default function BridgeTheoremsExplorer() {
           .style('font-size', '11px').style('fill', 'var(--color-text-secondary)').text('n_cal (log scale)');
         g.append('text').attr('transform', `translate(-38, ${innerH / 2}) rotate(-90)`).attr('text-anchor', 'middle')
           .style('font-size', '11px').style('fill', 'var(--color-text-secondary)').text('HL / SC width ratio');
-        // Identity at 1
-        g.append('line').attr('x1', 0).attr('x2', innerW).attr('y1', ys(1)).attr('y2', ys(1))
+        // Theorem 5.3 limit for t₃ noise: q_{F*F}/q_F ≈ 0.743
+        g.append('line').attr('x1', 0).attr('x2', innerW).attr('y1', ys(0.743)).attr('y2', ys(0.743))
           .style('stroke', 'var(--color-border)').style('stroke-dasharray', '2 2');
-        g.append('text').attr('x', innerW - 6).attr('y', ys(1) - 4).attr('text-anchor', 'end').style('font-size', '10px').style('fill', 'var(--color-text-secondary)').text('Theorem 5.3 limit = 1');
+        g.append('text').attr('x', innerW - 6).attr('y', ys(0.743) - 4).attr('text-anchor', 'end').style('font-size', '10px').style('fill', 'var(--color-text-secondary)').text('Theorem 5.3 limit ≈ 0.743');
         // Notebook sweep
         g.append('path').datum(sweepX.map((x, i) => [x, sweepY[i]] as [number, number]))
           .attr('d', d3.line<[number, number]>().x((d) => xs(d[0])).y((d) => ys(d[1])))
@@ -504,9 +504,9 @@ export default function BridgeTheoremsExplorer() {
         {mode === 't51' &&
           'Theorem 5.1(ii): the CQR conditional-coverage gap at each x is bounded by 4·f_max·(Δ_n(x) + E[Δ_n]). All empirical points should sit below the dashed bound. The bound is loose by design — it has to absorb the conformalisation slack.'}
         {mode === 't52' &&
-          'Theorem 5.2: as σ_max grows, the CQR/SC width ratio approaches E[σ(X)]/σ₊ < 1. At σ_max = 0 (homoscedastic) the ratio is ≈ 1; at σ_max = 0.6 (RE1) the asymptotic prediction is 0.625. Finite-n drift moves the empirical point away from the theory curve.'}
+          'Theorem 5.2: the CQR/SC width ratio is bounded below by E[σ(X)]/σ₊ (the theory point: 1 at σ_max = 0, 0.625 at σ_max = 0.6, RE1). The exact limit is much closer to 1 — 0.94 at RE1 — because a constant-width band trades under-coverage at large |x| for over-coverage near 0. The simulated ratio (≈ 0.86–1.03 across the slider and seeds) sits near that limit, as in Figure 12.'}
         {mode === 't53' &&
-          'Theorem 5.3: HL and SC produce the same band asymptotically on RE2. The notebook MC sweep (orange) shows the ratio settles near 0.74 by n_cal = 1000 — slow convergence, consistent with the variance-driven o(1) correction. HL undercovers in batch evaluation throughout.'}
+          'Theorem 5.3: HL converges to a quantile of the average of two noise copies, so on RE2 (t₃ noise) the HL/SC width ratio tends to ≈ 0.743, not 1. The notebook MC sweep (orange) falls from 0.89 at n_cal = 50 to ≈ 0.74 by n_cal = 1000 and stays there. HL under-covers throughout (limit ≈ 0.82).'}
       </p>
     </div>
   );

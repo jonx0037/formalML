@@ -10,7 +10,7 @@ import { mulberry32, subBernoulliCSEndpoints, prplEbHW } from './shared/always-v
 // Side-by-side on a single Bernoulli(μ) stream of length n_max:
 //   (left) sub-Bernoulli Beta-mixture CS endpoints over time
 //   (right) PrPl-EB asymptotic half-width over time
-// Sub-panel: ratio over time, settling to ≈ 0.5 for small μ.
+// Sub-panel: ratio over time, ≈ 0.6–0.7 for small μ (cf. Fig 12: ≈ 0.72 at n = 10⁴).
 // -----------------------------------------------------------------------------
 
 const SM_BREAKPOINT = 640;
