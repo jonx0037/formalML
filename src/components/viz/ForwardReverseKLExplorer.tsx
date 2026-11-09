@@ -4,6 +4,7 @@ import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { dimensionColors } from './shared/colorScales';
 import { gaussianPdf, gmmPdf } from './shared/informationTheory';
+import { fitReverseKL, lockedComponent } from './shared/reverseKLFit';
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -70,21 +71,20 @@ function forwardKLFit(
   return { mu: mean, sigma: Math.sqrt(Math.max(variance, 0.01)) };
 }
 
-/** Reverse KL optimal single Gaussian: find highest mode */
-function reverseKLFit(
-  mus: number[],
-  sigmas: number[]
-): { mu: number; sigma: number } {
-  let bestMode = 0;
-  let bestDensity = -Infinity;
-  for (let j = 0; j < mus.length; j++) {
-    const peakDensity = 1 / (sigmas[j] * Math.sqrt(2 * Math.PI));
-    if (peakDensity > bestDensity) {
-      bestDensity = peakDensity;
-      bestMode = j;
-    }
-  }
-  return { mu: mus[bestMode], sigma: sigmas[bestMode] };
+/**
+ * Reverse KL optimal single Gaussian: the global minimizer of KL(q ∥ p) over
+ * (μ, σ), found numerically (shared/reverseKLFit.ts). It locks onto one mode
+ * only once the modes are far enough apart; for close modes the optimum is a
+ * single Gaussian spanning them (bimodal symmetric: switch near 5.6σ).
+ */
+function reverseKLFit(preset: TargetPreset) {
+  const comps = preset.mus.map((mu, j) => ({
+    w: preset.weights[j],
+    mu,
+    sigma: preset.sigmas[j],
+  }));
+  const { best } = fitReverseKL(comps);
+  return { ...best, locked: lockedComponent(best, comps) >= 0 };
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -93,7 +93,8 @@ export default function ForwardReverseKLExplorer() {
   const { ref: containerRef, width: containerWidth } =
     useResizeObserver<HTMLDivElement>();
 
-  const [separation, setSeparation] = useState(4);
+  // Default 6σ: past the ≈ 5.6σ switch, so reverse KL opens mode-seeking.
+  const [separation, setSeparation] = useState(6);
   const [presetKey, setPresetKey] = useState<string>('bimodal_sym');
 
   const isStacked = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
@@ -120,10 +121,14 @@ export default function ForwardReverseKLExplorer() {
     return gaussianPdf(xGrid, mu, sigma);
   }, [xGrid, targetPdf]);
 
-  const reverseFit = useMemo(() => {
-    const { mu, sigma } = reverseKLFit(preset.mus, preset.sigmas);
-    return gaussianPdf(xGrid, mu, sigma);
-  }, [xGrid, preset]);
+  const reverseParams = useMemo(() => reverseKLFit(preset), [preset]);
+  const reverseFit = useMemo(
+    () => gaussianPdf(xGrid, reverseParams.mu, reverseParams.sigma),
+    [xGrid, reverseParams]
+  );
+  const reverseTitle = reverseParams.locked
+    ? 'Reverse KL (mode-seeking)'
+    : 'Reverse KL (spans modes: too close)';
 
   // ── Density panels ─────────────────────────────────────────────────
   const panelWidth = isStacked
@@ -249,10 +254,10 @@ export default function ForwardReverseKLExplorer() {
         panelWidth,
         targetPdf,
         reverseFit,
-        'Reverse KL (mode-seeking)',
+        reverseTitle,
         RED
       ),
-    [panelWidth, targetPdf, reverseFit]
+    [panelWidth, targetPdf, reverseFit, reverseTitle]
   );
 
   // ── Penalty landscape ──────────────────────────────────────────────

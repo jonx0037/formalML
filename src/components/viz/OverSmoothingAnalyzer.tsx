@@ -4,8 +4,16 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   pathGraph, cycleGraph, completeGraph, barbellGraph, petersenGraph,
   gridGraph, karateClubGraph, propagateFeatures, fosrRewire, createRng,
-  type Graph, type MPNNConfig, type PropagationResult,
+  gcnSmoothingTrace,
+  type Graph, type MPNNConfig, type PropagationResult, type GcnSmoothingTrace,
 } from './shared/graphTheory';
+
+// Every energy in this component is the normalized Dirichlet energy of
+// Theorem 6 (message-passing), Ẽ(H) = tr(Hᵀ(I − Â)H) with
+// Â = D̃^{-1/2}(A + I)D̃^{-1/2}. Only Ẽ vanishes on the over-smoothing limit for
+// every graph; the unnormalized tr(HᵀLH) plateaus on irregular graphs (Grid,
+// Karate) because the limit rows are scaled by √d̃_v. The spectral gap is the
+// theorem's γ = 1 − |μ₂| of Â, and Ẽ(H^(ℓ)) ≤ |μ₂|^{2ℓ} Ẽ(H^(0)).
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -85,12 +93,16 @@ export default function OverSmoothingAnalyzer() {
 
   // --- Precompute propagation for all families ---
   const allResults = useMemo(() => {
-    const results: Record<string, { graph: Graph; result: PropagationResult }> = {};
+    const results: Record<
+      string,
+      { graph: Graph; result: PropagationResult; trace: GcnSmoothingTrace }
+    > = {};
     const config: MPNNConfig = { architecture: 'gcn', layers: MAX_LAYERS };
     for (const id of ALL_FAMILY_IDS) {
       const g = FAMILIES[id].build();
       const H0 = generateH0(g.n);
-      results[id] = { graph: g, result: propagateFeatures(g, H0, config) };
+      const result = propagateFeatures(g, H0, config);
+      results[id] = { graph: g, result, trace: gcnSmoothingTrace(g, result.features) };
     }
     return results;
   }, []);
@@ -102,11 +114,13 @@ export default function OverSmoothingAnalyzer() {
     const rr = fosrRewire(graph, rewiringEdges);
     const H0 = generateH0(rr.graph.n);
     const config: MPNNConfig = { architecture: 'gcn', layers: MAX_LAYERS };
+    const propagation = propagateFeatures(rr.graph, H0, config);
     return {
       rewiredGraph: rr.graph,
       gapHistory: rr.gapHistory,
       addedEdges: rr.addedEdges,
-      propagation: propagateFeatures(rr.graph, H0, config),
+      propagation,
+      trace: gcnSmoothingTrace(rr.graph, propagation.features),
     };
   }, [showRewiring, activeGraph, rewiringEdges, allResults]);
 
@@ -191,11 +205,11 @@ export default function OverSmoothingAnalyzer() {
 
     const xScale = d3.scaleLinear().domain([0, MAX_LAYERS]).range([0, pw]);
 
-    // Collect all normalized energies for y-domain
+    // Collect all Ẽ/Ẽ₀ ratios for the y-domain
     let minE = 1;
     const selected = [...selectedFamilies];
     for (const id of selected) {
-      const E = allResults[id].result.dirichletEnergy;
+      const E = allResults[id].trace.energy;
       const E0 = E[0] || 1;
       for (const e of E) {
         const ne = e / E0;
@@ -216,15 +230,27 @@ export default function OverSmoothingAnalyzer() {
       .selectAll('text').style('fill', '#94a3b8').style('font-size', '9px');
     g.selectAll('.domain, .tick line').style('stroke', '#475569');
 
-    // Draw curves for selected families
+    // Draw curves for selected families, each over its Theorem 6 envelope
+    // |μ₂|^{2ℓ} (dotted, same color): the solid curve never rises above it.
+    const line = d3.line<number>()
+      .x((_, i) => xScale(i))
+      .y((d) => yScale(Math.max(1e-8, d)));
     for (const id of selected) {
-      const E = allResults[id].result.dirichletEnergy;
+      const { mu2 } = allResults[id].trace;
+      const envelope = Array.from({ length: MAX_LAYERS + 1 }, (_, l) => mu2 ** (2 * l));
+      g.append('path')
+        .datum(envelope)
+        .attr('d', line)
+        .style('fill', 'none')
+        .style('stroke', FAMILY_COLORS[id])
+        .style('stroke-opacity', 0.55)
+        .style('stroke-width', 1.25)
+        .style('stroke-dasharray', '2,3');
+    }
+    for (const id of selected) {
+      const E = allResults[id].trace.energy;
       const E0 = E[0] || 1;
       const normalized = E.map((e) => e / E0);
-
-      const line = d3.line<number>()
-        .x((_, i) => xScale(i))
-        .y((d) => yScale(Math.max(1e-8, d)));
 
       g.append('path')
         .datum(normalized)
@@ -251,12 +277,20 @@ export default function OverSmoothingAnalyzer() {
         .style('fill', '#94a3b8').style('font-size', '9px')
         .text(FAMILIES[id].label);
     });
+    const envY = selected.length * 14 + 4;
+    legendG.append('line')
+      .attr('x1', 0).attr('y1', envY).attr('x2', 14).attr('y2', envY)
+      .style('stroke', '#94a3b8').style('stroke-width', 1.25).style('stroke-dasharray', '2,3');
+    legendG.append('text')
+      .attr('x', 18).attr('y', envY + 3)
+      .style('fill', '#94a3b8').style('font-size', '9px')
+      .text('bound |\u03bc\u2082|^2\u2113');
 
     svg.append('text')
       .attr('x', w / 2).attr('y', 12)
       .attr('text-anchor', 'middle')
       .style('fill', '#94a3b8').style('font-size', '11px')
-      .text('Dirichlet energy E/E\u2080 — log scale');
+      .text('Normalized Dirichlet energy \u1ebc/\u1ebc\u2080 — log scale');
 
     g.append('text')
       .attr('x', pw / 2).attr('y', ph + 24)
@@ -280,8 +314,8 @@ export default function OverSmoothingAnalyzer() {
 
     const data = ALL_FAMILY_IDS.map((id) => ({
       id,
-      gap: allResults[id].result.spectralGap,
-      depth: allResults[id].result.overSmoothingDepth,
+      gap: allResults[id].trace.spectralGap,
+      depth: allResults[id].trace.overSmoothingDepth,
     }));
 
     const xScale = d3.scaleLinear()
@@ -322,7 +356,7 @@ export default function OverSmoothingAnalyzer() {
       .attr('x', w / 2).attr('y', 12)
       .attr('text-anchor', 'middle')
       .style('fill', '#94a3b8').style('font-size', '11px')
-      .text('Spectral gap \u03b3 vs over-smoothing depth');
+      .text('Spectral gap \u03b3 = 1 \u2212 |\u03bc\u2082| vs depth to \u1ebc < 1% \u1ebc\u2080');
 
     g.append('text')
       .attr('x', pw / 2).attr('y', ph + 24)
@@ -353,8 +387,8 @@ export default function OverSmoothingAnalyzer() {
     const pw = w - MARGIN.left - MARGIN.right;
     const ph = h - MARGIN.top - MARGIN.bottom;
 
-    const origE = allResults[activeGraph].result.dirichletEnergy;
-    const rewiredE = rewireResult.propagation.dirichletEnergy;
+    const origE = allResults[activeGraph].trace.energy;
+    const rewiredE = rewireResult.trace.energy;
     const origE0 = origE[0] || 1;
     const rewiredE0 = rewiredE[0] || 1;
     const origN = origE.map((e) => e / origE0);
@@ -410,7 +444,7 @@ export default function OverSmoothingAnalyzer() {
       .attr('x', w / 2).attr('y', 12)
       .attr('text-anchor', 'middle')
       .style('fill', '#94a3b8').style('font-size', '11px')
-      .text('Rewiring comparison — original vs FoSR');
+      .text('Rewiring comparison — \u1ebc/\u1ebc\u2080, original vs FoSR');
   }, [showRewiring, rewireResult, allResults, activeGraph, rewiringEdges, containerWidth, isSmall]);
 
   const toggleFamily = (id: FamilyId) => {
@@ -502,9 +536,9 @@ export default function OverSmoothingAnalyzer() {
           <svg role="img" aria-label="Over smoothing analyzer visualization (panel 1 of 4)" ref={graphSvgRef} />
         </div>
         <div className="flex flex-col gap-2">
-          <svg role="img" aria-label="Over smoothing analyzer visualization (panel 2 of 4)" ref={energySvgRef} />
-          <svg role="img" aria-label="Over smoothing analyzer visualization (panel 3 of 4)" ref={scatterSvgRef} />
-          <svg role="img" aria-label="Over smoothing analyzer visualization (panel 4 of 4)" ref={rewireSvgRef} />
+          <svg role="img" aria-label="Normalized Dirichlet energy over layers for each selected graph, log scale, with each graph's mu-two to the two-ell bound dotted (panel 2 of 4)" ref={energySvgRef} />
+          <svg role="img" aria-label="Spectral gap one minus mu-two against the layer where normalized energy falls below one percent (panel 3 of 4)" ref={scatterSvgRef} />
+          <svg role="img" aria-label="Normalized Dirichlet energy of the active graph before and after FoSR rewiring (panel 4 of 4)" ref={rewireSvgRef} />
         </div>
       </div>
     </div>
