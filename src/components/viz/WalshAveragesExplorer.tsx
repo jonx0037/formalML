@@ -30,7 +30,9 @@ import { gaussianSampler, mulberry32 } from './shared/nonparametric-ml';
 //   sample mean    = 1.850
 //   sample median  = 1.150
 //   HL estimate    = 1.200
-//   95% HL CI      = [0.300, 4.450]
+//   95% HL CI      = [0.200, 4.700]   (exact Theorem 10, w_α = 3; the
+//                                      notebook's normal-approx w = 4 gave
+//                                      [0.300, 4.450])
 //   #Walsh > HL    = 18 = M/2 = n(n+1)/4   (Theorem 9 centring)
 //
 // =============================================================================
@@ -81,59 +83,27 @@ function arrayMedian(D: readonly number[]): number {
   return medianSorted(sorted);
 }
 
-// Acklam's algorithm for Φ⁻¹ (inverse normal CDF) — used for the
-// Wilcoxon critical value via the normal approximation w_α = floor(μ − z·σ).
-function normalInverseCDF(p: number): number {
-  if (p <= 0) return -Infinity;
-  if (p >= 1) return Infinity;
-  const a = [
-    -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
-    1.38357751867269e2, -3.066479806614716e1, 2.506628277459239,
-  ];
-  const b = [
-    -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2,
-    6.680131188771972e1, -1.328068155288572e1,
-  ];
-  const c = [
-    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838,
-    -2.549732539343734, 4.374664141464968, 2.938163982698783,
-  ];
-  const d = [
-    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416,
-  ];
-  const pLow = 0.02425;
-  const pHigh = 1 - pLow;
-  let q;
-  if (p < pLow) {
-    q = Math.sqrt(-2 * Math.log(p));
-    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-  }
-  if (p > pHigh) {
-    q = Math.sqrt(-2 * Math.log(1 - p));
-    return -(
-      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
-    );
-  }
-  q = p - 0.5;
-  const r = q * q;
-  return (
-    ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
-    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
-  );
-}
-
-// Wilcoxon critical value via normal approximation — matches the notebook
-// (Cell 14) convention: w_α = floor(μ − z_(1-α/2) · √σ²) with μ = n(n+1)/4
-// and σ² = n(n+1)(2n+1)/24. The asymptotic version converges to the exact
-// discrete value for n ≳ 12 and stays close enough at smaller n that the
-// CI's coverage error is negligible relative to the discreteness step.
+// Exact Wilcoxon critical value (Theorem 10): the largest w with
+// P_H0(W+ ≤ w) ≤ α/2, from the exact null distribution of the signed-rank
+// statistic (counts of subsets of {1, …, n} by sum, over 2^n). Returns −1 when
+// even P_H0(W+ ≤ 0) = 2^(−n) exceeds α/2, i.e. no exact CI exists at this level.
+// At n = 8, α = 0.05 this gives w_α = 3 (5/256 ≤ 0.025 < 7/256).
 function wilcoxonCritical(n: number, alpha: number): number {
-  const mu = (n * (n + 1)) / 4;
-  const sd = Math.sqrt((n * (n + 1) * (2 * n + 1)) / 24);
-  const z = normalInverseCDF(1 - alpha / 2);
-  return Math.max(0, Math.floor(mu - z * sd));
+  const maxSum = (n * (n + 1)) / 2;
+  const counts = new Float64Array(maxSum + 1);
+  counts[0] = 1;
+  for (let k = 1; k <= n; k++) {
+    for (let s = maxSum; s >= k; s--) counts[s] += counts[s - k];
+  }
+  const total = Math.pow(2, n);
+  let cum = 0;
+  let w = -1;
+  for (let s = 0; s <= maxSum; s++) {
+    cum += counts[s];
+    if (cum / total <= alpha / 2) w = s;
+    else break;
+  }
+  return w;
 }
 
 // Compute the (1-α) HL confidence interval from Walsh-average ordering.
@@ -587,7 +557,7 @@ export default function WalshAveragesExplorer() {
           fontStyle: 'italic',
         }}
       >
-        At the notebook's n = 8 outlier example, HL = 1.20 sits between mean (1.85) and median (1.15). The 95% HL CI is [0.30, 4.45] — exact under the Wilcoxon symmetry assumption (Theorem 10). Inject another outlier and watch the right panel: mean RMSE rockets, median is steady, HL stays close behind median.
+        At the notebook's n = 8 outlier example, HL = 1.20 sits between mean (1.85) and median (1.15). The 95% HL CI is [0.20, 4.70] — exact under the Wilcoxon symmetry assumption (Theorem 10). Inject another outlier and watch the right panel: mean RMSE rockets, median is steady, HL stays close behind median.
       </p>
     </div>
   );

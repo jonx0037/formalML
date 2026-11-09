@@ -13,7 +13,9 @@ import {
 //
 // Three curves vs margin γ:
 //   (i) vanilla FTSL for half-planes at d_VC = 3 — flat in γ
-//   (ii) margin-based bound R²/γ² via FTSL — decreasing in γ
+//   (ii) margin-based bound R²/γ² via FTSL — decreasing in γ. Deliberately
+//        uncapped: plots ceil(R²/γ²) without the min(·, d) + 1 cap, so it sits
+//        above (i) for γ < ~0.58 and meets it from there on.
 //   (iii) empirical SVM Monte-Carlo gap — read from the notebook table
 // Reader controls margin γ (commit-on-release for the empirical curve cursor).
 // Static fallback: public/images/topics/vc-dimension/11_svm_margin_vs_vc_bound.png
@@ -101,7 +103,7 @@ export default function SVMMarginVsVCBound() {
       const legend = g.append('g').attr('transform', `translate(${Math.max(8, W - 240)}, 6)`);
       const items = [
         { label: 'vanilla FTSL (d_VC = 3) — flat', color: paletteVC.primary, dash: '5 3' },
-        { label: 'margin-based R²/γ² — decreasing', color: paletteVC.alt, dash: '' },
+        { label: 'margin R²/γ² (uncapped) — decreasing', color: paletteVC.alt, dash: '' },
         { label: 'empirical SVM gap', color: paletteVC.emp, dash: '' },
       ];
       items.forEach((it, i) => {
@@ -141,7 +143,7 @@ export default function SVMMarginVsVCBound() {
         />
       </div>
       <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '0.4rem' }}>
-        At γ = {gamma.toFixed(2)}: vanilla FTSL = {cursorData.vanilla.toFixed(3)} (flat), margin bound = {cursorData.margin.toFixed(3)}, empirical = {cursorData.empirical.toFixed(4)}. The margin bound tracks the empirical gap's shape; the vanilla bound doesn't see γ at all.
+        At γ = {gamma.toFixed(2)}: vanilla FTSL = {cursorData.vanilla.toFixed(3)} (flat), uncapped margin bound = {cursorData.margin.toFixed(3)}, empirical = {cursorData.empirical.toFixed(4)}. The margin bound tracks the empirical gap's shape; the vanilla bound doesn't see γ at all.
       </p>
     </div>
   );
