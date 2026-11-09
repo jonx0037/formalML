@@ -196,7 +196,7 @@ export default function DvGCrossoverPlot() {
       {payload && (
         <div className="text-xs opacity-75 mt-1 text-center">
           Each point averages {payload.n_reps} replicates. The crossover is most visible at d = 200,
-          where GNB's O(log d / n) rate beats LR's O(d / n) over the small-to-mid sample range.
+          where GNB's O(log d / n) rate beats LR's O(d / n) over the mid sample range (n ≈ 160–1280); LR still wins at the smallest n.
         </div>
       )}
     </div>

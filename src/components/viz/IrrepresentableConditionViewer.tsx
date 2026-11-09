@@ -17,9 +17,11 @@ import {
 //
 // The horizontal line at IC = 1 is the sign-consistency threshold (Zhao-Yu
 // 2006 / Wainwright 2009). At ρ small, IC is far below 1 (lasso reliably
-// recovers the support). As ρ → 1 the IC quantity grows; at the crossover
-// point, the lasso provably fails sign-consistency and elastic net or
-// adaptive lasso become necessary.
+// recovers the support). For this contiguous-support AR(1) design the IC
+// quantity equals ρ exactly (Markov property: each inactive feature loads only
+// on the nearest active endpoint), so it never reaches 1 on [0, 0.95] and the
+// crossover marker below does not fire. What erodes as ρ → 1 is the strong-IC
+// margin η = 1 − ρ, which inflates the λ that Theorem 1 needs.
 //
 // Compute: 50 ρ values × Cholesky on a 10×10 Σ_{S,S} ≈ <10 ms. Pre-compute
 // once with useMemo.
@@ -107,7 +109,7 @@ export default function IrrepresentableConditionViewer() {
         return curve[i - 1].rho + t * (curve[i].rho - curve[i - 1].rho);
       }
     }
-    return null; // never crosses (unlikely with rho up to 0.95)
+    return null; // never crosses here: for contiguous-S AR(1), IC(ρ) = ρ < 1
   }, [curve]);
 
   const renderRef = useD3<SVGSVGElement>(
@@ -173,7 +175,7 @@ export default function IrrepresentableConditionViewer() {
           marginTop: '8px',
         }}
       >
-        Population IC quantity for AR(1) Toeplitz designs Σⱼₖ = ρ^|j−k| with contiguous active set S = {`{0, …, ${S - 1}}`} and sign(β*_S) = (1, …, 1). Below the IC = 1 threshold, the lasso is sign-consistent (Wainwright 2009 Theorem 1); above the threshold, the lasso provably fails sign-consistency (Wainwright 2009 Theorem 3) regardless of how λ is chosen — elastic net (§8.2) or adaptive lasso (§8.3) become necessary. At ρ = 0.5 (DGP-1 default) the IC sits comfortably below 1 and the §1 viz showed clean recovery. {crossoverRho !== null ? `Crossover at ρ ≈ ${crossoverRho.toFixed(3)}.` : 'No crossover in this ρ range.'} Computed live in-browser via Cholesky on the s × s = {S} × {S} active-set Gram block.
+        Population IC quantity for AR(1) Toeplitz designs Σⱼₖ = ρ^|j−k| with contiguous active set S = {`{0, …, ${S - 1}}`} and sign(β*_S) = (1, …, 1). Below the IC = 1 threshold, the lasso is sign-consistent (Wainwright 2009 Theorem 1); above the threshold, the lasso provably fails sign-consistency (Wainwright 2009 Theorem 3) regardless of how λ is chosen — elastic net (§8.2) or adaptive lasso (§8.3) become necessary. At ρ = 0.5 (DGP-1 default) the IC sits comfortably below 1 and the §1 viz showed clean recovery. {crossoverRho !== null ? `Crossover at ρ ≈ ${crossoverRho.toFixed(3)}.` : 'No crossover in this ρ range: for this design the IC quantity equals ρ exactly, so the weak IC holds for every ρ < 1, and what shrinks as ρ → 1 is the strong-IC margin η = 1 − ρ.'} Computed live in-browser via Cholesky on the s × s = {S} × {S} active-set Gram block.
       </p>
     </div>
   );
