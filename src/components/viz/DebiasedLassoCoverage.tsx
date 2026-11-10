@@ -1,7 +1,7 @@
 // =============================================================================
 // DebiasedLassoCoverage — §10.5 static figure + numerical coverage table.
 //
-// The Monte Carlo (B = 200, n = 200, p = 100, s = 5, three coord types) takes
+// The Monte Carlo (B = 200, n = 200, p = 100; 3 strong + 2 borderline signals, three coord types) takes
 // ~30-60 s in Python; replicating it client-side would freeze the browser.
 // Instead, this component renders:
 //   • the precomputed figure (fig_10_01_debiased_coverage.png) inline, and
