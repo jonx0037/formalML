@@ -5,7 +5,7 @@
 // topic. Mirrors notebooks/sequential-monte-carlo/01_sequential_monte_carlo.ipynb
 // across the SMC skeleton, the four resampling schemes, the propagation
 // kernels, the bootstrap and auxiliary particle filters, the adaptive
-// temperature schedule, the unbiased log-evidence estimator, and the banana
+// temperature schedule, the unbiased evidence estimator, and the banana
 // log-density.
 //
 // Three independent groups of functions:
