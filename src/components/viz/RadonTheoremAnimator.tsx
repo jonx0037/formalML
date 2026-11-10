@@ -32,7 +32,7 @@ const INITIAL_CONFIGS: Point2D[][] = [
   // Near-collinear configuration
   [
     [0.15, 0.4],
-    [0.45, 0.45],
+    [0.45, 0.48],
     [0.75, 0.5],
     [0.5, 0.85],
   ],
