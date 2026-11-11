@@ -77,6 +77,12 @@ references:
     year: 2007
     url: "https://doi.org/10.1109/JSTSP.2007.910264"
     note: "Douglas–Rachford splitting for signal processing and inverse problems"
+  - type: "paper"
+    title: "Convergence Rate Analysis of Several Splitting Schemes"
+    authors: "Davis & Yin"
+    year: 2016
+    url: "https://doi.org/10.1007/978-3-319-41589-5_4"
+    note: "The o(1/k) fixed-point-residual rate for Douglas–Rachford and ADMM, and why objective rates need a two-point surrogate"
 ---
 
 import TheoremBlock from '../../components/ui/TheoremBlock.astro';
@@ -428,11 +434,13 @@ The variable $z_k$ is an auxiliary "shadow" variable — it doesn't converge to 
 The canonical application is **basis pursuit**: minimize $\|x\|_1$ subject to $Ax = b$ (exact sparse recovery). Setting $f(x) = \|x\|_1$ and $g(x) = \iota_{\{Ax = b\}}(x)$, both are non-smooth, but both have cheap proximal operators — soft-thresholding for $f$ and projection onto the affine subspace for $g$.
 
 <TheoremBlock type="theorem" number={4} title="Convergence of Douglas–Rachford Splitting">
-Let $f, g$ be proper, closed, convex functions with $\mathrm{dom}\, f \cap \mathrm{dom}\, g \neq \emptyset$. Then for any $z_0 \in \mathbb{R}^n$ and $\gamma > 0$, the Douglas–Rachford iterates satisfy:
+Let $f, g$ be proper, closed, convex functions with $\mathrm{ri}(\mathrm{dom}\, f) \cap \mathrm{ri}(\mathrm{dom}\, g) \neq \emptyset$, and suppose $f + g$ has a minimizer. Then the Douglas–Rachford map $T$ (with $z_{k+1} = T z_k$) has a fixed point $\bar{z}$, and for any $z_0 \in \mathbb{R}^n$ and $\gamma > 0$ the iterates satisfy:
 
 1. $y_k = \mathrm{prox}_{\gamma f}(z_k)$ converges to a minimizer $x^*$ of $f + g$.
-2. The convergence rate for the objective gap is $O(1/k)$.
+2. The **fixed-point residual** decays at rate $o(1/k)$: $\|z_{k+1} - z_k\|^2 \leq \dfrac{\|z_0 - \bar{z}\|^2}{k+1}$, and in fact $k\,\|z_{k+1} - z_k\|^2 \to 0$.
 </TheoremBlock>
+
+Why a residual rather than the objective gap? In basis pursuit $g$ is the indicator of $\{Ax = b\}$, so $(f + g)(y_k) = +\infty$ whenever $y_k$ is off the affine set — which is nearly every iterate, because $y_k$ comes out of soft-thresholding, not out of the projection. The natural progress measure is how far $z_k$ is from being a fixed point. Since $z_{k+1} - z_k = \mathrm{prox}_{\gamma g}(2y_{k+1} - z_k) - y_{k+1}$, the residual is the gap between the two proximal outputs, and it vanishes exactly at a fixed point. The rate comes from firm nonexpansiveness of $T = \tfrac{1}{2}(I + R_{\gamma g} R_{\gamma f})$: each step gives $\|z_{k+1} - \bar{z}\|^2 \leq \|z_k - \bar{z}\|^2 - \|z_{k+1} - z_k\|^2$, so the squared residuals sum to at most $\|z_0 - \bar{z}\|^2$; they are also nonincreasing (because $T$ is nonexpansive), so the $(k+1)$-th is at most the average of the first $k+1$, and a nonincreasing summable sequence is $o(1/k)$. Objective-value rates for Douglas–Rachford do exist, but only for a surrogate that evaluates $f$ and $g$ at the two different proximal outputs, not for $(f + g)(y_k)$ (Davis & Yin 2016).
 
 ```python
 # Douglas-Rachford for basis pursuit: min ||x||_1 s.t. Ax = b
@@ -495,7 +503,7 @@ The algorithm converges when both residuals are small. The standard stopping cri
 **Sensitivity to $\rho$.** The penalty parameter $\rho$ has a significant effect on convergence speed but does not affect the final solution. Large $\rho$ enforces the consensus constraint more aggressively, which drives the primal residual down quickly but inflates the dual residual (which carries a factor of $\rho$); small $\rho$ does the opposite, favoring a small dual residual at the cost of slower primal convergence (the $x$ and $z$ updates are more independent). In practice, adaptive $\rho$ schemes that increase $\rho$ when the primal residual is large and decrease it when the dual residual is large can dramatically improve convergence.
 
 <TheoremBlock type="remark">
-**ADMM as Douglas–Rachford on the dual.** ADMM applied to the consensus problem $\min f(x) + g(z)$ s.t. $x = z$ is equivalent to applying Douglas–Rachford splitting to the **dual problem**. This explains why both methods achieve an $O(1/k)$ convergence rate and why the penalty parameter $\rho$ in ADMM plays the same role as the step-size parameter $\gamma$ in DR. The primal-dual structure of ADMM provides richer convergence diagnostics (two residuals instead of one), which is a practical advantage.
+**ADMM as Douglas–Rachford on the dual.** ADMM applied to the consensus problem $\min f(x) + g(z)$ s.t. $x = z$ is equivalent to applying Douglas–Rachford splitting to the **dual problem**. This explains why the two share their convergence theory — ADMM's primal and dual residuals inherit the $o(1/k)$ fixed-point-residual rate of Theorem 4, applied to the dual — and why the penalty parameter $\rho$ in ADMM plays the same role as the step-size parameter $\gamma$ in DR. The primal-dual structure of ADMM provides richer convergence diagnostics (two residuals instead of one), which is a practical advantage.
 </TheoremBlock>
 
 <ADMMExplorer client:visible />
@@ -512,7 +520,7 @@ We now have four splitting algorithms — ISTA, FISTA, Douglas–Rachford, and A
 |-----------|---------|---------------|-------------------------------------|
 | ISTA (Proximal Gradient) | $g$ smooth + $h$ prox-friendly | $O(LR^2/k)$ | $(1 - \mu/L)^k$ (linear) |
 | FISTA (Accelerated) | $g$ smooth + $h$ prox-friendly | $O(LR^2/k^2)$ (optimal) | $(1 - \sqrt{\mu/L})^k$ (linear, faster) |
-| Douglas–Rachford | both non-smooth, both prox-friendly | $O(1/k)$ | — |
+| Douglas–Rachford | both non-smooth, both prox-friendly | $o(1/k)$ on $\lVert z_{k+1} - z_k \rVert^2$ (fixed-point residual, not the objective) | — |
 | ADMM | consensus/splitting form | $O(1/k)$ | — |
 
 Here $L$ is the smoothness constant of $g$, $R = \|x_0 - x^*\|$ is the initial distance, $\mu$ is the strong convexity parameter, and $\kappa = L/\mu$ is the condition number.
@@ -523,7 +531,7 @@ Here $L$ is the smoothness constant of $g$, $R = \|x_0 - x^*\|$ is the initial d
 
 2. **Strong convexity accelerates both ISTA and FISTA** from sublinear to linear convergence. The practical message: if you know your problem is strongly convex, the convergence is exponentially faster.
 
-3. **ADMM and DR have the same theoretical rate** ($O(1/k)$), but ADMM is often faster in practice because it exploits the structure of the consensus formulation and allows per-variable parallelism.
+3. **ADMM and DR share the same convergence theory** (ADMM is DR on the dual, so its residuals inherit DR's fixed-point-residual rate), but ADMM is often faster in practice because it exploits the structure of the consensus formulation and allows per-variable parallelism.
 
 4. **Condition number dependence is the bottleneck.** For all these methods, ill-conditioned problems (large $\kappa$) converge slowly. Preconditioning — transforming the problem to reduce $\kappa$ — is often more effective than switching algorithms.
 
