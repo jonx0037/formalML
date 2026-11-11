@@ -21,9 +21,11 @@ import {
 // Bottom panel: bias = log p(y) − IWELBO_K decaying.
 //
 // User slider sets the maximum K shown; computation runs incrementally as the
-// slider moves. Mean-field q is the §1 reverse-KL projection; importance
-// weights have finite variance for the Gaussian-conjugate target so Theorem 6
-// applies and asymptotic convergence holds.
+// slider moves. Mean-field q is the §1 reverse-KL projection. The importance
+// weights have INFINITE variance here (tail index ≈ 1.02, Pareto k̂ ≈ 0.98):
+// 2Λ − diag(Λ) is not positive definite for this posterior precision Λ.
+// Theorem 6's limit IWELBO_K → log p(y) still holds (it needs only a finite
+// ELBO), but the convergence is slow.
 // =============================================================================
 
 const TOP_HEIGHT = 220;
