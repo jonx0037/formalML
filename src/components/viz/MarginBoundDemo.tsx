@@ -8,7 +8,11 @@ import { useResizeObserver } from './shared/useResizeObserver';
 //
 //   Left  — SVM decision boundary on two-moons with margin contours and points.
 //   Right — empirical margin loss vs γ alongside the Theorem 6 bound, with their
-//           sum and the median-positive-margin reference line.
+//           sum and the median-positive-margin reference line. The bound uses
+//           B = sqrt(‖w‖² + b²) and R = √2 (intercept absorbed via the kernel
+//           K + 1). γ is scanned after seeing the data, so the plot is
+//           descriptive, not a certified choice of margin; the total is > 1
+//           (vacuous) at every γ for n = 200.
 // =============================================================================
 
 const HEIGHT = 360;
@@ -24,9 +28,12 @@ type Payload = {
     emp_margin_loss: number[];
     bound: number[];
     w_norm: number;
+    intercept: number;
+    B: number;
     R_kernel: number;
     median_positive_margin: number;
-    optimal_gamma: number;
+    gamma_min_total: number;
+    min_total: number;
   };
 };
 
@@ -147,7 +154,7 @@ export default function MarginBoundDemo() {
         .style('font-size', '11px').style('fill', 'var(--color-text-secondary)').text('loss / bound');
       g.append('text').attr('x', w / 2).attr('y', -12).attr('text-anchor', 'middle')
         .style('font-size', '12px').style('font-weight', '600').style('fill', 'var(--color-text)')
-        .text(`Theorem 6 trade-off (‖w‖=${m.w_norm.toFixed(2)}, optimal γ≈${m.optimal_gamma.toFixed(2)})`);
+        .text(`Theorem 6 trade-off (B=${m.B.toFixed(2)}; min total ${m.min_total.toFixed(2)} at γ≈${m.gamma_min_total.toFixed(2)}, vacuous)`);
 
       const empLine = d3.line<number>().x((_, i) => x(m.gamma_grid[i])).y((v) => y(v));
       const sumPts = m.emp_margin_loss.map((v, i) => v + m.bound[i]);

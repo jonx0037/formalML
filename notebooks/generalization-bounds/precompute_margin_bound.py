@@ -6,8 +6,19 @@ public/sample-data/generalization-bounds/):
   margin_bound.json: {
     train: { X: [[x1, x2], ...], y: [-1|+1, ...] },
     decision_grid: { xs, ys, Z },                  # 2D grid of decision_function values
-    margins: { gamma_grid, emp_margin_loss, bound, w_norm, R_kernel, n, delta },
+    margins: { gamma_grid, emp_margin_loss, bound, w_norm, intercept, B,
+               R_kernel, median_positive_margin, gamma_min_total, min_total },
   }
+
+SVC fits an intercept b, so f(x) = <w, phi(x)> + b is not in F_B for the RBF
+kernel alone. We absorb b into the feature map: f(x) = <(w, b), (phi(x), 1)>,
+which lives in the RKHS of K + 1 with norm B = sqrt(||w||^2 + b^2) and
+R = sqrt(sup_x K(x, x) + 1) = sqrt(2).
+
+Theorem 6 holds for a gamma and B fixed before seeing the data. Here both are
+read off the fitted model and gamma is scanned, so a rigorous certificate needs
+a union bound over the grid. The scan is descriptive: at n = 200 the total stays
+above 1 (vacuous) at every gamma.
 
 Runtime: ~3 s.
 """
@@ -82,7 +93,10 @@ def main() -> None:
     sv = clf.support_vectors_
     K_sv = rbf_kernel(sv, sv, gamma=rbf_gamma)  # (n_sv, n_sv) Gram
     w_norm = float(np.sqrt(dual_coefs @ K_sv @ dual_coefs))
-    R_kernel = 1.0  # RBF kernel: K(x, x) = 1
+    # Absorb the intercept via the augmented kernel K + 1 (see module docstring).
+    intercept = float(clf.intercept_[0])
+    B = float(np.hypot(w_norm, intercept))
+    R_kernel = float(np.sqrt(2.0))  # sup_x K(x, x) + 1 = 2 for the RBF kernel
 
     # 2D decision-function grid
     xs = np.linspace(-2.0, 3.0, 100)
@@ -92,16 +106,22 @@ def main() -> None:
 
     n = len(X_train)
     delta = 0.05
-    gamma_grid = np.linspace(0.05, 1.5, 40)
+    # The grid extends past the minimum of the total (near gamma = 3.5), so the
+    # reported minimizer is interior rather than the grid's right edge.
+    gamma_grid = np.linspace(0.05, 5.0, 100)
     emp_margin_loss = np.array([margin_loss(y_train, scores_train, g) for g in gamma_grid])
-    bounds = np.array([margin_bound(w_norm, R_kernel, g, n, delta) for g in gamma_grid])
+    bounds = np.array([margin_bound(B, R_kernel, g, n, delta) for g in gamma_grid])
 
-    # Find the optimal gamma (minimum of emp_margin_loss + bound)
+    # Where the total (emp_margin_loss + bound) is smallest on this grid. This
+    # is not a certified optimal margin: gamma is chosen after seeing the data.
     total = emp_margin_loss + bounds
-    optimal_gamma = float(gamma_grid[int(np.argmin(total))])
+    i_min = int(np.argmin(total))
+    gamma_min_total = float(gamma_grid[i_min])
+    min_total = float(total[i_min])
 
-    # Median positive margin (notebook reference value)
-    positive_margins = scores_train[y_train * scores_train > 0]
+    # Median positive margin y_i f(x_i) (notebook reference value)
+    signed_margins = y_train * scores_train
+    positive_margins = signed_margins[signed_margins > 0]
     median_margin = float(np.median(positive_margins)) if positive_margins.size else 0.0
 
     payload = {
@@ -113,9 +133,12 @@ def main() -> None:
             "emp_margin_loss": emp_margin_loss,
             "bound": bounds,
             "w_norm": w_norm,
+            "intercept": intercept,
+            "B": B,
             "R_kernel": R_kernel,
             "median_positive_margin": median_margin,
-            "optimal_gamma": optimal_gamma,
+            "gamma_min_total": gamma_min_total,
+            "min_total": min_total,
         },
     }
     payload = _round_floats(_to_jsonable(payload), ndigits=5)
@@ -130,8 +153,10 @@ def main() -> None:
 
     # Reference values printed for the verify suite
     print(f"  w_norm (RKHS): {w_norm:.4f}")
+    print(f"  intercept b: {intercept:.4f}")
+    print(f"  B = sqrt(w_norm^2 + b^2): {B:.4f}  (R = sqrt(2))")
     print(f"  median positive margin: {median_margin:.4f}")
-    print(f"  optimal gamma: {optimal_gamma:.4f}")
+    print(f"  gamma minimizing the total: {gamma_min_total:.4f}  (total {min_total:.4f}, vacuous if > 1)")
     print(f"  empirical 0-1 risk: {(y_train * scores_train <= 0).mean():.4f}")
 
 

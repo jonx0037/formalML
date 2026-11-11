@@ -9,7 +9,10 @@ import { useResizeObserver } from './shared/useResizeObserver';
 //
 // The synthetic 2D target (mirrors the notebook §7 cell):
 //
-//   log p(x0, x1) = -x0² / (2·9) - (x1 - 0.6 x0 - 0.3 x0²)² / (2 β² exp(γ x0))
+//   log p(x0, x1) = -x0² / (2·9) - γ x0 / 2 - (x1 - 0.6 x0 - 0.2 x0²)² / (2 β² exp(γ x0)) + const
+//
+// (the notebook's alpha·x0²/2 with alpha = 0.4, and the x0-dependent part of the
+// conditional normalizer -½ log(2π β² exp(γ x0)))
 //
 // Three approximations:
 //   - Mean-field Gaussian (axis-aligned ellipse, narrow)
@@ -36,7 +39,8 @@ interface ContourLevel {
 function logTarget(x0: number, x1: number, beta: number, gamma: number): number {
   return (
     -0.5 * (x0 * x0) / 9 -
-    0.5 * ((x1 - 0.6 * x0 - 0.3 * x0 * x0) ** 2) / (beta * beta * Math.exp(gamma * x0))
+    0.5 * gamma * x0 -
+    0.5 * ((x1 - 0.6 * x0 - 0.2 * x0 * x0) ** 2) / (beta * beta * Math.exp(gamma * x0))
   );
 }
 
@@ -105,8 +109,8 @@ export default function SparsePosteriorVIExplorer() {
         tCol.push(logTarget(xs[i], ys[j], beta, gamma));
         mfCol.push(evalGaussian2D(xs[i], ys[j], muMF, covMF));
         frCol.push(evalGaussian2D(xs[i], ys[j], muFR, covFR));
-        // Polynomial flow: parametrize y conditional on x as N(0.6x + 0.3x², σ²(x))
-        const muFlow_y = 0.6 * xs[i] + 0.3 * xs[i] * xs[i];
+        // Polynomial flow: parametrize y conditional on x as N(0.6x + 0.2x², σ²(x))
+        const muFlow_y = 0.6 * xs[i] + 0.2 * xs[i] * xs[i];
         const sigmaFlow = beta * Math.exp(0.5 * gamma * xs[i]);
         const ll =
           -0.5 * Math.log(2 * Math.PI * sigmaFlow * sigmaFlow) -
