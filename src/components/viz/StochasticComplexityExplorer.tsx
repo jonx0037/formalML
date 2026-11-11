@@ -7,12 +7,12 @@ const PANEL_HEIGHT = 320;
 const SM_BREAKPOINT = 640;
 const MARGIN = { top: 30, right: 15, bottom: 50, left: 55 };
 
-type ComparisonCode = 'bayes-uniform' | 'bayes-jeffreys' | 'plugin-mle';
+type ComparisonCode = 'bayes-uniform' | 'bayes-jeffreys' | 'max-likelihood';
 
 const COMPARISON_OPTIONS: { value: ComparisonCode; label: string }[] = [
   { value: 'bayes-uniform', label: 'Bayes (uniform prior)' },
   { value: 'bayes-jeffreys', label: 'Bayes (Jeffreys prior)' },
-  { value: 'plugin-mle', label: 'Plug-in MLE' },
+  { value: 'max-likelihood', label: 'Maximized likelihood (not normalized)' },
 ];
 
 // Bayes predictive probability for Bernoulli
@@ -34,11 +34,13 @@ function bayesLogProb(k: number, n: number, prior: 'uniform' | 'jeffreys'): numb
   }
 }
 
-function pluginMLELogProb(k: number, n: number): number {
-  // Plug-in MLE: p(k|n) = C(n,k) * theta_hat^k * (1 - theta_hat)^(n-k)
-  // where theta_hat = k/n is the maximum-likelihood estimate for the Bernoulli parameter.
-  // This is the maximized likelihood for the observed k. It does not define
-  // a normalized distribution over all possible k, but is useful as a baseline code.
+function maxLikelihoodLogProb(k: number, n: number): number {
+  // Maximized likelihood: p(k|n) = C(n,k) * theta_hat^k * (1 - theta_hat)^(n-k)
+  // with theta_hat = k/n. Its regret is 0 at every k by definition, but it sums
+  // to COMP(n) > 1 over k, so it is NOT a code: it is the unnormalized quantity
+  // that NML divides by COMP. (A normalized sequential plug-in would not add a
+  // curve: the Laplace-smoothed prequential plug-in equals the uniform-prior
+  // Bayes code, and the add-1/2 (KT) version equals the Jeffreys-prior code.)
   if (n === 0) return 0;
   const thetaHat = k / n;
   const logBinom = logBinomial(n, k);
@@ -51,7 +53,7 @@ function pluginMLELogProb(k: number, n: number): number {
 function comparisonLogProb(k: number, n: number, code: ComparisonCode): number {
   if (code === 'bayes-uniform') return bayesLogProb(k, n, 'uniform');
   if (code === 'bayes-jeffreys') return bayesLogProb(k, n, 'jeffreys');
-  return pluginMLELogProb(k, n);
+  return maxLikelihoodLogProb(k, n);
 }
 
 export default function StochasticComplexityExplorer() {
@@ -238,6 +240,13 @@ export default function StochasticComplexityExplorer() {
       .attr('text-anchor', 'end')
       .style('font-size', '10px').style('fill', '#7c3aed').style('font-weight', '500')
       .text(`NML: constant = ${Math.log2(comp).toFixed(2)}`);
+
+    if (compCode === 'max-likelihood') {
+      g2.append('text').attr('x', w - 4).attr('y', yRegret(0) - 8)
+        .attr('text-anchor', 'end')
+        .style('font-size', '10px').style('fill', '#f59e0b').style('font-weight', '500')
+        .text(`Sums to COMP = ${comp.toFixed(2)} > 1: not a code`);
+    }
 
     // Legend
     g2.append('line').attr('x1', 4).attr('y1', 8).attr('x2', 24).attr('y2', 8)
