@@ -133,9 +133,11 @@ export default function OverparamRegimeUQ() {
         </label>
       </div>
       <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '0.4rem' }}>
-        Test risk (a), posterior-predictive variance (b), and conformal half-width (c) all spike at p/n ≈ 1.
-        Conformal marginal coverage (d) is flat at the target 1 − α — coverage is theorem-protected, width
-        follows predictor quality. Drag λ to see ridge regularization smooth the spike.
+        Test risk (a) and conformal half-width (c) spike at p/n ≈ 1 and descend past it. Posterior-predictive
+        variance (b) keeps climbing past p = n: on the p − n null directions of XᵀX the posterior keeps the prior
+        variance σ²/λ, so it is prior-dominated. Conformal marginal coverage (d) is flat at the target 1 − α —
+        coverage is theorem-protected, width follows predictor quality. Drag λ to see ridge regularization smooth
+        the spike and slow the PP-variance climb.
       </p>
     </div>
   );
