@@ -202,11 +202,13 @@ export default function ConformalPredictionExplorer() {
         .attr('transform', `rotate(-90,-28,${h / 2})`)
         .text('y');
 
-      // Prediction band μ̂(x) ± q̂
+      // Prediction band μ̂(x) ± q̂. Clamped scale so an infinite q̂
+      // (α < 1/(n_cal+1)) fills the plot instead of producing a NaN path.
+      const yBand = yScale.copy().clamp(true);
       const area = d3.area<number>()
         .x((_, i) => xScale(sim.demo.xGrid[i]))
-        .y0((_, i) => yScale(sim.demo.yGridPred[i] - sim.demo.qHat))
-        .y1((_, i) => yScale(sim.demo.yGridPred[i] + sim.demo.qHat));
+        .y0((_, i) => yBand(sim.demo.yGridPred[i] - sim.demo.qHat))
+        .y1((_, i) => yBand(sim.demo.yGridPred[i] + sim.demo.qHat));
       g.append('path')
         .datum(d3.range(sim.demo.xGrid.length))
         .attr('d', area)
@@ -255,7 +257,11 @@ export default function ConformalPredictionExplorer() {
         .style('text-anchor', 'middle')
         .style('font-size', '12px')
         .style('font-weight', '600')
-        .text(`Prediction band: μ̂(x) ± q̂ = ${fmt(sim.demo.qHat, 3)}`);
+        .text(
+          Number.isFinite(sim.demo.qHat)
+            ? `Prediction band: μ̂(x) ± q̂ = ${fmt(sim.demo.qHat, 3)}`
+            : 'Prediction band: q̂ = ∞ (α < 1/(n_cal + 1)) — the whole real line',
+        );
     },
     [panelWidth, sim],
   );
