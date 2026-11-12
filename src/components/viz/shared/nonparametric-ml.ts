@@ -667,12 +667,11 @@ export function splitConformalInterval(
   const nCal = xCal.length;
   const calScores = new Float64Array(nCal);
   for (let i = 0; i < nCal; i++) calScores[i] = Math.abs(yCal[i] - yCalPred[i]);
-  // k = ceil((1-α)(n_cal+1)), capped at n_cal
-  let k = Math.ceil((1 - alpha) * (nCal + 1));
-  if (k > nCal) k = nCal;
-  if (k < 1) k = 1;
+  // k = ceil((1-α)(n_cal+1)). When k > n_cal (α < 1/(n_cal+1)) the threshold
+  // is +∞ and the interval is the whole real line — no clamping to n_cal.
+  const k = Math.max(1, Math.ceil((1 - alpha) * (nCal + 1)));
   const sorted = Float64Array.from(calScores).sort();
-  const qHat = sorted[k - 1];
+  const qHat = k > nCal ? Infinity : sorted[k - 1];
   const m = xTest.length;
   const lower = new Float64Array(m);
   const upper = new Float64Array(m);
@@ -782,6 +781,8 @@ export function cvPlusInterval(
  * Shared quantile-endpoint computation for jackknife+ and CV+:
  *   lower = floor(α(n+1))-th smallest of {μ_{-i}(x_test) - R_i}
  *   upper = ceil((1-α)(n+1))-th smallest of {μ_{-i}(x_test) + R_i}
+ * Definition 3's convention: a lower rank of 0 gives -∞ (Q̂₀⁻ = -∞) and an
+ * upper rank above n gives +∞ (Q̂₁⁺ = +∞). Ranks are not clamped into 1..n.
  */
 function jackknifeQuantileEndpoints(
   muTest: Float64Array,
@@ -790,8 +791,8 @@ function jackknifeQuantileEndpoints(
   nTest: number,
   alpha: number,
 ): { lower: Float64Array; upper: Float64Array } {
-  let lowerRank = Math.max(1, Math.floor(alpha * (n + 1)));
-  let upperRank = Math.min(n, Math.ceil((1 - alpha) * (n + 1)));
+  const lowerRank = Math.floor(alpha * (n + 1));
+  const upperRank = Math.ceil((1 - alpha) * (n + 1));
   const lower = new Float64Array(nTest);
   const upper = new Float64Array(nTest);
   const colLo = new Float64Array(n);
@@ -803,8 +804,8 @@ function jackknifeQuantileEndpoints(
     }
     const sortedLo = Float64Array.from(colLo).sort();
     const sortedHi = Float64Array.from(colHi).sort();
-    lower[t] = sortedLo[lowerRank - 1];
-    upper[t] = sortedHi[upperRank - 1];
+    lower[t] = lowerRank < 1 ? -Infinity : sortedLo[lowerRank - 1];
+    upper[t] = upperRank > n ? Infinity : sortedHi[upperRank - 1];
   }
   return { lower, upper };
 }
@@ -833,11 +834,10 @@ export function cqrInterval(
   for (let i = 0; i < nCal; i++) {
     E[i] = Math.max(qLoCal[i] - yCal[i], yCal[i] - qHiCal[i]);
   }
-  let k = Math.ceil((1 - alpha) * (nCal + 1));
-  if (k > nCal) k = nCal;
-  if (k < 1) k = 1;
+  // k > n_cal (α < 1/(n_cal+1)) gives Q̂ = +∞ — the whole real line.
+  const k = Math.max(1, Math.ceil((1 - alpha) * (nCal + 1)));
   const sortedE = Float64Array.from(E).sort();
-  const qHat = sortedE[k - 1];
+  const qHat = k > nCal ? Infinity : sortedE[k - 1];
   const qLoTest = fitPredictQuantile(xTrain, yTrain, xTest, tauLo);
   const qHiTest = fitPredictQuantile(xTrain, yTrain, xTest, tauHi);
   const m = xTest.length;
