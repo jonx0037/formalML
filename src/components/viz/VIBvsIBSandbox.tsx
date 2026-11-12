@@ -11,6 +11,7 @@ type VIBPayload = {
   vib_trajectory: IBPoint[];
   ib_at_vib_betas: IBPoint[];
   variational_gap: number[];
+  variational_gap_maxiter500?: number[];
   ib_curve_dense: IBPoint[];
   gd_trajectory_beta5: {
     beta: number;
@@ -177,7 +178,10 @@ export default function VIBvsIBSandbox() {
 
       const betas = payload.vib_trajectory.map((p) => p.beta);
       const xScale = d3.scaleLog().domain([betas[0], betas[betas.length - 1]]).range([0, innerW]);
-      const maxGap = Math.max(...payload.variational_gap) * 1.1;
+      // Fixed floor: the converged gap is ~1e-8 nats, so autoscaling would blow numerical
+      // noise up to fill the panel. The under-converged maxiter = 500 run sets the scale.
+      const legacy = payload.variational_gap_maxiter500 ?? [];
+      const maxGap = Math.max(0.05, ...payload.variational_gap, ...legacy) * 1.1;
       const yScale = d3.scaleLinear().domain([0, maxGap]).range([innerH, 0]);
 
       const xAxis = d3.axisBottom(xScale).ticks(6, '.1f');
@@ -200,7 +204,7 @@ export default function VIBvsIBSandbox() {
       g.append('text')
         .attr('x', innerW / 2).attr('y', -10).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text-secondary)').attr('font-size', 11)
-        .text('Variational gap in predictiveness');
+        .text('Predictiveness gap: VIB optimum vs IB curve');
 
       // β_c verticals
       const phaseColors = ['#534AB7', '#D97706', '#DC2626'];
@@ -216,6 +220,21 @@ export default function VIBvsIBSandbox() {
 
       const lineGap = d3.line<{ beta: number; gap: number }>()
         .x((p) => xScale(p.beta)).y((p) => yScale(p.gap));
+      if (legacy.length === betas.length) {
+        const legacyData = betas.map((b, i) => ({ beta: b, gap: legacy[i] }));
+        g.append('path')
+          .attr('d', lineGap(legacyData) ?? '')
+          .style('fill', 'none').style('stroke', 'var(--color-text-secondary)')
+          .attr('stroke-dasharray', '4 3').attr('stroke-width', 1.4).attr('opacity', 0.8);
+        g.append('text')
+          .attr('x', innerW - 4).attr('y', 12).attr('text-anchor', 'end')
+          .style('fill', 'var(--color-text-secondary)').attr('font-size', 10)
+          .text('dashed: under-converged optimizer (maxiter = 500)');
+        g.append('text')
+          .attr('x', innerW - 4).attr('y', 26).attr('text-anchor', 'end')
+          .style('fill', '#D97706').attr('font-size', 10)
+          .text('solid: converged VIB optimum — gap ≈ 0');
+      }
       const gapData = betas.map((b, i) => ({ beta: b, gap: payload.variational_gap[i] }));
       g.append('path')
         .attr('d', lineGap(gapData) ?? '')
@@ -295,7 +314,7 @@ export default function VIBvsIBSandbox() {
             </div>
           </div>
           <p style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: '0.75rem' }}>
-            The VIB trajectory sits strictly inside the closed-form IB curve at every β. The gap is small at small β (both near origin), peaks at intermediate β, then closes at large β as both saturate at I(X;Y) = {payload._metadata.I_XY_nats.toFixed(3)} nats. The structural reason: VIB fixes the prior q(t) = N(0, I), so the rate term overshoots the true I(X;T) by exactly D_KL(p_T ‖ q), which is non-zero unless Σ_T = I.
+            Run to convergence, the VIB optimum lands on the closed-form IB curve at every β (gap below 10⁻⁷ nats), saturating at I(X;Y) = {payload._metadata.I_XY_nats.toFixed(3)} nats. The fixed prior q(t) = N(0, I) makes the rate overshoot I(X;T) by D_KL(p_T ‖ q), but that slack is free to remove: rescaling T to Σ_T = I changes neither mutual information, so the optimizer drives it to zero and the bound is tight at the optimum on this toy. The dashed curve is the original maxiter = 500 run — its apparent gap was the optimizer stopping early, not the bound.
           </p>
         </>
       )}
