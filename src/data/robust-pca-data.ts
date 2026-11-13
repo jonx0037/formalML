@@ -1,302 +1,347 @@
-// Pre-computed Robust PCA decompositions for heatmap visualizations.
-// Each entry holds a 30×25 observed matrix X = L + S, the low-rank and
-// sparse components, singular values, and recovery diagnostics.
+// Robust PCA (Principal Component Pursuit) solved in the browser.
 //
-// All matrices are generated deterministically via index-based hashing.
+// Each (rank, corruption) preset draws a 30×25 test matrix X = L + S with a
+// seeded PRNG, then runs the same ADMM as the article's `robust_pca_admm`:
+//   λ = 1/√max(m, n),  μ = mn / (4‖X‖₁),
+//   L ← SVT_{1/μ}(X − S + Y/μ),  S ← soft_{λ/μ}(X − L + Y/μ),
+//   Y ← Y + μ(X − L − S),  stop when ‖X − L − S‖_F / ‖X‖_F < 1e-7 (≤ 500 iters).
+// The readouts (recovered rank, support, relative error, iterations) come from
+// that solve. Results are memoized per preset.
 
 // ─── Types ───
 
 export interface RobustPCAResult {
   rank: number;
   corruption: number;
+  rows: number;
+  cols: number;
+  /** Observed matrix X = L + S. */
   matrixX: number[][];
-  matrixL: number[][];
-  matrixS: number[][];
+  /** Ground-truth low-rank and sparse components. */
+  matrixLTrue: number[][];
+  matrixSTrue: number[][];
+  /** ADMM estimates L̂ and Ŝ. */
+  matrixLHat: number[][];
+  matrixSHat: number[][];
+  /** Leading singular values (descending). */
   singularValuesX: number[];
-  singularValuesL: number[];
+  singularValuesLTrue: number[];
+  singularValuesLHat: number[];
+  /** Number of singular values that survive the final SVT step (rank of L̂). */
   recoveredRank: number;
-  nnzS: number;
+  nnzSTrue: number;
+  nnzSHat: number;
+  /** Entries in supp(S) ∩ supp(Ŝ). */
+  supportMatched: number;
+  /** ‖L̂ − L‖_F / ‖L‖_F. */
   relativeError: number;
+  iterations: number;
+  converged: boolean;
+  lambda: number;
+  mu: number;
 }
 
 // ─── Constants ───
 
-const ROWS = 30;
-const COLS = 25;
-const RANKS = [1, 2, 3, 5, 8];
-const CORRUPTIONS = [0.05, 0.10, 0.15, 0.20, 0.30];
+export const ROWS = 30;
+export const COLS = 25;
 const TOP_K_SV = 15;
+const TOL = 1e-7;
+const MAX_ITER = 500;
 
-// ─── Deterministic pseudo-random functions ───
+// ─── Seeded PRNG (mulberry32 + Box–Muller) ───
 
-/** Returns a value in [0, 1). */
-function rand(seed: number): number {
-  // Use a simple LCG-style hash.
-  let s = ((seed * 2654435761) >>> 0) ^ 0xdeadbeef;
-  s = ((s * 1597334677) >>> 0);
-  return (s >>> 0) / 4294967296;
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-/** Returns a value roughly in [-1, 1] with a bell-curve-ish distribution. */
-function randn(seed: number): number {
-  // Approximate normal via sum of uniforms (Irwin-Hall, n=4).
-  return (rand(seed) + rand(seed + 1) + rand(seed + 2) + rand(seed + 3) - 2) * 1.0;
+function normalSampler(uniform: () => number): () => number {
+  return () => {
+    const u1 = Math.max(uniform(), 1e-300);
+    const u2 = uniform();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  };
 }
 
-/** Round to 4 decimal places. */
-function r4(v: number): number {
-  return Math.round(v * 10000) / 10000;
+// ─── Dense helpers (row-major Float64Array, m × n) ───
+
+type Mat = Float64Array;
+
+function toRows(A: Mat, m: number, n: number): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < m; i++) out.push(Array.from(A.subarray(i * n, (i + 1) * n)));
+  return out;
 }
 
-// ─── Matrix generation ───
-
-/**
- * Generate a rank-r low-rank matrix L = U * V^T where U is ROWS×r and V is COLS×r.
- * Each entry of U, V is drawn from a seeded pseudo-normal distribution.
- */
-function generateLowRank(rank: number, baseSeed: number): number[][] {
-  // Generate U (ROWS × rank)
-  const U: number[][] = [];
-  for (let i = 0; i < ROWS; i++) {
-    const row: number[] = [];
-    for (let k = 0; k < rank; k++) {
-      row.push(randn(baseSeed + i * rank + k));
-    }
-    U.push(row);
-  }
-  // Generate V (COLS × rank)
-  const V: number[][] = [];
-  for (let j = 0; j < COLS; j++) {
-    const row: number[] = [];
-    for (let k = 0; k < rank; k++) {
-      row.push(randn(baseSeed + 10000 + j * rank + k));
-    }
-    V.push(row);
-  }
-  // L = U * V^T
-  const L: number[][] = [];
-  for (let i = 0; i < ROWS; i++) {
-    const row: number[] = [];
-    for (let j = 0; j < COLS; j++) {
-      let val = 0;
-      for (let k = 0; k < rank; k++) {
-        val += U[i][k] * V[j][k];
-      }
-      row.push(r4(val));
-    }
-    L.push(row);
-  }
-  return L;
+function frob(A: Mat): number {
+  let s = 0;
+  for (let i = 0; i < A.length; i++) s += A[i] * A[i];
+  return Math.sqrt(s);
 }
 
 /**
- * Generate a sparse corruption matrix S with approximately (corruption * ROWS * COLS)
- * nonzero entries. Nonzero values are large relative to L entries.
+ * One-sided (Hestenes) Jacobi SVD of an m × n matrix with m ≥ n.
+ * Returns W = A·V (whose columns are σ_k u_k), the column norms σ, and V (n × n,
+ * column k stored at V[k*n .. k*n + n)). An optional orthogonal warm start V0
+ * speeds up repeated SVDs of slowly changing matrices, as in the ADMM loop.
  */
-function generateSparse(corruption: number, baseSeed: number): number[][] {
-  const S: number[][] = [];
-  const totalEntries = ROWS * COLS;
-
-  // Determine which positions are nonzero using a deterministic hash.
-  // We threshold rand() < corruption for each entry.
-  for (let i = 0; i < ROWS; i++) {
-    const row: number[] = [];
-    for (let j = 0; j < COLS; j++) {
-      const idx = i * COLS + j;
-      if (rand(baseSeed + idx) < corruption) {
-        // Large value with random sign
-        const sign = rand(baseSeed + idx + totalEntries) < 0.5 ? -1 : 1;
-        const magnitude = 3 + rand(baseSeed + idx + 2 * totalEntries) * 5;
-        row.push(r4(sign * magnitude));
-      } else {
-        row.push(0);
-      }
-    }
-    S.push(row);
-  }
-  return S;
-}
-
-/** Add two matrices element-wise. */
-function matAdd(A: number[][], B: number[][]): number[][] {
-  return A.map((row, i) => row.map((v, j) => r4(v + B[i][j])));
-}
-
-/** Frobenius norm of a matrix. */
-function frobNorm(M: number[][]): number {
-  let sum = 0;
-  for (const row of M) {
-    for (const v of row) {
-      sum += v * v;
-    }
-  }
-  return Math.sqrt(sum);
-}
-
-/** Count nonzero entries. */
-function nnz(M: number[][]): number {
-  let count = 0;
-  for (const row of M) {
-    for (const v of row) {
-      if (v !== 0) count++;
-    }
-  }
-  return count;
-}
-
-/**
- * Approximate top-k singular values of a matrix using power iteration on M*M^T.
- * This is a simplified, deterministic approximation suitable for visualization data.
- */
-function approxSingularValues(M: number[][], k: number, seed: number): number[] {
-  const m = M.length;
-  const n = M[0].length;
-
-  // Compute M * M^T (m × m) for eigenvalue estimation.
-  // For our small matrices (30×25) this is fine.
-  const MMt: number[][] = [];
-  for (let i = 0; i < m; i++) {
-    const row: number[] = [];
-    for (let j = 0; j < m; j++) {
-      let val = 0;
-      for (let p = 0; p < n; p++) {
-        val += M[i][p] * M[j][p];
-      }
-      row.push(val);
-    }
-    MMt.push(row);
-  }
-
-  // Power iteration with deflation to get top-k eigenvalues of M*M^T.
-  const eigenvalues: number[] = [];
-  const deflated = MMt.map((row) => [...row]);
-
-  for (let ki = 0; ki < Math.min(k, m); ki++) {
-    // Initialize vector deterministically.
-    let v: number[] = Array.from({ length: m }, (_, i) =>
-      randn(seed + ki * 1000 + i),
-    );
-    // Normalize.
-    let norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
-    v = v.map((x) => x / norm);
-
-    // 30 iterations of power method.
-    for (let iter = 0; iter < 30; iter++) {
-      const w: number[] = new Array(m).fill(0);
+function jacobiSVD(
+  A: Mat,
+  m: number,
+  n: number,
+  V0?: Float64Array,
+): { W: Float64Array; sigma: Float64Array; V: Float64Array } {
+  // W stored column-major: W[k*m + i].
+  const W = new Float64Array(m * n);
+  const V = new Float64Array(n * n);
+  if (V0) {
+    V.set(V0);
+    for (let k = 0; k < n; k++) {
       for (let i = 0; i < m; i++) {
-        for (let j = 0; j < m; j++) {
-          w[i] += deflated[i][j] * v[j];
+        let s = 0;
+        for (let j = 0; j < n; j++) s += A[i * n + j] * V0[k * n + j];
+        W[k * m + i] = s;
+      }
+    }
+  } else {
+    for (let k = 0; k < n; k++) {
+      V[k * n + k] = 1;
+      for (let i = 0; i < m; i++) W[k * m + i] = A[i * n + k];
+    }
+  }
+
+  const eps = 1e-12;
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let rotated = false;
+    for (let p = 0; p < n - 1; p++) {
+      for (let q = p + 1; q < n; q++) {
+        let alpha = 0;
+        let beta = 0;
+        let gamma = 0;
+        const op = p * m;
+        const oq = q * m;
+        for (let i = 0; i < m; i++) {
+          const wp = W[op + i];
+          const wq = W[oq + i];
+          alpha += wp * wp;
+          beta += wq * wq;
+          gamma += wp * wq;
+        }
+        if (gamma === 0 || Math.abs(gamma) <= eps * Math.sqrt(alpha * beta)) continue;
+        rotated = true;
+        const zeta = (beta - alpha) / (2 * gamma);
+        const t = (zeta >= 0 ? 1 : -1) / (Math.abs(zeta) + Math.sqrt(1 + zeta * zeta));
+        const c = 1 / Math.sqrt(1 + t * t);
+        const s = c * t;
+        for (let i = 0; i < m; i++) {
+          const wp = W[op + i];
+          const wq = W[oq + i];
+          W[op + i] = c * wp - s * wq;
+          W[oq + i] = s * wp + c * wq;
+        }
+        const vp = p * n;
+        const vq = q * n;
+        for (let j = 0; j < n; j++) {
+          const a = V[vp + j];
+          const b = V[vq + j];
+          V[vp + j] = c * a - s * b;
+          V[vq + j] = s * a + c * b;
         }
       }
-      norm = Math.sqrt(w.reduce((s, x) => s + x * x, 0));
-      if (norm < 1e-12) break;
-      v = w.map((x) => x / norm);
+    }
+    if (!rotated) break;
+  }
+
+  const sigma = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    let s = 0;
+    for (let i = 0; i < m; i++) s += W[k * m + i] * W[k * m + i];
+    sigma[k] = Math.sqrt(s);
+  }
+  return { W, sigma, V };
+}
+
+function singularValues(A: Mat, m: number, n: number, k: number): number[] {
+  const { sigma } = jacobiSVD(A, m, n);
+  return Array.from(sigma)
+    .sort((a, b) => b - a)
+    .slice(0, k);
+}
+
+// ─── Principal Component Pursuit via ADMM ───
+
+export interface ADMMOutput {
+  L: Mat;
+  S: Mat;
+  rank: number;
+  iterations: number;
+  converged: boolean;
+  lambda: number;
+  mu: number;
+}
+
+/** The article's `robust_pca_admm`, for an m × n row-major X with m ≥ n. */
+export function robustPCAADMM(X: Mat, m: number, n: number, tol = TOL, maxIter = MAX_ITER): ADMMOutput {
+  const size = m * n;
+  const lambda = 1 / Math.sqrt(Math.max(m, n));
+  let absSum = 0;
+  for (let i = 0; i < size; i++) absSum += Math.abs(X[i]);
+  const mu = (m * n) / (4 * absSum);
+  const normX = frob(X);
+
+  const L = new Float64Array(size);
+  const S = new Float64Array(size);
+  const Y = new Float64Array(size);
+  const Z = new Float64Array(size);
+  let Vwarm: Float64Array | undefined;
+  let rank = 0;
+  let iterations = 0;
+  let converged = false;
+
+  for (let it = 0; it < maxIter; it++) {
+    iterations = it + 1;
+
+    // L-update: singular value thresholding of X − S + Y/μ at 1/μ.
+    for (let i = 0; i < size; i++) Z[i] = X[i] - S[i] + Y[i] / mu;
+    const { W, sigma, V } = jacobiSVD(Z, m, n, Vwarm);
+    Vwarm = V;
+    L.fill(0);
+    rank = 0;
+    const tau = 1 / mu;
+    for (let k = 0; k < n; k++) {
+      if (sigma[k] <= tau) continue;
+      rank++;
+      const scale = (sigma[k] - tau) / sigma[k];
+      for (let i = 0; i < m; i++) {
+        const wi = W[k * m + i] * scale;
+        if (wi === 0) continue;
+        for (let j = 0; j < n; j++) L[i * n + j] += wi * V[k * n + j];
+      }
     }
 
-    // Rayleigh quotient = eigenvalue of M*M^T = sigma^2.
-    let eigenvalue = 0;
-    for (let i = 0; i < m; i++) {
-      let mv = 0;
-      for (let j = 0; j < m; j++) {
-        mv += deflated[i][j] * v[j];
-      }
-      eigenvalue += v[i] * mv;
+    // S-update: entrywise soft-thresholding of X − L + Y/μ at λ/μ.
+    const thr = lambda / mu;
+    for (let i = 0; i < size; i++) {
+      const z = X[i] - L[i] + Y[i] / mu;
+      const a = Math.abs(z) - thr;
+      S[i] = a > 0 ? (z > 0 ? a : -a) : 0;
     }
-    eigenvalue = Math.max(0, eigenvalue);
-    eigenvalues.push(r4(Math.sqrt(eigenvalue)));
 
-    // Deflate: remove this eigenvector's contribution.
-    for (let i = 0; i < m; i++) {
-      for (let j = 0; j < m; j++) {
-        deflated[i][j] -= eigenvalue * v[i] * v[j];
-      }
+    // Dual ascent and stopping rule.
+    let r2 = 0;
+    for (let i = 0; i < size; i++) {
+      const r = X[i] - L[i] - S[i];
+      Y[i] += mu * r;
+      r2 += r * r;
+    }
+    if (Math.sqrt(r2) / normX < tol) {
+      converged = true;
+      break;
     }
   }
 
-  return eigenvalues;
+  return { L, S, rank, iterations, converged, lambda, mu };
 }
 
-/**
- * Simulate Robust PCA recovery quality.
- * For low rank + low corruption: good recovery (small relative error).
- * For high rank or high corruption: worse recovery.
- */
-function simulateRecovery(
+// ─── Test-matrix generation ───
+
+/** L = U Vᵀ with U (m × r), V (n × r) i.i.d. N(0, 1); spikes ±U(5, 15) on a Bernoulli(ρ) mask. */
+export function generateProblem(
+  m: number,
+  n: number,
   rank: number,
   corruption: number,
-): { recoveredRank: number; relativeError: number } {
-  // Incoherence condition: recovery degrades when rank * corruption is large.
-  // Threshold ~ 0.15 is roughly the boundary of exact recovery for RPCA.
-  const difficulty = rank * corruption;
-
-  let relativeError: number;
-  if (difficulty < 0.1) {
-    relativeError = 0.001 + rand(rank * 100 + Math.round(corruption * 1000)) * 0.01;
-  } else if (difficulty < 0.3) {
-    relativeError = 0.01 + difficulty * 0.15 + rand(rank * 200 + Math.round(corruption * 1000)) * 0.02;
-  } else if (difficulty < 0.8) {
-    relativeError = 0.05 + difficulty * 0.2 + rand(rank * 300 + Math.round(corruption * 1000)) * 0.05;
-  } else {
-    relativeError = 0.15 + difficulty * 0.15 + rand(rank * 400 + Math.round(corruption * 1000)) * 0.1;
-  }
-
-  // Recovered rank: correct for easy cases, overestimated for hard cases.
-  let recoveredRank = rank;
-  if (difficulty > 0.5) {
-    recoveredRank = rank + Math.floor(difficulty * 2);
-  } else if (difficulty > 0.2) {
-    recoveredRank = rank + (rand(rank * 500 + Math.round(corruption * 1000)) < 0.3 ? 1 : 0);
-  }
-
-  return { recoveredRank, relativeError: r4(relativeError) };
-}
-
-// ─── Generate all (rank, corruption) combinations ───
-
-function generateAllResults(): RobustPCAResult[] {
-  const results: RobustPCAResult[] = [];
-
-  for (const rank of RANKS) {
-    for (const corruption of CORRUPTIONS) {
-      const baseSeedL = rank * 10000 + Math.round(corruption * 10000);
-      const baseSeedS = baseSeedL + 50000;
-
-      const L = generateLowRank(rank, baseSeedL);
-      const S = generateSparse(corruption, baseSeedS);
-      const X = matAdd(L, S);
-
-      const svSeed = baseSeedL + 80000;
-      const singularValuesX = approxSingularValues(X, TOP_K_SV, svSeed);
-      const singularValuesL = approxSingularValues(L, TOP_K_SV, svSeed + 20000);
-
-      const { recoveredRank, relativeError } = simulateRecovery(rank, corruption);
-
-      results.push({
-        rank,
-        corruption,
-        matrixX: X,
-        matrixL: L,
-        matrixS: S,
-        singularValuesX,
-        singularValuesL,
-        recoveredRank,
-        nnzS: nnz(S),
-        relativeError,
-      });
+  seed: number,
+): { X: Mat; L: Mat; S: Mat } {
+  const uniform = mulberry32(seed);
+  const normal = normalSampler(uniform);
+  const U = Array.from({ length: m * rank }, normal);
+  const Vt = Array.from({ length: n * rank }, normal);
+  const L = new Float64Array(m * n);
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < n; j++) {
+      let s = 0;
+      for (let k = 0; k < rank; k++) s += U[i * rank + k] * Vt[j * rank + k];
+      L[i * n + j] = s;
     }
   }
-
-  return results;
-}
-
-// ─── Export ───
-
-let robustPCAResultsCache: RobustPCAResult[] | null = null;
-
-/** Lazily generate all (rank, corruption) results on first access. */
-export function getRobustPCAResults(): RobustPCAResult[] {
-  if (robustPCAResultsCache === null) {
-    robustPCAResultsCache = generateAllResults();
+  const S = new Float64Array(m * n);
+  for (let i = 0; i < m * n; i++) {
+    if (uniform() < corruption) {
+      const sign = uniform() < 0.5 ? -1 : 1;
+      S[i] = sign * (5 + 10 * uniform());
+    }
   }
-  return robustPCAResultsCache;
+  const X = new Float64Array(m * n);
+  for (let i = 0; i < m * n; i++) X[i] = L[i] + S[i];
+  return { X, L, S };
 }
+
+function computeResult(rank: number, corruption: number): RobustPCAResult {
+  const m = ROWS;
+  const n = COLS;
+  const seed = 1000 * rank + Math.round(corruption * 100);
+  const { X, L, S } = generateProblem(m, n, rank, corruption, seed);
+  const sol = robustPCAADMM(X, m, n);
+
+  let nnzSTrue = 0;
+  let nnzSHat = 0;
+  let supportMatched = 0;
+  let errL = 0;
+  for (let i = 0; i < m * n; i++) {
+    const t = S[i] !== 0;
+    const h = sol.S[i] !== 0;
+    if (t) nnzSTrue++;
+    if (h) nnzSHat++;
+    if (t && h) supportMatched++;
+    const d = sol.L[i] - L[i];
+    errL += d * d;
+  }
+
+  return {
+    rank,
+    corruption,
+    rows: m,
+    cols: n,
+    matrixX: toRows(X, m, n),
+    matrixLTrue: toRows(L, m, n),
+    matrixSTrue: toRows(S, m, n),
+    matrixLHat: toRows(sol.L, m, n),
+    matrixSHat: toRows(sol.S, m, n),
+    singularValuesX: singularValues(X, m, n, TOP_K_SV),
+    singularValuesLTrue: singularValues(L, m, n, TOP_K_SV),
+    singularValuesLHat: singularValues(sol.L, m, n, TOP_K_SV),
+    recoveredRank: sol.rank,
+    nnzSTrue,
+    nnzSHat,
+    supportMatched,
+    relativeError: Math.sqrt(errL) / frob(L),
+    iterations: sol.iterations,
+    converged: sol.converged,
+    lambda: sol.lambda,
+    mu: sol.mu,
+  };
+}
+
+// ─── Export (memoized per preset) ───
+
+const cache = new Map<string, RobustPCAResult>();
+
+/** Solve PCP for one (rank, corruption) preset; repeated calls hit the cache. */
+export function getRobustPCAResult(rank: number, corruption: number): RobustPCAResult {
+  const key = `${rank}|${corruption}`;
+  let hit = cache.get(key);
+  if (!hit) {
+    hit = computeResult(rank, corruption);
+    cache.set(key, hit);
+  }
+  return hit;
+}
+

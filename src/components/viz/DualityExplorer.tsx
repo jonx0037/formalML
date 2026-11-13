@@ -23,7 +23,68 @@ interface DualityProblem {
   lambdaRange: [number, number];
   constraintRange: [number, number];
   constraintDefault: number;
+  /** Initial λ when the problem is selected (default 2). */
+  lambdaDefault?: number;
+  /** λ values drawn as reference curves in the Lagrangian panel (default 0–5). */
+  lagrangianLambdas?: number[];
+  /** Isolated λ values where g is finite (e.g. an LP's dual); sampled explicitly. */
+  dualAtoms?: number[];
   isConvex: boolean;
+}
+
+// ── 1D minimization helpers ─────────────────────────────────────────
+
+const GOLDEN = (Math.sqrt(5) - 1) / 2;
+
+/** Golden-section search for a local minimizer of f on [a, b]. */
+function goldenMin(f: (x: number) => number, a: number, b: number, iters = 60): number {
+  let c = b - GOLDEN * (b - a);
+  let d = a + GOLDEN * (b - a);
+  let fc = f(c);
+  let fd = f(d);
+  for (let i = 0; i < iters; i++) {
+    if (fc < fd) {
+      b = d;
+      d = c;
+      fd = fc;
+      c = b - GOLDEN * (b - a);
+      fc = f(c);
+    } else {
+      a = c;
+      c = d;
+      fc = fd;
+      d = a + GOLDEN * (b - a);
+      fd = f(d);
+    }
+  }
+  return Math.min(fc, fd, f(a), f(b));
+}
+
+/** Global minimum of a smooth f on [lo, hi]: dense grid (endpoints included), then golden refinement. */
+function minOnInterval(f: (x: number) => number, lo: number, hi: number, step = 0.01): number {
+  const n = Math.max(2, Math.ceil((hi - lo) / step));
+  let bestI = 0;
+  let best = Infinity;
+  for (let i = 0; i <= n; i++) {
+    const v = f(lo + ((hi - lo) * i) / n);
+    if (v < best) {
+      best = v;
+      bestI = i;
+    }
+  }
+  const a = lo + ((hi - lo) * Math.max(0, bestI - 1)) / n;
+  const b = lo + ((hi - lo) * Math.min(n, bestI + 1)) / n;
+  return Math.min(best, goldenMin(f, a, b));
+}
+
+const nonconvexF0 = (x: number) => Math.sin(2 * x) + 0.1 * x * x;
+
+/**
+ * min f₀(x) over x ≤ c for f₀ = sin 2x + 0.1x². Since f₀ ≥ 0.1x² − 1, any x < −12
+ * has f₀ > 13 > f₀(0), so the search can start at −12 for every c ≥ −12.
+ */
+function nonconvexPrimal(c: number): number {
+  return minOnInterval(nonconvexF0, -12, c);
 }
 
 const PROBLEMS: DualityProblem[] = [
@@ -54,35 +115,21 @@ const PROBLEMS: DualityProblem[] = [
     f1: (x, c) => x - c,
     lagrangian: (x, lam, c) => Math.sin(2 * x) + 0.1 * x * x + lam * (x - c),
     dual: (lam, c) => {
-      // Numerical infimum over x
-      let best = Infinity;
-      for (let x = -4; x <= 6; x += 0.02) {
-        const val = Math.sin(2 * x) + 0.1 * x * x + lam * (x - c);
-        if (val < best) best = val;
-      }
-      return best;
+      // inf_x L(x, λ). Stationary points solve 0.2x + λ = −2cos 2x, so |0.2x + λ| ≤ 2:
+      // every minimizer lies in [−5λ − 10, −5λ + 10] (it drifts left like −5λ).
+      const L = (x: number) => nonconvexF0(x) + lam * (x - c);
+      return minOnInterval(L, -5 * lam - 10, -5 * lam + 10);
     },
-    primalOpt: (c) => {
-      let best = Infinity;
-      for (let x = -4; x <= c + 0.001; x += 0.01) {
-        const val = Math.sin(2 * x) + 0.1 * x * x;
-        if (val < best) best = val;
-      }
-      return best;
-    },
-    perturbation: (u, c) => {
-      const effC = c + u;
-      let best = Infinity;
-      for (let x = -4; x <= effC + 0.001; x += 0.01) {
-        const val = Math.sin(2 * x) + 0.1 * x * x;
-        if (val < best) best = val;
-      }
-      return best;
-    },
-    xRange: [-3, 5],
-    lambdaRange: [0, 5],
-    constraintRange: [-1, 3],
-    constraintDefault: 0.5,
+    primalOpt: (c) => nonconvexPrimal(c),
+    perturbation: (u, c) => nonconvexPrimal(c + u),
+    xRange: [-5, 3],
+    lambdaRange: [0, 1.5],
+    // Unconstrained minimizer x ≈ −0.748; for c below it the constraint binds and,
+    // because f₀ is non-convex, p* > d*. At c = −1.5: p* ≈ 0.084, d* ≈ −0.613.
+    constraintRange: [-2.5, 1.5],
+    constraintDefault: -1.5,
+    lambdaDefault: 0.5,
+    lagrangianLambdas: [0, 0.25, 0.5, 0.75, 1, 1.25],
     isConvex: false,
   },
   {
@@ -91,11 +138,9 @@ const PROBLEMS: DualityProblem[] = [
     f1: (x, c) => x - c,
     lagrangian: (x, lam, c) => -2 * x + 4 + lam * (x - c),
     dual: (lam, c) => {
-      // min_x (-2 + lam)*x + 4 - lam*c
-      // If lam < 2: inf = -∞; if lam = 2: inf = 4 - 2c; if lam > 2: inf = -∞
-      if (Math.abs(lam - 2) < 0.05) return 4 - lam * c;
-      if (lam > 2) return -100; // approximate -∞
-      return -100;
+      // inf_x (λ − 2)x + 4 − λc is −∞ unless λ = 2, where it equals 4 − 2c.
+      if (Math.abs(lam - 2) < 1e-6) return 4 - 2 * c;
+      return -Infinity;
     },
     primalOpt: (c) => -2 * c + 4,
     perturbation: (u, c) => -2 * (c + u) + 4,
@@ -103,6 +148,7 @@ const PROBLEMS: DualityProblem[] = [
     lambdaRange: [0, 5],
     constraintRange: [0.5, 4],
     constraintDefault: 2,
+    dualAtoms: [2],
     isConvex: true,
   },
 ];
@@ -127,7 +173,7 @@ export default function DualityExplorer() {
   const clipPert = `clip-pert-${instanceId}`;
   const [problemIdx, setProblemIdx] = useState(0);
   const [constraint, setConstraint] = useState(PROBLEMS[0].constraintDefault);
-  const [lambda, setLambda] = useState(2.0);
+  const [lambda, setLambda] = useState(PROBLEMS[0].lambdaDefault ?? 2.0);
 
   const problem = PROBLEMS[problemIdx];
   const isStacked = containerWidth < SM_BREAKPOINT;
@@ -138,8 +184,9 @@ export default function DualityExplorer() {
   const pStar = problem.primalOpt(constraint);
 
   // Compute Lagrangian curves for several λ values
+  const lagrangianLambdas = problem.lagrangianLambdas ?? [0, 1, 2, 3, 4, 5];
   const lagrangianCurves = useMemo(() => {
-    const lambdas = [0, 1, 2, 3, 4, 5];
+    const lambdas = lagrangianLambdas;
     const [xMin, xMax] = problem.xRange;
     return lambdas.map((lam) => ({
       lambda: lam,
@@ -150,14 +197,38 @@ export default function DualityExplorer() {
     }));
   }, [problemIdx, constraint]);
 
-  // Compute dual function curve
+  // Compute dual function curve (plus any isolated λ where g is finite)
   const dualCurve = useMemo(() => {
     const [lMin, lMax] = problem.lambdaRange;
-    return Array.from({ length: 200 }, (_, i) => {
-      const lam = lMin + (lMax - lMin) * (i / 199);
-      return { lambda: lam, g: problem.dual(lam, constraint) };
-    });
+    const lams = Array.from({ length: 200 }, (_, i) => lMin + (lMax - lMin) * (i / 199));
+    for (const a of problem.dualAtoms ?? []) if (a >= lMin && a <= lMax) lams.push(a);
+    lams.sort((a, b) => a - b);
+    return lams.map((lam) => ({ lambda: lam, g: problem.dual(lam, constraint) }));
   }, [problemIdx, constraint]);
+
+  // d* = max_{λ ≥ 0} g(λ): best sample, refined by golden section (g is concave)
+  const { dStar, lambdaStar } = useMemo(() => {
+    let bi = 0;
+    for (let i = 1; i < dualCurve.length; i++) if (dualCurve[i].g > dualCurve[bi].g) bi = i;
+    let best = dualCurve[bi];
+    const lo = dualCurve[bi - 1];
+    const hi = dualCurve[bi + 1];
+    if (lo && hi && Number.isFinite(lo.g) && Number.isFinite(hi.g)) {
+      const neg = (lam: number) => -problem.dual(lam, constraint);
+      let a = lo.lambda;
+      let b = hi.lambda;
+      for (let k = 0; k < 60; k++) {
+        const c1 = b - GOLDEN * (b - a);
+        const c2 = a + GOLDEN * (b - a);
+        if (neg(c1) < neg(c2)) b = c2;
+        else a = c1;
+      }
+      const lam = (a + b) / 2;
+      const g = problem.dual(lam, constraint);
+      if (g > best.g) best = { lambda: lam, g };
+    }
+    return { dStar: best.g, lambdaStar: best.lambda };
+  }, [dualCurve, problemIdx, constraint]);
 
   // Compute perturbation function
   const pertCurve = useMemo(() => {
@@ -227,10 +298,14 @@ export default function DualityExplorer() {
         .x((d) => xScale(d.x))
         .y((d) => yScale(d.y));
 
-      const colorScale = d3.scaleSequential(d3.interpolateViridis).domain([0, 5]);
+      const lams = lagrangianCurves.map((c) => c.lambda);
+      const spacing = lams.length > 1 ? lams[1] - lams[0] : 1;
+      const lamLo = lams[0];
+      const lamHi = lams[lams.length - 1];
+      const colorScale = d3.scaleSequential(d3.interpolateViridis).domain([lamLo, lamHi]);
 
       lagrangianCurves.forEach((curve) => {
-        const isHighlighted = Math.abs(curve.lambda - lambda) < 0.5;
+        const isHighlighted = Math.abs(curve.lambda - lambda) < spacing / 2;
         plotArea
           .append('path')
           .datum(curve.points)
@@ -350,6 +425,19 @@ export default function DualityExplorer() {
         .style('stroke', TEAL)
         .style('stroke-width', '2.5');
 
+      // Isolated finite values of g (e.g. the LP's dual is finite only at λ = 2)
+      const ok = (i: number) => dualCurve[i] !== undefined && dualCurve[i].g > -20;
+      dualCurve.forEach((d, i) => {
+        if (ok(i) && !ok(i - 1) && !ok(i + 1)) {
+          plotArea
+            .append('circle')
+            .attr('cx', xScale(d.lambda))
+            .attr('cy', yScale(d.g))
+            .attr('r', 4)
+            .style('fill', TEAL);
+        }
+      });
+
       // Current λ marker
       if (gAtLambda > -20) {
         plotArea
@@ -443,19 +531,14 @@ export default function DualityExplorer() {
         .style('stroke', TEAL)
         .style('stroke-width', '2.5');
 
-      // Supporting hyperplane at u=0 (slope = -λ*)
-      const optLambdaIdx = dualCurve.reduce(
-        (best, d, i) => (d.g > -20 && d.g > (dualCurve[best]?.g ?? -Infinity) ? i : best),
-        0,
-      );
-      const optLambda = dualCurve[optLambdaIdx]?.lambda ?? 0;
-
+      // Affine minorant p*(u) ≥ d* − λ*u (slope −λ*, intercept d*); it touches
+      // p* at u = 0 exactly when there is no duality gap.
       plotArea
         .append('line')
         .attr('x1', xScale(-1.5))
-        .attr('y1', yScale(pStar + optLambda * 1.5))
+        .attr('y1', yScale(dStar + lambdaStar * 1.5))
         .attr('x2', xScale(1.5))
-        .attr('y2', yScale(pStar - optLambda * 1.5))
+        .attr('y2', yScale(dStar - lambdaStar * 1.5))
         .style('stroke', AMBER)
         .style('stroke-dasharray', '5,3')
         .style('stroke-width', '1.5')
@@ -501,11 +584,12 @@ export default function DualityExplorer() {
         .style('font-weight', '600')
         .text('Perturbation p*(u)');
     },
-    [panelWidth, pertCurve, pStar, dualCurve],
+    [panelWidth, pertCurve, pStar, dStar, lambdaStar],
   );
 
   const gAtLambda = problem.dual(lambda, constraint);
-  const gap = pStar - (gAtLambda > -20 ? gAtLambda : -Infinity);
+  const fmtG = (v: number) => (Number.isFinite(v) ? v.toFixed(4) : '−∞');
+  const dualityGap = pStar - dStar;
 
   return (
     <div ref={containerRef} className="w-full my-6">
@@ -519,7 +603,7 @@ export default function DualityExplorer() {
               const idx = Number(e.target.value);
               setProblemIdx(idx);
               setConstraint(PROBLEMS[idx].constraintDefault);
-              setLambda(2.0);
+              setLambda(PROBLEMS[idx].lambdaDefault ?? 2.0);
             }}
             className="bg-zinc-800 text-zinc-200 text-xs rounded px-2 py-1 border border-zinc-600"
           >
@@ -567,9 +651,10 @@ export default function DualityExplorer() {
 
       {/* Readout */}
       <p className="text-xs font-mono text-zinc-500 mt-2">
-        p* = {pStar.toFixed(4)} | g(λ={lambda.toFixed(1)}) ={' '}
-        {gAtLambda > -20 ? gAtLambda.toFixed(4) : '−∞'} | gap = {gap > 0 && gap < 100 ? gap.toFixed(4) : gap <= 0 ? '0 (strong duality)' : '∞'}
-        {!problem.isConvex && gap > 0.01 ? ' ← non-convex: positive gap' : ''}
+        p* = {pStar.toFixed(4)} | g(λ={lambda.toFixed(2)}) = {fmtG(gAtLambda)} | d* = max g ={' '}
+        {fmtG(dStar)} at λ* ≈ {lambdaStar.toFixed(2)} | duality gap p* − d* ={' '}
+        {dualityGap > 5e-4 ? dualityGap.toFixed(4) : '0 (strong duality)'}
+        {!problem.isConvex && dualityGap > 5e-4 ? ' ← non-convex: positive gap' : ''}
       </p>
     </div>
   );
