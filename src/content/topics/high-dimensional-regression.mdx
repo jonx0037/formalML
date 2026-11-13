@@ -1420,28 +1420,32 @@ The use of $k_\lambda = |\hat A_\lambda|$ as the lasso's effective degrees of fr
 
 ### §7.4 Comparison on the §1 toy DGP
 
-The four selectors — `LassoCV` $\lambda_{\min}$, `LassoCV` $\lambda_{1\mathrm{SE}}$, `LassoLarsIC` BIC, `LassoLarsIC` AIC — make different trade-offs and select different $\lambda$ values on the same data. On DGP-1 ($n=200, p=500, s=10, \sigma=0.5$), the typical pattern (see Figure 7.2):
+The four selectors — `LassoCV` $\lambda_{\min}$, `LassoCV` $\lambda_{1\mathrm{SE}}$, BIC, AIC — make different trade-offs and select different $\lambda$ values on the same data. The information criteria are computed two ways: with the plug-in fit term $n \log(\mathrm{RSS}_\lambda / n)$ of §7.3 along the lasso path, and with `LassoLarsIC` given a noise-variance estimate. On DGP-1 ($n=200, p=500, s=10, \sigma=0.5$), this draw gives (Figure 7.2 shows the first four rows; test MSE is $\tfrac{1}{2000} \|\mathbf{X}_{\text{test}}(\hat{\boldsymbol\beta} - \boldsymbol\beta^*)\|_2^2$ on 2,000 fresh rows):
 
-| Selector | Selected $\lambda$ | Active set size $|\hat A_\lambda|$ | Test MSE |
+| Selector | Selected $\lambda$ | Active set size $\lvert \hat A_\lambda \rvert$ | Test MSE |
 |---|---|---|---|
-| `LassoCV` ($\lambda_{\min}$) | smallest | largest (51 on this draw: all 10 true coords plus 41 false positives) | small |
-| `LassoCV` ($\lambda_{1\mathrm{SE}}$) | medium | medium (17 on this draw: all 10 true coords plus 7 false positives) | small (on this draw, equal to $\lambda_{\min}$'s within 1%) |
-| `LassoLarsIC` (AIC) | smallish | medium-to-large | small (close to $\lambda_{\min}$) |
-| `LassoLarsIC` (BIC) | largest | smallest (~8–11, may miss weak signal coords) | medium (10–25% above $\lambda_{\min}$) |
+| `LassoCV` ($\lambda_{\min}$) | 0.056 | 51 (all 10 true coords plus 41 false positives) | 0.066 |
+| `LassoCV` ($\lambda_{1\mathrm{SE}}$) | 0.105 | 17 (all 10 true coords plus 7 false positives) | 0.065 (equal to $\lambda_{\min}$'s within 1%) |
+| AIC, plug-in $\log(\mathrm{RSS}_\lambda/n)$ | 0.0034 (the end of the $\lambda$ grid) | 188 (all 10 true coords plus 178 false positives) | 0.305 (about $4.6\times$ $\lambda_{\min}$'s) |
+| BIC, plug-in $\log(\mathrm{RSS}_\lambda/n)$ | 0.0034 (the same grid end) | 188 (the same model as AIC) | 0.305 |
+| `LassoLarsIC` (AIC, $\hat\sigma^2 = 0.246$) | 0.061 | 44 (all 10 true coords plus 34 false positives) | 0.062 |
+| `LassoLarsIC` (BIC, $\hat\sigma^2 = 0.246$) | 0.107 | 15 (all 10 true coords plus 5 false positives) | 0.067 |
+
+**Why the plug-in criteria overfit at $p > n$.** The fit term $n \log(\mathrm{RSS}_\lambda / n)$ is the Gaussian log-likelihood with $\sigma^2$ estimated by $\mathrm{RSS}_\lambda / n$. With $p = 500 > n = 200$, the lasso can drive the training residuals toward zero as $\lambda \to 0$, so the fit term is unbounded below, while the penalty is at most $n \log n$ because the lasso keeps at most $n$ nonzero coefficients. On this draw both criteria are minimized at the last point of the 100-point grid, $\lambda = 10^{-3} \lambda_{\max} \approx 0.0034$: from the grid point nearest $\lambda_{1\mathrm{SE}}$ (17 features) to the end of the grid, the fit term falls by about 916 while the BIC penalty rises by about 858. The selected model has $\mathrm{RSS}/n \approx 0.003$ against a true noise variance $\sigma^2 = 0.25$: it is fitting noise. This is why scikit-learn's `LassoLarsIC` refuses $n < p$ unless it is given `noise_variance` (its default estimate of $\sigma^2$ comes from an OLS fit, which needs $n > p$). With an estimate $\hat\sigma^2$ it minimizes $\mathrm{RSS}_\lambda / \hat\sigma^2 + 2 k_\lambda$ (AIC) or $\mathrm{RSS}_\lambda / \hat\sigma^2 + k_\lambda \log n$ (BIC). Taking $\hat\sigma^2 = \mathrm{RSS}/(n - k) = 0.246$ from the $\lambda_{\min}$ fit restores the ordering §7.3 describes: BIC selects the sparsest model, and AIC sits between the two CV choices. The true $\sigma^2 = 0.25$ gives the same two selections.
 
 **Recommendation.**
 
 - **If prediction is the goal:** use `LassoCV` with $\lambda_{\min}$. The §5 oracle inequality says this achieves the optimal rate; in practice it gives the smallest test MSE on most problems.
 - **If prediction is the goal but you want a smaller, more interpretable model:** use the 1-SE rule. Trades a small amount of prediction performance for a substantially smaller active set and more reproducible variable selection.
-- **If selection consistency is the goal:** use BIC via `LassoLarsIC(criterion='bic')`. The selected model is asymptotically the true support under stronger conditions; finite-sample behavior depends on signal strength.
+- **If selection consistency is the goal:** use BIC via `LassoLarsIC(criterion='bic')`, and when $p > n$ pass a noise-variance estimate (`noise_variance`), since the plug-in criterion degenerates there (table above). The selected model is asymptotically the true support under stronger conditions; finite-sample behavior depends on signal strength.
 - **For everything else:** start with `LassoCV` $\lambda_{\min}$. It's the default in almost every lasso application; the alternatives are refinements for specific use cases.
 
 The §10 debiased lasso uses `LassoCV` $\lambda_{\min}$ as its initial estimator, then corrects the resulting bias to produce valid CIs. The choice of $\lambda$ for the initial fit isn't critical for the debiased lasso's coverage — the one-step correction substantially compensates for the lasso's selection idiosyncrasies.
 
 <Figure
   src="/images/topics/high-dimensional-regression/fig_07_02_selector_comparison.png"
-  alt="Bar chart of CV-selected lambda values across five selectors (LassoCV-min, LassoCV-1SE, LassoLarsIC-AIC, LassoLarsIC-BIC, theory-guided RIC) on DGP-1."
-  caption="Selected λ across five selectors on DGP-1: LassoCV (λ_min, smallest), LassoCV (λ_1SE), LassoLarsIC AIC, LassoLarsIC BIC, and the theory-guided RIC (λ = 2σ√(2 log(p)/n), largest). λ_min produces the largest active set with smallest test MSE; BIC produces the smallest active set; AIC sits in between. The selector choice trades off prediction error against model parsimony."
+  alt="Two bar charts comparing four lambda selectors on DGP-1 (LassoCV lambda-min, LassoCV lambda-1SE, and plug-in BIC and AIC along the lasso path): active-set size on the left, test MSE on the right."
+  caption="Active-set size and test MSE for four selectors on DGP-1 (n = 200, p = 500, s = 10): LassoCV λ_min (51 features, test MSE 0.066), LassoCV λ_1SE (17, 0.065), and BIC and AIC with the plug-in log(RSS/n) along the lasso path, which both run to the end of the λ grid (λ = 0.0034: 188 features, 0.305). At p > n the plug-in criteria overfit; with a noise-variance estimate, LassoLarsIC's BIC keeps 15 features and AIC 44 (table above)."
 />
 
 ## §8. Ridge, elastic net, and adaptive lasso
