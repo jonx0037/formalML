@@ -7,8 +7,8 @@
 //       Visually identical to the §1/§3 mean prediction; the takeaway is that
 //       dropout at test time leaves the *mean* unchanged.
 //   (b) MC-dropout predictive standard deviation across T samples — viridis.
-//       Bright off-distribution, dark near data; "flatter" than §3 Laplace
-//       per Foong et al. (Rem 4.4).
+//       Brighter off-distribution than near data, but lower than §3 Laplace
+//       and far less distance-driven than the §5 ensemble (Rem 4.4).
 //   (c) 20 sampled 0.5-probability contours from the T forward passes,
 //       overlaid as translucent green lines (paletteBNN.dropout).
 //
@@ -73,9 +73,9 @@ const { res: GRID_RES, xMin: GRID_X_MIN, xMax: GRID_X_MAX, yMin: GRID_Y_MIN, yMa
 
 const FIGURE_PATH = '/images/topics/bayesian-neural-networks/04_mcdropout_two_moons.png';
 const ALT =
-  'Three panels on Two Moons data: panel (a) MC-dropout predictive mean RdBu_r heatmap visually similar to a deterministic predictor; panel (b) MC-dropout predictive standard deviation viridis heatmap with flatter off-distribution std than a full-Hessian Laplace; panel (c) twenty MC-dropout sampled 0.5-probability contours overlaid in translucent green.';
+  'Three panels on Two Moons data: panel (a) MC-dropout predictive mean RdBu_r heatmap visually similar to a deterministic predictor; panel (b) MC-dropout predictive standard deviation viridis heatmap, brighter off-distribution but lower than a Laplace approximation and far less distance-driven than a deep ensemble; panel (c) twenty MC-dropout sampled 0.5-probability contours overlaid in translucent green.';
 const CAPTION =
-  'Figure 4. MC-dropout. (a) The predictive mean is essentially the point-estimate predictor — turning dropout off at test confirms it. (b) The predictive standard deviation captures epistemic uncertainty qualitatively but is flatter off-distribution than Laplace. (c) Sampled decision boundaries fan out narrowly. Drag the dropout-rate slider to retrain (1−ρ from 0 retains a deterministic predictor; large 1−ρ over-regularizes); slide T to trade compute for variance smoothness; toggle dropout-on-test to compare deterministic vs MC predictions side by side.';
+  'Figure 4. MC-dropout. (a) The predictive mean is essentially the point-estimate predictor — turning dropout off at test confirms it. (b) The predictive standard deviation captures epistemic uncertainty qualitatively: it is lower than Laplace, and far less distance-driven than the deep ensemble. (c) Sampled decision boundaries fan out narrowly. Drag the dropout-rate slider to retrain (1−ρ from 0 retains a deterministic predictor; large 1−ρ over-regularizes); slide T to trade compute for variance smoothness; toggle dropout-on-test to compare deterministic vs MC predictions side by side.';
 const ARIA = 'Figure 4: Interactive MC-dropout predictive on Two Moons';
 
 // -----------------------------------------------------------------------------

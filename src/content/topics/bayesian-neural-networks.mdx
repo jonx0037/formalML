@@ -134,7 +134,7 @@ references:
     authors: "Foong, Burt, Li & Turner"
     year: 2020
     url: "https://proceedings.neurips.cc/paper/2020/hash/b6dfd41875bc090bd31d0b1740eb5b1b-Abstract.html"
-    note: "Quantifies the gap between Bernoulli-family MC-dropout and the true posterior. Source for Remark 4.4's saturation observation."
+    note: "Proves that single-hidden-layer MC-dropout and mean-field VI cannot represent in-between uncertainty (Remark 4.4); a universality result shows deep networks escape the proof, though the pathology persists empirically."
   - type: "paper"
     title: "What Are Bayesian Neural Network Posteriors Really Like?"
     authors: "Izmailov, Vikram, Hoffman & Wilson"
@@ -518,7 +518,7 @@ In code, this is two lines: keep the model in `train()` mode (which leaves dropo
 The Bernoulli family is rigid in a specific way: each weight column is either kept exactly (with probability $\rho$) or zeroed exactly (with probability $1 - \rho$). The family cannot represent continuous deviations from the mean weights — it has zero probability mass on weight matrices that are slightly perturbed from $M_\ell$ but not exactly some Bernoulli-masked version. Compared to the §3 Laplace family (a full Gaussian with covariance $H^{-1}$), MC-dropout has dramatically less expressive power. This shows up in three places.
 
 <TheoremBlock type="remark" number={4.4} title="Limits of MC-dropout">
-*Underestimated epistemic variance in over-parametrized regimes.* When the network has many redundant units, dropout's mask-induced variance is largely cancelled by redundancy — the predictive variance saturates at a value determined by the dropout rate, not by how far the test point is from the data. Empirical studies (Foong et al. 2020, "On the Expressiveness of Approximate Inference in Bayesian Neural Networks") show MC-dropout predictive variance converges to a constant in the network width even in regions where the true posterior predictive variance grows.
+*Underestimated epistemic variance in over-parametrized regimes.* When the network has many redundant units, dropout's mask-induced variance is largely cancelled by redundancy — the predictive variance is dominated by the dropout rate rather than by how far the test point is from the data. On the §4 model it roughly doubles from the data to distance $d = 6$, while raising the drop probability $1 - \rho$ from 0.05 to 0.5 multiplies it by more than three; a §5 deep ensemble's grows more than tenfold over the same distance. Foong et al. 2020 ("On the Expressiveness of Approximate Inference in Bayesian Neural Networks") prove a related function-space limitation: in single-hidden-layer ReLU networks, neither MC-dropout nor mean-field Gaussian VI can substantially raise predictive uncertainty in the region *between* two well-separated clusters of data, and they observe similar behavior empirically in deeper networks.
 
 *No multi-modality.* The Bernoulli family, like the §3 Laplace family, parametrizes a single mode of the loss landscape. The §2.4 hidden-unit permutation symmetry is invisible to MC-dropout — the variational posterior captures noise around the trained mean weights, not separated modes. §5 deep ensembles will recover multi-modality; MC-dropout cannot.
 
@@ -925,7 +925,7 @@ At infinite width, the §§3–7 methods can be ordered by how well they recover
 
 *Laplace (§3).* Coarse approximation: a single local Gaussian centered at one MAP estimate captures the local curvature of the NNGP posterior at one point, but misses the full function-space distribution. At infinite width the NNGP posterior is itself a Gaussian, and Laplace's approximation converges to a sub-Gaussian within it — the bias is $O(1)$ in the function-space sense.
 
-*MC-dropout (§4).* Structurally biased: the Bernoulli variational family does *not* converge to the NNGP posterior at any width, because no Bernoulli posterior over weights induces a Gaussian process over functions. Foong et al. 2020 ("On the Expressiveness of Approximate Inference in Bayesian Neural Networks") formalize this gap.
+*MC-dropout (§4).* Structurally biased: the Bernoulli variational family does *not* converge to the NNGP posterior at any width, because no Bernoulli posterior over weights induces a Gaussian process over functions. Foong et al. 2020 ("On the Expressiveness of Approximate Inference in Bayesian Neural Networks") document a related function-space expressiveness gap: single-hidden-layer MC-dropout and mean-field VI cannot represent "in-between" uncertainty.
 </TheoremBlock>
 
 The §8 head-to-head ordering on Two Moons is roughly consistent with this asymptotic ordering: deep ensembles and SG-MCMC are the most-calibrated, Laplace is in the middle, and MC-dropout is at the bottom. For finite-width networks the differences are smaller than the infinite-width view suggests, and for some narrow regimes the ordering inverts — but the function-space asymptotic gives the right intuition for which method to reach for first.
