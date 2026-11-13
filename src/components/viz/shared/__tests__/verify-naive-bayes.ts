@@ -28,6 +28,8 @@ import {
   logLoss,
   mutualInformationDiscreteSmoothed,
   chowLiuTree,
+  conditionalChowLiuTree,
+  tanFit,
   mulberry32,
   lgamma,
 } from '../naive-bayes';
@@ -176,6 +178,52 @@ within(cl.miMatrix[0 * 5 + 1], 0.4, 0.75, 'MI(X_0, X_1) in planted-dependency ra
 within(cl.miMatrix[2 * 5 + 3], 0.4, 0.75, 'MI(X_2, X_3) in planted-dependency range', `MI ∈ [0.4, 0.75]`);
 // Non-planted edges should have tiny MI.
 within(cl.miMatrix[0 * 5 + 4], 0, 0.05, 'MI(X_0, X_4) near zero', 'non-planted MI ≤ 0.05');
+
+// -----------------------------------------------------------------------------
+// 4b. TAN structure = Chow–Liu on the CONDITIONAL MI I(X_i; X_j | Y)
+//     (Friedman–Geiger–Goldszmidt 1997). Labeled fixture matching
+//     ChowLiuTANStructureLearner: binary Y, d = 6 ternary features drawn from
+//     P(X | Y) = (0.8, 0.15, 0.05) / (0.05, 0.15, 0.8), planted copies X_1 ← X_0
+//     and X_3 ← X_2 with prob 0.8. Every feature pair is correlated through Y,
+//     so unconditional MI is large on the non-planted pair (4, 5); conditioning
+//     on Y removes it. tanFit must use the same tree.
+// -----------------------------------------------------------------------------
+
+console.log('\n[4b] TAN structure uses conditional MI given Y');
+function generateTANFixture(seed: number, depProb: number) {
+  const rng = mulberry32(seed);
+  const n = 500;
+  const d = 6;
+  const pxy = [
+    [0.8, 0.15, 0.05],
+    [0.05, 0.15, 0.8],
+  ];
+  const X = new Float64Array(n * d);
+  const y = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    y[i] = rng() < 0.5 ? 0 : 1;
+    for (let j = 0; j < d; j++) {
+      const u = rng();
+      const p = pxy[y[i]];
+      X[i * d + j] = u < p[0] ? 0 : u < p[0] + p[1] ? 1 : 2;
+    }
+  }
+  for (const [p, q] of [[0, 1], [2, 3]]) {
+    for (let i = 0; i < n; i++) if (rng() < depProb) X[i * d + q] = X[i * d + p];
+  }
+  return { X, y, n, d };
+}
+const tanFix = generateTANFixture(42, 0.8);
+const ccl = conditionalChowLiuTree(tanFix.X, tanFix.y, tanFix.n, tanFix.d, 1.0);
+const uclTan = chowLiuTree(tanFix.X, tanFix.n, tanFix.d, 1.0);
+const cEdges = new Set(ccl.edges.map(([a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`));
+ok('Conditional Chow–Liu recovers planted edge (0,1)', cEdges.has('0-1'), `edges: ${[...cEdges].join(', ')}`);
+ok('Conditional Chow–Liu recovers planted edge (2,3)', cEdges.has('2-3'), `edges: ${[...cEdges].join(', ')}`);
+within(ccl.miMatrix[4 * 6 + 5], 0, 0.05, 'CMI(X_4, X_5 | Y) near zero', 'independent given Y');
+within(uclTan.miMatrix[4 * 6 + 5], 0.1, 1.0, 'MI(X_4, X_5) large through Y', 'unconditional MI picks up the shared class signal');
+const tanModel = tanFit(tanFix.X, tanFix.y, tanFix.n, tanFix.d, 1.0);
+const tanEdges = new Set(Array.from(tanModel.parents).flatMap((par, j) => (par < 0 ? [] : [`${Math.min(par, j)}-${Math.max(par, j)}`])));
+ok('tanFit tree equals conditional Chow–Liu tree', [...cEdges].every((e) => tanEdges.has(e)) && tanEdges.size === cEdges.size, `tanFit: ${[...tanEdges].join(', ')}`);
 
 // -----------------------------------------------------------------------------
 // 5. Platt scaling fit + apply on a synthetic well-separated 1D fixture.

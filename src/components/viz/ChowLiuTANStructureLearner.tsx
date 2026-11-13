@@ -2,18 +2,19 @@ import { useState, useMemo } from 'react';
 import {
   paletteNB,
   mulberry32,
-  chowLiuTree,
+  conditionalChowLiuTree,
 } from './shared/naive-bayes';
 import { useResizeObserver } from './shared/useResizeObserver';
 import { useD3 } from './shared/useD3';
 
 // =============================================================================
-// ChowLiuTANStructureLearner — §9.1 companion. A small (d = 5–7) discrete-feature
-// dataset with planted dependencies; the reader chooses which features are
-// near-duplicates of which (the dependency probability slider), and watches the
-// Chow–Liu maximum-mutual-information spanning tree adapt. The viz overlays the
-// learned tree on the NB DAG, making explicit which dependencies TAN restores
-// that NB ignores.
+// ChowLiuTANStructureLearner — §9.1 companion. A small labeled dataset (binary
+// class Y, d = 6 ternary features that each depend on Y) with planted
+// feature–feature dependencies; the slider sets how often the planted copies
+// happen, and the viz shows the TAN structure adapt: the maximum spanning tree
+// under the conditional mutual information I(X_i; X_j | Y) (Friedman, Geiger &
+// Goldszmidt 1997). The tree is overlaid on the NB DAG, making explicit which
+// dependencies TAN restores that NB ignores.
 // =============================================================================
 
 const D = 6;
@@ -27,18 +28,38 @@ const PLANTED_PAIRS: DepPair[] = [
   [2, 3],
 ];
 
-function generateData(depProb: number, seed: number): Uint8Array {
+// Class-conditional feature distribution P(X_j = c | Y = y), shared by all features.
+const P_X_GIVEN_Y: number[][] = [
+  [0.8, 0.15, 0.05],
+  [0.05, 0.15, 0.8],
+];
+
+function sampleCat(u: number, probs: number[]): number {
+  let acc = 0;
+  for (let c = 0; c < CATS - 1; c++) {
+    acc += probs[c];
+    if (u < acc) return c;
+  }
+  return CATS - 1;
+}
+
+function generateData(depProb: number, seed: number): { X: Uint8Array; y: Uint8Array } {
   const rng = mulberry32(seed);
   const X = new Uint8Array(N * D);
-  // Independent random discrete features.
-  for (let i = 0; i < N; i++) for (let j = 0; j < D; j++) X[i * D + j] = Math.floor(rng() * CATS);
-  // Inject the planted dependencies (with probability depProb feature q copies feature p).
+  const y = new Uint8Array(N);
+  // Balanced binary class; each feature drawn from P(X_j | Y), independently given Y.
+  for (let i = 0; i < N; i++) {
+    y[i] = rng() < 0.5 ? 0 : 1;
+    for (let j = 0; j < D; j++) X[i * D + j] = sampleCat(rng(), P_X_GIVEN_Y[y[i]]);
+  }
+  // Inject the planted dependencies (with probability depProb feature q copies feature p),
+  // so X_q depends on X_p even within a class.
   for (const [p, q] of PLANTED_PAIRS) {
     for (let i = 0; i < N; i++) {
       if (rng() < depProb) X[i * D + q] = X[i * D + p];
     }
   }
-  return X;
+  return { X, y };
 }
 
 export default function ChowLiuTANStructureLearner() {
@@ -49,8 +70,8 @@ export default function ChowLiuTANStructureLearner() {
   const data = useMemo(() => generateData(depProb, seed), [depProb, seed]);
   const result = useMemo(() => {
     const Xnum = new Float64Array(N * D);
-    for (let k = 0; k < N * D; k++) Xnum[k] = data[k];
-    return chowLiuTree(Xnum, N, D, 1.0);
+    for (let k = 0; k < N * D; k++) Xnum[k] = data.X[k];
+    return conditionalChowLiuTree(Xnum, data.y, N, D, 1.0);
   }, [data]);
 
   const W = Math.max(360, Math.min(width || 720, 720));
@@ -103,7 +124,7 @@ export default function ChowLiuTANStructureLearner() {
           .style('stroke', paletteNB.data);
       }
 
-      // Chow–Liu edges (X_i — X_j).
+      // TAN tree edges (X_i — X_j), weighted by conditional MI.
       const clEdges = svg.append('g').attr('class', 'cl-edges');
       result.edges.forEach(([i, j]) => {
         const a = nodeById.get(`X${i}`)!;
@@ -126,7 +147,7 @@ export default function ChowLiuTANStructureLearner() {
           .attr('text-anchor', 'middle')
           .attr('font-size', 10)
           .style('fill', paletteNB.highlight)
-          .text(`MI = ${mi.toFixed(2)}`);
+          .text(`CMI = ${mi.toFixed(2)}`);
       });
 
       // Nodes.
@@ -174,11 +195,14 @@ export default function ChowLiuTANStructureLearner() {
           Resample (seed {seed})
         </button>
       </div>
-      <svg ref={svgRef} className="w-full" style={{ maxHeight: H }} role="img" aria-label="Chow-Liu maximum-mutual-information spanning tree"/>
+      <svg ref={svgRef} className="w-full" style={{ maxHeight: H }} role="img" aria-label="TAN tree: maximum spanning tree under conditional mutual information given Y"/>
       <div className="text-xs opacity-75 mt-1 text-center">
-        Dashed gray = NB's assumed independence (Y → X_i only). Solid orange = the Chow–Liu
-        tree (edge thickness ∝ pairwise MI). Planted dependencies: X_0–X_1 and X_2–X_3 with
-        probability {depProb.toFixed(2)}; the tree should recover these as high-MI edges.
+        Dashed gray = NB's assumed independence (Y → X_i only). Solid orange = the TAN tree:
+        the maximum spanning tree under the conditional mutual information I(X_i; X_j | Y), in
+        nats (edge thickness ∝ CMI). Every feature depends on Y; planted dependencies X_0–X_1 and
+        X_2–X_3 hold with probability {depProb.toFixed(2)}, and the tree should recover them as
+        high-CMI edges. Conditioning on Y keeps the tree from spending edges on correlation
+        that flows only through Y.
       </div>
     </div>
   );
