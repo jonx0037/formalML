@@ -936,12 +936,12 @@ for step in range(n_steps):
 
 That's all. No ELBO, no adversarial discriminator, no separate KL term — just empirical NLL, gradient descent, and the closed-form log-det that came for free in the §4 architecture.
 
-The notebook trains a 4-layer affine-coupling RealNVP (`CouplingFlow(d=2, n_layers=4, hidden=32)`) on a 2-D bimodal target — two Gaussian blobs at $(\pm 2, 0)$ with $\sigma = 0.5$ — for 2000 Adam steps at learning rate $10^{-3}$, batch size 256. Total runtime: roughly 4 seconds on a 2020-era CPU. The training NLL drops monotonically from initialization to within $\sim 0.05$ nats of the target's differential entropy $H[p_{\text{data}}]$ — the information-theoretic lower bound on expected NLL for any model.
+The notebook trains a 4-layer affine-coupling RealNVP (`CouplingFlow(d=2, n_layers=4, hidden=32)`) on a 2-D bimodal target — two Gaussian blobs at $(\pm 2, 0)$ with $\sigma = 0.5$ — for 2000 Adam steps at learning rate $10^{-3}$, batch size 256. Total runtime: roughly 4 seconds on a 2020-era CPU. The training NLL drops monotonically from initialization, and on a 10,000-point held-out sample the trained flow sits $0.024$ nats above the target's differential entropy $H[p_{\text{data}}]$ — the information-theoretic lower bound on expected NLL for any model. (The notebook's floor, $2.1347$ nats, is a Monte Carlo estimate on those same 10,000 points. For these well-separated blobs the closed form is $\log(2\pi e \cdot 0.25) + \log 2 \approx 2.1447$, about one Monte Carlo standard error higher. Every gap to the floor quoted in this article is measured against the Monte Carlo estimate.)
 
 <Figure
   src="/images/topics/normalizing-flows/07_training_curve.png"
-  alt="Training-curve plot: NLL vs Adam step, dropping from ~4.3 nats at initialization to ~2.14 nats at convergence (2000 steps), with the information-theoretic floor H[p_data] ≈ 2.13 marked."
-  caption="2-D bimodal MLE training (§7.2). The flow converges to within ~0.05 nats of the information-theoretic floor in 2000 Adam steps (~4 s CPU)."
+  alt="Training-curve plot: NLL vs Adam step, dropping from ~4.3 nats at initialization to ~2.14 nats at convergence (2000 steps), with the Monte Carlo estimate of the information-theoretic floor H[p_data] ≈ 2.135 marked."
+  caption="2-D bimodal MLE training (§7.2). After 2000 Adam steps (~4 s CPU) the flow's held-out NLL is 0.024 nats above the Monte Carlo estimate of the information-theoretic floor."
 />
 
 <Figure
@@ -1011,7 +1011,7 @@ What "universal" doesn't mean: it doesn't mean *any finite flow* fits *any* dens
 
 For practical flow training, the question becomes: how many coupling layers $K$ and how wide an $s/t$ MLP do we actually need? Theory gives bounds but not tight constants; the empirical answer comes from sweeping.
 
-The notebook trains flows of depth $K \in \{2, 4, 6, 8, 12\}$ on the §7 bimodal target — same training schedule, same data sampler, same architecture except for depth — and plots the final test NLL against depth. The standard pattern emerges: NLL drops sharply from $K = 2$ to $K = 4$, then continues decreasing with diminishing returns. By $K = 6$ the gap from the information-theoretic floor is about $0.06$ nats; by $K = 12$ it's under $0.03$. The marginal benefit per extra layer flatlines.
+The notebook trains flows of depth $K \in \{2, 4, 6, 8, 12\}$ on the §7 bimodal target — same data sampler, same optimizer settings, same architecture except for depth, but a shorter schedule of 1500 Adam steps per depth instead of §7's 2000 — and plots the final test NLL against depth. The standard pattern emerges: NLL drops sharply from $K = 2$ to $K = 4$, then continues decreasing with diminishing returns. By $K = 6$ the gap from the (Monte Carlo) information-theoretic floor is about $0.06$ nats; by $K = 12$ it's under $0.03$. Against the closed-form floor both gaps are about $0.01$ nats smaller. The marginal benefit per extra layer flatlines.
 
 This pattern generalizes. For 2-D toys, $K = 4$–$8$ is the practical sweet spot. For 10–50-dim density estimation (UCI tabular benchmarks; Papamakarios, Pavlakou, and Murray 2017), $K = 10$–$20$. For image data at $32 \times 32$, $K = 32$ across multiple scales (Glow's published configuration). The depth scaling is roughly logarithmic in data complexity: doubling the per-dim conditional flexibility you can approximate requires roughly doubling the depth.
 
