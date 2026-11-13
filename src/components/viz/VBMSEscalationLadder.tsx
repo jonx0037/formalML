@@ -162,7 +162,16 @@ export default function VBMSEscalationLadder() {
         .padding(0.4);
 
       const elboScale = d3.scaleLinear().domain(yDomain).range([innerH, 0]).nice();
-      const pkScale = d3.scaleLinear().domain([0, 1.2]).range([innerH, 0]);
+      // k̂ on the diabetes fits runs well past 1 (up to ~6 for the full-rank
+      // regularized horseshoe), so size the axis to the data, never below 1.2.
+      const kMax = d3.max(
+        payload.priors.flatMap((p) => STAGES.map((s) => stageParetoK(p, s) ?? 0)),
+      ) ?? 0;
+      const pkScale = d3
+        .scaleLinear()
+        .domain([0, Math.max(1.2, kMax * 1.08)])
+        .range([innerH, 0])
+        .nice();
 
       g.append('g')
         .attr('transform', `translate(0,${innerH})`)
@@ -240,7 +249,9 @@ export default function VBMSEscalationLadder() {
             .attr('stroke-width', 0.8);
           g.append('text')
             .attr('x', innerW - 6)
-            .attr('y', pkScale(thr) - 3)
+            // Labels sit above the 0.7 line and below the 0.5 line so they
+            // don't collide when the k̂ axis is stretched.
+            .attr('y', pkScale(thr) + (thr === 0.5 ? 11 : -3))
             .attr('text-anchor', 'end')
             .style('font-size', '10px')
             .style('fill', '#aa6633')

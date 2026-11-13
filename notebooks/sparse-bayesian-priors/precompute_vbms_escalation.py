@@ -18,11 +18,11 @@ CLAUDE.md gotcha applied: ADVI parameter extraction uses sample-based
 estimates via ``approx.sample(N).posterior[var].mean()`` and ``.std()``
 instead of the PyTensor tensor-graph method form on ``approx.params``.
 
-For PSIS Pareto-k̂: the importance weights log p(y, θ) - log q(θ) are
-computed using PyMC's compiled logp (original space) with a sample-fit
-Gaussian surrogate for log q. The resulting k̂ conflates Jacobian factors
-but preserves the qualitative diagnostic (the threshold-based gating
-decisions are unchanged).
+For PSIS Pareto-k̂ (Yao et al. 2018) and IWELBO: the importance weights
+log p(y, θ) - log q(θ) are computed in ADVI's unconstrained space — draws
+from the exact Gaussian q (parameters read with ``get_value()``), ``log q``
+its exact density, and ``log p`` the model's joint log density on the value
+variables including transform Jacobians (``compile_logp(jacobian=True)``).
 
 Per CLAUDE.md "Sample-data dual-location": JSON written to BOTH
 ``src/data/sampleData/sparse-bayesian-priors/`` and
@@ -34,7 +34,7 @@ Usage::
     nohup .venv/bin/python precompute_vbms_escalation.py </dev/null \
         >precompute_vbms.log 2>&1 &
 
-Runtime: ~15-25 minutes on a 2020-era laptop.
+Runtime: ~2-5 minutes on an Apple-silicon laptop.
 """
 
 from __future__ import annotations
@@ -47,7 +47,6 @@ from pathlib import Path
 import arviz as az
 import numpy as np
 import pymc as pm
-from scipy import stats
 from sklearn.datasets import load_diabetes
 from sklearn.model_selection import train_test_split
 
@@ -213,79 +212,106 @@ def fit_advi_with_restarts(
 
 
 # --------------------------------------------------------------------------- #
-# Pareto-k̂ via simplified PSIS-VI
+# Importance weights log p(y, θ) − log q(θ) in ADVI's unconstrained space
+# --------------------------------------------------------------------------- #
+
+
+def _softplus(x: np.ndarray) -> np.ndarray:
+    """PyMC's ``rho2sigma``: log(1 + exp(rho)), computed stably."""
+    return np.logaddexp(0.0, x)
+
+
+def _gaussian_from_approx(approx) -> tuple[np.ndarray, np.ndarray]:
+    """Return (mean, Cholesky factor L) of ADVI's Gaussian q in the flat space.
+
+    ADVI's q lives on the *unconstrained* (transformed) parameter vector — the
+    concatenation of the model's value variables (``tau_log__``, ``z``,
+    ``phi_simplex__``, ...). Parameters are read from the shared variables with
+    ``get_value()``:
+
+    * mean-field: ``mu``, ``rho``; σ = softplus(ρ), L = diag(σ);
+    * full-rank: ``mu``, ``L_tril`` (row-major lower triangle) with a softplus
+      on the diagonal, exactly as ``FullRankGroup.L`` builds it.
+    """
+    group = approx.groups[0]
+    params = {p.name: np.asarray(p.get_value(), dtype=float) for p in approx.params}
+    mu = params["mu"]
+    d = mu.shape[0]
+    if "rho" in params:
+        L = np.diag(_softplus(params["rho"]))
+    elif "L_tril" in params:
+        L = np.zeros((d, d))
+        L[np.tril_indices(d)] = params["L_tril"]
+        L[np.diag_indices(d)] = _softplus(np.diag(L))
+    else:  # pragma: no cover — only MeanField / FullRank are used here
+        raise ValueError(f"Unsupported approximation group {type(group).__name__}")
+    return mu, L
+
+
+def importance_log_weights(approx, model_factory, X, y, n: int, seed: int) -> np.ndarray:
+    """Draw θ ~ q and return log w = log p(y, θ) − log q(θ), both unconstrained.
+
+    This is the PSIS-VI importance ratio of Yao et al. (2018): ``log p`` is the
+    model's joint log density *including* the log-Jacobian of each transform
+    (``model.compile_logp(jacobian=True)``, evaluated on the value variables),
+    and ``log q`` is the exact Gaussian density of the ADVI approximation in
+    the same unconstrained coordinates. Both densities refer to one coordinate
+    system, so the ratio is a proper importance weight.
+
+    (The earlier version keyed the logp point by the constrained names
+    ``tau``/``lam``/``sigma`` instead of the value variables
+    ``tau_log__``/``lam_log__``/``sigma_log__``, so every logp call raised and
+    every weight was NaN.)
+    """
+    model = model_factory(X, y)
+    ordering = approx.groups[0].ordering  # name -> (name, slice, shape, dtype)
+    value_names = {v.name for v in model.value_vars}
+    missing = value_names - set(ordering)
+    if missing:
+        raise KeyError(f"approx ordering lacks value vars {sorted(missing)}")
+
+    mu, L = _gaussian_from_approx(approx)
+    d = mu.shape[0]
+    rng = np.random.default_rng(seed)
+    eps = rng.standard_normal((n, d))
+    theta = mu + eps @ L.T
+    # log N(θ; μ, LLᵀ) = −½‖ε‖² − Σ log diag(L) − (d/2) log 2π
+    log_q = (
+        -0.5 * np.sum(eps**2, axis=1)
+        - np.sum(np.log(np.abs(np.diag(L))))
+        - 0.5 * d * np.log(2.0 * np.pi)
+    )
+
+    logp_fn = model.compile_logp(jacobian=True)
+    log_p = np.empty(n)
+    for i in range(n):
+        point = {
+            name: theta[i, sl].reshape(shape).astype(dtype)
+            for name, (_, sl, shape, dtype) in ordering.items()
+        }
+        try:
+            log_p[i] = float(logp_fn(point))
+        except Exception:  # noqa: BLE001 — a failed evaluation is a non-finite weight
+            log_p[i] = np.nan
+    return log_p - log_q
+
+
+# --------------------------------------------------------------------------- #
+# Pareto-k̂ via PSIS-VI
 # --------------------------------------------------------------------------- #
 
 
 def compute_pareto_k(approx, model_factory, X, y, n_psis: int = N_PSIS) -> dict:
-    """PSIS Pareto-k̂ for a fitted ADVI variational posterior.
-
-    Sampling-based: draws n_psis posterior samples, computes log p (joint via
-    PyMC's compiled logp on the original space) and log q (Gaussian surrogate
-    fit to the same samples in original space) for each draw, then runs
-    az.psislw on the importance weights.
-    """
-    # Re-create the model context to compile logp (the approx holds a
-    # reference internally but we need a fresh model to call compile_logp).
-    model = model_factory(X, y)
-    with model:
-        trace = approx.sample(n_psis, random_seed=SEED)
-
-    # Sample-based moments in original space — workaround per CLAUDE.md
-    # (avoids the PyTensor tensor-graph method security-hook tripwire).
-    var_names = [v.name for v in model.free_RVs]
-    means: dict[str, np.ndarray] = {}
-    stds: dict[str, np.ndarray] = {}
-    for name in var_names:
-        if name not in trace.posterior:
-            continue
-        arr = np.asarray(trace.posterior[name].values)
-        # Reshape (chain, draw, ...) → (chain*draw, ...)
-        if arr.ndim >= 2:
-            arr_flat = arr.reshape(-1, *arr.shape[2:]) if arr.ndim > 2 else arr.reshape(-1)
-        else:
-            arr_flat = arr
-        means[name] = arr_flat.mean(axis=0)
-        stds[name] = arr_flat.std(axis=0) + 1e-9
-
-    # Compile logp on the model (original space, includes Jacobians at
-    # default settings; sample-fit Gaussian surrogate for log q absorbs the
-    # transform bias into a constant offset that cancels in PSIS k̂'s
-    # tail-fit estimation).
-    logp_fn = model.compile_logp()
-    n_eval = min(n_psis, 1500)
-    log_p = np.zeros(n_eval)
-    log_q = np.zeros(n_eval)
-    for i in range(n_eval):
-        point: dict[str, np.ndarray] = {}
-        log_q_i = 0.0
-        for name in var_names:
-            if name not in trace.posterior:
-                continue
-            v = np.asarray(trace.posterior[name].isel(chain=0, draw=i).values)
-            point[name] = v
-            log_q_i += float(stats.norm.logpdf(v, means[name], stds[name]).sum())
-        try:
-            log_p[i] = float(logp_fn(point))
-        except Exception:
-            log_p[i] = np.nan
-        log_q[i] = log_q_i
-
-    log_w = log_p - log_q
+    """PSIS Pareto-k̂ (Yao et al. 2018) for a fitted ADVI approximation."""
+    log_w = importance_log_weights(approx, model_factory, X, y, n_psis, SEED)
     finite = np.isfinite(log_w)
     if finite.sum() < 50:
         return {"k_hat": float("nan"), "n_finite": int(finite.sum())}
 
     log_w_clean = log_w[finite]
-    try:
-        result = az.psislw(log_w_clean[:, None])
-        if isinstance(result, tuple) and len(result) == 2:
-            _, k_hat_arr = result
-            k_hat = float(np.atleast_1d(k_hat_arr)[0])
-        else:
-            k_hat = float("nan")
-    except Exception:
-        k_hat = float("nan")
+    # arviz.psislw smooths along the LAST axis (samples), so pass a 1-D vector.
+    _, k_hat_arr = az.psislw(log_w_clean)
+    k_hat = float(np.asarray(k_hat_arr))
 
     return {
         "k_hat": k_hat,
@@ -310,53 +336,17 @@ def compute_iwelbo(
     Burda-Grosse-Salakhutdinov 2016. For K=1 this reduces to the standard
     ELBO; larger K gives a tighter lower bound on log p(y).
     """
-    model = model_factory(X, y)
-    with model:
-        trace = approx.sample(K * S, random_seed=SEED + 1)
-
-    var_names = [v.name for v in model.free_RVs]
-    means = {}
-    stds = {}
-    for name in var_names:
-        if name not in trace.posterior:
-            continue
-        arr = np.asarray(trace.posterior[name].values)
-        arr_flat = arr.reshape(-1, *arr.shape[2:]) if arr.ndim > 2 else arr.reshape(-1)
-        means[name] = arr_flat.mean(axis=0)
-        stds[name] = arr_flat.std(axis=0) + 1e-9
-
-    logp_fn = model.compile_logp()
-    iwelbo_per_batch = np.zeros(S)
+    log_w = importance_log_weights(approx, model_factory, X, y, K * S, SEED + 1)
+    log_w = log_w.reshape(S, K)
+    iwelbo_per_batch = np.full(S, np.nan)
     for b in range(S):
-        log_w_batch = np.zeros(K)
-        for k in range(K):
-            i = b * K + k
-            point = {}
-            log_q_i = 0.0
-            for name in var_names:
-                if name not in trace.posterior:
-                    continue
-                v = np.asarray(trace.posterior[name].isel(chain=0, draw=i).values)
-                point[name] = v
-                log_q_i += float(stats.norm.logpdf(v, means[name], stds[name]).sum())
-            try:
-                log_p_i = float(logp_fn(point))
-            except Exception:
-                log_p_i = np.nan
-            log_w_batch[k] = log_p_i - log_q_i
-
-        finite = np.isfinite(log_w_batch)
-        if finite.sum() < 1:
-            iwelbo_per_batch[b] = np.nan
-            continue
-        log_w_finite = log_w_batch[finite]
-        max_lw = log_w_finite.max()
-        iwelbo_per_batch[b] = (
-            max_lw + np.log(np.mean(np.exp(log_w_finite - max_lw)))
-        )
+        lw = log_w[b][np.isfinite(log_w[b])]
+        if lw.size:
+            m = lw.max()
+            iwelbo_per_batch[b] = m + np.log(np.mean(np.exp(lw - m)))
 
     finite_b = np.isfinite(iwelbo_per_batch)
-    if finite_b.sum() < 1:
+    if finite_b.sum() < 2:
         return {"iwelbo_mean": float("nan"), "iwelbo_se": float("nan"), "K": K, "S": S}
 
     iwelbo_clean = iwelbo_per_batch[finite_b]
@@ -389,11 +379,28 @@ def compute_smc_log_evidence(model_factory, X, y) -> dict:
             random_seed=SEED + 2,
             progressbar=False,
         )
-    log_ml = idata_smc.sample_stats.log_marginal_likelihood.values
-    log_ml_flat = log_ml.flatten()
+    # sample_stats.log_marginal_likelihood holds, per chain, the running
+    # estimate at each tempering stage (NaN before the first update); the
+    # estimate is the FINAL stage's value. Its layout depends on whether the
+    # chains ran the same number of stages: equal → object array (chain, stage)
+    # of scalars; ragged → ArviZ stores one list per chain along the second
+    # axis, shape (1, chain). The earlier version flattened the whole array,
+    # averaging in the NaNs (and choked on the ragged layout).
+    raw = np.asarray(idata_smc.sample_stats.log_marginal_likelihood.values, dtype=object)
+    cells = list(raw.ravel())
+    if any(isinstance(c, (list, tuple, np.ndarray)) for c in cells):
+        chains = [np.asarray(c, dtype=float).ravel() for c in cells]
+    else:
+        chains = [np.asarray(r, dtype=float).ravel() for r in raw.reshape(raw.shape[0], -1)]
+    per_chain = []
+    for vals in chains:
+        vals = vals[np.isfinite(vals)]
+        per_chain.append(vals[-1] if vals.size else np.nan)
+    log_ml_flat = np.asarray(per_chain, dtype=float)
     return {
         "log_evidence_mean": float(np.mean(log_ml_flat)),
         "log_evidence_se": float(np.std(log_ml_flat, ddof=1) / np.sqrt(len(log_ml_flat))),
+        "log_evidence_per_chain": [float(v) for v in log_ml_flat],
         "n_chains": SMC_CHAINS,
         "n_draws": SMC_DRAWS,
     }
@@ -423,6 +430,9 @@ def escalate_prior(name: str, color: str, model_factory, X, y) -> dict:
         "all_elbos": [round(e, 4) for e in mf_all],
         "pareto_k": pk_mf["k_hat"],
         "n_finite": pk_mf.get("n_finite"),
+        # Mean importance log-weight = an independent Monte Carlo ELBO
+        # estimate; should sit within a nat or two of "elbo" above.
+        "log_w_mean": pk_mf.get("log_w_mean"),
         "elapsed_seconds": round(time.time() - t1, 1),
     }
 
@@ -441,6 +451,9 @@ def escalate_prior(name: str, color: str, model_factory, X, y) -> dict:
             "all_elbos": [round(e, 4) for e in fr_all],
             "pareto_k": pk_fr["k_hat"],
             "n_finite": pk_fr.get("n_finite"),
+            # Mean importance log-weight = an independent Monte Carlo ELBO
+            # estimate; should sit within a nat or two of "elbo" above.
+            "log_w_mean": pk_fr.get("log_w_mean"),
             "elapsed_seconds": round(time.time() - t1, 1),
         }
         survivor_approx = fr_approx
