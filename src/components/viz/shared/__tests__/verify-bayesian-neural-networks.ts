@@ -21,11 +21,16 @@
 //     yields ECE < 0.05
 //   - nngpArcCosineKernel: K(x,x) = (σw²/2)||x||² + σb² (Cho-Saul closed form
 //     at θ=0); symmetric K(x,y) = K(y,x); positive-definite on small inputs
+//   - sghmcStep / sgldStep on a 2-D Gaussian target: sample mean within 0.1,
+//     covariance entries within 10%, SGHMC momentum E[v²] within [0.9, 1.1]
+//     (catches a (1 − c) momentum decay in place of Algorithm 7.5's (1 − ηc))
+//   - SGHMCBNNViz defaults on Two Moons: E[v²] ≈ 1, chain not frozen
 // =============================================================================
 
 import {
   bnnCalibrationDiagnostic,
   deepEnsembleTraining,
+  gaussianPair,
   lastLayerLaplace,
   makeMoonsData,
   mcDropoutInference,
@@ -36,6 +41,8 @@ import {
   mulberry32,
   nngpArcCosineKernel,
   pcaProject2D,
+  sgldStep,
+  sghmcStep,
   sgMCMCBNNTraining,
   type MLPArchSpec,
   type TrainingData,
@@ -530,6 +537,130 @@ header('13. sgMCMCBNNTraining — SGHMC');
   let allFinite = true;
   for (const w of result.weights) for (let i = 0; i < w.length; i++) if (!Number.isFinite(w[i])) allFinite = false;
   check('all SGHMC sampled weights finite', allFinite);
+}
+
+// -----------------------------------------------------------------------------
+// SG-MCMC step kernels on a known 2-D Gaussian target
+// -----------------------------------------------------------------------------
+// U(θ) = ½ (θ − μ)ᵀ Σ⁻¹ (θ − μ), so ∇U = Σ⁻¹ (θ − μ) and the target is N(μ, Σ).
+// With M = I the SGHMC momentum's stationary law is N(0, I): E[v²] = 1 per
+// coordinate. A (1 − c) decay with √(2ηc) noise gives E[v²] = 2ηc/(1 − (1 − c)²)
+// = 2η/(2 − c) = 0.1 here (η = 0.05, c = 1) — far outside the band.
+
+function gaussianTargetRun(method: 'SGLD' | 'SGHMC', eta: number, c: number, nSteps: number, seed: number) {
+  const mu = [1, -1];
+  const Sigma = [
+    [1, 0.6],
+    [0.6, 2],
+  ];
+  const det = Sigma[0][0] * Sigma[1][1] - Sigma[0][1] * Sigma[1][0];
+  const P = [
+    [Sigma[1][1] / det, -Sigma[0][1] / det],
+    [-Sigma[1][0] / det, Sigma[0][0] / det],
+  ];
+  const rng = mulberry32(seed);
+  let buf: number | null = null;
+  const gauss = (): number => {
+    if (buf !== null) {
+      const v = buf;
+      buf = null;
+      return v;
+    }
+    const [a, b] = gaussianPair(rng);
+    buf = b;
+    return a;
+  };
+  const theta = new Float32Array([mu[0], mu[1]]);
+  const v = new Float32Array([gauss(), gauss()]);
+  const g = new Float64Array(2);
+  const burn = Math.floor(nSteps / 10);
+  let n = 0;
+  const m = [0, 0];
+  const s = [0, 0, 0]; // Σx², Σxy, Σy²
+  let v2 = 0;
+  for (let t = 0; t < nSteps; t++) {
+    const d0 = theta[0] - mu[0];
+    const d1 = theta[1] - mu[1];
+    g[0] = P[0][0] * d0 + P[0][1] * d1;
+    g[1] = P[1][0] * d0 + P[1][1] * d1;
+    if (method === 'SGLD') sgldStep(theta, g, eta, gauss);
+    else sghmcStep(theta, v, g, eta, c, gauss);
+    if (t < burn) continue;
+    n += 1;
+    m[0] += theta[0];
+    m[1] += theta[1];
+    s[0] += theta[0] * theta[0];
+    s[1] += theta[0] * theta[1];
+    s[2] += theta[1] * theta[1];
+    v2 += (v[0] * v[0] + v[1] * v[1]) / 2;
+  }
+  const mean = [m[0] / n, m[1] / n];
+  const cov = [s[0] / n - mean[0] ** 2, s[1] / n - mean[0] * mean[1], s[2] / n - mean[1] ** 2];
+  return { mu, Sigma, mean, cov, v2: v2 / n };
+}
+
+function checkGaussian(label: string, r: ReturnType<typeof gaussianTargetRun>): void {
+  const meanErr = Math.max(Math.abs(r.mean[0] - r.mu[0]), Math.abs(r.mean[1] - r.mu[1]));
+  check(`${label}: sample mean within 0.1 of μ`, meanErr < 0.1, `mean=(${r.mean.map((x) => x.toFixed(3)).join(', ')})`);
+  const target = [r.Sigma[0][0], r.Sigma[0][1], r.Sigma[1][1]];
+  const relErr = r.cov.map((c, i) => Math.abs(c - target[i]) / target[i]);
+  check(
+    `${label}: sample covariance within 10% of Σ (entrywise)`,
+    relErr.every((e) => e < 0.1),
+    `cov=(${r.cov.map((x) => x.toFixed(3)).join(', ')}) vs (1, 0.6, 2)`,
+  );
+}
+
+header('14. SG-MCMC step kernels on a 2-D Gaussian target');
+{
+  const hmc = gaussianTargetRun('SGHMC', 0.05, 1, 200_000, 101);
+  checkGaussian('sghmcStep (η = 0.05, c = 1)', hmc);
+  check(
+    'sghmcStep: momentum E[v²] in [0.9, 1.1] (M = I)',
+    hmc.v2 > 0.9 && hmc.v2 < 1.1,
+    `E[v²]=${hmc.v2.toFixed(4)}`,
+  );
+  const ld = gaussianTargetRun('SGLD', 0.05, 0, 200_000, 202);
+  checkGaussian('sgldStep (η = 0.05)', ld);
+}
+
+// -----------------------------------------------------------------------------
+// SGHMCBNNViz defaults on Two Moons (keep in sync with SGHMCBNNViz.tsx)
+// -----------------------------------------------------------------------------
+
+header('15. SGHMC at the SGHMCBNNViz defaults (η = 1e-3, c = 0.1, S = 200)');
+{
+  const vizArch: MLPArchSpec = { inputDim: 2, hiddenDims: [32, 32, 32], outputDim: 1, activation: 'relu' };
+  const vizTraining = (seed: number): TrainingSpec => ({ lr: 0.01, weightDecay: 1e-2, epochs: 80, optimizer: 'adam', seed });
+  const data = makeMoonsData(300, 0.2, 7);
+  const map = mlpTrain(vizArch, vizTraining(7), data);
+  const result = sgMCMCBNNTraining(vizArch, vizTraining(13), data, {
+    method: 'SGHMC',
+    eta: 1e-3,
+    batchSize: data.n,
+    burnIn: 80,
+    samples: 200,
+    thin: 1,
+    friction: 0.1,
+    warmStart: map.weights,
+    seed: 13,
+  });
+  let allFinite = true;
+  for (const w of result.weights) for (let i = 0; i < w.length; i++) if (!Number.isFinite(w[i])) allFinite = false;
+  check('all sampled weights finite', allFinite);
+  const v2 = result.momentumMeanSquare ?? NaN;
+  check('momentum E[v²] in [0.8, 1.2] (M = I)', v2 > 0.8 && v2 < 1.2, `E[v²]=${v2.toFixed(4)}`);
+  const tr = result.weightTrace;
+  const mean = tr.reduce((a, b) => a + b, 0) / tr.length;
+  const sd = Math.sqrt(tr.reduce((a, b) => a + (b - mean) ** 2, 0) / tr.length);
+  check('weight trace not frozen (sd > 1e-3)', sd > 1e-3, `sd=${sd.toExponential(2)}`);
+  // Sampled predictive probabilities must differ across draws somewhere on the data.
+  const layout = mlpLayout(vizArch);
+  const first = mlpForward(data.X, data.n, result.weights[0], vizArch, layout, null, null);
+  const last = mlpForward(data.X, data.n, result.weights[result.weights.length - 1], vizArch, layout, null, null);
+  let maxDiff = 0;
+  for (let i = 0; i < data.n; i++) maxDiff = Math.max(maxDiff, Math.abs(first[i] - last[i]));
+  check('first and last draws give different predictions (max |Δp| > 0.01)', maxDiff > 0.01, `max|Δp|=${maxDiff.toFixed(4)}`);
 }
 
 // -----------------------------------------------------------------------------

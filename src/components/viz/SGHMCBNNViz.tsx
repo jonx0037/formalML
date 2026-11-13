@@ -9,13 +9,20 @@
 // chains' mixing directly. The toggle runs an SGLD chain at the same η, from
 // the same MAP warm start, for the comparison and caches it. Both chains use
 // full-batch gradients (batchSize = n), unlike the mini-batch notebook run.
-// On this small network the two ACFs decay at comparable rates (at the
-// defaults, IAT ≈ 42 SGHMC vs ≈ 55 SGLD over 200 draws); the widget does not
-// claim a momentum speedup.
+// The SGHMC update is Algorithm 7.5's v ← (1 − ηc)v − η∇U + √(2ηc)ξ,
+// w ← w + ηv (M = I), with v₀ drawn from N(0, I). The defaults match the
+// §7.7 notebook (η = 1e-3, c = 0.1) except for the full batch. At the
+// defaults the momentum's E[v²] stays ≈ 1 (0.96–1.03 over chain seeds 13–17).
+// Equal η is not equal distance per step: SGHMC moves each weight by
+// η·v ≈ 1e-3, SGLD by a √η ≈ 0.03 Brownian kick, so over a 280-step window
+// SGLD's ACF falls faster (lag-20 ACF 0.65–0.71 SGHMC vs 0.17–0.69 SGLD over
+// the same seeds). The widget does not claim a momentum speedup.
 //
 // Interactive controls:
-//   - log₁₀ η slider (-7..-4, default ≈ -4.5 → η ≈ 3e-5).
-//   - friction c slider (0.01..0.3, default 0.05).
+//   - log₁₀ η slider (-4.5..-3, default -3 → η = 1e-3). The ceiling keeps the
+//     equal-η SGLD overlay finite (full-batch SGLD here first goes non-finite
+//     near η = 3e-3); the SGHMC chain alone stays finite to η ≈ 1e-2.
+//   - log₁₀ c friction slider (-1.5..1.3 → c ≈ 0.03..20, default -1 → c = 0.1).
 //   - Samples slider S.
 //   - Compare-with-SGLD toggle.
 //   - Resample chain button.
@@ -63,8 +70,9 @@ const TRAINING_BASE = (seed: number): TrainingSpec => ({
 });
 const N_TRAIN = 300;
 const TRAIN_NOISE = 0.2;
-const DEFAULT_LOG10_ETA = -4.5;
-const DEFAULT_FRICTION = 0.05;
+const DEFAULT_LOG10_ETA = -3;
+const DEFAULT_LOG10_FRICTION = -1;
+const DEFAULT_FRICTION = Math.pow(10, DEFAULT_LOG10_FRICTION);
 const DEFAULT_S = 200;
 const BURN_IN = 80;
 const SAMPLED_CONTOURS_PER_PANEL = 20;
@@ -75,7 +83,7 @@ const FIGURE_PATH = '/images/topics/bayesian-neural-networks/07_sghmc_two_moons.
 const ALT =
   'Three spatial panels and one diagnostic panel: (a) SGHMC predictive mean on Two Moons; (b) SGHMC predictive standard deviation; (c) sampled 0.5-probability decision boundaries from SGHMC chain in red; (d) single-component weight trace plus autocorrelation function with optional SGLD overlay for mixing comparison.';
 const CAPTION =
-  'Figure 7. SGHMC on Two Moons. (a, b) The predictive distribution is similar to SGLD’s at the same iteration budget. (c) Sampled decision boundaries. (d) Weight trace and autocorrelation function. Toggle the SGLD overlay to compare the two chains at the same η; both use full-batch gradients here. On this small network the two autocorrelation functions decay at comparable rates — momentum’s advantage appears along long, low-curvature directions, not uniformly.';
+  'Figure 7. SGHMC on Two Moons, with full-batch gradients, η = 10⁻³ and c = 0.1 by default. (a, b) Predictive mean and standard deviation over the post-burn-in draws. (c) Sampled decision boundaries. (d) Weight trace and autocorrelation function. Toggle the SGLD overlay to compare the two chains at the same η. Equal η is not equal distance: an SGHMC step moves a weight by η·v with v of order one, while an SGLD step adds a Brownian kick of size √η, so over this short window SGLD’s autocorrelation falls faster. At the defaults the traced weight moves almost in a straight line: along this low-curvature direction the run is too short for the momentum to turn around. Momentum’s advantage appears along long, low-curvature directions over longer runs, not uniformly.';
 const ARIA = 'Figure 7: Interactive SGHMC predictive on Two Moons';
 
 interface CachedMAP {
@@ -147,7 +155,8 @@ async function runSGLDForCompare(
   await yieldToBrowser();
   // Same η as the SGHMC chain, so the overlay is an equal-step comparison.
   // The full-batch SGLD chain stays finite across the whole slider range
-  // (η = 1e-7..1e-4, S = 50..500).
+  // (η = 10^-4.5..1e-3, S = 50..400; checked at η = 1e-3, S = 400 for chain
+  // seeds 44–51).
   const etaSGLD = eta;
   const result = sgMCMCBNNTraining(ARCH, TRAINING_BASE(chainSeed + 31), cachedMAP.data, {
     method: 'SGLD',
@@ -383,10 +392,10 @@ function Controls({
   isBlocked: boolean;
 }) {
   const [localEta, setLocalEta] = useState(logEta);
-  const [localFric, setLocalFric] = useState(friction);
+  const [localFric, setLocalFric] = useState(Math.log10(friction));
   const [localS, setLocalS] = useState(S);
   useEffect(() => setLocalEta(logEta), [logEta]);
-  useEffect(() => setLocalFric(friction), [friction]);
+  useEffect(() => setLocalFric(Math.log10(friction)), [friction]);
   useEffect(() => setLocalS(S), [S]);
   return (
     <div
@@ -404,8 +413,8 @@ function Controls({
         <span>log₁₀ η:</span>
         <input
           type="range"
-          min={-7}
-          max={-4}
+          min={-4.5}
+          max={-3}
           step={0.1}
           value={localEta}
           onChange={(e) => setLocalEta(Number(e.target.value))}
@@ -421,23 +430,23 @@ function Controls({
         </span>
       </label>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-        <span>c (friction):</span>
+        <span>log₁₀ c (friction):</span>
         <input
           type="range"
-          min={0.01}
-          max={0.3}
-          step={0.01}
+          min={-1.5}
+          max={1.3}
+          step={0.1}
           value={localFric}
           onChange={(e) => setLocalFric(Number(e.target.value))}
-          onMouseUp={(e) => onFrictionCommit(Number((e.target as HTMLInputElement).value))}
-          onTouchEnd={(e) => onFrictionCommit(Number((e.target as HTMLInputElement).value))}
-          onKeyUp={(e) => onFrictionCommit(Number((e.target as HTMLInputElement).value))}
+          onMouseUp={(e) => onFrictionCommit(Math.pow(10, Number((e.target as HTMLInputElement).value)))}
+          onTouchEnd={(e) => onFrictionCommit(Math.pow(10, Number((e.target as HTMLInputElement).value)))}
+          onKeyUp={(e) => onFrictionCommit(Math.pow(10, Number((e.target as HTMLInputElement).value)))}
           style={{ width: '110px' }}
           disabled={isBlocked}
-          aria-label="SGHMC friction c"
+          aria-label="SGHMC friction log10 c"
         />
-        <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: '2.5em' }}>
-          {localFric.toFixed(2)}
+        <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: '3.5em' }}>
+          c={Math.pow(10, localFric).toPrecision(2)}
         </span>
       </label>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
