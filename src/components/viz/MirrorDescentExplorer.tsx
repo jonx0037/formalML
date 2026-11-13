@@ -69,8 +69,9 @@ export default function MirrorDescentExplorer() {
       mirrorPath.push(xm.slice());
     }
 
-    // Projected GD — scale step to make PGD visually comparable to mirror descent
-    const PGD_STEP_SCALE = 0.1;
+    // Projected GD — scale step to make PGD visually comparable to mirror descent.
+    // At the default η = 2 this gives PGD step 0.3, matching the notebook figure.
+    const PGD_STEP_SCALE = 0.15;
     let xp = [...x0];
     const projPath = [xp.slice()];
     for (let k = 0; k < 40; k++) {

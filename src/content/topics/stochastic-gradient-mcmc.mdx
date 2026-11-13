@@ -519,7 +519,7 @@ $$
 \hat \nabla H_B(\theta) = -\nabla \log p(\theta) - \frac{N}{B} \sum_{i \in S} \nabla \log p(y_i \mid \theta). \qquad \qquad (6.2)
 $$
 
-The estimator is unbiased: $\mathbb{E}_S[\hat \nabla H_B(\theta)] = \nabla H(\theta)$. Its variance scales with $1/B$ — concretely, $\mathrm{Var}_S[\hat \nabla H_B(\theta)] = \frac{N(N-B)}{B} \cdot \mathrm{Var}_{i \sim \text{unif}}[\nabla \log p(y_i \mid \theta)]$, where the inner variance is taken over a uniform draw from the dataset.
+The estimator is unbiased: $\mathbb{E}_S[\hat \nabla H_B(\theta)] = \nabla H(\theta)$. Its variance scales with $1/B$ — concretely, for a batch drawn without replacement, $\mathrm{Var}_S[\hat \nabla H_B(\theta)] = \frac{N^2}{B} \cdot \frac{N-B}{N-1} \cdot \mathrm{Var}_{i \sim \text{unif}}[\nabla \log p(y_i \mid \theta)]$, where $\mathrm{Var}$ of a vector means the trace of its covariance matrix and the inner variance is taken over a uniform draw from the dataset. For $B \ll N$ the finite-population factor $(N-B)/(N-1)$ is close to $1$, leaving $N^2/B$ times the per-point variance.
 
 The SGLD update is now (6.1) with $\nabla H$ replaced by $\hat \nabla H_B$:
 
@@ -758,21 +758,21 @@ Each method trades a different resource for bias reduction. Step-size annealing 
 
 ### 9.2 Stochastic-gradient control variates: SVRG-LD
 
-SVRG-LD (Dubey et al. 2016) borrows the variance-reduced gradient idea from SVRG (Johnson and Zhang 2013) and applies it inside SGLD. Pick a *reference point* $\tilde\theta$ at which the full-data gradient $\tilde g = \nabla U(\tilde\theta)$ has been computed, and rewrite the mini-batch gradient at the current $\theta_n$ as
+SVRG-LD (Dubey et al. 2016) borrows the variance-reduced gradient idea from SVRG (Johnson and Zhang 2013) and applies it inside SGLD. Split the potential into its prior and per-observation pieces, $U_0(\theta) = -\log p(\theta)$ and $U_i(\theta) = -\log p(y_i \mid \theta)$, so that $U = U_0 + \sum_{i=1}^N U_i$ (this is §6's $H$). Pick a *reference point* $\tilde\theta$ at which the full-data gradient $\tilde g = \nabla U(\tilde\theta)$ has been computed, and estimate the gradient at the current $\theta_n$ by
 
 $$
-\hat \nabla U_B^{\,\text{SVRG}}(\theta_n) = \tilde g + \frac{N}{B} \sum_{i \in S} \bigl[\nabla \log p(y_i \mid \theta_n) - \nabla \log p(y_i \mid \tilde\theta)\bigr]. \qquad \qquad (9.1)
+\hat \nabla U_B^{\,\text{SVRG}}(\theta_n) = \tilde g + \nabla U_0(\theta_n) - \nabla U_0(\tilde\theta) + \frac{N}{B} \sum_{i \in S} \bigl[\nabla U_i(\theta_n) - \nabla U_i(\tilde\theta)\bigr]. \qquad \qquad (9.1)
 $$
 
-The estimator is unbiased — the bracketed difference has mean zero by linearity of the data-sum — and the variance is bounded by
+The estimator is unbiased. The mini-batch sum has expectation $\sum_{i=1}^N [\nabla U_i(\theta_n) - \nabla U_i(\tilde\theta)]$, so the expectation of (9.1) is $\nabla U(\tilde\theta) + \nabla U_0(\theta_n) - \nabla U_0(\tilde\theta) + \sum_i \nabla U_i(\theta_n) - \sum_i \nabla U_i(\tilde\theta) = \nabla U(\theta_n)$. The prior correction is deterministic, so it adds no variance, and the variance (the trace of the covariance over the batch draw) is bounded by
 
 $$
 \mathrm{Var}\!\bigl[\hat \nabla U_B^{\,\text{SVRG}}(\theta_n)\bigr] \leq \frac{L^2 N^2}{B}\, \|\theta_n - \tilde\theta\|^2,
 $$
 
-where $L$ is the Lipschitz constant of the per-data-point gradient $\nabla \log p(y_i \mid \cdot)$. The variance scales with the squared distance from the reference point, so when the chain is mixing in a small neighborhood of the mode and $\tilde\theta$ is updated periodically to track it, $V_B$ near the mode becomes orders of magnitude smaller than vanilla mini-batch. The amortized cost is $O(N/k + B)$ per step, where $k$ is the inner-loop length between reference updates; in practice $k = 50$–$200$ gives a 5–20× variance reduction at modest extra cost.
+where $L$ is the largest Lipschitz constant of the per-observation gradients $\nabla U_i$. The variance scales with the squared distance from the reference point, so when the chain is mixing in a small neighborhood of the mode and $\tilde\theta$ is updated periodically to track it, $V_B$ near the mode is much smaller than vanilla mini-batch's. How much smaller is problem-dependent. On the §6 posterior ($N = 100$, $B = 16$, $\eta = 5 \times 10^{-4}$) the average gradient variance along the chain drops by about $35\times$ — $38\times$, $35\times$, and $35\times$ at $k = 50$, $100$, and $200$ — nearly independent of $k$, because the chain decorrelates within about 20 steps and $\|\theta_n - \tilde\theta\|$ saturates early in each epoch. The amortized cost is $O(N/k + B)$ per step, where $k$ is the inner-loop length between reference updates.
 
-The trade is geometric: the variance bound is meaningful only when $\tilde\theta$ tracks $\theta_n$ closely, which means SVRG-LD shines on unimodal (or weakly multimodal) targets where the chain stays in one basin. On posteriors with widely-separated modes, $\|\theta_n - \tilde\theta\|$ stays large and the variance reduction degrades.
+The trade is geometric: the variance bound is meaningful only when $\tilde\theta$ tracks $\theta_n$ closely, which means SVRG-LD shines on unimodal (or weakly multimodal) targets where the chain stays in one basin. With a fixed reference point, a chain that hops to another mode keeps $\|\theta_n - \tilde\theta\|$ large for the rest of the run, and the variance reduction is lost. Periodic refresh confines the damage to the epoch after each hop: until the next refresh moves $\tilde\theta$ into the new basin, the differences $\nabla U_i(\theta_n) - \nabla U_i(\tilde\theta)$ span two basins, and the estimator can be noisier than vanilla mini-batch. On posteriors whose modes the chain hops between often, those epochs eat into the average gain.
 
 ### 9.3 Zero-variance control variates: ZV-SGLD
 
@@ -819,13 +819,13 @@ For typical Bayesian deep-learning posteriors at $N \in [10^4, 10^7]$, the cost-
 ~~~
 1. Vanilla SGLD/SGHMC  (baseline; bias O(η + 1/B))
 2. + ZV-SGLD            (free; 5-20× estimator variance reduction)
-3. + SVRG-LD            (modest cost; 5-20× gradient variance reduction)
+3. + SVRG-LD            (modest cost; problem-dependent gradient variance reduction, ≈35× on §6)
 4. + step-size schedule (asymptotic exactness; pays in mixing)
 5. Subsampling MH       (exact; 10-100× cost over (1))
 6. Firefly MC           (exact; 10-100× cost over (1))
 ~~~
 
-The viz below runs vanilla SGLD, SVRG-LD, and ZV-SGLD on the §6 BLR posterior and compares (a) running estimates of $\mathbb{E}_\pi[\theta_1]$ and (b) the per-chain estimator standard error vs iteration count. ZV-SGLD typically wins by a factor of $\sim 10\times$ at zero compute overhead; SVRG-LD wins by a factor of $\sim 5\times$ at $\sim 30\%$ extra compute.
+The viz below runs vanilla SGLD, SVRG-LD, and ZV-SGLD on the §6 BLR posterior and compares (a) running estimates of $\mathbb{E}_\pi[\theta_1]$ and (b) the per-chain estimator standard error vs iteration count. On this posterior the estimator-level gains are modest, and the reasons are instructive. In the companion notebook's run, SVRG-LD's long-run variance for $\theta_1$ is about $1.6\times$ below vanilla's — far less than its $35\times$ gradient-variance reduction, because the long-run variance is floored by the posterior's own spread: gradient noise inflates vanilla SGLD's stationary variance of $\theta_1$ by about $1.7\times$ ($0.0043$ against the exact posterior's $0.0026$), and removing that inflation is most of what SVRG-LD buys. It also costs about twice vanilla's per-step gradient work ($2B + N/k = 33$ per-point gradients against $B = 16$). ZV-SGLD needs care on this example. On a Gaussian posterior $\nabla U(\theta) = \Sigma_{\text{post}}^{-1}(\theta - \mu_{\text{post}})$, so $\theta_1$ is an exact linear function of the exact gradient; fitted on exact gradients, as in the notebook, the control variate cancels all of $\theta_1$'s variation and returns $\mu_{\text{post},1}$ itself. The notebook's printed ratio (about $2 \times 10^{28}$) is a floating-point artifact of a zero variance, not a measured speedup. The viz fits ZV-SGLD on the chain's mini-batch gradients instead, whose sampling noise swamps that linear relationship, and there it improves on vanilla by only about $1.1\times$. On non-Gaussian posteriors, or for observables that are not linear in $\nabla U$, the reduction falls between these extremes.
 
 <ControlVariateVarianceExplorer client:visible />
 

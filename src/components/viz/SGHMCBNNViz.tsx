@@ -5,9 +5,13 @@
 // Four panels — three spatial + one diagnostic — on a 60×60 Two Moons grid.
 //
 // Pedagogical hook: side-by-side comparison toggle overlays the §6 SGLD chain's
-// autocorrelation function on panel (d), so the reader can see SGHMC's faster
-// mixing (steeper ACF decay) directly. The toggle runs an SGLD chain at the
-// same η for the comparison and caches it.
+// autocorrelation function on panel (d), so the reader can compare the two
+// chains' mixing directly. The toggle runs an SGLD chain at the same η, from
+// the same MAP warm start, for the comparison and caches it. Both chains use
+// full-batch gradients (batchSize = n), unlike the mini-batch notebook run.
+// On this small network the two ACFs decay at comparable rates (at the
+// defaults, IAT ≈ 42 SGHMC vs ≈ 55 SGLD over 200 draws); the widget does not
+// claim a momentum speedup.
 //
 // Interactive controls:
 //   - log₁₀ η slider (-7..-4, default ≈ -4.5 → η ≈ 3e-5).
@@ -71,7 +75,7 @@ const FIGURE_PATH = '/images/topics/bayesian-neural-networks/07_sghmc_two_moons.
 const ALT =
   'Three spatial panels and one diagnostic panel: (a) SGHMC predictive mean on Two Moons; (b) SGHMC predictive standard deviation; (c) sampled 0.5-probability decision boundaries from SGHMC chain in red; (d) single-component weight trace plus autocorrelation function with optional SGLD overlay for mixing comparison.';
 const CAPTION =
-  'Figure 7. SGHMC and the momentum-induced mixing speedup. (a, b) The predictive distribution is similar to SGLD’s at the same iteration budget. (c) Sampled decision boundaries. (d) The autocorrelation function decays faster for SGHMC than SGLD — the visual signature of why momentum helps: each effective sample takes fewer iterations of wall-clock to produce. Toggle the SGLD overlay on (d) to see the side-by-side mixing comparison.';
+  'Figure 7. SGHMC on Two Moons. (a, b) The predictive distribution is similar to SGLD’s at the same iteration budget. (c) Sampled decision boundaries. (d) Weight trace and autocorrelation function. Toggle the SGLD overlay to compare the two chains at the same η; both use full-batch gradients here. On this small network the two autocorrelation functions decay at comparable rates — momentum’s advantage appears along long, low-curvature directions, not uniformly.';
 const ARIA = 'Figure 7: Interactive SGHMC predictive on Two Moons';
 
 interface CachedMAP {
@@ -141,10 +145,10 @@ async function runSGLDForCompare(
   chainSeed: number,
 ): Promise<CachedSGLDCompare> {
   await yieldToBrowser();
-  // SGLD step size scaling: SGLD's η has different units than SGHMC's. The
-  // SGLD chain converges with a much smaller η, so we use η_sgld = η/100 as
-  // a rule-of-thumb to put both chains in a working regime simultaneously.
-  const etaSGLD = eta / 100;
+  // Same η as the SGHMC chain, so the overlay is an equal-step comparison.
+  // The full-batch SGLD chain stays finite across the whole slider range
+  // (η = 1e-7..1e-4, S = 50..500).
+  const etaSGLD = eta;
   const result = sgMCMCBNNTraining(ARCH, TRAINING_BASE(chainSeed + 31), cachedMAP.data, {
     method: 'SGLD',
     eta: etaSGLD,
@@ -556,7 +560,7 @@ function Panels({
       <Panel
         title={
           compareSGLD
-            ? '(d) Trace + ACF (SGHMC red, SGLD purple — fewer iterations to mix)'
+            ? '(d) Trace + ACF (SGHMC red, SGLD purple; same η, full batch)'
             : '(d) Trace + autocorrelation'
         }
         width={diagW}
