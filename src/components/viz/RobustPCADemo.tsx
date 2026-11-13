@@ -1,8 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useResizeObserver } from './shared/useResizeObserver';
-import { getRobustPCAResults } from '../../data/robust-pca-data';
-import type { RobustPCAResult } from '../../data/robust-pca-data';
+import { getRobustPCAResult } from '../../data/robust-pca-data';
 
 // ─── Layout constants ───
 
@@ -18,17 +17,9 @@ const CORRUPTIONS = [0.05, 0.10, 0.15, 0.20, 0.30];
 
 // ─── Helpers ───
 
-function findNearest(results: RobustPCAResult[], rank: number, corruption: number): RobustPCAResult {
-  let best = results[0];
-  let bestDist = Infinity;
-  for (const r of results) {
-    const d = Math.abs(r.rank - rank) + Math.abs(r.corruption - corruption) * 20;
-    if (d < bestDist) {
-      bestDist = d;
-      best = r;
-    }
-  }
-  return best;
+/** Relative error as a percentage, or in scientific notation when it is at solver tolerance. */
+function formatRelErr(v: number): string {
+  return v < 1e-3 ? v.toExponential(1) : `${(v * 100).toFixed(1)}%`;
 }
 
 // ─── Component ───
@@ -51,9 +42,10 @@ export default function RobustPCADemo() {
     setCorruption(CORRUPTIONS[val] ?? 0.10);
   }, []);
 
-  // Find the nearest pre-computed result
-  const results = useMemo(() => getRobustPCAResults(), []);
-  const result = useMemo(() => findNearest(results, rank, corruption), [results, rank, corruption]);
+  const [view, setView] = useState<'recovered' | 'truth'>('recovered');
+
+  // Run the article's ADMM for this preset (memoized per preset; ≲ 50 ms per solve).
+  const result = useMemo(() => getRobustPCAResult(rank, corruption), [rank, corruption]);
 
   const isSmall = containerWidth > 0 && containerWidth < SM_BREAKPOINT;
 
@@ -70,9 +62,11 @@ export default function RobustPCADemo() {
 
   const sparseExtent = useMemo(() => {
     let maxAbs = 0;
-    for (const row of result.matrixS) {
-      for (const v of row) {
-        maxAbs = Math.max(maxAbs, Math.abs(v));
+    for (const M of [result.matrixSTrue, result.matrixSHat]) {
+      for (const row of M) {
+        for (const v of row) {
+          maxAbs = Math.max(maxAbs, Math.abs(v));
+        }
       }
     }
     return maxAbs || 1;
@@ -88,11 +82,18 @@ export default function RobustPCADemo() {
     const nCols = result.matrixX[0]?.length ?? 0;
     if (nRows === 0 || nCols === 0) return;
 
-    const matrices = [
-      { data: result.matrixX, label: 'X = L + S (observed)' },
-      { data: result.matrixL, label: 'L (low-rank)' },
-      { data: result.matrixS, label: 'S (sparse)' },
-    ];
+    const matrices =
+      view === 'recovered'
+        ? [
+            { data: result.matrixX, label: 'X = L + S (observed)' },
+            { data: result.matrixLHat, label: 'L̂ (recovered low-rank)' },
+            { data: result.matrixSHat, label: 'Ŝ (recovered sparse)' },
+          ]
+        : [
+            { data: result.matrixX, label: 'X = L + S (observed)' },
+            { data: result.matrixLTrue, label: 'L (true low-rank)' },
+            { data: result.matrixSTrue, label: 'S (true sparse)' },
+          ];
 
     const availW = containerWidth - 2 * MARGIN.left;
     const panelW = isSmall
@@ -146,7 +147,7 @@ export default function RobustPCADemo() {
         }
       }
     });
-  }, [result, containerWidth, isSmall, matrixExtent, sparseExtent]);
+  }, [result, view, containerWidth, isSmall, matrixExtent, sparseExtent]);
 
   // ─── Singular value spectrum rendering ───
   useEffect(() => {
@@ -155,15 +156,16 @@ export default function RobustPCADemo() {
     svg.selectAll('*').remove();
 
     const svX = result.singularValuesX;
-    const svL = result.singularValuesL;
-    const maxSV = Math.max(...svX, ...svL, 1);
+    const svL = result.singularValuesLHat;
+    const svTrue = result.singularValuesLTrue;
+    const maxSV = Math.max(...svX, ...svL, ...svTrue, 1);
     const n = Math.max(svX.length, svL.length);
 
     const w = Math.min(containerWidth - 2 * MARGIN.left, 500);
     const h = SV_HEIGHT;
 
     svg.attr('width', w + MARGIN.left + MARGIN.right)
-       .attr('height', h + MARGIN.top + MARGIN.bottom);
+       .attr('height', h + MARGIN.top + MARGIN.bottom + 12); // room for the axis label at h + 28
 
     const g = svg.append('g').attr('transform', `translate(${MARGIN.left}, ${MARGIN.top})`);
 
@@ -224,7 +226,19 @@ export default function RobustPCADemo() {
       .attr('r', 3)
       .attr('fill', '#6b7280');
 
-    // Plot singular values of L
+    // True singular values of L (hollow markers)
+    g.selectAll('.dot-true')
+      .data(svTrue)
+      .enter()
+      .append('circle')
+      .attr('cx', (_, i) => xScale(i + 1))
+      .attr('cy', (d) => yScale(d))
+      .attr('r', 5)
+      .attr('fill', 'none')
+      .attr('stroke', '#ef4444')
+      .attr('stroke-width', 1.25);
+
+    // Plot singular values of the recovered L̂
     g.append('path')
       .datum(svL)
       .attr('d', lineX)
@@ -262,15 +276,20 @@ export default function RobustPCADemo() {
 
     // Legend
     const legendY = -8;
-    g.append('line').attr('x1', w - 160).attr('y1', legendY).attr('x2', w - 140).attr('y2', legendY)
+    g.append('line').attr('x1', w - 250).attr('y1', legendY).attr('x2', w - 230).attr('y2', legendY)
       .attr('stroke', '#6b7280').attr('stroke-width', 2).attr('stroke-dasharray', '4,3');
-    g.append('text').attr('x', w - 136).attr('y', legendY + 3).attr('font-size', 9)
+    g.append('text').attr('x', w - 226).attr('y', legendY + 3).attr('font-size', 9)
       .style('fill', 'var(--color-text)').text('X (corrupted)');
 
-    g.append('line').attr('x1', w - 80).attr('y1', legendY).attr('x2', w - 60).attr('y2', legendY)
+    g.append('line').attr('x1', w - 160).attr('y1', legendY).attr('x2', w - 140).attr('y2', legendY)
       .attr('stroke', '#3b82f6').attr('stroke-width', 2);
-    g.append('text').attr('x', w - 56).attr('y', legendY + 3).attr('font-size', 9)
-      .style('fill', 'var(--color-text)').text('L (recovered)');
+    g.append('text').attr('x', w - 136).attr('y', legendY + 3).attr('font-size', 9)
+      .style('fill', 'var(--color-text)').text('L̂ (ADMM)');
+
+    g.append('circle').attr('cx', w - 70).attr('cy', legendY).attr('r', 4)
+      .attr('fill', 'none').attr('stroke', '#ef4444').attr('stroke-width', 1.25);
+    g.append('text').attr('x', w - 62).attr('y', legendY + 3).attr('font-size', 9)
+      .style('fill', 'var(--color-text)').text('L (true)');
 
   }, [result, containerWidth]);
 
@@ -325,17 +344,38 @@ export default function RobustPCADemo() {
         </div>
       </div>
 
+      {/* Panel toggle */}
+      <div className="flex gap-2 text-xs" style={{ fontFamily: 'var(--font-sans)' }}>
+        {(['recovered', 'truth'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            aria-pressed={view === v}
+            className="rounded-md px-2 py-1"
+            style={{
+              border: '1px solid var(--color-border)',
+              background: view === v ? 'var(--color-surface)' : 'transparent',
+              fontWeight: view === v ? 600 : 400,
+              color: 'var(--color-text)',
+            }}
+          >
+            {v === 'recovered' ? 'ADMM output (L̂, Ŝ)' : 'Ground truth (L, S)'}
+          </button>
+        ))}
+      </div>
+
       {/* Heatmaps */}
       <div className="overflow-x-auto">
-        <svg role="img" aria-label="Robust pcademo visualization (panel 1 of 2)" ref={heatmapRef} />
+        <svg role="img" aria-label="Robust PCA heatmaps: observed matrix and its low-rank and sparse parts" ref={heatmapRef} />
       </div>
 
       {/* Singular value spectrum */}
       <div className="overflow-x-auto">
-        <svg role="img" aria-label="Robust pcademo visualization (panel 2 of 2)" ref={spectrumRef} />
+        <svg role="img" aria-label="Singular values of X, the ADMM estimate L-hat, and the true L" ref={spectrumRef} />
       </div>
 
-      {/* Readout */}
+      {/* Readout — every number below comes from the ADMM solve above */}
       <div
         className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs"
         style={{ fontFamily: 'var(--font-sans)' }}
@@ -344,7 +384,7 @@ export default function RobustPCADemo() {
           className="rounded-md px-3 py-2"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         >
-          <div className="opacity-50 mb-0.5">Recovered rank</div>
+          <div className="opacity-50 mb-0.5">Recovered rank of L̂</div>
           <div className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
             {result.recoveredRank}
             <span className="opacity-40 font-normal"> / {rank} true</span>
@@ -355,10 +395,10 @@ export default function RobustPCADemo() {
           className="rounded-md px-3 py-2"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         >
-          <div className="opacity-50 mb-0.5">Nonzero in S</div>
+          <div className="opacity-50 mb-0.5">Support of Ŝ</div>
           <div className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
-            {result.nnzS}
-            <span className="opacity-40 font-normal"> / {30 * 25} entries</span>
+            {result.nnzSHat}
+            <span className="opacity-40 font-normal"> nonzero · {result.supportMatched}/{result.nnzSTrue} spikes found</span>
           </div>
         </div>
 
@@ -366,25 +406,35 @@ export default function RobustPCADemo() {
           className="rounded-md px-3 py-2"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         >
-          <div className="opacity-50 mb-0.5">Corruption</div>
-          <div className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
-            {(result.corruption * 100).toFixed(0)}%
-          </div>
-        </div>
-
-        <div
-          className="rounded-md px-3 py-2"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
-        >
-          <div className="opacity-50 mb-0.5">Relative error</div>
+          <div className="opacity-50 mb-0.5">‖L̂ − L‖<sub>F</sub> / ‖L‖<sub>F</sub></div>
           <div
             className="text-sm font-semibold"
-            style={{ color: result.relativeError < 0.1 ? '#16a34a' : result.relativeError < 0.3 ? '#ca8a04' : '#dc2626' }}
+            style={{ color: result.relativeError < 1e-3 ? '#16a34a' : result.relativeError < 0.05 ? '#ca8a04' : '#dc2626' }}
           >
-            {(result.relativeError * 100).toFixed(1)}%
+            {formatRelErr(result.relativeError)}
+          </div>
+        </div>
+
+        <div
+          className="rounded-md px-3 py-2"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+        >
+          <div className="opacity-50 mb-0.5">ADMM iterations</div>
+          <div className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
+            {result.iterations}
+            <span className="opacity-40 font-normal">
+              {result.converged ? ' · converged (tol 1e-7)' : ' · hit max_iter'}
+            </span>
           </div>
         </div>
       </div>
+
+      <p className="text-[11px] opacity-60" style={{ fontFamily: 'var(--font-sans)' }}>
+        Each preset draws one random {result.rows}×{result.cols} instance (L = UVᵀ with Gaussian factors, spikes
+        ±U(5, 15)) and solves it in your browser with the ADMM below: λ = 1/√max(m, n) ={' '}
+        {result.lambda.toFixed(3)}, μ = mn/(4‖X‖₁) = {result.mu.toFixed(3)}. Near the recovery boundary the
+        outcome varies from draw to draw.
+      </p>
     </div>
   );
 }
