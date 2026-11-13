@@ -916,7 +916,7 @@ $$
 \lambda_{\max} = \left\| \frac{\mathbf{X}^\top \mathbf{y}}{n} \right\|_\infty = \max_j \left| \frac{\mathbf{X}_j^\top \mathbf{y}}{n} \right|.
 $$
 
-For $\lambda \ge \lambda_{\max}$, the lasso solution is identically zero. For $\lambda$ just below $\lambda_{\max}$, exactly one coordinate becomes active (the one achieving the maximum) — this is the start of the lasso path described next. On DGP-1 with seed 42, $\lambda_{\max} \approx 1.04$, and $\lambda_{\text{CV}} \approx 0.06$ sits two orders of magnitude smaller — well into the path's interesting region.
+For $\lambda \ge \lambda_{\max}$, the lasso solution is identically zero. For $\lambda$ just below $\lambda_{\max}$, exactly one coordinate becomes active (the one achieving the maximum) — this is the start of the lasso path described next. On DGP-1 with seed 42, $\lambda_{\max} \approx 3.43$, and $\lambda_{\text{CV}} \approx 0.056$ sits about 60 times smaller ($\lambda_{\text{CV}} / \lambda_{\max} \approx 0.016$) — well into the path's interesting region.
 
 The interactive viz below shows empirical bias², variance, and total MSE on a held-out test set as a function of $\lambda$, computed by Monte Carlo over $B$ replicate draws of DGP-1. Bias² grows monotonically with $\lambda$ (constant shrinkage hurts more when applied harder); variance decays monotonically with $\lambda$ (heavier penalization shrinks the active set); their sum traces a U-curve with minimum near $\lambda_{\text{CV}}$. The minimum of the empirical U-curve coincides — within MC noise — with the value of $\lambda$ that `LassoCV` selects automatically (§7).
 
@@ -1382,7 +1382,7 @@ Since $\mathrm{CV}(\lambda)$ is roughly U-shaped in $\lambda$, $\lambda_{1\mathr
 
 **The motivation.** The CV minimizer $\lambda_{\min}$ is the unbiased "MSE-optimal" choice but tends to be unstable across resampled training data — a small perturbation in the training set can shift $\lambda_{\min}$ by a factor of 2 in either direction. The 1-SE rule trades this instability for a small, controlled increase in prediction error: the resulting model has CV-MSE within one standard error of optimal (i.e., not statistically distinguishable from $\lambda_{\min}$'s prediction performance) but is more parsimonious and reproducible.
 
-In the lasso context, $\lambda_{1\mathrm{SE}}$ typically gives an active set 10–30% smaller than $\lambda_{\min}$, with test prediction error 5–15% larger. For interpretability-driven applications (variable selection, communication of results, downstream modeling), the 1-SE rule is the standard recommendation.
+In the lasso context, $\lambda_{1\mathrm{SE}}$ can be much sparser than $\lambda_{\min}$ at a small cost in CV error: on DGP-1 (Figure 7.1), $\lambda_{\min} \approx 0.056$ keeps 51 features and $\lambda_{1\mathrm{SE}} \approx 0.105$ keeps 17 — all 10 true features in both — with CV error about 7% higher (0.367 versus 0.344) and test prediction error essentially unchanged (§7.4). For interpretability-driven applications (variable selection, communication of results, downstream modeling), the 1-SE rule is the standard recommendation.
 
 **A practical caveat.** The 1-SE rule is a heuristic, not a theorem. Its bias-variance trade-off is empirically reasonable but doesn't have a sharp theoretical justification — it doesn't, for instance, give support consistency under weaker conditions than CV-min. If you need provable support recovery, use BIC (§7.3) or stability selection (mentioned in §6.4). If you need provable prediction risk, the §5 oracle inequality is the right reference and CV-min is the right selector.
 
@@ -1424,8 +1424,8 @@ The four selectors — `LassoCV` $\lambda_{\min}$, `LassoCV` $\lambda_{1\mathrm{
 
 | Selector | Selected $\lambda$ | Active set size $|\hat A_\lambda|$ | Test MSE |
 |---|---|---|---|
-| `LassoCV` ($\lambda_{\min}$) | smallest | largest (~12–18, includes some false positives) | smallest |
-| `LassoCV` ($\lambda_{1\mathrm{SE}}$) | medium | medium (~10–13, close to true $s = 10$) | small (5–15% above $\lambda_{\min}$) |
+| `LassoCV` ($\lambda_{\min}$) | smallest | largest (51 on this draw: all 10 true coords plus 41 false positives) | small |
+| `LassoCV` ($\lambda_{1\mathrm{SE}}$) | medium | medium (17 on this draw: all 10 true coords plus 7 false positives) | small (on this draw, equal to $\lambda_{\min}$'s within 1%) |
 | `LassoLarsIC` (AIC) | smallish | medium-to-large | small (close to $\lambda_{\min}$) |
 | `LassoLarsIC` (BIC) | largest | smallest (~8–11, may miss weak signal coords) | medium (10–25% above $\lambda_{\min}$) |
 

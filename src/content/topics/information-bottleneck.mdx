@@ -718,17 +718,17 @@ Theorems 3 and 4 give stationary-point convergence, not global-minimum convergen
 
 **Genuinely distinct local minima.** Beyond labeling, the IB landscape can have multiple genuinely distinct stationary points at different $\mathcal{F}_\beta$ values. Random initialization picks between basins essentially at random.
 
-The numerical experiment in Figure 3 illustrates this: five random initializations at $\beta = 5$, $k = 4$ on the eight-document toy land at slightly different $\mathcal{F}_\beta$ values — some runs find the optimum, others get stuck.
+The eight-document toy is too small to trap the iteration. In Figure 3, five random initializations at $\beta = 5$, $k = 4$ all reach the same value $\mathcal{F}_\beta = (1 - \beta) \ln 2 = -4 \ln 2 \approx -2.7726$ nats, the global optimum, though each lands on a different encoder: the optimum is a continuum of encoders that split each topic between clusters in different proportions (§5.2). The only other stationary point the runs meet is the trivial saddle near $\mathcal{F}_\beta = 0$, which every run leaves within a few iterations. Basins at different $\mathcal{F}_\beta$ values are a hazard on larger problems, which is what §4.4's remedies are for.
 
 <Figure
   src="/images/topics/information-bottleneck/03_ib_convergence_traces.png"
   alt="Convergence traces of F_β from five random initializations on the 8-document toy at β = 5"
-  caption="Left: 𝓕_β traced over 60 iterations from 5 random initializations on the eight-document toy at β = 5, k = 4. Every trace decreases monotonically (Theorem 3); four runs converge to the global optimum 𝓕_β* = −4 ln 2 ≈ −2.7726 nats, one run gets stuck in a suboptimal local minimum. Right: per-step decrement 𝓕_β(p^(n−1)) − 𝓕_β(p^(n)) on the same runs, on a symlog axis. Each value is ≥ 0 (Theorem 3); the symlog axis shows the magnitude collapsing toward machine precision as the iteration converges."
+  caption="Left: 𝓕_β traced over 60 iterations from 5 random initializations on the eight-document toy at β = 5, k = 4. Every trace decreases monotonically (Theorem 3), and all five reach the global optimum 𝓕_β* = −4 ln 2 ≈ −2.7726 nats within about five iterations. Right: per-step decrement 𝓕_β(p^(n−1)) − 𝓕_β(p^(n)) on the same runs, on a symlog axis. Each value is ≥ 0 (Theorem 3); the symlog axis shows the decrement falling from order 1 to exactly zero in double precision by iteration 6 or 7."
 />
 
 ### 4.4 The non-convexity hazard and annealing in β
 
-Two practical remedies for the non-convexity exposed in Figure 3.
+Two practical remedies for the non-convexity described in §4.3.
 
 **Random restarts.** At each $\beta$ of interest, run the iteration from $M$ random initializations and keep the lowest $\mathcal{F}_\beta$ at convergence. Embarrassingly parallel. The failure mode is high $M$ — when the landscape has many basins, $M$ must scale with the number of basins.
 
@@ -760,11 +760,11 @@ From §5.3 onward: anneal forward across $\beta$ as the primary strategy, with r
 
 ### 5.2 A worked example on the eight-document toy
 
-Before sweeping $\beta$, exhibit the algorithm on the running eight-document toy from §1.2 at fixed $\beta = 5$. Since $\beta_c = 1$ for this toy, $\beta = 5$ sits well past the first transition. With $k = 4$ clusters and random-softmax initialization at $\sigma = 0.5$, the iteration converges in roughly 17 iterations.
+Before sweeping $\beta$, exhibit the algorithm on the running eight-document toy from §1.2 at fixed $\beta = 5$. Since $\beta_c = 1$ for this toy, $\beta = 5$ sits well past the first transition. With $k = 4$ clusters and random-softmax initialization at $\sigma = 0.5$, the iteration converges in 7 iterations (the notebook stops once the per-step decrement falls below $10^{-12}$).
 
-The trajectory has a characteristic shape: in the first few iterations, $\mathcal{F}_\beta$ drops sharply as the encoder finds the topic-aligned partition; over the next dozen iterations, $\mathcal{F}_\beta$ creeps toward its limit while the two "spare" clusters merge with the two topic clusters. By iteration 30, the per-step decrement is at machine precision.
+The trajectory is short: over the first three or four iterations $\mathcal{F}_\beta$ drops sharply from near $0$ (the trivial encoder's value) as the encoder finds the topic-aligned partition, and by iteration 6 or 7 the per-step decrement is exactly zero in double precision (Figure 3, right). There is no slow tail in which spare clusters merge away.
 
-The converged encoder uses only $\approx 2$ effective clusters (out of the 4 allocated), with the two spare clusters bleeding into the active ones. The converged $(I(X;T), I(T;Y))$ equals $(\ln 2, \ln 2) \approx (0.693, 0.693)$ nats — exactly the optimum achieved by the $T = Y$ encoder. The optimum $\mathcal{F}_\beta^* = (1 - \beta) \ln 2 = -4 \ln 2 \approx -2.7726$ nats matches the value found by four of the five seeds in Figure 3 (one seed gets stuck in a suboptimal local minimum that uses one cluster's worth of effective capacity inefficiently).
+All 4 allocated clusters stay in use, with $p(t) \approx (0.325, 0.355, 0.146, 0.175)$. But every topic-0 document is split the same way between two clusters (about $0.71 / 0.29$), every topic-1 document between the other two (about $0.65 / 0.35$), and the two clusters that share a topic make identical predictions $p(y \mid t)$. So $T$ carries exactly one bit about $X$: $I(X;T) = \ln 2$, and $2^{I(X;T)} = 2$ clusters' worth of information, even though the perplexity $K_{\mathrm{eff}}$ of (5.2) is about $3.7$. The converged $(I(X;T), I(T;Y))$ equals $(\ln 2, \ln 2) \approx (0.693, 0.693)$ nats — the same point as the $T = Y$ encoder, since splitting a topic cluster into two copies with identical $p(y \mid t)$ changes neither term. The optimum $\mathcal{F}_\beta^* = (1 - \beta) \ln 2 = -4 \ln 2 \approx -2.7726$ nats matches the value reached by all five seeds in Figure 3.
 
 ### 5.3 Tracing the IB curve by sweeping β
 
@@ -1443,7 +1443,7 @@ The discrete IB algorithm assumed access to the joint $p(x, y)$. For continuous 
 
 **3. IB requires either the joint $p(x, y)$ or a viable variational bound.** For finite high-dim samples, neither is unproblematic. VIB's bounds are loose whenever the encoder's induced marginal cannot match the prior. In the linear-Gaussian sandbox (§8.4) the encoder can rescale $T$ to match it, so the bound is tight at the optimum; a more restricted encoder family need not have that freedom, and then the prior pulls the encoder away from the true IB optimum.
 
-**4. Non-uniqueness.** Labeling degeneracy and genuinely distinct basins. Annealing helps; doesn't eliminate. See Figure 3 for an explicit example on the 8-document toy.
+**4. Non-uniqueness.** Labeling degeneracy and genuinely distinct basins. Annealing helps; doesn't eliminate. Even on the 8-document toy the optimum is not unique: Figure 3's five seeds reach the same $\mathcal{F}_\beta$ through different encoders (§5.2).
 
 **5. The compression-prediction framing isn't always the right one.** Transfer learning across many tasks, pure self-supervised learning, learned-loss problems all push outside strict IB. Sometimes multi-constraint IB (§10) is the answer; sometimes a different framework.
 

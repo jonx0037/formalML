@@ -620,21 +620,27 @@ export function chowLiuTree(X: ArrayLike<number>, n: number, d: number, alpha: n
       miMatrix[j * d + i] = mi;
     }
   }
-  // Prim's algorithm to greedily build the maximum-spanning-tree.
+  return { edges: primMaxSpanningTree(miMatrix, d), miMatrix };
+}
+
+/** Maximum-weight spanning tree by Prim's algorithm, rooted at feature 0.
+ *  w is a symmetric d×d weight matrix (row-major). Returns d-1 edges as
+ *  [parent, child] pairs in the order Prim adds them. */
+function primMaxSpanningTree(w: Float64Array, d: number): Array<[number, number]> {
   const inTree = new Uint8Array(d);
   inTree[0] = 1;
   const edges: Array<[number, number]> = [];
   while (edges.length < d - 1) {
-    let bestMi = -Infinity;
+    let bestW = -Infinity;
     let bestI = -1;
     let bestJ = -1;
     for (let i = 0; i < d; i++) {
       if (!inTree[i]) continue;
       for (let j = 0; j < d; j++) {
         if (inTree[j]) continue;
-        const w = miMatrix[i * d + j];
-        if (w > bestMi) {
-          bestMi = w;
+        const wij = w[i * d + j];
+        if (wij > bestW) {
+          bestW = wij;
           bestI = i;
           bestJ = j;
         }
@@ -644,7 +650,48 @@ export function chowLiuTree(X: ArrayLike<number>, n: number, d: number, alpha: n
     edges.push([bestI, bestJ]);
     inTree[bestJ] = 1;
   }
-  return { edges, miMatrix };
+  return edges;
+}
+
+/** Class-conditional Chow–Liu tree, the structure step of TAN (Friedman, Geiger &
+ *  Goldszmidt 1997): the maximum spanning tree under the conditional mutual
+ *  information I(X_i; X_j | Y) = Σ_k P(Y = k) · I(X_i; X_j | Y = k), estimated with
+ *  Laplace-smoothed per-class MI. X is shape (n, d); y holds the n class labels.
+ *  miMatrix holds the conditional MIs. */
+export function conditionalChowLiuTree(
+  X: ArrayLike<number>,
+  y: ArrayLike<number>,
+  n: number,
+  d: number,
+  alpha: number = 1.0,
+): ChowLiuResult {
+  const seen = new Set<number>();
+  for (let i = 0; i < n; i++) seen.add(y[i]);
+  const classes = Array.from(seen).sort((a, b) => a - b);
+  const classMembers: Array<number[]> = classes.map((ck) => {
+    const members: number[] = [];
+    for (let i = 0; i < n; i++) if (y[i] === ck) members.push(i);
+    return members;
+  });
+  const miMatrix = new Float64Array(d * d);
+  for (let a = 0; a < d; a++) {
+    for (let b = a + 1; b < d; b++) {
+      let mi = 0;
+      for (const idxs of classMembers) {
+        if (idxs.length === 0) continue;
+        const xa = new Float64Array(idxs.length);
+        const xb = new Float64Array(idxs.length);
+        for (let t = 0; t < idxs.length; t++) {
+          xa[t] = X[idxs[t] * d + a];
+          xb[t] = X[idxs[t] * d + b];
+        }
+        mi += (idxs.length / n) * mutualInformationDiscreteSmoothed(xa, xb, alpha);
+      }
+      miMatrix[a * d + b] = mi;
+      miMatrix[b * d + a] = mi;
+    }
+  }
+  return { edges: primMaxSpanningTree(miMatrix, d), miMatrix };
 }
 
 // =============================================================================
@@ -702,7 +749,6 @@ export function tanFit(
     return m;
   });
 
-  // Compute conditional-MI(X_i, X_j | Y) by averaging per-class MI weighted by class prior.
   const classMembers: Array<number[]> = [];
   for (let ki = 0; ki < K; ki++) {
     const members: number[] = [];
@@ -710,50 +756,10 @@ export function tanFit(
     for (let i = 0; i < n; i++) if (y[i] === ck) members.push(i);
     classMembers.push(members);
   }
-  const condMi = new Float64Array(d * d);
-  for (let a = 0; a < d; a++) {
-    for (let b = a + 1; b < d; b++) {
-      let mi = 0;
-      for (let ki = 0; ki < K; ki++) {
-        const idxs = classMembers[ki];
-        if (idxs.length === 0) continue;
-        const xa = new Float64Array(idxs.length);
-        const xb = new Float64Array(idxs.length);
-        for (let t = 0; t < idxs.length; t++) {
-          xa[t] = X[idxs[t] * d + a];
-          xb[t] = X[idxs[t] * d + b];
-        }
-        mi += (idxs.length / n) * mutualInformationDiscreteSmoothed(xa, xb, alpha);
-      }
-      condMi[a * d + b] = mi;
-      condMi[b * d + a] = mi;
-    }
-  }
 
-  // Maximum-spanning-tree on the conditional-MI graph (Prim). Root = 0.
-  const inTree = new Uint8Array(d);
-  inTree[0] = 1;
+  // Structure: maximum spanning tree on the conditional-MI graph (Prim, root = 0).
   const parents = new Int32Array(d).fill(-1);
-  for (let step = 0; step < d - 1; step++) {
-    let best = -Infinity;
-    let bi = -1;
-    let bj = -1;
-    for (let i = 0; i < d; i++) {
-      if (!inTree[i]) continue;
-      for (let j = 0; j < d; j++) {
-        if (inTree[j]) continue;
-        const w = condMi[i * d + j];
-        if (w > best) {
-          best = w;
-          bi = i;
-          bj = j;
-        }
-      }
-    }
-    if (bj < 0) break;
-    parents[bj] = bi;
-    inTree[bj] = 1;
-  }
+  for (const [par, child] of conditionalChowLiuTree(X, y, n, d, alpha).edges) parents[child] = par;
 
   // Layout offsets for the flat parameter arrays.
   const marginalOffsets = new Int32Array(K * d + 1);

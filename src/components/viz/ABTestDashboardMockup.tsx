@@ -7,8 +7,9 @@ import { mulberry32, gaussianFrom, gaussianMixtureHW, zHalf } from './shared/alw
 // -----------------------------------------------------------------------------
 // Viz 11.1 — Stylized A/B-test dashboard mockup.
 //
-// Central panel: running lift estimate with anytime-valid CS (PrPl-EB-like
-// shading) over time, plus fixed-n band overlay for contrast.
+// Central panel: running lift estimate with anytime-valid CS (Robbins
+// Gaussian-mixture CS, eq. 4.4, via gaussianMixtureHW) over time, plus fixed-n
+// band overlay for contrast.
 // Right column: current n, decision indicator, look counter.
 // -----------------------------------------------------------------------------
 
@@ -116,7 +117,7 @@ export default function ABTestDashboardMockup() {
         g.append('text').attr('x', xScale(currentN) + 6).attr('y', 14).style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', COLOR_AVI).text(`SHIP at n=${currentN}`);
       }
 
-      g.append('text').attr('x', innerW - 4).attr('y', 14).attr('text-anchor', 'end').style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', COLOR_AVI).text('PrPl-EB-like CS (anytime-valid)');
+      g.append('text').attr('x', innerW - 4).attr('y', 14).attr('text-anchor', 'end').style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', COLOR_AVI).text('Gaussian-mixture CS (anytime-valid)');
       g.append('text').attr('x', innerW - 4).attr('y', 28).attr('text-anchor', 'end').style('font-family', 'var(--font-mono)').style('font-size', '11px').style('fill', COLOR_FIXED).text('fixed-n band (DASHED — NOT valid under peeking)');
 
       g.append('text').attr('x', innerW / 2).attr('y', innerH + 30).attr('text-anchor', 'middle').style('fill', 'var(--color-text-secondary)').style('font-family', 'var(--font-sans)').style('font-size', '11px').text(`users (n) — true lift = ${(TRUE_LIFT * 100).toFixed(1)}%`);
