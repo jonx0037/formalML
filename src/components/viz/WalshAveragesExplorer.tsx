@@ -33,7 +33,7 @@ import { gaussianSampler, mulberry32 } from './shared/nonparametric-ml';
 //   95% HL CI      = [0.200, 4.700]   (exact Theorem 10, w_α = 3; the
 //                                      notebook's normal-approx w = 4 gave
 //                                      [0.300, 4.450])
-//   #Walsh > HL    = 18 = M/2 = n(n+1)/4   (Theorem 9 centring)
+//   #Walsh > HL    = 18 = M/2 = n(n+1)/4   (Theorem 9 centering)
 //
 // =============================================================================
 
