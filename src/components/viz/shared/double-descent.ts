@@ -396,7 +396,16 @@ export function mpAtomZero(gamma: number): number {
 
 /**
  * Sample the bulk MP density on a grid for plotting. Returns parallel arrays
- * (lambda, f). The grid is uniform in [λ₋, λ₊]. Includes the support endpoints.
+ * (lambda, f). The grid uses cosine (Chebyshev-style) spacing on [λ₋, λ₊], so
+ * points cluster near both support edges where the density changes fastest:
+ * the √ edge behavior at λ₊ (and at λ₋ > 0), and the λ^{-1/2} divergence at
+ * λ₋ = 0 when γ = 1.
+ *
+ * When λ₋ > 0 the grid includes both endpoints (where f = 0). When λ₋ = 0
+ * (γ = 1) the density diverges as λ → 0⁺ (f₁ ~ 1/(π√λ)), so λ = 0 itself is
+ * excluded: the first point sits half a grid step inside the support instead
+ * of at the origin, where mpDensity would return 0 and draw a false drop.
+ * Callers should cap the plotted y-range; the first sample can be large.
  */
 export function mpDensityGrid(gamma: number, nPoints: number): { lambda: Float64Array; f: Float64Array } {
   const { lamMinus, lamPlus } = mpSupport(gamma);
@@ -404,12 +413,13 @@ export function mpDensityGrid(gamma: number, nPoints: number): { lambda: Float64
   const f = new Float64Array(nPoints);
   if (nPoints <= 1) {
     lambda[0] = lamMinus;
-    f[0] = 0;
+    f[0] = mpDensity(lamMinus, gamma);
     return { lambda, f };
   }
+  const singularAtZero = lamMinus <= 1e-12;
   for (let i = 0; i < nPoints; i++) {
-    const t = i / (nPoints - 1);
-    const lam = lamMinus + t * (lamPlus - lamMinus);
+    const t = i === 0 && singularAtZero ? 0.5 / (nPoints - 1) : i / (nPoints - 1);
+    const lam = lamMinus + ((1 - Math.cos(Math.PI * t)) / 2) * (lamPlus - lamMinus);
     lambda[i] = lam;
     f[i] = mpDensity(lam, gamma);
   }

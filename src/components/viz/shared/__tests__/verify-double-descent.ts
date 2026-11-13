@@ -32,6 +32,7 @@ import {
   matVec,
   mpAtomZero,
   mpDensity,
+  mpDensityGrid,
   mpSupport,
   mulberry32,
   randomFeatureMap,
@@ -91,6 +92,34 @@ console.log('--- §5 Marchenko–Pastur (closed form) ---');
   // Atomic mass at λ=0 for γ=2 is 1 − 1/2 = 0.5.
   ok('§5 MP atom γ=2', mpAtomZero(2) === 0.5, `atom=${mpAtomZero(2)} (expect 0.5)`);
   ok('§5 MP atom γ=0.5', mpAtomZero(0.5) === 0, `atom=${mpAtomZero(0.5)} (expect 0)`);
+}
+{
+  // B36-ML-1: at γ = 1 the plotting grid must stay strictly inside the support
+  // (λ > 0) and keep rising toward the origin, f₁ ~ 1/(π√λ) — no false drop to 0.
+  const { lambda, f } = mpDensityGrid(1, 200);
+  const first = lambda[0];
+  const expectFirst = Math.sqrt(4 - first) / (2 * Math.PI * Math.sqrt(first));
+  ok(
+    '§5 MP grid γ=1 starts inside support and diverges toward 0',
+    first > 0 && f[0] > f[1] && f[1] > f[2] && approxRel(f[0], expectFirst, 1e-12) && f[0] > 10,
+    `λ[0]=${first.toExponential(3)}, f[0]=${f[0].toFixed(3)}, f[1]=${f[1].toFixed(3)}`,
+  );
+  // Trapezoid mass on the grid: ≈ 1 for γ ≤ 1 (bulk is the whole measure),
+  // ≈ 1/γ for γ > 1 (the rest is the atom at 0). γ = 1 misses ~2√λ[0]/π near 0.
+  const mass = (g: number) => {
+    const grid = mpDensityGrid(g, 200);
+    let m = 0;
+    for (let i = 1; i < grid.lambda.length; i++) {
+      m += 0.5 * (grid.f[i] + grid.f[i - 1]) * (grid.lambda[i] - grid.lambda[i - 1]);
+    }
+    return m;
+  };
+  const m05 = mass(0.5), m1 = mass(1), m2 = mass(2);
+  ok(
+    '§5 MP grid mass γ ∈ {0.5, 1, 2}',
+    Math.abs(m05 - 1) < 0.01 && Math.abs(m1 - 1) < 0.03 && Math.abs(m2 - 0.5) < 0.01,
+    `mass γ=0.5: ${m05.toFixed(4)} (expect 1), γ=1: ${m1.toFixed(4)} (expect ≈1), γ=2: ${m2.toFixed(4)} (expect 0.5)`,
+  );
 }
 
 // -----------------------------------------------------------------------------
