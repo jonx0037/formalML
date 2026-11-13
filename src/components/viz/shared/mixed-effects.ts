@@ -12,7 +12,9 @@
 // truths (α=50, β=5, τ=5, σ=8), seed 20260429. Exact byte-equality with the
 // notebook's NumPy PRNG isn't guaranteed because we use mulberry32 here
 // instead of NumPy's PCG64; the qualitative structure (group sizes, score
-// range, shared slope) carries the pedagogy. The default τ²/σ²=0.07 in
+// range, shared slope) carries the pedagogy. Components that must reproduce
+// the article's numbers (MLvsREMLLikelihoodSurface) read the notebook's own
+// rows from src/data/mixed-effects-data.ts instead. The default τ²/σ²=0.07 in
 // downstream viz reproduces the topic's REML shrinkage factors at line 249
 // (0.222, 0.298, 0.359, 0.412, 0.451, 0.588) to two decimals.
 // =============================================================================
