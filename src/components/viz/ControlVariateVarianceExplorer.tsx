@@ -5,13 +5,14 @@
 //   - Vanilla SGLD with mini-batch gradient
 //   - SVRG-LD (Dubey et al. 2016) — periodic reference point, lower-variance
 //     gradient estimator
-//   - ZV-SGLD (Mira–Solgi–Imparato 2013 + Brosse–Durmus–Moulines for SGLD) —
-//     post-process the chain with a linear control variate α^T ∇U(θ).
+//   - ZV-SGLD (Mira–Solgi–Imparato 2013; Baker–Fearnhead–Fox–Nemeth 2019 for
+//     SG-MCMC) — post-process the chain with a linear control variate
+//     α^T ∇̂U(θ) on the mini-batch gradient computed at each state.
 //
 // Two panels:
 //   (a) Running estimate of E_π[θ_1] for all three methods + true posterior
 //       mean (dashed). SVRG-LD's trace is visibly tighter than vanilla's;
-//       ZV-SGLD (fitted on mini-batch gradients) nearly overlays vanilla.
+//       ZV-SGLD (fitted on mini-batch gradients) sits slightly inside vanilla.
 //   (b) Running standard error vs iteration (log-log). The slope is -½
 //       (Monte-Carlo √n rate) for all three; the constant is the variance-
 //       reduction factor.
@@ -45,9 +46,9 @@ const SVRG_K_INNER = 100;
 
 const FIGURE_PATH = '/images/topics/stochastic-gradient-mcmc/09_bias_reduction.png';
 const ALT =
-  'Two-panel comparison of vanilla SGLD, SVRG-LD, and ZV-SGLD on Bayesian linear regression. (a) Running estimates of E_π[θ_1]: SVRG-LD tighter than vanilla; ZV-SGLD, fitted on mini-batch gradients, close to vanilla. (b) Running standard error vs iteration on log-log axes: all three methods follow the √n Monte-Carlo rate; SVRG-LD sits a constant factor below vanilla, and ZV-SGLD nearly overlaps vanilla.';
+  'Two-panel comparison of vanilla SGLD, SVRG-LD, and ZV-SGLD on Bayesian linear regression. (a) Running estimates of E_π[θ_1]: all three converge to the posterior mean. (b) Standard error of the running estimate for each method. (c) Long-run variance ratios over vanilla SGLD: SVRG-LD about 1.6×, ZV-SGLD fitted on mini-batch gradients about 1.4× (1.36); with exact gradients ZV would be exact (zero variance) on this Gaussian target, so that case is noted in text rather than plotted.';
 const CAPTION =
-  'Figure 9. Three variance-reduction strategies on §6\'s BLR posterior. SVRG-LD reduces the estimator variance modestly (about 1.5× at the defaults) for about twice the per-step gradient work, via a periodic reference-point gradient. ZV-SGLD is free (the gradient is already computed at every chain step), but fitted on the chain\'s mini-batch gradients its gain here is only about 1.1×: the gradient noise swamps the correlation between ∇U and θ_1. All three converge to the true posterior mean μ_post[0]; the differences are in their finite-sample variance.';
+  'Figure 9. Three variance-reduction strategies on §6\'s BLR posterior. SVRG-LD reduces the estimator variance modestly (about 1.5× at the defaults) for about twice the per-step gradient work, via a periodic reference-point gradient. ZV-SGLD is free (the gradient is already computed at every chain step), but fitted on the chain\'s mini-batch gradients its gain here is only about 1.35×: the gradient noise masks most of the correlation between ∇U and θ_1. With exact gradients it would be exact (zero variance) on this Gaussian posterior. All three converge to the true posterior mean μ_post[0]; the differences are in their finite-sample variance.';
 const ARIA = 'Figure 9: Variance-reduction strategies for SG-MCMC';
 
 interface CachedRun {
@@ -147,12 +148,19 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   const theta = new Float32Array(start);
   const gradOut = new Float32Array(2);
   const vanillaCh1 = new Float32Array(T);
+  // θ_1 at the state where gradCache[n] was evaluated (before step n's
+  // update). ZV-SGLD pairs each state with the gradient estimate computed at
+  // that same state (Baker et al. 2019, Algorithm 2); pairing ∇̂U(θ_n) with
+  // the post-update θ_{n+1} still gives a zero-mean control variate, but the
+  // step's own noise weakens it.
+  const zvPhi = new Float32Array(T);
   const gradCache = new Float32Array(T * 2);
   for (let n = 0; n < T; n++) {
     const idx = samplerV(rngV);
     grads.miniFull(theta, idx, B, gradOut);
     gradCache[n * 2 + 0] = gradOut[0];
     gradCache[n * 2 + 1] = gradOut[1];
+    zvPhi[n] = theta[0];
     theta[0] -= eta * gradOut[0] - sqrt2eta * gaussV();
     theta[1] -= eta * gradOut[1] - sqrt2eta * gaussV();
     vanillaCh1[n] = theta[0];
@@ -195,9 +203,10 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   // assumes ∇U is the exact gradient under π, so using the unbiased mini-batch
   // estimator carries an extra noise term that shows up as the residual
   // estimator variance in panel (b). For the §6 BLR posterior at B = 16 that
-  // noise dominates: the mini-batch gradient noise swamps the linear relation
-  // between ∇U and θ_1, and ZV-SGLD's variance reduction over vanilla SGLD is
-  // only ~1.0–1.1× (seeds 11–13, T = 15k). With the exact gradient the
+  // noise dominates: the mini-batch gradient noise masks most of the linear
+  // relation between ∇U and θ_1, and ZV-SGLD's variance reduction over vanilla
+  // SGLD is ≈ 1.34–1.35× (final SE² ratio, seeds 11–13, T = 15k; the notebook's
+  // long-run variance ratio is 1.36×). With the exact gradient the
   // control variate would be exact on this Gaussian posterior (zero variance).
   await yieldToBrowser();
   let mg0 = 0,
@@ -206,7 +215,7 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   for (let n = 0; n < T; n++) {
     mg0 += gradCache[n * 2 + 0];
     mg1 += gradCache[n * 2 + 1];
-    mp += vanillaCh1[n];
+    mp += zvPhi[n];
   }
   mg0 /= T;
   mg1 /= T;
@@ -219,7 +228,7 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   for (let n = 0; n < T; n++) {
     const d0 = gradCache[n * 2 + 0] - mg0;
     const d1 = gradCache[n * 2 + 1] - mg1;
-    const dp = vanillaCh1[n] - mp;
+    const dp = zvPhi[n] - mp;
     s00 += d0 * d0;
     s01 += d0 * d1;
     s11 += d1 * d1;
@@ -237,7 +246,7 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   const a1 = -(-s01 * sp0 + s00 * sp1) * invDet;
   const zvCh1 = new Float32Array(T);
   for (let n = 0; n < T; n++) {
-    zvCh1[n] = vanillaCh1[n] + a0 * gradCache[n * 2 + 0] + a1 * gradCache[n * 2 + 1];
+    zvCh1[n] = zvPhi[n] + a0 * gradCache[n * 2 + 0] + a1 * gradCache[n * 2 + 1];
   }
 
   // Running means

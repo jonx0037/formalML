@@ -726,15 +726,21 @@ export function kfacLaplace(
 //
 // SGLD step (Welling & Teh 2011):
 //   θ ← θ − (η/2)(n · ∇NLL_avg(θ) + λ · θ) + ξ,   ξ ~ N(0, η I)
-// SGHMC step (Chen, Fox & Guestrin 2014):
-//   r ← (1 − c) r − η (n · ∇NLL_avg(θ) + λ · θ) + ξ,   ξ ~ N(0, 2 η c I)
+// SGHMC step (Chen, Fox & Guestrin 2014; Algorithm 7.5 with M = I, B̂ = 0):
+//   r ← (1 − η c) r − η (n · ∇NLL_avg(θ) + λ · θ) + ξ,   ξ ~ N(0, 2 η c I)
 //   θ ← θ + η r
+// The momentum decay is (1 − η c), not (1 − c): with noise variance 2ηc the
+// momentum's stationary variance is 2ηc / (1 − (1 − ηc)²) ≈ 1 = M. Decaying
+// by (1 − c) instead shrinks it to ≈ η and freezes the chain.
 // where λ = training.weightDecay (≡ Gaussian prior precision 1/τ²).
 //
 // Minibatching is supported via spec.batchSize but defaults to full-batch
 // (batchSize ≥ data.n). The minibatch gradient is rescaled by (n/b) to
 // estimate the full-data NLL gradient unbiasedly.
 // =============================================================================
+
+/** Friction used when SGMCMCSpec.friction is omitted. */
+const FRICTION_DEFAULT = 0.05;
 
 export interface SGMCMCSpec {
   method: 'SGLD' | 'SGHMC';
@@ -754,6 +760,41 @@ export interface SGMCMCResult {
   weightTrace: number[];
   /** Autocorrelation function of weightTrace at lags 0..maxLag. */
   autocorrelation: number[];
+  /** SGHMC only: mean of v_i² over all coordinates and post-burn-in steps.
+   *  Should be ≈ 1 (the mass M = I) once the momentum has equilibrated. */
+  momentumMeanSquare?: number;
+}
+
+/** One SGLD step (Definition 6.1): θ ← θ − (η/2)·g + √η·ξ, in place. */
+export function sgldStep(
+  theta: Float32Array,
+  grad: ArrayLike<number>,
+  eta: number,
+  gauss: () => number,
+): void {
+  const sqrtEta = Math.sqrt(eta);
+  for (let i = 0; i < theta.length; i++) {
+    theta[i] += -0.5 * eta * grad[i] + sqrtEta * gauss();
+  }
+}
+
+/** One SGHMC step (Definition 7.1 / Algorithm 7.5 with C = cI, M = I,
+ *  B̂ = 0), in place:
+ *    v ← (1 − ηc)·v − η·g + √(2ηc)·ξ,   θ ← θ + η·v. */
+export function sghmcStep(
+  theta: Float32Array,
+  momentum: Float32Array,
+  grad: ArrayLike<number>,
+  eta: number,
+  c: number,
+  gauss: () => number,
+): void {
+  const decay = 1 - eta * c;
+  const sqrtNoise = Math.sqrt(2 * eta * c);
+  for (let i = 0; i < theta.length; i++) {
+    momentum[i] = decay * momentum[i] - eta * grad[i] + sqrtNoise * gauss();
+  }
+  for (let i = 0; i < theta.length; i++) theta[i] += eta * momentum[i];
 }
 
 function autocorrelation(x: number[], maxLag: number): number[] {
@@ -792,6 +833,8 @@ export function sgMCMCBNNTraining(
   const samples: Float32Array[] = [];
   const trace: number[] = [];
   const traceComponent = 0; // first weight, arbitrary monitor
+  const gradFull = new Float64Array(layout.pDim);
+  let momentumSqSum = 0;
   // Permutation buffer for minibatching
   const perm = new Int32Array(data.n);
   for (let i = 0; i < data.n; i++) perm[i] = i;
@@ -812,6 +855,11 @@ export function sgMCMCBNNTraining(
     gBuf = b;
     return a;
   };
+  // SGHMC: draw v₀ from the momentum's stationary law N(0, M) = N(0, I), as
+  // sgmcmc.ts's sghmcChain does. Algorithm 7.5's v₀ = 0 is also valid, but the
+  // momentum then needs ~1/(ηc) steps to warm up — longer than a short
+  // in-browser chain at small η.
+  if (spec.method === 'SGHMC') for (let i = 0; i < layout.pDim; i++) momentum[i] = gauss();
 
   for (let step = 0; step < totalSteps; step++) {
     let X: Float32Array;
@@ -848,26 +896,19 @@ export function sgMCMCBNNTraining(
     // Posterior negative-log gradient estimate at this minibatch:
     //   ∇U(θ) ≈ (n / nUsed) · b · gradAvg + λ θ = n · gradAvg + λ θ
     // (since gradAvg = (1/nUsed) ∇NLL_b ⇒ b · gradAvg = ∇NLL_b ⇒ scale by n/b → n · gradAvg)
+    for (let i = 0; i < layout.pDim; i++) gradFull[i] = data.n * gradAvg[i] + lambda * weights[i];
     if (spec.method === 'SGLD') {
-      const sqrtEta = Math.sqrt(spec.eta);
-      for (let i = 0; i < layout.pDim; i++) {
-        const gradFull = data.n * gradAvg[i] + lambda * weights[i];
-        weights[i] -= 0.5 * spec.eta * gradFull;
-        weights[i] += sqrtEta * gauss();
-      }
+      sgldStep(weights, gradFull, spec.eta, gauss);
     } else {
-      const c = spec.friction ?? 0.05;
-      const sqrtNoiseScale = Math.sqrt(2 * spec.eta * c);
-      for (let i = 0; i < layout.pDim; i++) {
-        const gradFull = data.n * gradAvg[i] + lambda * weights[i];
-        momentum[i] = (1 - c) * momentum[i] - spec.eta * gradFull + sqrtNoiseScale * gauss();
-      }
-      for (let i = 0; i < layout.pDim; i++) {
-        weights[i] += spec.eta * momentum[i];
-      }
+      sghmcStep(weights, momentum, gradFull, spec.eta, spec.friction ?? FRICTION_DEFAULT, gauss);
     }
     if (step >= spec.burnIn) {
       trace.push(weights[traceComponent]);
+      if (spec.method === 'SGHMC') {
+        let s2 = 0;
+        for (let i = 0; i < layout.pDim; i++) s2 += momentum[i] * momentum[i];
+        momentumSqSum += s2 / layout.pDim;
+      }
       const idxAfterBurn = step - spec.burnIn;
       if (idxAfterBurn % spec.thin === 0 && samples.length < spec.samples) {
         samples.push(new Float32Array(weights));
@@ -875,7 +916,9 @@ export function sgMCMCBNNTraining(
     }
   }
   const acf = autocorrelation(trace, Math.min(50, Math.max(5, Math.floor(trace.length / 4))));
-  return { weights: samples, weightTrace: trace, autocorrelation: acf };
+  const out: SGMCMCResult = { weights: samples, weightTrace: trace, autocorrelation: acf };
+  if (spec.method === 'SGHMC' && trace.length > 0) out.momentumMeanSquare = momentumSqSum / trace.length;
+  return out;
 }
 
 // =============================================================================

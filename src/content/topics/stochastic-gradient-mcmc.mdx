@@ -131,6 +131,12 @@ references:
     url: "https://doi.org/10.1007/s11222-012-9344-6"
     note: "The control-variate construction §9.3 ports to SGLD via the ZV-SGLD estimator (Statistics and Computing)."
   - type: "paper"
+    title: "Control Variates for Stochastic Gradient MCMC"
+    authors: "Baker, Fearnhead, Fox & Nemeth"
+    year: 2019
+    url: "https://doi.org/10.1007/s11222-018-9826-2"
+    note: "SGLD-ZV: zero-variance control variates fitted on the sampler's own stochastic-gradient estimates (Algorithm 2), with Theorem 2's bound on how gradient noise shrinks the reduction. §9.3 cites both (Statistics and Computing 29, no. 3: 599–615)."
+  - type: "paper"
     title: "Firefly Monte Carlo: Exact MCMC with Subsets of Data"
     authors: "Maclaurin & Adams"
     year: 2014
@@ -794,7 +800,7 @@ $$
 \alpha^* = -\bigl[\mathrm{Cov}_\pi(\nabla U, \nabla U)\bigr]^{-1} \mathrm{Cov}_\pi(\nabla U, \phi),
 $$
 
-which can be estimated empirically from the SGLD chain itself. Mira, Solgi, and Imparato (2013) showed that for *exact* MCMC samples, ZV control variates can reduce estimator variance by 100× or more; for SGLD chains, the reduction is more modest (typically 5–20×) because the estimator inherits both the chain's residual bias and noise in the $\hat\alpha$ estimate.
+which can be estimated empirically from the SGLD chain itself. Mira, Solgi, and Imparato (2013) introduced these control variates for exact MCMC output. When $\phi$ is a linear function of $\nabla U$, as $\theta_1$ is on a Gaussian posterior, the fitted control variate cancels all of $\phi$'s variation and the estimator's variance drops to zero. An SGLD chain has only the mini-batch estimate $\hat\nabla U$. Baker, Fearnhead, Fox, and Nemeth (2019) show that it can stand in for $\nabla U$ in (9.2) and the control variate stays valid, but the gradient noise shrinks the reduction: their Theorem 2 gives a lower bound on it that, with standard SGLD gradients, falls in proportion to $B/N$, so for large $N$ they recommend applying ZV after a control-variate gradient estimator (their SGLD-CV, which like §9.2's SVRG-LD subtracts the gradient at a reference point). Their experiments (logistic regression and probabilistic matrix factorization, ZV applied after a control-variate gradient) show the reduction in box plots and do not report a numeric factor. How much ZV buys is problem-dependent; on the §9 demo, fitted on SGLD's own mini-batch gradients, it is about $1.35\times$ (§9.6).
 
 The strength of ZV-SGLD is that $\nabla U(\theta)$ is already computed at every chain step (it's the SGLD gradient), so the control variate is essentially free. The weakness is that the linear control variate (9.2) only kills the part of $\phi$'s variation that is correlated with $\nabla U$; nonlinear control variates of the form $\hat\phi = \phi + \alpha^\top \nabla U + \beta^\top \nabla^2 U \mathbf{1}$ (or higher polynomials) help on non-Gaussian posteriors but are more expensive to fit.
 
@@ -818,14 +824,14 @@ For typical Bayesian deep-learning posteriors at $N \in [10^4, 10^7]$, the cost-
 
 ~~~
 1. Vanilla SGLD/SGHMC  (baseline; bias O(η + 1/B))
-2. + ZV-SGLD            (free; 5-20× estimator variance reduction)
+2. + ZV-SGLD            (free; problem-dependent estimator variance reduction, ≈1.35× on §9)
 3. + SVRG-LD            (modest cost; problem-dependent gradient variance reduction, ≈35× on §6)
 4. + step-size schedule (asymptotic exactness; pays in mixing)
 5. Subsampling MH       (exact; 10-100× cost over (1))
 6. Firefly MC           (exact; 10-100× cost over (1))
 ~~~
 
-The viz below runs vanilla SGLD, SVRG-LD, and ZV-SGLD on the §6 BLR posterior and compares (a) running estimates of $\mathbb{E}_\pi[\theta_1]$ and (b) the per-chain estimator standard error vs iteration count. On this posterior the estimator-level gains are modest, and the reasons are instructive. In the companion notebook's run, SVRG-LD's long-run variance for $\theta_1$ is about $1.6\times$ below vanilla's — far less than its $35\times$ gradient-variance reduction, because the long-run variance is floored by the posterior's own spread: gradient noise inflates vanilla SGLD's stationary variance of $\theta_1$ by about $1.7\times$ ($0.0043$ against the exact posterior's $0.0026$), and removing that inflation is most of what SVRG-LD buys. It also costs about twice vanilla's per-step gradient work ($2B + N/k = 33$ per-point gradients against $B = 16$). ZV-SGLD needs care on this example. On a Gaussian posterior $\nabla U(\theta) = \Sigma_{\text{post}}^{-1}(\theta - \mu_{\text{post}})$, so $\theta_1$ is an exact linear function of the exact gradient; fitted on exact gradients, as in the notebook, the control variate cancels all of $\theta_1$'s variation and returns $\mu_{\text{post},1}$ itself. The notebook's printed ratio (about $2 \times 10^{28}$) is a floating-point artifact of a zero variance, not a measured speedup. The viz fits ZV-SGLD on the chain's mini-batch gradients instead, whose sampling noise swamps that linear relationship, and there it improves on vanilla by only about $1.1\times$. On non-Gaussian posteriors, or for observables that are not linear in $\nabla U$, the reduction falls between these extremes.
+The viz below runs vanilla SGLD, SVRG-LD, and ZV-SGLD on the §6 BLR posterior and compares (a) running estimates of $\mathbb{E}_\pi[\theta_1]$ and (b) the per-chain estimator standard error vs iteration count. On this posterior the estimator-level gains are modest, and the reasons are instructive. In the companion notebook's run, SVRG-LD's long-run variance for $\theta_1$ is about $1.6\times$ below vanilla's — far less than its $35\times$ gradient-variance reduction, because the long-run variance is floored by the posterior's own spread: gradient noise inflates vanilla SGLD's stationary variance of $\theta_1$ by about $1.7\times$ ($0.0043$ against the exact posterior's $0.0026$), and removing that inflation is most of what SVRG-LD buys. It also costs about twice vanilla's per-step gradient work ($2B + N/k = 33$ per-point gradients against $B = 16$). ZV-SGLD needs care on this example. On a Gaussian posterior $\nabla U(\theta) = \Sigma_{\text{post}}^{-1}(\theta - \mu_{\text{post}})$, so $\theta_1$ is an exact linear function of the exact gradient; fitted on exact gradients, the control variate cancels all of $\theta_1$'s variation and returns $\mu_{\text{post},1}$ itself, with zero variance (any nonzero residual is floating-point round-off, not a measured speedup). The notebook and the viz therefore fit ZV-SGLD the way an SGLD run would, on the mini-batch gradient computed at each state. That gradient's noise (about three times the exact gradient's variance across the chain at $B = 16$) masks most of the linear relationship, and ZV-SGLD improves on vanilla by about $1.35\times$ (the notebook's long-run variance ratio is $1.36$; the viz's ratio of final standard errors squared is $1.34$–$1.35$ at the defaults). On non-Gaussian posteriors, or for observables that are not linear in $\nabla U$, the exact-gradient case is no longer zero variance either.
 
 <ControlVariateVarianceExplorer client:visible />
 
