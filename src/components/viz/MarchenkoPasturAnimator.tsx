@@ -102,7 +102,16 @@ export default function MarchenkoPasturAnimator() {
       const total = empirical.length || 1;
       const bulkMass = gamma > 1 ? 1 / gamma : 1;
       const densities = bins.map((b) => (b.length / (total * binW)) * bulkMass);
-      const yMax = Math.max(d3.max(densities) ?? 1, d3.max(analytic, (d) => d.f) ?? 1) * 1.15;
+      // Cap the y-axis. At γ = 1 the analytic density diverges as λ → 0⁺
+      // (f₁ ~ 1/(π√λ)), and for γ near 1 it has a tall, narrow spike just
+      // above λ₋; letting the curve set the scale would flatten the histogram.
+      // The cap is 1.6× the tallest histogram bar (the finite-n spectrum is
+      // what the panel is verifying); the curve is clipped there and marked.
+      const histMax = d3.max(densities) ?? 0;
+      const curveMax = d3.max(analytic, (d) => d.f) ?? 0;
+      const yCap = histMax > 0 ? 1.6 * histMax : Math.max(curveMax, 1);
+      const clipped = curveMax > yCap;
+      const yMax = (clipped ? yCap : Math.max(histMax, curveMax, 1e-6)) * 1.15;
       const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]);
 
       g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(8))
@@ -124,11 +133,35 @@ export default function MarchenkoPasturAnimator() {
         .attr('height', (d, i) => H - yScale(densities[i]))
         .style('fill', 'var(--color-accent)').attr('opacity', 0.35);
 
-      // MP analytic curve
+      // MP analytic curve (clamped at the cap; clipped stretch drawn dashed)
       const lineGen = d3.line<{ lambda: number; f: number }>()
-        .x((d) => xScale(d.lambda)).y((d) => yScale(d.f));
+        .x((d) => xScale(d.lambda)).y((d) => yScale(Math.min(d.f, yCap)));
       g.append('path').datum(analytic).attr('d', lineGen).attr('fill', 'none')
         .style('stroke', '#9B1D20').attr('stroke-width', 2.2);
+
+      if (clipped) {
+        const over = analytic.filter((d) => d.f > yCap);
+        const xClipL = xScale(over[0].lambda);
+        const xClipR = xScale(over[over.length - 1].lambda);
+        const yC = yScale(yCap);
+        // Dashed cap line over the clipped stretch (at least a few px wide).
+        g.append('line').attr('x1', xClipL).attr('x2', Math.max(xClipR, xClipL + 6))
+          .attr('y1', yC).attr('y2', yC)
+          .style('stroke', '#9B1D20').attr('stroke-width', 3).attr('stroke-dasharray', '3 2');
+        // Upward arrow: the true curve continues above the cap. Its tip sits
+        // below the λ₋ label (baseline y = 14) so the two never overlap.
+        const xa = (xClipL + Math.max(xClipR, xClipL + 6)) / 2;
+        g.append('line').attr('x1', xa).attr('x2', xa).attr('y1', yC - 2).attr('y2', 24)
+          .style('stroke', '#9B1D20').attr('stroke-width', 1.4);
+        g.append('path').attr('d', `M${xa - 5},30 L${xa},20 L${xa + 5},30 Z`)
+          .style('fill', '#9B1D20');
+        const singular = lamMinus <= 1e-12;
+        g.append('text').attr('x', xa + 10).attr('y', Math.max(40, yC - 8))
+          .style('fill', '#9B1D20').style('font-size', '11px')
+          .text(singular
+            ? `curve clipped at ${yCap.toFixed(2)}: f₁(λ) → ∞ as λ → 0⁺`
+            : `curve clipped at ${yCap.toFixed(2)} (peak f ≈ ${curveMax.toFixed(2)})`);
+      }
 
       // Support endpoints
       if (showSupport) {
