@@ -1082,7 +1082,7 @@ Compare to (3.1): same two-term structure (rate $+ \beta$-weighted distortion), 
 
 **Connection to the ELBO.** Equation (8.3) is structurally identical to the negative variational evidence lower bound for a *supervised* latent-variable model: encoder $p_\theta(t \mid x)$, prior $q(t)$, decoder $r_\phi(y \mid t)$. **VIB is VAE with the targets switched** — instead of reconstructing $X$, predict $Y$. This identification (Alemi et al. 2017, §3) unlocked the full deep-learning toolkit for IB.
 
-**When is the bound tight?** With $q$ free: $q = p(t)$. With $r$ free: $r = p(y \mid t)$. In practice $q$ is fixed at $\mathcal{N}(0, I)$, so the bound is *strictly* loose. The gap is $D_{\mathrm{KL}}(p_\theta(t) \,\|\, q(t))$ — the KL between the encoder's induced marginal and the chosen prior. This becomes a regularization that pulls the encoder toward producing a Gaussian-marginal $T$.
+**When is the bound tight?** With $q$ free: $q = p(t)$. With $r$ free: $r = p(y \mid t)$. In practice $q$ is fixed at $\mathcal{N}(0, I)$, so the bound is loose whenever $p_\theta(t) \neq q(t)$. The gap is $D_{\mathrm{KL}}(p_\theta(t) \,\|\, q(t))$ — the KL between the encoder's induced marginal and the chosen prior. This becomes a regularization that pulls the encoder toward producing a Gaussian-marginal $T$.
 
 ### 8.3 Amortized encoders and the reparametrization trick
 
@@ -1120,16 +1120,16 @@ $$\mathcal{L}_{\mathrm{VIB}}^*(A, \Sigma_\xi) \;=\; \underbrace{\tfrac{1}{2}\big
 
 $$D_{\mathrm{KL}}\bigl(\mathcal{N}(0,\, \Sigma_T) \,\|\, \mathcal{N}(0,\, I)\bigr), \quad\quad (8.9)$$
 
-the KL from the encoder's induced marginal to the unit-Gaussian prior. The gap vanishes only when $\Sigma_T = I$, which is generally not the IB optimum's marginal.
+the KL from the encoder's induced marginal to the unit-Gaussian prior. This slack costs nothing to remove: $I(X;T)$ and $I(T;Y)$ are invariant under any invertible rescaling of $T$, and on this toy the IB-optimal $\Sigma_T$ is diagonal, so rescaling each coordinate of $T$ to unit variance sets $\Sigma_T = I$ and zeroes (8.9) without moving the point in the information plane. At the optimum the bound is therefore *tight* — the VIB optimum is the IB optimum.
 
-**Numerical experiment.** Optimize (8.8) over $(A, \Sigma_\xi)$ at 40 log-spaced $\beta$ on the 4-D toy from §6.4 with L-BFGS-B and $\beta$-annealing warm-starts. At each $\beta$, compute the *actual* $(I(X;T), I(T;Y))$ using §6's closed-form Gaussian MI formulas — this evaluates the bound's tightness, not its self-consistency.
+**Numerical experiment.** Optimize (8.8) over $(A, \Sigma_\xi)$ at 40 log-spaced $\beta$ on the 4-D toy from §6.4 with L-BFGS-B, $\beta$-annealing warm-starts plus random restarts, run to tight tolerances. At each $\beta$, compute the *actual* $(I(X;T), I(T;Y))$ using §6's closed-form Gaussian MI formulas — this evaluates the bound's tightness, not its self-consistency.
 
-The result: VIB trajectory traces a curve that stays *inside* (below and right of) the true IB curve, with the gap visible across all $\beta$. At small $\beta$ the gap is small (both near origin); at intermediate $\beta$ the gap is largest; at large $\beta$ both saturate at $I(T;Y) = I(X;Y)$.
+The result: every VIB optimum lands on the closed-form IB curve — the predictiveness gap $I(T;Y)_{\mathrm{IB}} - I(T;Y)_{\mathrm{VIB}}$ stays below $10^{-7}$ nats across all 40 $\beta$, which is optimizer tolerance, exactly as the rescaling argument predicts. A cautionary note on the numerics: the same sweep capped at 500 L-BFGS-B iterations stalls short of the optimum at intermediate $\beta$ and draws an apparent gap of up to about $0.2$ nats. That gap is the optimizer stopping early, not the bound — panel (b) plots both.
 
 <Figure
   src="/images/topics/information-bottleneck/09_vib_vs_ib.png"
-  alt="VIB trajectory inside the closed-form Gaussian IB curve, plus the predictiveness gap"
-  caption="Left: linear-Gaussian VIB trajectory traced across 40 β values on the 4-D toy, against the closed-form IB curve from §7. The VIB optimum sits strictly inside the IB curve at every β. Right: the predictiveness gap I(T;Y)_IB − I(T;Y)_VIB as a function of β on a log axis — small near the origin, peaks at intermediate β, decays to zero at saturation."
+  alt="Converged linear-Gaussian VIB optima lying on the closed-form Gaussian IB curve, plus the predictiveness gap on a log scale for converged and under-converged runs"
+  caption="Left: converged linear-Gaussian VIB optima at 40 β values on the 4-D toy, against the closed-form IB curve from §7 — every optimum lies on the curve. Right: the predictiveness gap |I(T;Y)_IB − I(T;Y)_VIB| against β, both on log axes. Converged, it stays below 10⁻⁷ nats (optimizer tolerance): the bound is tight at the optimum. Dashed: the same sweep capped at 500 L-BFGS-B iterations, whose apparent gap of up to about 0.2 nats is optimizer error."
 />
 
 <VIBvsIBSandbox client:visible />
@@ -1183,7 +1183,7 @@ A short demonstration of the analytical case appears in Figure 10. We run gradie
 <Figure
   src="/images/topics/information-bottleneck/10_information_plane_trajectory.png"
   alt="Gradient-descent trajectory under linear-Gaussian VIB at β=5: no compression phase"
-  caption="Left: gradient-descent trajectory on the closed-form linear-Gaussian VIB at fixed β = 5 on the 4-D toy, plotted in the information plane. Each point is one GD step (n = 400 total); color encodes step index. The trajectory traces from the trivial encoder (start) toward the VIB optimum (converged), staying inside the §7 IB curve. Right: I(X;T) and I(T;Y) as functions of GD step. Both grow monotonically — no compression phase. The annotated compression delta (peak I(X;T) − final) is essentially zero."
+  caption="Left: gradient-descent trajectory on the closed-form linear-Gaussian VIB at fixed β = 5 on the 4-D toy, plotted in the information plane. Each point is one GD step (n = 400 total); color encodes step index. The trajectory traces from the trivial encoder (start) toward the VIB optimum (converged), staying below the §7 IB curve until it lands on it at the β = 5 optimum. Right: I(X;T) and I(T;Y) as functions of GD step. Both grow monotonically — no compression phase. The annotated compression delta (peak I(X;T) − final) is essentially zero."
 />
 
 ### 9.4 What the controversy leaves intact (and what it doesn't)
@@ -1441,7 +1441,7 @@ The discrete IB algorithm assumed access to the joint $p(x, y)$. For continuous 
 
 **2. IB doesn't tell you the optimal $\beta$ a priori.** The Lagrange multiplier is application-dependent. No general procedure to pick "the right $\beta$" from data alone. In practice: cross-validate downstream performance, or target a specific rate or predictiveness.
 
-**3. IB requires either the joint $p(x, y)$ or a viable variational bound.** For finite high-dim samples, neither is unproblematic. VIB's bounds are loose by design — the encoder's induced marginal is forced toward the prior, a deviation from the true IB optimum (§8.4 exhibited this on the Gaussian sandbox).
+**3. IB requires either the joint $p(x, y)$ or a viable variational bound.** For finite high-dim samples, neither is unproblematic. VIB's bounds are loose whenever the encoder's induced marginal cannot match the prior. In the linear-Gaussian sandbox (§8.4) the encoder can rescale $T$ to match it, so the bound is tight at the optimum; a more restricted encoder family need not have that freedom, and then the prior pulls the encoder away from the true IB optimum.
 
 **4. Non-uniqueness.** Labeling degeneracy and genuinely distinct basins. Annealing helps; doesn't eliminate. See Figure 3 for an explicit example on the 8-document toy.
 

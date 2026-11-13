@@ -2,7 +2,8 @@
 trajectory at β = 5, dumping to JSON for the VIBvsIBSandbox viz component.
 
 Mirrors notebook cells 33 (Figure 9) and 36 (Figure 10) exactly — same RNG seeds,
-same L-BFGS-B settings, same 40 log-spaced β grid. The output JSON is consumed
+same 40 log-spaced β grid. The cell-33 sweep is now run to convergence
+(restarts + tight tolerances); the original maxiter = 500 gap ships alongside it. The output JSON is consumed
 by `src/components/viz/VIBvsIBSandbox.tsx` at runtime.
 
 Per CLAUDE.md: writes to BOTH `src/data/sampleData/information-bottleneck/` and
@@ -78,7 +79,24 @@ def closed_form_ib_curve(betas):
     return np.array(I_XT), np.array(I_TY)
 
 
-def run_vib_sweep():
+def _lbfgs(beta, x0, maxiter, gtol, ftol=2.2e-9):
+    return minimize(
+        vib_objective,
+        x0,
+        args=(beta, SIGMA_X, SIGMA_Y, SIGMA_XY, P_DIM),
+        method="L-BFGS-B",
+        options={"maxiter": maxiter, "gtol": gtol, "ftol": ftol, "maxfun": 10 * maxiter},
+    )
+
+
+def run_vib_sweep(converged=True):
+    """The 40-β L-BFGS-B sweep, β-annealed warm starts.
+
+    converged=True (the published trajectory): every β also tries 12 random restarts
+    and keeps the lowest objective, at tight tolerances, so each point is the VIB
+    optimum. converged=False reproduces the original maxiter = 500 run, which stalled
+    short of the optimum at intermediate β and drew a spurious gap to the IB curve.
+    """
     betas = np.logspace(0.05, 2.5, 40)
 
     rng_vib = np.random.default_rng(20260524)
@@ -86,16 +104,23 @@ def run_vib_sweep():
         0.05 * rng_vib.standard_normal(P_DIM * P_DIM),
         1e-3 * rng_vib.standard_normal(P_DIM),
     ])
+    rng_restart = np.random.default_rng(20261112)
 
     rows = []
     for beta in betas:
-        res = minimize(
-            vib_objective,
-            params,
-            args=(beta, SIGMA_X, SIGMA_Y, SIGMA_XY, P_DIM),
-            method="L-BFGS-B",
-            options={"maxiter": 500, "gtol": 1e-9},
-        )
+        if not converged:
+            res = _lbfgs(beta, params, maxiter=500, gtol=1e-9)
+        else:
+            res = _lbfgs(beta, params, maxiter=20000, gtol=1e-12, ftol=1e-15)
+            for scale in (0.05, 0.5, 1.0, 2.0):
+                for log_s in (-1.0, 0.0, 0.5):
+                    x0 = np.concatenate([
+                        scale * rng_restart.standard_normal(P_DIM * P_DIM),
+                        log_s + 0.1 * rng_restart.standard_normal(P_DIM),
+                    ])
+                    r = _lbfgs(beta, x0, maxiter=20000, gtol=1e-12, ftol=1e-15)
+                    if r.fun < res.fun:
+                        res = r
         params = res.x
         ixt, ity = evaluate_vib_point(res.x, SIGMA_X, SIGMA_Y, SIGMA_XY, P_DIM)
         rows.append({"beta": float(beta), "I_XT": ixt, "I_TY": ity, "L_VIB": float(res.fun)})
@@ -135,8 +160,10 @@ def run_gd_trajectory(beta_traj=5.0, n_steps=400, lr=0.04):
 
 def main():
     print("Running L-BFGS-B VIB sweep (40 betas, warm-started)...")
-    betas, vib_rows = run_vib_sweep()
+    betas, vib_rows = run_vib_sweep(converged=True)
     print(f"  done. {len(vib_rows)} points.")
+    print("Re-running the original under-converged sweep (maxiter = 500) for comparison...")
+    _, vib_rows_500 = run_vib_sweep(converged=False)
 
     print("Computing closed-form Gaussian IB curve at the same betas...")
     I_XT_ib, I_TY_ib = closed_form_ib_curve(betas)
@@ -154,8 +181,14 @@ def main():
     ]
 
     # Variational gap I(T;Y)_IB - I(T;Y)_VIB, interpolated to the VIB beta grid
+    # Converged, the VIB optimum lands ON the IB curve (gap ~1e-7 nats: the bound is
+    # tight at the optimum, since rescaling T to Σ_T = I costs no information). The
+    # maxiter = 500 gap is kept to show what an under-converged optimizer draws.
     gap = [
         max(0.0, ib["I_TY"] - vb["I_TY"]) for ib, vb in zip(ib_rows, vib_rows)
+    ]
+    gap_500 = [
+        max(0.0, ib["I_TY"] - vb["I_TY"]) for ib, vb in zip(ib_rows, vib_rows_500)
     ]
 
     print("Running §9 GD trajectory at beta=5...")
@@ -182,6 +215,7 @@ def main():
         "vib_trajectory": vib_rows,
         "ib_at_vib_betas": ib_rows,
         "variational_gap": gap,
+        "variational_gap_maxiter500": gap_500,
         "ib_curve_dense": ib_dense,
         "gd_trajectory_beta5": {
             "beta": 5.0,
