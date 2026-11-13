@@ -6,7 +6,10 @@
 // experiment in-browser, so this viz runs the *1D-quadratic analog* of the
 // experiment: per-task FOMAML meta-gradients at θ₀ = 0, with task-specific
 // (μ_S, μ_Q, λ_S, λ_Q) drawn from a slider-controlled distribution. The 1/B
-// scaling identity from Lemma 8.7 holds tightly on this controlled testbed.
+// scaling (the iid-averaging consequence of Lemma 2's per-task variance
+// bound) tracks closely for small B; at large B the estimate rests on only
+// n_task_draws / B batch means (4 at B = 50 with ~200 draws), so it is noisy
+// and biased low by roughly (k − 1)/k for k batch means.
 //
 // Sliders (all live, computation is closed-form O(n_task_draws)):
 //   - α (inner step): [0.001, 0.1]
