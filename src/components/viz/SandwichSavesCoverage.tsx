@@ -13,7 +13,7 @@ import {
 // Viz 11.2 — Sandwich saves coverage under heteroskedasticity.
 //
 // Quasi-MLE on a misspecified Gaussian-homoskedastic model. Y = β X + ε
-// with ε | X ~ N(0, σ(X)²), σ(X) = |X| · γ_scale. OLS is QMLE; its naive
+// with ε | X ~ N(0, σ(X)²), σ(X) = 0.3 + γ_scale · |X|. OLS is QMLE; its naive
 // CI assumes homoskedasticity. The sandwich variance (Eicker-Huber-White)
 // is consistent under arbitrary heteroskedasticity.
 //

@@ -760,7 +760,7 @@ where the first term is the noise-compensation bias and the second is the discre
 *Sketch.* The first bias term comes from solving the Fokker–Planck equation for $\pi_{\eta, C}$ with the un-compensated stochastic-gradient covariance: setting $\partial_t \rho = 0$ in the equation from §7.4 with $\hat B = 0$ gives $\rho_\infty \propto \exp(-U^*) \exp(-\tfrac{1}{2} v^\top M^{*-1} v)$ for shifted potential $U^*(w) = U(w) + O(B(w)/C)$ and shifted mass matrix; the integrated bias on $w$-marginal expectations is the integrated shift in $U$, which scales as $B(w)/C$. The second bias term is standard Euler-Maruyama-on-second-order-Langevin discretization error, $O(\eta)$.
 </TheoremBlock>
 
-The Chen–Fox–Guestrin contribution, in summary: SGHMC at fixed $\eta$ has the same $O(\eta)$ bias as SGLD, but with the momentum-variable advantage that mixing is much faster — the chain explores the posterior in fewer iterations. For the same wall-clock budget, SGHMC typically produces a more accurate estimate of posterior expectations than SGLD, even at the cost of carrying the velocity variable through every iteration.
+The Chen–Fox–Guestrin contribution, in summary: SGHMC at fixed $\eta$ has the same $O(\eta)$ bias as SGLD, plus a momentum variable that lets the chain travel along long, low-curvature directions of the posterior instead of diffusing across them step by step. On an ill-conditioned Gaussian that is a provable advantage — [stochastic-gradient-mcmc](/topics/stochastic-gradient-mcmc) §7 shows mixing time $O(\sqrt{\kappa})$ for the underdamped dynamics against $O(\kappa)$ for the overdamped ones. Whether it shows up on a given network is an empirical question, and on the §7.7 Two Moons run it does not show up measurably: the companion notebook's integrated autocorrelation times for the traced weight are comparable (about $128$ for SGLD and $144$ for SGHMC), both are truncated by the lag-80 cutoff, and both autocorrelation functions stay positive out to roughly lag $360$ of the $1{,}000$-iteration window — too short a run to rank the two samplers. Expect the momentum advantage on posteriors with long, nearly flat valleys, and confirm it with a mixing diagnostic rather than assuming it.
 
 ### 7.6 Practical preconditioning
 
@@ -784,7 +784,7 @@ Vanilla SGHMC uses a constant friction $C = c I_p$ across all dimensions, but ne
 3. Discard the first $T_{\mathrm{burn}}$ iterations as burn-in.
 4. Return $w^{(s)} := w_{T_{\mathrm{burn}} + s\Delta}$ for $s = 1, \ldots, T$.
 
-For the Two Moons example we use $\eta = 10^{-3}$, $c = 0.1$, $b = 32$, $T_{\mathrm{burn}} = 200$, $T = 100$, $\Delta = 10$ — same total iteration count as §6, exposing the head-to-head mixing comparison. Total cell runtime ~7 s.
+For the Two Moons example we use $\eta = 10^{-3}$, $c = 0.1$, $b = 32$, $T_{\mathrm{burn}} = 200$, $T = 100$, $\Delta = 10$ — same total iteration count as §6, so the notebook's autocorrelation panel compares the two samplers at a matched iteration budget and the same $\eta$. Total cell runtime ~7 s. The interactive version below runs both chains with full-batch gradients (no mini-batch noise) to keep the in-browser cost down.
 
 <SGHMCBNNViz client:visible />
 

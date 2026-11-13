@@ -10,8 +10,8 @@
 //
 // Two panels:
 //   (a) Running estimate of E_π[θ_1] for all three methods + true posterior
-//       mean (dashed). Vanilla SGLD has the most variance; ZV-SGLD has the
-//       least at zero compute overhead.
+//       mean (dashed). SVRG-LD's trace is visibly tighter than vanilla's;
+//       ZV-SGLD (fitted on mini-batch gradients) nearly overlays vanilla.
 //   (b) Running standard error vs iteration (log-log). The slope is -½
 //       (Monte-Carlo √n rate) for all three; the constant is the variance-
 //       reduction factor.
@@ -45,9 +45,9 @@ const SVRG_K_INNER = 100;
 
 const FIGURE_PATH = '/images/topics/stochastic-gradient-mcmc/09_bias_reduction.png';
 const ALT =
-  'Two-panel comparison of vanilla SGLD, SVRG-LD, and ZV-SGLD on Bayesian linear regression. (a) Running estimates of E_π[θ_1]: ZV-SGLD smoothest, vanilla noisiest. (b) Running standard error vs iteration on log-log axes: all three methods follow the √n Monte-Carlo rate; ZV-SGLD\'s lower variance is a constant factor below the others.';
+  'Two-panel comparison of vanilla SGLD, SVRG-LD, and ZV-SGLD on Bayesian linear regression. (a) Running estimates of E_π[θ_1]: SVRG-LD tighter than vanilla; ZV-SGLD, fitted on mini-batch gradients, close to vanilla. (b) Running standard error vs iteration on log-log axes: all three methods follow the √n Monte-Carlo rate; SVRG-LD sits a constant factor below vanilla, and ZV-SGLD nearly overlaps vanilla.';
 const CAPTION =
-  'Figure 9. Three variance-reduction strategies on §6\'s BLR posterior. ZV-SGLD wins by the largest factor at zero compute overhead (the gradient is already computed at every chain step). SVRG-LD reduces variance modestly at moderate cost via a periodic reference-point gradient. All three converge to the true posterior mean μ_post[0]; the differences are in their finite-sample variance.';
+  'Figure 9. Three variance-reduction strategies on §6\'s BLR posterior. SVRG-LD reduces the estimator variance modestly (about 1.5× at the defaults) for about twice the per-step gradient work, via a periodic reference-point gradient. ZV-SGLD is free (the gradient is already computed at every chain step), but fitted on the chain\'s mini-batch gradients its gain here is only about 1.1×: the gradient noise swamps the correlation between ∇U and θ_1. All three converge to the true posterior mean μ_post[0]; the differences are in their finite-sample variance.';
 const ARIA = 'Figure 9: Variance-reduction strategies for SG-MCMC';
 
 interface CachedRun {
@@ -194,9 +194,11 @@ async function runChains(T: number, B: number, chainSeed: number): Promise<Cache
   // the full gradient ∇U(θ_n). Mira–Solgi–Imparato's variance-zero argument
   // assumes ∇U is the exact gradient under π, so using the unbiased mini-batch
   // estimator carries an extra noise term that shows up as the residual
-  // estimator variance in panel (b). For the §6 BLR posterior at B = 16 the
-  // residual is small (the §8 mini-batch bias for SGLD is O(η + 1/B)) and the
-  // variance reduction over vanilla SGLD is still ~5–10×.
+  // estimator variance in panel (b). For the §6 BLR posterior at B = 16 that
+  // noise dominates: the mini-batch gradient noise swamps the linear relation
+  // between ∇U and θ_1, and ZV-SGLD's variance reduction over vanilla SGLD is
+  // only ~1.0–1.1× (seeds 11–13, T = 15k). With the exact gradient the
+  // control variate would be exact on this Gaussian posterior (zero variance).
   await yieldToBrowser();
   let mg0 = 0,
     mg1 = 0,
