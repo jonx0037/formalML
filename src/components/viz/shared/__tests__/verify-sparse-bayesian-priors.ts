@@ -14,8 +14,10 @@
 
 import {
   bayesianLassoShrinkageMarginal,
+  HORSESHOE_K,
   horseshoeBetaShrinkageDensity,
   horseshoeMarginalBound,
+  horseshoeMarginalDensity,
   horseshoeShrinkageMarginal,
   regularizedHorseshoeLambdaTilde,
   ridgeShrinkageConstant,
@@ -71,8 +73,9 @@ ok(
   `E[κ | y=0.5, τ=1] = ${hsKAtY05.toFixed(4)} > 0.5`,
 );
 
-// LASSO at large |y| keeps shrinking (asymptote ≈ const > 0). Test that
-// LASSO doesn't vanish to 0 the way horseshoe does.
+// LASSO keeps a constant shrinkage gap y − E[β|y] → σ²√(2ρ), so its E[κ|y]
+// decays only like 1/|y| (horseshoe: like 1/y²). Test that LASSO shrinkage
+// stays well above the horseshoe's at |y| = 8.
 const lassoKAtY8 = bayesianLassoShrinkageMarginal(8.0, 1.0);
 ok(
   'bayesianLassoShrinkageMarginal does not vanish at large |y|',
@@ -84,31 +87,89 @@ ok(
 // §2 Polson-Scott marginal bounds
 // -------------------------------------------------------------------------
 
-// CPS Eq. 7 lower bound at β=0.01, τ=1: (1/(2π)) log(1 + 4/0.01²) ≈ 1.475
+// Carvalho-Polson-Scott (2010) Theorem 1 bounds, rescaled to general τ:
+//   (K/(2τ)) log(1 + 4τ²/β²) ≤ p_HS(β) ≤ (K/τ) log(1 + 2τ²/β²),  K = 1/√(2π³).
+const K_CPS = 1 / Math.sqrt(2 * Math.PI ** 3);
+ok(
+  'HORSESHOE_K = 1/√(2π³) ≈ 0.12698',
+  approx(HORSESHOE_K, K_CPS, 1e-15) && approx(HORSESHOE_K, 0.12698727, 1e-7),
+  `K = ${HORSESHOE_K.toFixed(8)}`,
+);
 const cpsLow001 = horseshoeMarginalBound(0.01, 1.0, true);
 ok(
-  'CPS lower bound at β=0.01',
-  approx(cpsLow001, (1 / (2 * Math.PI)) * Math.log(1 + 40000.0), 1e-3),
-  `value = ${cpsLow001.toFixed(4)} (expected ≈ ${(
-    (1 / (2 * Math.PI)) *
-    Math.log(40001)
-  ).toFixed(4)})`,
+  'CPS lower bound at β=0.01 is (K/2) log(1 + 4/β²)',
+  approx(cpsLow001, (K_CPS / 2) * Math.log(1 + 40000.0), 1e-5),
+  `value = ${cpsLow001.toFixed(5)} (expected ${((K_CPS / 2) * Math.log(40001)).toFixed(5)})`,
 );
-
-// CPS upper bound is exactly 2× lower bound.
 const cpsUp001 = horseshoeMarginalBound(0.01, 1.0, false);
 ok(
-  'CPS upper bound = 2 × lower bound',
-  approx(cpsUp001, 2 * cpsLow001, 1e-9),
-  `upper/lower = ${(cpsUp001 / cpsLow001).toFixed(4)} (expected 2.0)`,
+  'CPS upper bound at β=0.01 is K log(1 + 2/β²)',
+  approx(cpsUp001, K_CPS * Math.log(1 + 20000.0), 1e-5),
+  `value = ${cpsUp001.toFixed(5)} (expected ${(K_CPS * Math.log(20001)).toFixed(5)})`,
 );
 
-// At β=4 (tail), horseshoe upper bound ≈ (1/π) log(1 + 4/16) = (1/π) log(1.25) ≈ 0.0710.
-const hsTailAt4 = horseshoeMarginalBound(4.0, 1.0, false);
+// Independent quadrature of p_HS(β) = ∫ N(β; 0, λ²τ²) · 2/(π(1+λ²)) dλ,
+// substituting λ = e^u (smooth integrand on u ∈ [-25, 25], trapezoid rule).
+function horseshoeDensityQuadrature(beta: number, tau: number): number {
+  const M = 40000;
+  const lo = -25;
+  const hi = 25;
+  const h = (hi - lo) / M;
+  let acc = 0;
+  for (let i = 0; i <= M; i++) {
+    const u = lo + i * h;
+    const lam = Math.exp(u);
+    const sd = lam * tau;
+    const z = beta / sd;
+    const f =
+      (Math.exp(-0.5 * z * z) / (sd * Math.sqrt(2 * Math.PI))) *
+      (2 / (Math.PI * (1 + lam * lam))) *
+      lam;
+    acc += i === 0 || i === M ? 0.5 * f : f;
+  }
+  return acc * h;
+}
+
+// The exact density must sit inside the bounds at several β and τ, and the
+// closed form (K/τ) e^x E₁(x) must agree with the quadrature.
+for (const tau of [0.3, 1.0, 2.0]) {
+  for (const beta of [0.01, 0.1, 0.5, 1, 2, 4, 8, 12]) {
+    const pq = horseshoeDensityQuadrature(beta, tau);
+    const pc = horseshoeMarginalDensity(beta, tau);
+    const lo = horseshoeMarginalBound(beta, tau, true);
+    const up = horseshoeMarginalBound(beta, tau, false);
+    ok(
+      `CPS bounds bracket p_HS at τ=${tau}, β=${beta}`,
+      lo <= pq && pq <= up && Math.abs(pc - pq) <= 1e-6 * pq,
+      `${lo.toExponential(4)} ≤ ${pq.toExponential(4)} ≤ ${up.toExponential(4)}; closed form ${pc.toExponential(4)}`,
+    );
+  }
+}
+
+// At β=8, τ=1: band [0.00385, 0.00391], exact 0.00385; Laplace(0, 1/√2)
+// (ρ = 1) gives 8.63e-6, so the horseshoe tail is ≈ 446× heavier.
+const hs8 = horseshoeMarginalDensity(8, 1);
+const lap8 = Math.exp(-8 * Math.SQRT2) / Math.SQRT2;
 ok(
-  'CPS upper bound at β=4 ≈ 0.0710',
-  approx(hsTailAt4, (1 / Math.PI) * Math.log(1.25), 1e-3),
-  `value = ${hsTailAt4.toFixed(4)}`,
+  'horseshoe vs Laplace at β=8 (MDX: ~0.004 vs ~9e-6, ~450×)',
+  approx(hs8, 0.003851, 2e-6) && approx(lap8, 8.63e-6, 1e-8) && approx(hs8 / lap8, 446.3, 0.5),
+  `p_HS = ${hs8.toFixed(6)}, Laplace = ${lap8.toExponential(3)}, ratio = ${(hs8 / lap8).toFixed(1)}`,
+);
+
+// Tail: β² p_HS(β) → 2Kτ ≈ 0.254τ.
+const tail40 = 40 * 40 * horseshoeMarginalDensity(40, 1);
+ok(
+  'horseshoe tail β² p_HS(β) → 2K ≈ 0.254',
+  approx(tail40, 2 * K_CPS, 1e-3),
+  `40² · p_HS(40) = ${tail40.toFixed(5)} (2K = ${(2 * K_CPS).toFixed(5)})`,
+);
+
+// Mass at zero (MDX §2: "roughly three times" ridge at |β| = 0.01).
+const ratio001 = horseshoeMarginalDensity(0.01, 1) / (Math.exp(-0.5e-4) / Math.sqrt(2 * Math.PI));
+ok(
+  'horseshoe / ridge density at β=0.01 ≈ 2.97',
+  approx(ratio001, 2.969, 0.005),
+  `ratio = ${ratio001.toFixed(3)}`,
 );
 
 // -------------------------------------------------------------------------

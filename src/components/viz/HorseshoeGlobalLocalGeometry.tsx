@@ -5,6 +5,7 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import {
   bayesianLassoShrinkageMarginal,
   horseshoeMarginalBound,
+  horseshoeMarginalDensity,
   horseshoeShrinkageMarginal,
 } from './shared/bayesian-ml';
 
@@ -43,6 +44,7 @@ export default function HorseshoeGlobalLocalGeometry() {
     const lasso: number[] = new Array(N_GRID);
     const horseshoeLow: number[] = new Array(N_GRID);
     const horseshoeUp: number[] = new Array(N_GRID);
+    const horseshoe: number[] = new Array(N_GRID);
     for (let i = 0; i < N_GRID; i++) {
       const b = -8 + (16 * i) / (N_GRID - 1);
       betaGrid[i] = b;
@@ -50,6 +52,7 @@ export default function HorseshoeGlobalLocalGeometry() {
       lasso[i] = laplacePdf(b, tau / Math.sqrt(2));
       horseshoeLow[i] = horseshoeMarginalBound(b, tau, true);
       horseshoeUp[i] = horseshoeMarginalBound(b, tau, false);
+      horseshoe[i] = horseshoeMarginalDensity(b, tau);
     }
     const yGrid = new Array<number>(N_Y);
     const shrinkRidge: number[] = new Array(N_Y);
@@ -68,6 +71,7 @@ export default function HorseshoeGlobalLocalGeometry() {
       lasso,
       horseshoeLow,
       horseshoeUp,
+      horseshoe,
       yGrid,
       shrinkRidge,
       shrinkLasso,
@@ -150,7 +154,7 @@ export default function HorseshoeGlobalLocalGeometry() {
         .attr('d', areaGen);
       drawTrace(
         gA,
-        data.horseshoeUp.map((u, i) => Math.sqrt(u * data.horseshoeLow[i])),
+        data.horseshoe,
         HS_COLOR,
         xA,
         yA,

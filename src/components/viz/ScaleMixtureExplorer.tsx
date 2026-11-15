@@ -4,7 +4,7 @@ import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
   bayesianLassoShrinkageMarginal,
-  horseshoeMarginalBound,
+  horseshoeMarginalDensity,
   horseshoeShrinkageMarginal,
   mulberry32,
   ridgeShrinkageConstant,
@@ -106,12 +106,9 @@ export default function ScaleMixtureExplorer() {
         (b) => Math.exp(-Math.abs(b) / scale) / (2 * scale),
       );
     } else if (kind === 'horseshoe') {
-      // Geometric mean of Carvalho-Polson-Scott Eq. 7 bounds.
-      priorDensity = betaGrid.map((b) => {
-        const lower = horseshoeMarginalBound(b, tau, true);
-        const upper = horseshoeMarginalBound(b, tau, false);
-        return Math.sqrt(Math.max(lower, 1e-12) * Math.max(upper, 1e-12));
-      });
+      // Exact marginal (K/τ)·e^x·E₁(x), x = β²/(2τ²), K = 1/√(2π³); it lies
+      // between the Carvalho-Polson-Scott bounds (horseshoeMarginalBound).
+      priorDensity = betaGrid.map((b) => horseshoeMarginalDensity(b, tau));
     } else {
       // KDE for half-Normal / half-t_3 (no closed-form marginal).
       const rng = mulberry32(20260509);
@@ -185,6 +182,8 @@ export default function ScaleMixtureExplorer() {
 
       const lineA = d3
         .line<number>()
+        // Panel (a) shows β ∈ [−2, 2]; without this the [−5, 5] grid spills into panel (b).
+        .defined((_, i) => Math.abs(data.betaGrid[i]) <= 2)
         .x((_, i) => xA(data.betaGrid[i]))
         .y((d) => yA(d))
         .curve(d3.curveMonotoneX);

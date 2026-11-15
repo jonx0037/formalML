@@ -1705,14 +1705,20 @@ export function regularizedHorseshoeLambdaTilde(
   return Math.sqrt((c2 * lam2) / (c2 + tau2 * lam2));
 }
 
+/** K = 1/√(2π³) ≈ 0.12698, the constant in the Carvalho-Polson-Scott bounds. */
+export const HORSESHOE_K = 1 / Math.sqrt(2 * Math.PI ** 3);
+
 /**
- * Carvalho-Polson-Scott (2010) Eq. 7 horseshoe-marginal-density bounds.
- *     (1/(2π)) log(1 + 4τ²/β²) ≤ p_HS(β) ≤ (1/π) log(1 + 4τ²/β²)
+ * Carvalho-Polson-Scott (2010) Theorem 1 horseshoe-marginal-density bounds,
+ * stated in the paper for τ = 1 and rescaled by p_τ(β) = p_1(β/τ)/τ:
+ *     (K/(2τ)) log(1 + 4τ²/β²) ≤ p_HS(β) ≤ (K/τ) log(1 + 2τ²/β²),
+ *     K = 1/√(2π³).
  *
- * The lower / upper bounds bracket the implied marginal on β under
- * λ ~ HalfCauchy(0, τ), revealing the logarithmic singularity at β=0
- * (mass-at-zero) and the 1/β² polynomial tail (heavy-tail). Used by
- * ScaleMixtureExplorer (§2) and HorseshoeGlobalLocalGeometry (§5).
+ * The bounds bracket the implied marginal on β under λ ~ HalfCauchy(0, τ),
+ * revealing the logarithmic singularity at β=0 (mass-at-zero) and the
+ * 2Kτ/β² ≈ 0.254τ/β² polynomial tail (heavy-tail). At β = 8, τ = 1 they give
+ * [0.00385, 0.00391] around the exact 0.00385. Used by ScaleMixtureExplorer
+ * (§2) and HorseshoeGlobalLocalGeometry (§5).
  */
 export function horseshoeMarginalBound(
   beta: number,
@@ -1720,8 +1726,57 @@ export function horseshoeMarginalBound(
   lower = false,
 ): number {
   const eps = 1e-9;
-  const base = Math.log(1 + (4 * tau * tau) / (beta * beta + eps));
-  return lower ? base / (2 * Math.PI) : base / Math.PI;
+  const b2 = beta * beta + eps;
+  const t2 = tau * tau;
+  return lower
+    ? (HORSESHOE_K / (2 * tau)) * Math.log(1 + (4 * t2) / b2)
+    : (HORSESHOE_K / tau) * Math.log(1 + (2 * t2) / b2);
+}
+
+/**
+ * Scaled exponential integral e^x · E₁(x) for x > 0. Power series for
+ * x ≤ 1, modified-Lentz continued fraction for x > 1 (stable at large x,
+ * where e^x and E₁(x) separately overflow / underflow).
+ */
+export function scaledExpIntegralE1(x: number): number {
+  if (!(x > 0)) return Infinity;
+  if (x <= 1) {
+    const EULER_GAMMA = 0.5772156649015329;
+    let sum = 0;
+    let term = 1;
+    for (let k = 1; k < 60; k++) {
+      term *= -x / k;
+      const add = term / k;
+      sum += add;
+      if (Math.abs(add) < 1e-17 * Math.abs(sum)) break;
+    }
+    return Math.exp(x) * (-EULER_GAMMA - Math.log(x) - sum);
+  }
+  const FPMIN = 1e-300;
+  let b = x + 1;
+  let c = 1 / FPMIN;
+  let d = 1 / b;
+  let h = d;
+  for (let i = 1; i < 200; i++) {
+    const an = -i * i;
+    b += 2;
+    d = 1 / (an * d + b);
+    c = b + an / c;
+    const del = c * d;
+    h *= del;
+    if (Math.abs(del - 1) < 1e-15) break;
+  }
+  return h;
+}
+
+/**
+ * Exact horseshoe marginal density on β under λ ~ HalfCauchy(0, τ):
+ *     p_HS(β) = (K/τ) · e^{x} E₁(x),   x = β²/(2τ²),   K = 1/√(2π³).
+ * Lies inside the horseshoeMarginalBound band at every β ≠ 0.
+ */
+export function horseshoeMarginalDensity(beta: number, tau = 1): number {
+  const x = (beta * beta) / (2 * tau * tau);
+  return (HORSESHOE_K / tau) * scaledExpIntegralE1(Math.max(x, 1e-300));
 }
 
 /**
