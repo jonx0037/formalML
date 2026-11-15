@@ -70,16 +70,17 @@ BCE_EPS = 1e-7                   # probability clip for log losses
 HESSIAN_STABILIZATION = 1e-3     # Tikhonov term added to last-layer Hessian
 EIGENVALUE_FLOOR = 1e-12         # condition-number denominator floor
 
-# SG-MCMC budget aligned with the topic narrative in §§6-7:
-# 1200 total iterations, 200 burn-in, retain every 10th post-burn sample.
-SGMCMC_TOTAL_ITERS = 1200
-SGMCMC_BURN_IN = 200
-SGMCMC_THIN = 10
+# SG-MCMC settings match the notebook's §§6-7 cells (14, 16): 10,000 total
+# iterations, 5,000 burn-in, every 25th post-burn sample kept (200 samples).
+SGMCMC_TOTAL_ITERS = 10000
+SGMCMC_BURN_IN = 5000
+SGMCMC_THIN = 25
 SGMCMC_BATCH_SIZE = 32
 
-SGLD_ETA = 5e-4                  # SGLD step size
-SGHMC_ETA = 1e-4                 # SGHMC step size (smaller — momentum amplifies)
-SGHMC_FRICTION = 0.1             # SGHMC friction coefficient C
+SGMCMC_PRIOR_PRECISION = 1.0     # λ = 1/τ² on the summed NLL, τ = 1 (notebook §6)
+SGLD_ETA = 1e-3                  # SGLD step size (w ← w − (η/2)∇U + √η ξ)
+SGHMC_ETA = 1e-3                 # SGHMC step size (Algorithm 7.5, M = I)
+SGHMC_FRICTION = 1.0             # SGHMC friction c (C = c·I)
 
 LAPLACE_NUM_SAMPLES = 20         # MC samples drawn from the Gaussian Laplace posterior
 ENSEMBLE_K = 10                  # deep ensemble size
@@ -327,12 +328,12 @@ t0 = time.time()
 
 
 def sgld_step(model: MLP, eta: float, batch_X: torch.Tensor, batch_y: torch.Tensor,
-              n_train: int, wd: float = 1e-4):
+              n_train: int, lam: float = SGMCMC_PRIOR_PRECISION):
     bce = nn.BCEWithLogitsLoss(reduction="sum")
     model.zero_grad()
     logits = model(batch_X)
     nll = bce(logits, batch_y) * (n_train / len(batch_X))
-    prior = wd * sum((p ** 2).sum() for p in model.parameters())
+    prior = 0.5 * lam * sum((p ** 2).sum() for p in model.parameters())
     U = nll + prior
     U.backward()
     with torch.no_grad():
@@ -342,20 +343,22 @@ def sgld_step(model: MLP, eta: float, batch_X: torch.Tensor, batch_y: torch.Tens
             p.add_(-eta / 2 * grad + noise)
 
 
-def sghmc_step(model: MLP, momentum: list, eta: float, alpha: float,
-               batch_X: torch.Tensor, batch_y: torch.Tensor, n_train: int, wd: float = 1e-4):
+def sghmc_step(model: MLP, momentum: list, eta: float, c: float,
+               batch_X: torch.Tensor, batch_y: torch.Tensor, n_train: int,
+               lam: float = SGMCMC_PRIOR_PRECISION):
+    """Algorithm 7.5 with M = I, B̂ = 0: v ← (1 − ηc)v − η∇̂U + √(2ηc)ξ, w ← w + ηv."""
     bce = nn.BCEWithLogitsLoss(reduction="sum")
     model.zero_grad()
     logits = model(batch_X)
     nll = bce(logits, batch_y) * (n_train / len(batch_X))
-    prior = wd * sum((p ** 2).sum() for p in model.parameters())
+    prior = 0.5 * lam * sum((p ** 2).sum() for p in model.parameters())
     U = nll + prior
     U.backward()
     with torch.no_grad():
         for p, v in zip(model.parameters(), momentum):
-            noise = torch.randn_like(p) * np.sqrt(2 * alpha * eta)
-            v.mul_(1 - alpha).add_(-eta * p.grad + noise)
-            p.add_(v)
+            noise = torch.randn_like(p) * np.sqrt(2 * eta * c)
+            v.mul_(1 - eta * c).add_(-eta * p.grad + noise)
+            p.add_(eta * v)
 
 
 def run_chain(
@@ -393,14 +396,17 @@ def run_chain(
     trace_centered = trace_arr - trace_arr.mean()
     var = (trace_centered ** 2).mean()
     if var > 0:
-        max_lag = min(50, len(trace_centered) - 1)
+        max_lag = min(1000, len(trace_centered) - 1)
         acf = []
         for lag in range(max_lag + 1):
             num = (trace_centered[: len(trace_centered) - lag] * trace_centered[lag:]).mean()
             acf.append(num / var)
     else:
-        acf = [1.0] + [0.0] * 50
-    iat = 1 + 2 * sum(max(a, 0) for a in acf[1:])
+        acf = [1.0] + [0.0] * 1000
+    # Sum to the first negative lag (as the notebook's cell 16 does). If the
+    # ACF never crosses zero within max_lag this is only a lower bound.
+    cross = next((k for k, a in enumerate(acf) if a < 0), len(acf))
+    iat = 1 + 2 * sum(acf[1:cross])
     return {
         "grid_mean": grid_mean.tolist(),
         "grid_std": grid_std.tolist(),
@@ -423,7 +429,6 @@ def run_chain(
 
 sgld_out = run_chain("SGLD", eta=SGLD_ETA)
 print(f"  SGLD done, n_samples={sgld_out['n_samples']}, IAT={sgld_out['iat']:.1f}")
-# SGHMC uses a smaller step size; momentum amplifies gradient updates.
 sghmc_out = run_chain("SGHMC", eta=SGHMC_ETA, friction=SGHMC_FRICTION)
 print(f"  SGHMC done, n_samples={sghmc_out['n_samples']}, IAT={sghmc_out['iat']:.1f}")
 

@@ -670,6 +670,91 @@ export function blrGradSyntheticNoise(
   };
 }
 
+/** §8.5 exact stationary bias of φ(θ) = (θ₁ − μ_post,₁)² for SGLD on the
+ *  Gaussian BLR posterior with synthetic gradient noise N(0, σ_g²/B · I).
+ *  With A = Σ_post⁻¹ the chain is θ' − μ = (I − ηA)(θ − μ) + N(0, q I),
+ *  q = 2η + η²σ_g²/B, so along an eigenvector of A with eigenvalue λ the
+ *  stationary variance exceeds 1/λ by η(1 + σ_g²/(Bλ)) / (2 − ηλ) — eq. (8.3).
+ *  B = Infinity gives the discretization-only floor. Requires η < 2/λ_max. */
+export function sgldStationaryBiasExact(
+  posterior: BLRPosterior,
+  eta: number,
+  B: number,
+  sigmaG: number,
+): number {
+  const a = posterior.sigmaPostInv[0];
+  const b = posterior.sigmaPostInv[1];
+  const c = posterior.sigmaPostInv[3];
+  const half = 0.5 * (a + c);
+  const rad = Math.sqrt(0.25 * (a - c) * (a - c) + b * b);
+  const s2 = Number.isFinite(B) ? (sigmaG * sigmaG) / B : 0;
+  let bias = 0;
+  for (const lam of [half - rad, half + rad]) {
+    // Squared first component of the unit eigenvector for λ.
+    let w: number;
+    if (Math.abs(b) < 1e-12 * (Math.abs(a) + Math.abs(c))) {
+      w = Math.abs(lam - a) <= Math.abs(lam - c) ? 1 : 0;
+    } else {
+      const v0 = b;
+      const v1 = lam - a;
+      w = (v0 * v0) / (v0 * v0 + v1 * v1);
+    }
+    bias += (w * eta * (1 + s2 / lam)) / (2 - eta * lam);
+  }
+  return bias;
+}
+
+/** §8.5 replicate experiment: nRep independent SGLD chains with synthetic
+ *  gradient noise, each started from an exact posterior draw, returning the
+ *  post-burn-in time average of φ(θ) = (θ₁ − μ_post,₁)² for every chain.
+ *  The gradient noise −η·(σ_g/√B)·ξ' and the injected √(2η)·ξ are combined into
+ *  one N(0, (2η + η²σ_g²/B) I) draw (the §8.1 per-step covariance). Runs on
+ *  running sums only — no chain storage. */
+export function sgldSyntheticNoisePhiMeans(
+  posterior: BLRPosterior,
+  eta: number,
+  B: number,
+  sigmaG: number,
+  nRep: number,
+  T: number,
+  burn: number,
+  rng: () => number,
+): Float64Array {
+  const gauss = makeGauss(rng);
+  const A00 = posterior.sigmaPostInv[0];
+  const A01 = posterior.sigmaPostInv[1];
+  const A11 = posterior.sigmaPostInv[3];
+  const M00 = 1 - eta * A00;
+  const M01 = -eta * A01;
+  const M11 = 1 - eta * A11;
+  const sd = Math.sqrt(2 * eta + (eta * eta * sigmaG * sigmaG) / B);
+  // Cholesky of Σ_post for the exact initial draws.
+  const S00 = posterior.sigmaPost[0];
+  const S01 = posterior.sigmaPost[1];
+  const S11 = posterior.sigmaPost[3];
+  const L00 = Math.sqrt(S00);
+  const L10 = S01 / L00;
+  const L11 = Math.sqrt(S11 - L10 * L10);
+  const out = new Float64Array(nRep);
+  const kept = T - burn;
+  for (let r = 0; r < nRep; r++) {
+    const z0 = gauss();
+    const z1 = gauss();
+    let d0 = L00 * z0;
+    let d1 = L10 * z0 + L11 * z1;
+    let acc = 0;
+    for (let n = 0; n < T; n++) {
+      const e0 = M00 * d0 + M01 * d1 + sd * gauss();
+      const e1 = M01 * d0 + M11 * d1 + sd * gauss();
+      d0 = e0;
+      d1 = e1;
+      if (n >= burn) acc += d0 * d0;
+    }
+    out[r] = acc / kept;
+  }
+  return out;
+}
+
 // =============================================================================
 // CLOSED-FORM TARGETS / DENSITIES
 // =============================================================================

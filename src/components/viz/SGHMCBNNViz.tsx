@@ -11,18 +11,18 @@
 // full-batch gradients (batchSize = n), unlike the mini-batch notebook run.
 // The SGHMC update is Algorithm 7.5's v ← (1 − ηc)v − η∇U + √(2ηc)ξ,
 // w ← w + ηv (M = I), with v₀ drawn from N(0, I). The defaults match the
-// §7.7 notebook (η = 1e-3, c = 0.1) except for the full batch. At the
-// defaults the momentum's E[v²] stays ≈ 1 (0.96–1.03 over chain seeds 13–17).
+// §7.7 notebook (η = 1e-3, c = 1, prior τ = 1) except for the full batch and
+// the run length (80 + S steps here vs 10,000 there). At the defaults the
+// momentum's E[v²] stays ≈ 1 (0.94–0.98 over chain seeds 13, 15–17).
 // Equal η is not equal distance per step: SGHMC moves each weight by
 // η·v ≈ 1e-3, SGLD by a √η ≈ 0.03 Brownian kick, so over a 280-step window
-// SGLD's ACF falls faster (lag-20 ACF 0.65–0.71 SGHMC vs 0.17–0.69 SGLD over
-// the same seeds). The widget does not claim a momentum speedup.
+// SGLD's ACF often falls faster (lag-20 ACF 0.65–0.75 for SGHMC over seeds
+// 13, 15–17; −0.12–0.73 for SGLD over overlay seeds 44, 45, 47, 48). The
+// widget does not claim a momentum speedup.
 //
 // Interactive controls:
-//   - log₁₀ η slider (-4.5..-3, default -3 → η = 1e-3). The ceiling keeps the
-//     equal-η SGLD overlay finite (full-batch SGLD here first goes non-finite
-//     near η = 3e-3); the SGHMC chain alone stays finite to η ≈ 1e-2.
-//   - log₁₀ c friction slider (-1.5..1.3 → c ≈ 0.03..20, default -1 → c = 0.1).
+//   - log₁₀ η slider (-4.5..-3, default -3 → η = 1e-3, the notebook's).
+//   - log₁₀ c friction slider (-1.5..1.3 → c ≈ 0.03..20, default 0 → c = 1).
 //   - Samples slider S.
 //   - Compare-with-SGLD toggle.
 //   - Resample chain button.
@@ -61,6 +61,8 @@ const ARCH: MLPArchSpec = {
   outputDim: 1,
   activation: 'relu',
 };
+// MAP warm start: Adam on the mean BCE with this weight decay (the widget's own
+// quick fit, not part of the posterior).
 const TRAINING_BASE = (seed: number): TrainingSpec => ({
   lr: 0.01,
   weightDecay: 1e-2,
@@ -68,10 +70,15 @@ const TRAINING_BASE = (seed: number): TrainingSpec => ({
   optimizer: 'adam',
   seed,
 });
+// The chain's prior: w ~ N(0, τ² I) with τ = 1, i.e. precision 1 on the summed
+// NLL — the notebook's §§6–7 prior. sgMCMCBNNTraining reads the prior precision
+// from TrainingSpec.weightDecay, so the chain gets its own spec.
+const PRIOR_PRECISION = 1;
+const CHAIN_SPEC = (seed: number): TrainingSpec => ({ ...TRAINING_BASE(seed), weightDecay: PRIOR_PRECISION });
 const N_TRAIN = 300;
 const TRAIN_NOISE = 0.2;
 const DEFAULT_LOG10_ETA = -3;
-const DEFAULT_LOG10_FRICTION = -1;
+const DEFAULT_LOG10_FRICTION = 0;
 const DEFAULT_FRICTION = Math.pow(10, DEFAULT_LOG10_FRICTION);
 const DEFAULT_S = 200;
 const BURN_IN = 80;
@@ -81,9 +88,9 @@ const { res: GRID_RES, xMin: GRID_X_MIN, xMax: GRID_X_MAX, yMin: GRID_Y_MIN, yMa
 
 const FIGURE_PATH = '/images/topics/bayesian-neural-networks/07_sghmc_two_moons.png';
 const ALT =
-  'Three spatial panels and one diagnostic panel: (a) SGHMC predictive mean on Two Moons; (b) SGHMC predictive standard deviation; (c) sampled 0.5-probability decision boundaries from SGHMC chain in red; (d) single-component weight trace plus autocorrelation function with optional SGLD overlay for mixing comparison.';
+  'Three panels from the notebook run (η = 10⁻³, c = 1, prior τ = 1, mini-batch b = 32, 10,000 iterations): (a) SGHMC predictive mean on Two Moons from 200 thinned samples; (b) SGHMC predictive standard deviation, low on the data and highest below the left end of the class boundary and in the upper right; (c) post-burn-in autocorrelation of one first-layer weight out to lag 1,000 for SGLD and SGHMC — SGLD crosses zero near lag 600, SGHMC is still positive at lag 1,000.';
 const CAPTION =
-  'Figure 7. SGHMC on Two Moons, with full-batch gradients, η = 10⁻³ and c = 0.1 by default. (a, b) Predictive mean and standard deviation over the post-burn-in draws. (c) Sampled decision boundaries. (d) Weight trace and autocorrelation function. Toggle the SGLD overlay to compare the two chains at the same η. Equal η is not equal distance: an SGHMC step moves a weight by η·v with v of order one, while an SGLD step adds a Brownian kick of size √η, so over this short window SGLD’s autocorrelation falls faster. At the defaults the traced weight moves almost in a straight line: along this low-curvature direction the run is too short for the momentum to turn around. Momentum’s advantage appears along long, low-curvature directions over longer runs, not uniformly.';
+  'Figure 7. SGHMC on Two Moons, with full-batch gradients, η = 10⁻³, c = 1 and prior τ = 1 by default — the §7.7 settings, but a few hundred steps from the MAP instead of 10,000. (a, b) Predictive mean and standard deviation over the post-burn-in draws. (c) Sampled decision boundaries. (d) Weight trace and autocorrelation function. Toggle the SGLD overlay to compare the two chains at the same η. Equal η is not equal distance: an SGHMC step moves a weight by η·v with v of order one, while an SGLD step adds a Brownian kick of size √η, so over this short window SGLD’s autocorrelation tends to fall faster. At the defaults the traced weight moves almost in a straight line: along this low-curvature direction the run is too short for the momentum to turn around. Momentum’s advantage appears along long, low-curvature directions over longer runs, not uniformly.';
 const ARIA = 'Figure 7: Interactive SGHMC predictive on Two Moons';
 
 interface CachedMAP {
@@ -125,7 +132,7 @@ async function runSGHMCChain(
   chainSeed: number,
 ): Promise<CachedChain> {
   await yieldToBrowser();
-  const result = sgMCMCBNNTraining(ARCH, TRAINING_BASE(chainSeed), cachedMAP.data, {
+  const result = sgMCMCBNNTraining(ARCH, CHAIN_SPEC(chainSeed), cachedMAP.data, {
     method: 'SGHMC',
     eta,
     batchSize: cachedMAP.data.n,
@@ -154,11 +161,10 @@ async function runSGLDForCompare(
 ): Promise<CachedSGLDCompare> {
   await yieldToBrowser();
   // Same η as the SGHMC chain, so the overlay is an equal-step comparison.
-  // The full-batch SGLD chain stays finite across the whole slider range
-  // (η = 10^-4.5..1e-3, S = 50..400; checked at η = 1e-3, S = 400 for chain
-  // seeds 44–51).
+  // The full-batch SGLD chain stays finite at the slider ceiling (checked with
+  // τ = 1 at η = 1e-3 for chain seeds 44–48, S = 200 and 400).
   const etaSGLD = eta;
-  const result = sgMCMCBNNTraining(ARCH, TRAINING_BASE(chainSeed + 31), cachedMAP.data, {
+  const result = sgMCMCBNNTraining(ARCH, CHAIN_SPEC(chainSeed + 31), cachedMAP.data, {
     method: 'SGLD',
     eta: etaSGLD,
     batchSize: cachedMAP.data.n,
