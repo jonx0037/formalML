@@ -147,12 +147,12 @@ export default function AdaptiveScheduleExplorer() {
           .attr('transform', `translate(0, ${innerH})`)
           .call(d3.axisBottom(x).ticks(4))
           .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
         inner
           .append('g')
           .call(d3.axisLeft(y).ticks(5))
           .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
         inner
           .append('text')
           .attr('x', innerW / 2)
@@ -237,18 +237,18 @@ export default function AdaptiveScheduleExplorer() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(x).ticks(5))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       inner
         .append('g')
         .call(d3.axisLeft(yBeta).ticks(5))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       inner
         .append('g')
         .attr('transform', `translate(${innerW}, 0)`)
         .call(d3.axisRight(yEss).ticks(5))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       inner
         .append('text')
         .attr('x', innerW / 2)

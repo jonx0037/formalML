@@ -7,7 +7,7 @@ import { getCPResults, type CPResult } from '../../data/tensor-decompositions-da
 
 const SM_BREAKPOINT = 640;
 const HEAT_MARGIN = { top: 20, right: 4, bottom: 4, left: 4 };
-const BAR_MARGIN = { top: 20, right: 16, bottom: 28, left: 40 };
+const BAR_MARGIN = { top: 20, right: 16, bottom: 36, left: 44 };
 const BAR_HEIGHT = 180;
 
 // ─── Component ───
@@ -195,20 +195,20 @@ export default function CPDecompositionExplorer() {
         .attr('rx', 2)
         .style(
           'fill',
-          i === rank - 1 ? 'var(--color-accent)' : 'var(--color-muted)',
+          i === rank - 1 ? 'var(--color-accent)' : 'var(--color-text-secondary)',
         )
-        .attr('opacity', i === rank - 1 ? 0.9 : 0.3);
+        .attr('opacity', i === rank - 1 ? 0.9 : 0.35);
     });
 
     // X axis labels
     results.forEach((r, i) => {
       g.append('text')
         .attr('x', xScale(i)! + xScale.bandwidth() / 2)
-        .attr('y', h + 14)
+        .attr('y', h + 16)
         .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-family', 'var(--font-sans)')
-        .attr('font-size', 9)
+        .attr('font-size', 11)
         .text(`R=${r.rank}`);
     });
 
@@ -220,24 +220,24 @@ export default function CPDecompositionExplorer() {
       .call((sel) =>
         sel
           .selectAll('.tick line')
-          .style('stroke', 'var(--color-muted)')
+          .style('stroke', 'var(--color-muted-border)')
           .attr('opacity', 0.2),
       )
       .call((sel) =>
         sel
           .selectAll('.tick text')
-          .style('fill', 'var(--color-muted)')
-          .attr('font-size', 9),
+          .style('fill', 'var(--color-text-secondary)')
+          .style('font-size', '11px'),
       );
 
     // X axis label
     g.append('text')
       .attr('x', w / 2)
-      .attr('y', h + 24)
+      .attr('y', h + 32)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .text('CP Rank');
 
     // Title
@@ -277,7 +277,7 @@ export default function CPDecompositionExplorer() {
           />
           <span
             className="mt-1 text-[10px]"
-            style={{ color: 'var(--color-muted)', fontFamily: 'var(--font-sans)' }}
+            style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-sans)' }}
           >
             range: [{(-colorExtent).toFixed(1)}, {colorExtent.toFixed(1)}]
           </span>
@@ -291,7 +291,7 @@ export default function CPDecompositionExplorer() {
           />
           <span
             className="mt-1 text-[10px]"
-            style={{ color: 'var(--color-muted)', fontFamily: 'var(--font-sans)' }}
+            style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-sans)' }}
           >
             rank-{rank} reconstruction
           </span>
@@ -309,7 +309,7 @@ export default function CPDecompositionExplorer() {
           />
           <span
             className="mt-1 text-[10px]"
-            style={{ color: 'var(--color-muted)', fontFamily: 'var(--font-sans)' }}
+            style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-sans)' }}
           >
             original − approximation
           </span>

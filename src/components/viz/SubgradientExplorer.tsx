@@ -210,13 +210,13 @@ export default function SubgradientExplorer() {
       .call(d3.axisBottom(xScale).ticks(6))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(5))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Title
     svg
@@ -329,13 +329,13 @@ export default function SubgradientExplorer() {
       .call(d3.axisBottom(xScale).ticks(6))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(5))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Title
     svg
@@ -564,7 +564,7 @@ export default function SubgradientExplorer() {
             htmlFor="func-select"
             style={{
               fontSize: '13px',
-              color: 'var(--color-muted)',
+              color: 'var(--color-text-secondary)',
               whiteSpace: 'nowrap',
             }}
           >
@@ -594,7 +594,7 @@ export default function SubgradientExplorer() {
         <div
           style={{
             fontSize: '13px',
-            color: 'var(--color-muted)',
+            color: 'var(--color-text-secondary)',
             fontFamily: 'monospace',
           }}
         >

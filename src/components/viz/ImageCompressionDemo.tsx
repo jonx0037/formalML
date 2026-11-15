@@ -11,7 +11,7 @@ import {
 const CANVAS_SIZE = 192;
 const SPECTRUM_WIDTH = 240;
 const SPECTRUM_HEIGHT = 160;
-const SPEC_MARGIN = { top: 20, right: 12, bottom: 28, left: 40 };
+const SPEC_MARGIN = { top: 20, right: 12, bottom: 34, left: 44 };
 
 // ─── Component ───
 
@@ -184,24 +184,24 @@ export default function ImageCompressionDemo() {
       .attr('transform', `translate(0,${h})`)
       .call(xAxis)
       .call((g) => g.select('.domain').remove())
-      .call((g) => g.selectAll('.tick line').style('stroke', 'var(--color-muted)').attr('opacity', 0.15))
-      .call((g) => g.selectAll('.tick text').style('fill', 'var(--color-muted)').attr('font-size', 9));
+      .call((g) => g.selectAll('.tick line').style('stroke', 'var(--color-muted-border)').attr('opacity', 0.6))
+      .call((g) => g.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     const yAxis = d3.axisLeft(yScale).ticks(4, '.0f').tickSize(-w);
     g.append('g')
       .call(yAxis)
       .call((g) => g.select('.domain').remove())
-      .call((g) => g.selectAll('.tick line').style('stroke', 'var(--color-muted)').attr('opacity', 0.15))
-      .call((g) => g.selectAll('.tick text').style('fill', 'var(--color-muted)').attr('font-size', 9));
+      .call((g) => g.selectAll('.tick line').style('stroke', 'var(--color-muted-border)').attr('opacity', 0.6))
+      .call((g) => g.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Labels
     g.append('text')
       .attr('x', w / 2)
-      .attr('y', h + 22)
+      .attr('y', h + 30)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 9)
+      .attr('font-size', 11)
       .text('Index');
 
     g.append('text')

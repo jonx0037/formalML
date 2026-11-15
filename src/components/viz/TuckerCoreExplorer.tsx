@@ -201,7 +201,7 @@ export default function TuckerCoreExplorer() {
       <div>
         <p
           className="mb-1 text-xs font-medium"
-          style={{ fontFamily: 'var(--font-sans)', color: 'var(--color-muted)' }}
+          style={{ fontFamily: 'var(--font-sans)', color: 'var(--color-text-secondary)' }}
         >
           Factor matrices
         </p>
@@ -224,7 +224,7 @@ export default function TuckerCoreExplorer() {
         <div>
           <p
             className="mb-1 text-xs font-medium"
-            style={{ fontFamily: 'var(--font-sans)', color: 'var(--color-muted)' }}
+            style={{ fontFamily: 'var(--font-sans)', color: 'var(--color-text-secondary)' }}
           >
             Core tensor 𝒢 — frontal slices
           </p>
@@ -264,7 +264,7 @@ export default function TuckerCoreExplorer() {
             </li>
             <li>
               Total stored: <strong>{stats.totalStored}</strong>{' '}
-              <span style={{ color: 'var(--color-muted)' }}>/ {stats.fullEntries}</span>
+              <span style={{ color: 'var(--color-text-secondary)' }}>/ {stats.fullEntries}</span>
             </li>
           </ul>
         </div>

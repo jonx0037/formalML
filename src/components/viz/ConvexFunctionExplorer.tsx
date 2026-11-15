@@ -111,12 +111,12 @@ export default function ConvexFunctionExplorer() {
         .attr('transform', `translate(0,${innerH})`)
         .call(d3.axisBottom(xScale).ticks(5))
         .selectAll('text')
-        .style('fill', 'var(--color-muted)');
+        .style('fill', 'var(--color-text-secondary)');
       g.selectAll('.domain, .tick line').style('stroke', 'var(--color-border)');
 
       // y axis
       const yAxisG = g.append('g').call(d3.axisLeft(yScale).ticks(5));
-      yAxisG.selectAll('text').style('fill', 'var(--color-muted)');
+      yAxisG.selectAll('text').style('fill', 'var(--color-text-secondary)');
       yAxisG.selectAll('.domain, .tick line').style('stroke', 'var(--color-border)');
 
       // Panel title
@@ -231,7 +231,7 @@ export default function ConvexFunctionExplorer() {
       .attr('y1', yScale(thetaChordY))
       .attr('x2', xScale(thetaX))
       .attr('y2', yScale(thetaFnY))
-      .attr('stroke', 'var(--color-muted)')
+      .attr('stroke', 'var(--color-text-secondary)')
       .attr('stroke-width', 1)
       .attr('stroke-dasharray', '3,2');
 
@@ -470,7 +470,7 @@ export default function ConvexFunctionExplorer() {
           .attr('y1', yScale(0))
           .attr('x2', xScale(sx))
           .attr('y2', yScale(sy))
-          .attr('stroke', 'var(--color-muted)')
+          .attr('stroke', 'var(--color-text-secondary)')
           .attr('stroke-width', 1)
           .attr('stroke-dasharray', '2,2');
 
@@ -678,7 +678,7 @@ export default function ConvexFunctionExplorer() {
       <div
         style={{
           fontSize: 12,
-          color: 'var(--color-muted)',
+          color: 'var(--color-text-secondary)',
           marginTop: 4,
         }}
       >

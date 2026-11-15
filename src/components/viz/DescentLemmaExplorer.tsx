@@ -146,11 +146,11 @@ export default function DescentLemmaExplorer() {
       .append('g')
       .attr('transform', `translate(0,${innerH})`)
       .call(d3.axisBottom(xScale).ticks(6));
-    xAxisG.selectAll('text').style('fill', 'var(--color-muted)');
+    xAxisG.selectAll('text').style('fill', 'var(--color-text-secondary)');
     xAxisG.selectAll('.domain, .tick line').style('stroke', 'var(--color-border)');
 
     const yAxisG = g.append('g').call(d3.axisLeft(yScale).ticks(5));
-    yAxisG.selectAll('text').style('fill', 'var(--color-muted)');
+    yAxisG.selectAll('text').style('fill', 'var(--color-text-secondary)');
     yAxisG.selectAll('.domain, .tick line').style('stroke', 'var(--color-border)');
 
     // Panel title
@@ -201,7 +201,7 @@ export default function DescentLemmaExplorer() {
       .attr('y1', yScale(fAtAnchor))
       .attr('x2', xScale(X_DOMAIN[1]))
       .attr('y2', yScale(fAtAnchor))
-      .attr('stroke', 'var(--color-muted)')
+      .attr('stroke', 'var(--color-text-secondary)')
       .attr('stroke-width', 1)
       .attr('stroke-dasharray', '3,3')
       .attr('opacity', 0.5);
@@ -367,7 +367,7 @@ export default function DescentLemmaExplorer() {
       g.append('text')
         .attr('x', legendX + 24)
         .attr('y', ly + 4)
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-size', '11px')
         .text(item.label);
     });
@@ -506,7 +506,7 @@ export default function DescentLemmaExplorer() {
       <div
         style={{
           fontSize: 12,
-          color: 'var(--color-muted)',
+          color: 'var(--color-text-secondary)',
           marginTop: 4,
         }}
       >

@@ -18,7 +18,7 @@ const COLOR_V2 = '#d94801';
 const COLOR_U1 = '#6a3d9a';
 const COLOR_U2 = '#b15928';
 const COLOR_ELLIPSE = 'var(--color-text)';
-const COLOR_CIRCLE = 'var(--color-muted)';
+const COLOR_CIRCLE = 'var(--color-text-secondary)';
 
 // ─── SVD math for 2×2 matrices ───
 
@@ -267,13 +267,13 @@ export default function SVDGeometryExplorer() {
       g.append('line')
         .attr('x1', xScale(-maxExtent)).attr('y1', yScale(0))
         .attr('x2', xScale(maxExtent)).attr('y2', yScale(0))
-        .style('stroke', 'var(--color-muted)')
+        .style('stroke', 'var(--color-text-secondary)')
         .attr('stroke-width', 0.5)
         .attr('opacity', 0.5);
       g.append('line')
         .attr('x1', xScale(0)).attr('y1', yScale(-maxExtent))
         .attr('x2', xScale(0)).attr('y2', yScale(maxExtent))
-        .style('stroke', 'var(--color-muted)')
+        .style('stroke', 'var(--color-text-secondary)')
         .attr('stroke-width', 0.5)
         .attr('opacity', 0.5);
 
@@ -346,7 +346,7 @@ export default function SVDGeometryExplorer() {
           .attr('x', w / 2)
           .attr('y', h - 4)
           .attr('text-anchor', 'middle')
-          .style('fill', 'var(--color-muted)')
+          .style('fill', 'var(--color-text-secondary)')
           .style('font-family', 'var(--font-sans)')
           .attr('font-size', 10)
           .attr('font-style', 'italic')
@@ -358,7 +358,7 @@ export default function SVDGeometryExplorer() {
         .attr('x', w / 2)
         .attr('y', -4)
         .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-family', 'var(--font-sans)')
         .attr('font-size', 10)
         .attr('font-weight', 500)
