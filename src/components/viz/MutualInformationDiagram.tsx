@@ -9,6 +9,7 @@ import {
   conditionalEntropy,
   mutualInformation,
   marginal,
+  lensSeparation,
 } from './shared/informationTheory';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -124,18 +125,17 @@ export default function MutualInformationDiagram() {
       const cx = w / 2;
       const cy = h / 2;
 
-      // Scale radii proportional to sqrt(entropy)
+      // Area-proportional Venn: each circle's area is scale²·π·H, so radii go
+      // as sqrt(entropy), and the lens area is scale²·π·I.
       const maxR = Math.min(w, h) * 0.32;
       const scale = maxR / Math.max(Math.sqrt(hX), Math.sqrt(hY), 0.01);
       const rX = Math.max(10, scale * Math.sqrt(hX));
       const rY = Math.max(10, scale * Math.sqrt(hY));
 
-      // Overlap separation based on MI
-      const maxMI = Math.min(hX, hY);
-      const overlapFrac = maxMI > 0 ? mi / maxMI : 0;
-      const maxSep = rX + rY;
-      const minSep = Math.abs(rX - rY);
-      const sep = maxSep - overlapFrac * (maxSep - minSep);
+      // Solve the center separation from the circle-circle lens-area formula.
+      // I = 0 → circles touch; I = min(H(X), H(Y)) → smaller circle nested.
+      const miClamped = Math.min(Math.max(mi, 0), Math.min(hX, hY));
+      const sep = lensSeparation(rX, rY, Math.PI * scale * scale * miClamped);
 
       const cxLeft = cx - sep / 2;
       const cxRight = cx + sep / 2;
