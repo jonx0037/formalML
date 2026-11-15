@@ -175,6 +175,12 @@ references:
     url: "https://doi.org/10.1111/j.1467-9469.2010.00723.x"
     note: "Scandinavian Journal of Statistics. Application of ESS-driven adaptive scheduling."
   - type: "paper"
+    title: "Toward Automatic Model Comparison: An Adaptive Sequential Monte Carlo Approach"
+    authors: "Zhou, Johansen & Aston"
+    year: 2016
+    url: "https://doi.org/10.1080/10618600.2015.1060885"
+    note: "JCGS. The conditional ESS (CESS) criterion used by the §9.4 adaptive schedule."
+  - type: "paper"
     title: "Monte Carlo Filter and Smoother for Non-Gaussian Nonlinear State Space Models"
     authors: "Kitagawa"
     year: 1996
@@ -996,53 +1002,57 @@ Hand-tuning is fragile: (1) the optimal schedule depends on $\mathrm{Var}_{\pi_t
 
 ### 9.4 ESS-driven adaptive β
 
-**The adaptive rule** (Del Moral, Doucet, and Jasra 2012, building on Jasra, Stephens, Doucet, and Tsagaris 2011): pre-commit to a target ESS fraction $\tau_{\mathrm{adapt}} \in (0, 1)$ (typically 0.8–0.95). At each step, define the projected ESS
+**The adaptive rule.** Choosing each temperature from an ESS criterion goes back to Jasra, Stephens, Doucet, and Tsagaris (2011) and Del Moral, Doucet, and Jasra (2012), who let the ESS fall by a fixed fraction per step. We use the conditional-ESS form of Zhou, Johansen, and Aston (2016). Pre-commit to a target fraction $\tau_{\mathrm{adapt}} \in (0, 1)$ (typically 0.8–0.95). At each step, with normalized current weights $W_t^{(i)}$ and incremental weights $G_t^{(i)}(\beta) = e^{(\beta-\beta_t) \log p(y \mid \theta_t^{(i)})}$, define the conditional ESS
 
 $$
-\mathrm{ESS}_{t+1}(\beta) = \frac{\bigl(\sum_i w_t^{(i)} \cdot e^{(\beta-\beta_t) \log p(y \mid \theta_t^{(i)})}\bigr)^2}{\sum_i (w_t^{(i)})^2 \cdot e^{2(\beta-\beta_t) \log p(y \mid \theta_t^{(i)})}}
+\mathrm{CESS}_t(\beta) = \frac{N \bigl(\sum_i W_t^{(i)} G_t^{(i)}(\beta)\bigr)^2}{\sum_i W_t^{(i)} \bigl(G_t^{(i)}(\beta)\bigr)^2} \in [1, N]
 $$
 
-and bisect for $\beta_{t+1}$ such that $\mathrm{ESS}_{t+1}(\beta_{t+1}) = \tau_{\mathrm{adapt}} N$.
+and bisect for $\beta_{t+1}$ such that $\mathrm{CESS}_t(\beta_{t+1}) = \tau_{\mathrm{adapt}} N$.
 
-**Properties.** ESS is monotonically decreasing in $\beta$ (smooth root-finding). Bisection convergence in $O(\log_2(1/\epsilon))$ steps. Path length $T$ is data-driven — the schedule stops when it can jump straight to $\beta = 1$ without dropping below $\tau_{\mathrm{adapt}} N$.
+**Why the conditional ESS.** CESS scores only the next reweighting. The tempting alternative, the ESS of the accumulated weights $w_t^{(i)} G_t^{(i)}(\beta)$, breaks the schedule whenever $\tau_{\mathrm{adapt}} > \tau$: after the first step the accumulated ESS already sits at $\tau_{\mathrm{adapt}} N$, so it never falls below the resampling threshold $\tau N$, the weights never reset, and every later step can raise $\beta$ by almost nothing. On the §9.5 banana that rule is still at $\beta \approx 0.004$ after 100 steps. Right after a resample the weights are uniform and the two criteria agree.
+
+**Properties.** CESS is non-increasing in $\beta$: with $\delta = \beta - \beta_t$ and $\kappa$ the cumulant generating function of $\log p(y \mid \theta)$ under the weights $W_t$, $\log \mathrm{CESS}_t = \log N + 2\kappa(\delta) - \kappa(2\delta)$, whose derivative $2[\kappa'(\delta) - \kappa'(2\delta)]$ is $\le 0$ because $\kappa$ is convex. So the root is unique and bisection converges in $O(\log_2(1/\epsilon))$ steps. Path length $T$ is data-driven — the schedule stops when it can jump straight to $\beta = 1$ without CESS dropping below $\tau_{\mathrm{adapt}} N$.
 
 **Bisection inner loop:**
 
 ```python
-def find_next_beta(theta, log_w, log_lik_curr, beta_t, target_ess, tol=1e-3):
-    def ess_at(beta):
-        log_alpha = (beta - beta_t) * log_lik_curr
-        log_w_new = log_w + log_alpha
-        log_w_norm = log_w_new - logsumexp(log_w_new)
-        return float(np.exp(-logsumexp(2.0 * log_w_norm)))
+def conditional_ess(log_w, log_lik_curr, delta_beta):
+    log_W = log_w - logsumexp(log_w)        # normalized current weights
+    log_G = delta_beta * log_lik_curr       # incremental weights
+    return float(len(log_w) * np.exp(2.0 * logsumexp(log_W + log_G)
+                                     - logsumexp(log_W + 2.0 * log_G)))
+
+def find_next_beta(log_w, log_lik_curr, beta_t, tau_adapt, tol=1e-6):
+    target = tau_adapt * len(log_w)
+    if conditional_ess(log_w, log_lik_curr, 1.0 - beta_t) >= target:
+        return 1.0
     lo, hi = beta_t, 1.0
-    if ess_at(hi) >= target_ess:
-        return hi
     while hi - lo > tol:
         mid = 0.5 * (lo + hi)
-        if ess_at(mid) >= target_ess:
+        if conditional_ess(log_w, log_lik_curr, mid - beta_t) >= target:
             lo = mid
         else:
             hi = mid
     return 0.5 * (lo + hi)
 ```
 
-Combined with §9.1 ESS-threshold resampling, the SMC sampler has two adaptive mechanisms. The standard configuration is $\tau_{\mathrm{adapt}} = 0.95$ and $\tau = 0.5$ (PyMC's default).
+Combined with §9.1 ESS-threshold resampling, the SMC sampler has two adaptive mechanisms with separate jobs: CESS sets how far each step moves, and the ESS of the accumulated weights decides when to resample. In the §9.5 run ($\tau_{\mathrm{adapt}} = 0.9$, $\tau = 0.5$) the accumulated ESS falls from $450$ to $244$ over six steps and triggers one resample. PyMC's `sample_smc` takes the every-step special case: it resamples at every stage, so its weights are uniform before each reweighting, and its default `threshold = 0.5` on the ESS of the incremental weights is this rule with $\tau_{\mathrm{adapt}} = 0.5$.
 
 **Correctness with adaptive schedules.** Theorem 4 unbiasedness holds under path-adapted schedules via a Doob-decomposition argument (Del Moral, Doucet, and Jasra 2012; rigorously refined in Beskos, Jasra, Kantas, and Thiery 2016). The intuition: the schedule depends on past particles but not future ones, so the martingale structure that makes $\widehat Z_t$ unbiased is preserved.
 
 ### 9.5 Worked example — the banana distribution
 
-The banana: $\gamma_T(\theta) \propto \exp(-\theta_1^2/2 - (\theta_2 - \theta_1^2)^2/2)$ on $\mathbb{R}^2$. Visually consistent with the **Riemann Manifold HMC** §10 banana demo — the two topics share this target by design. Properly normalized 2D density with $Z_T = 1$.
+The banana: $\gamma_T(\theta) \propto \exp(-\theta_1^2/2 - (\theta_2 - \theta_1^2)^2/2)$ on $\mathbb{R}^2$. Visually consistent with the **Riemann Manifold HMC** §10 banana demo — the two topics share this target by design. With the factor $1/(2\pi)$ it is a proper density with $Z_T = 1$; the Figure 9 run drops that factor, so its evidence target is $\log Z_T = \log 2\pi \approx 1.838$ (the prior $\pi_0$ is normalized).
 
 Path: $\pi_0 = \mathcal{N}(\mathbf{0}, 16 I_2)$ (wide isotropic prior) to the banana posterior.
 
-Compare a fixed linear schedule ($T = 20$) vs the adaptive schedule ($\tau_{\mathrm{adapt}} = 0.9$). $N = 500$, IMH cloud-fit, $\tau = 0.5$. Adaptive typically uses $T \approx 8$–$12$ on this target.
+Compare a fixed linear schedule ($T = 20$) vs the adaptive schedule ($\tau_{\mathrm{adapt}} = 0.9$). $N = 500$, IMH cloud-fit, $\tau = 0.5$. The adaptive schedule reaches $\beta = 1$ in $T = 9$ steps here, under half the fixed schedule's $20$.
 
 <Figure
   src="/images/topics/sequential-monte-carlo/09_adaptive_schedule_banana.png"
-  alt="Four-panel banana SMC: target density, cloud trajectory under a fixed linear schedule, cloud trajectory under an ESS-adaptive schedule, and ESS profile for both."
-  caption="Figure 9. Banana SMC at N = 500: fixed linear schedule (T = 20) versus ESS-adaptive (τ_adapt = 0.9, T ≈ 8-12). The adaptive schedule reaches β = 1 in roughly half as many steps while keeping ESS above τN throughout."
+  alt="Four-panel banana SMC at N = 500. (A) Banana target density. (B) Particle clouds at every step of a fixed linear schedule with T = 20, colored from early to final and ending on the banana. (C) Particle clouds at every step of the conditional-ESS adaptive schedule, which reaches β = 1 in T = 9 steps and also ends on the banana. (D) ESS after each reweighting against β, on a log axis above β = 0.001: the fixed run dips to 229, below the τN = 250 line, at β = 0.05 and then stays between 344 and 463; the adaptive run falls from 450 to 244 over its first six steps, resamples, and ends at 333."
+  caption="Figure 9. Banana SMC at N = 500 with resampling threshold τN = 250: fixed linear schedule (T = 20) versus the conditional-ESS adaptive schedule (τ_adapt = 0.9). Panels (B) and (C) overlay the cloud at every step, from early (dark) to final (yellow). The adaptive run reaches β = 1 in T = 9 steps (β = 0.0013, 0.0054, 0.016, 0.042, 0.087, 0.18, 0.33, 0.60, 1), holding CESS at 0.9N = 450 on each step but the last; the ESS of its accumulated weights falls from 450 to 244 over six steps, triggers one resample at β = 0.18, and ends at 333. The fixed run's ESS falls below τN once (229 at β = 0.05) and then stays between 344 and 463. Both runs estimate log Z_T = log 2π ≈ 1.838 to within 0.05 (1.817 fixed, 1.880 adaptive). Terminal weighted moments, against truths of 1 for the mean of θ₂ and 1 and 3 for the variances of θ₁ and θ₂: 1.11, 1.05, 3.25 fixed; 0.89, 0.90, 2.56 adaptive."
 />
 
 The viz below runs both fixed and adaptive schedules on the banana side-by-side. Pick a fixed-schedule curvature (linear, power-2, power-½) and watch how the cloud terminal scatter compares to the adaptive one. The adaptive schedule's $T$ value is data-driven and shown in the legend.
@@ -1172,7 +1182,7 @@ The fourth and final headline demo. The LGCP discretized onto a spatial grid is 
 
 **Reweighting** by Proposition 3: $\log \alpha_t^{(i)} = (\beta_{t+1} - \beta_t)\sum_k [y_k z_k^{(i)} - A e^{z_k^{(i)}}]$.
 
-**Adaptive schedule** $\tau_{\mathrm{adapt}} = 0.9$. Path length $T$ is data-driven.
+**Adaptive schedule** — the §9.4 conditional-ESS rule with $\tau_{\mathrm{adapt}} = 0.9$. Path length $T$ is data-driven ($T = 22$ in Figure 11).
 
 **Propagation** IMH cloud-fit with ridge $\varepsilon I_K$ for $\varepsilon = 10^{-4}$.
 
@@ -1204,8 +1214,8 @@ The Pareto frontier shifts with $K$: at small $K$ NUTS dominates; at medium $K$ 
 
 <Figure
   src="/images/topics/sequential-monte-carlo/11_lgcp_smc.png"
-  alt="Four-panel log-Gaussian Cox process SMC inference: true intensity heatmap, SMC posterior mean heatmap, ESS through the adaptive path, and posterior trajectory at representative cells."
-  caption="Figure 11. LGCP inference at m = 16 (K = 256), N = 300. The SMC sampler recovers the multi-modal intensity field; the high- and low-intensity cells' posterior trajectories converge from the prior mean toward their respective truths."
+  alt="Four-panel log-Gaussian Cox process SMC inference at K = 256: (A) true intensity heatmap with peaks near (0.3, 0.7) and (0.7, 0.4); (B) SMC posterior-mean heatmap, RMSE 39.2, patchy, with its strongest cells near (0.8, 0.5) and nothing at the (0.3, 0.7) peak; (C) ESS against β along the 22-step adaptive path, a sawtooth between 102 and 270 with six resamples; (D) weighted posterior-mean intensity at the highest- and lowest-intensity cells along the path, ending at 45.8 and 61.5 against truths of 175.0 and 44.4."
+  caption="Figure 11. LGCP inference at m = 16 (K = 256), N = 300, from 62 observed points. The conditional-ESS schedule reaches β = 1 in T = 22 steps; the ESS of the accumulated weights saw-tooths between 102 and 270 = 0.9N, with six resamples (panel C). The posterior mean in panel (B) (RMSE 39.2) does not reproduce the true field: the peak at (0.3, 0.7) is missing and the strongest cells sit near (0.8, 0.5). Sixty-two points over 256 cells carry little information about any one cell, and the IMH cloud-fit kernel accepts at most 6% of its proposals per step in 256 dimensions, so the final cloud holds 85 distinct particles. In panel (D) the posterior mean ends at 45.8 at the highest-intensity cell and 61.5 at the lowest, against truths of 175.0 and 44.4."
 />
 
 The viz below loads a precomputed payload (Python: `notebooks/sequential-monte-carlo/precompute_lgcp.py`) for $m \in \{8, 12, 16\}$. The $K = 256$ case is too heavy for in-browser SMC sampling; the precompute handles it offline and the viz displays the result. Pick a grid resolution to switch between $K = 64$, $K = 144$, and $K = 256$ inference results.

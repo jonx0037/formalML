@@ -65,6 +65,7 @@ MU_0 = float(np.log(50))
 N_SMC = 300
 TAU_ADAPT = 0.9
 TAU_RESAMPLE = 0.5
+MAX_STEPS = 200  # safety cap; the CESS schedule reaches beta = 1 well before it
 M_VALUES = [8, 12, 16]
 
 THIS_DIR = Path(__file__).resolve().parent
@@ -139,22 +140,26 @@ def run_one(m: int, rng_master: np.random.Generator) -> dict:
     posterior_mean_history = [theta.mean(axis=0)]
 
     step = 0
-    while beta < 1.0 - 1e-9 and step < 60:
-        def projected_ess(b: float) -> float:
-            log_alpha = (b - beta) * log_lik_curr
-            log_w_new = log_w + log_alpha
-            log_w_norm = log_w_new - logsumexp(log_w_new)
-            return float(np.exp(-logsumexp(2.0 * log_w_norm)))
+    while beta < 1.0 - 1e-9 and step < MAX_STEPS:
+        # Conditional-ESS bisection (Zhou, Johansen & Aston 2016), as in the
+        # notebook's cell 23: choose beta_{t+1} so that the incremental weights
+        # keep CESS = tau_adapt * N under the current normalized weights.
+        def cess_at(b: float) -> float:
+            log_W = log_w - logsumexp(log_w)
+            log_G = (b - beta) * log_lik_curr
+            return float(
+                N_SMC * np.exp(2.0 * logsumexp(log_W + log_G) - logsumexp(log_W + 2.0 * log_G))
+            )
 
-        if projected_ess(1.0) >= TAU_ADAPT * N_SMC:
+        if cess_at(1.0) >= TAU_ADAPT * N_SMC:
             new_beta = 1.0
         else:
             lo, hi = beta, 1.0
-            for _ in range(40):
-                if hi - lo < 1e-6:
+            for _ in range(60):
+                if hi - lo < 1e-9:
                     break
                 mid = 0.5 * (lo + hi)
-                if projected_ess(mid) >= TAU_ADAPT * N_SMC:
+                if cess_at(mid) >= TAU_ADAPT * N_SMC:
                     lo = mid
                 else:
                     hi = mid
@@ -209,7 +214,7 @@ def run_one(m: int, rng_master: np.random.Generator) -> dict:
         beta_trace.append(float(beta))
         ess_trace.append(ess)
         log_z_trace.append(log_z_running)
-        posterior_mean_history.append(theta.mean(axis=0))
+        posterior_mean_history.append(np.exp(log_w - logsumexp(log_w)) @ theta)  # weighted cloud mean
 
     elapsed = time.perf_counter() - t0
 

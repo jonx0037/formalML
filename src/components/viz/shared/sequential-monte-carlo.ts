@@ -15,7 +15,7 @@
 //        - Four resampling schemes via searchsorted-on-cumsum (never
 //          random.choice — project-wide hard rule)
 //        - Geometric-path incremental log-weight
-//        - Adaptive-schedule bisection
+//        - Adaptive-schedule bisection (conditional ESS)
 //        - Cloud mean and covariance
 //        - IMH cloud-fit primitives (proposal, acceptance log-ratio)
 //        - RWM step
@@ -339,13 +339,26 @@ export function geometricPathIncrementalLogWeight(
 }
 
 // =============================================================================
-// 5. ADAPTIVE TEMPERATURE SCHEDULE (Del Moral-Doucet-Jasra 2012)
+// 5. ADAPTIVE TEMPERATURE SCHEDULE (conditional ESS, Zhou-Johansen-Aston 2016)
 //
-// Bisect for β_{t+1} such that the projected ESS at β_{t+1} equals
-// τ_adapt · N. ESS is monotone-decreasing in β so bisection always converges.
+// Bisect for β_{t+1} such that the conditional ESS of the incremental weights
+// G_i = exp((β_{t+1} − β_t)·logLik_i), taken under the current normalized
+// weights W_i, equals τ_adapt · N:
+//     CESS(β) = N (Σ W_i G_i)² / Σ W_i G_i²   ∈ [1, N].
+// CESS is non-increasing in β (log CESS = log N + 2κ(δ) − κ(2δ) with κ the
+// convex cumulant generating function of logLik under W), so bisection
+// converges.
+//
+// Targeting τ_adapt · N with the ESS of the *accumulated* weights instead
+// (`projectedEss` below) stalls whenever τ_adapt exceeds the resampling
+// threshold: the accumulated ESS sits at the target after one step, never
+// falls below τ N, so the weights never reset and β barely moves.
 // =============================================================================
 
-/** Projected ESS at β given current weights and likelihood cache.
+/** ESS of the accumulated weights after tilting them to β:
+ *     (Σ w_i G_i)² / Σ w_i² G_i².
+ * This is the resampling diagnostic, not the schedule criterion; see
+ * `conditionalEss` for the quantity `findNextBeta` targets.
  *
  * Streaming single-pass implementation: applies the (β − β_t)·logLik tilt
  * inline with the max-shift / ratio identity used by `logSpaceESS`, with
@@ -375,22 +388,62 @@ export function projectedEss(
   return (sumExp * sumExp) / sumExpSq;
 }
 
-/** Bisect β in [β_t, 1] to find the next temperature that hits target ESS.
- * Returns the new beta and the realized ESS at that beta.
+/** Conditional ESS (Zhou, Johansen & Aston 2016) of the incremental weights
+ * G_i = exp((β − β_t)·logLik_i) under the current normalized weights W_i:
+ *     CESS(β) = N (Σ W_i G_i)² / Σ W_i G_i²   ∈ [1, N].
+ * It scores only the next reweighting, so it does not depend on how much
+ * degeneracy the weights have accumulated since the last resample. With
+ * uniform weights it equals `projectedEss`.
  *
- * Implementation note: the inner ESS evaluations use the allocation-free
- * `projectedEss` above (two passes over `logW`/`logLik` per call). Across
- * a bisection of up to 60 iterations × N particles this saves ~60·N
- * allocations per SMC step. */
+ * Streaming two-pass implementation with a max-shift; zero allocations. */
+export function conditionalEss(
+  beta: number,
+  betaCurrent: number,
+  logW: readonly number[],
+  logLik: readonly number[]
+): number {
+  const n = logW.length;
+  if (n === 0) return 0;
+  const delta = beta - betaCurrent;
+  let maxW = -Infinity;
+  let maxG = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (logW[i] > maxW) maxW = logW[i];
+    const g = delta * logLik[i];
+    if (g > maxG) maxG = g;
+  }
+  if (!isFinite(maxW) || !isFinite(maxG)) return 1;
+  // Σ W_i G_i ∝ Σ e^{ℓ_i − maxW} e^{g_i − maxG}; Σ W_i G_i² likewise with
+  // e^{2(g_i − maxG)}. The common factors cancel in the ratio below.
+  let sumW = 0;
+  let sumWG = 0;
+  let sumWG2 = 0;
+  for (let i = 0; i < n; i++) {
+    const w = Math.exp(logW[i] - maxW);
+    const g = Math.exp(delta * logLik[i] - maxG);
+    sumW += w;
+    sumWG += w * g;
+    sumWG2 += w * g * g;
+  }
+  if (sumWG2 === 0) return 1;
+  return (n * sumWG * sumWG) / (sumW * sumWG2);
+}
+
+/** Bisect β in [β_t, 1] so that the conditional ESS hits `targetEss`
+ * (= τ_adapt · N). Returns the new beta and the realized CESS at that beta.
+ *
+ * Implementation note: the inner evaluations use the allocation-free
+ * `conditionalEss` above. Across a bisection of up to 60 iterations × N
+ * particles this saves ~60·N allocations per SMC step. */
 export function findNextBeta(
   betaCurrent: number,
   logW: readonly number[],
   logLik: readonly number[],
   targetEss: number,
-  tol = 1e-3,
-  maxIter = 40
+  tol = 1e-6,
+  maxIter = 60
 ): { beta: number; ess: number; iters: number } {
-  const essAtOne = projectedEss(1.0, betaCurrent, logW, logLik);
+  const essAtOne = conditionalEss(1.0, betaCurrent, logW, logLik);
   if (essAtOne >= targetEss) {
     return { beta: 1.0, ess: essAtOne, iters: 0 };
   }
@@ -399,13 +452,13 @@ export function findNextBeta(
   let iter = 0;
   while (hi - lo > tol && iter < maxIter) {
     const mid = 0.5 * (lo + hi);
-    const e = projectedEss(mid, betaCurrent, logW, logLik);
+    const e = conditionalEss(mid, betaCurrent, logW, logLik);
     if (e >= targetEss) lo = mid;
     else hi = mid;
     iter++;
   }
   const beta = 0.5 * (lo + hi);
-  const ess = projectedEss(beta, betaCurrent, logW, logLik);
+  const ess = conditionalEss(beta, betaCurrent, logW, logLik);
   return { beta, ess, iters: iter };
 }
 
@@ -1064,9 +1117,9 @@ export interface AdaptiveSmcOptions {
   logPrior: (theta: readonly number[]) => number;
   logLik: (theta: readonly number[]) => number;
   drawPrior: (gauss: () => number, rng: () => number) => number[];
-  /** "adaptive": ESS-driven bisection; otherwise a fixed schedule array of betas. */
+  /** "adaptive": conditional-ESS bisection; otherwise a fixed schedule array of betas. */
   schedule: 'adaptive' | { fixedBetas: readonly number[] };
-  tauAdapt?: number; // for adaptive: target ESS fraction (default 0.9)
+  tauAdapt?: number; // for adaptive: target conditional-ESS fraction (default 0.9)
   resampleThreshold?: number; // default 0.5
   maxSteps?: number; // safety cap on adaptive paths (default 200)
   kernel?: 'imh' | { kind: 'rwm'; sigma: number; sweeps: number };
@@ -1091,7 +1144,7 @@ export interface AdaptiveSmcResult {
 
 /** Generic adaptive SMC sampler — works for banana (d=2), GMM (d=3),
  * and other small-dimensional targets. The schedule is either fixed
- * (array of betas) or adaptive (ESS-bisection at each step). */
+ * (array of betas) or adaptive (conditional-ESS bisection at each step). */
 export function smcAdaptiveSampler(opts: AdaptiveSmcOptions): AdaptiveSmcResult {
   const N = opts.N;
   const d = opts.d;
@@ -1122,7 +1175,7 @@ export function smcAdaptiveSampler(opts: AdaptiveSmcOptions): AdaptiveSmcResult 
   while (beta < 1 - 1e-9 && step < maxSteps) {
     let nextBeta: number;
     if (opts.schedule === 'adaptive') {
-      const res = findNextBeta(beta, logW, logLikCache, tauAdapt * N, 1e-4, 60);
+      const res = findNextBeta(beta, logW, logLikCache, tauAdapt * N, 1e-6, 60);
       nextBeta = Math.max(res.beta, beta + 1e-4); // force progress
     } else {
       const fixed = opts.schedule.fixedBetas;

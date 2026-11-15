@@ -14,11 +14,13 @@
 //   (D) Posterior-mean trajectory at the high- and low-intensity cells,
 //       with truth lines for reference.
 //
-// Reader-discoverable behaviours:
-//   - m = 8: low-resolution recovery, RMSE modest.
-//   - m = 16: high-resolution, longer adaptive path, sharper intensity recovery.
-//   - The ESS profile stays near τ_adapt N until convergence; the high-cell
-//     posterior trajectory climbs from the prior mean toward the truth.
+// Reader-discoverable behaviours (payload regenerated with the §9.4
+// conditional-ESS schedule):
+//   - Every grid reaches β = 1 (T = 24 / 27 / 22 steps for m = 8 / 12 / 16).
+//   - The ESS of the accumulated weights saw-tooths: 0.9 N right after each
+//     resample, then down below τ N, which triggers the next resample.
+//   - Sparse data and a low IMH acceptance rate at large K keep the posterior
+//     mean far from the true field (RMSE 31.4 / 22.7 / 43.7).
 //
 // Static fallback: /images/topics/sequential-monte-carlo/11_lgcp_smc.png
 // =============================================================================
