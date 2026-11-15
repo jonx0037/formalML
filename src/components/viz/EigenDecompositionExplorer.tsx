@@ -133,12 +133,12 @@ export default function EigenDecompositionExplorer() {
     g.append('line')
       .attr('x1', xScale(-maxR)).attr('y1', yScale(0))
       .attr('x2', xScale(maxR)).attr('y2', yScale(0))
-      .style('stroke', 'var(--color-muted)')
+      .style('stroke', 'var(--color-text-secondary)')
       .attr('stroke-width', 0.5);
     g.append('line')
       .attr('x1', xScale(0)).attr('y1', yScale(-maxR))
       .attr('x2', xScale(0)).attr('y2', yScale(maxR))
-      .style('stroke', 'var(--color-muted)')
+      .style('stroke', 'var(--color-text-secondary)')
       .attr('stroke-width', 0.5);
 
     // Unit circle
@@ -157,7 +157,7 @@ export default function EigenDecompositionExplorer() {
       .datum(circleData)
       .attr('d', lineFn)
       .attr('fill', 'none')
-      .style('stroke', 'var(--color-muted)')
+      .style('stroke', 'var(--color-text-secondary)')
       .attr('stroke-width', 1)
       .attr('stroke-dasharray', '4,3')
       .attr('opacity', 0.6);

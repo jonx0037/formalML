@@ -254,7 +254,7 @@ export default function PCAGeometryExplorer() {
               x2={MARGIN.left + innerW}
               y1={cy0}
               y2={cy0}
-              stroke="var(--color-muted)"
+              stroke="var(--color-text-secondary)"
               strokeWidth={1}
             />
             <line
@@ -262,7 +262,7 @@ export default function PCAGeometryExplorer() {
               x2={cx0}
               y1={MARGIN.top}
               y2={MARGIN.top + innerH}
-              stroke="var(--color-muted)"
+              stroke="var(--color-text-secondary)"
               strokeWidth={1}
             />
 
@@ -274,7 +274,7 @@ export default function PCAGeometryExplorer() {
                 y={MARGIN.top + innerH + 16}
                 textAnchor="middle"
                 fontSize={10}
-                fill="var(--color-muted)"
+                fill="var(--color-text-secondary)"
               >
                 {t}
               </text>
@@ -286,7 +286,7 @@ export default function PCAGeometryExplorer() {
                 y={yScale(t) + 3}
                 textAnchor="end"
                 fontSize={10}
-                fill="var(--color-muted)"
+                fill="var(--color-text-secondary)"
               >
                 {t}
               </text>
@@ -320,7 +320,7 @@ export default function PCAGeometryExplorer() {
                   y1={yScale(p.origY)}
                   x2={xScale(p.projX)}
                   y2={yScale(p.projY)}
-                  stroke="var(--color-muted)"
+                  stroke="var(--color-text-secondary)"
                   strokeOpacity={0.25}
                   strokeWidth={0.5}
                 />
@@ -456,7 +456,7 @@ export default function PCAGeometryExplorer() {
           <div style={{ marginBottom: '1rem' }}>
             <div
               className="text-xs font-medium"
-              style={{ color: 'var(--color-muted)', marginBottom: '0.25rem' }}
+              style={{ color: 'var(--color-text-secondary)', marginBottom: '0.25rem' }}
             >
               Covariance Matrix Σ
             </div>
@@ -484,7 +484,7 @@ export default function PCAGeometryExplorer() {
           <div style={{ marginBottom: '0.75rem' }}>
             <div
               className="text-xs font-medium"
-              style={{ color: 'var(--color-muted)', marginBottom: '0.25rem' }}
+              style={{ color: 'var(--color-text-secondary)', marginBottom: '0.25rem' }}
             >
               Eigenvalues
             </div>
@@ -522,7 +522,7 @@ export default function PCAGeometryExplorer() {
           <div style={{ marginBottom: '0.75rem' }}>
             <div
               className="text-xs font-medium"
-              style={{ color: 'var(--color-muted)', marginBottom: '0.25rem' }}
+              style={{ color: 'var(--color-text-secondary)', marginBottom: '0.25rem' }}
             >
               Eigenvectors
             </div>
@@ -542,7 +542,7 @@ export default function PCAGeometryExplorer() {
           <div style={{ marginBottom: '0.75rem' }}>
             <div
               className="text-xs font-medium"
-              style={{ color: 'var(--color-muted)', marginBottom: '0.25rem' }}
+              style={{ color: 'var(--color-text-secondary)', marginBottom: '0.25rem' }}
             >
               Explained Variance Ratio
             </div>
@@ -584,7 +584,7 @@ export default function PCAGeometryExplorer() {
           <div style={{ marginBottom: '0.75rem' }}>
             <div
               className="text-xs font-medium"
-              style={{ color: 'var(--color-muted)', marginBottom: '0.25rem' }}
+              style={{ color: 'var(--color-text-secondary)', marginBottom: '0.25rem' }}
             >
               Condition Number
             </div>
@@ -605,13 +605,13 @@ export default function PCAGeometryExplorer() {
           >
             <div
               className="text-xs font-medium"
-              style={{ color: 'var(--color-muted)', marginBottom: '0.25rem' }}
+              style={{ color: 'var(--color-text-secondary)', marginBottom: '0.25rem' }}
             >
               Rayleigh Quotient R(θ) = w⊤Σw
             </div>
             <div style={{ fontFamily: 'monospace', fontSize: '14px' }}>
               <span style={{ color: CANDIDATE_COLOR, fontWeight: 700 }}>{fmt2(rayleigh)}</span>
-              <span style={{ color: 'var(--color-muted)', fontSize: '12px', marginLeft: 8 }}>
+              <span style={{ color: 'var(--color-text-secondary)', fontSize: '12px', marginLeft: 8 }}>
                 max = λ₁ = {fmt2(eigen.lambda1)}
               </span>
             </div>

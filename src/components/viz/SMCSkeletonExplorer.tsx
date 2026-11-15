@@ -134,12 +134,12 @@ export default function SMCSkeletonExplorer() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xA).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerA
         .append('g')
         .call(d3.axisLeft(yA).ticks(5))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerA
         .append('text')
         .attr('x', innerW / 2)
@@ -227,12 +227,12 @@ export default function SMCSkeletonExplorer() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xB).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerB
         .append('g')
         .call(d3.axisLeft(yB).ticks(5))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerB
         .append('text')
         .attr('x', innerW / 2)
@@ -354,12 +354,12 @@ export default function SMCSkeletonExplorer() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xC).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerC
         .append('g')
         .call(d3.axisLeft(yC).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerC
         .append('text')
         .attr('x', innerW / 2)

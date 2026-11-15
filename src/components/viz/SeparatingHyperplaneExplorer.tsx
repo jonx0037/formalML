@@ -477,7 +477,7 @@ export default function SeparatingHyperplaneExplorer() {
         .attr('y1', yScale(closest1.y))
         .attr('x2', xScale(closest2.x))
         .attr('y2', yScale(closest2.y))
-        .style('stroke', 'var(--color-muted)')
+        .style('stroke', 'var(--color-text-secondary)')
         .style('stroke-width', 1)
         .style('stroke-dasharray', '4,3');
 

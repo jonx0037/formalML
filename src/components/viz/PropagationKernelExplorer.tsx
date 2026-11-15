@@ -118,11 +118,11 @@ export default function PropagationKernelExplorer() {
         .attr('transform', `translate(0, ${topInnerH})`)
         .call(d3.axisBottom(xA).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       gA.append('g')
         .call(d3.axisLeft(yA).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       gA.append('text')
         .attr('x', (topInnerW / 2 - panelGap / 2) / 2)
         .attr('y', topInnerH + 24)
@@ -182,11 +182,11 @@ export default function PropagationKernelExplorer() {
         .attr('transform', `translate(0, ${topInnerH})`)
         .call(d3.axisBottom(xC).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       gC.append('g')
         .call(d3.axisLeft(yC).ticks(4).tickFormat(d3.format('.0%')))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       gC.append('text')
         .attr('x', innerWC / 2)
         .attr('y', topInnerH + 24)
@@ -272,12 +272,12 @@ export default function PropagationKernelExplorer() {
           .attr('transform', `translate(0, ${scatterInnerH})`)
           .call(d3.axisBottom(x).ticks(4))
           .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '9px'))
-          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
         inner
           .append('g')
           .call(d3.axisLeft(y).ticks(4))
           .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '9px'))
-          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+          .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
         inner
           .append('text')
           .attr('x', scatterInnerW / 2)

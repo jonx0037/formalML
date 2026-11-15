@@ -4,7 +4,7 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import { makeQuadratic, armijoBacktracking, runGDTrajectory } from './shared/gradientDescentUtils';
 
 const SM_BREAKPOINT = 640;
-const MARGIN = { top: 30, right: 15, bottom: 30, left: 40 };
+const MARGIN = { top: 30, right: 15, bottom: 40, left: 40 };
 
 const COLORS = {
   fixed: '#0F6E56',
@@ -123,13 +123,13 @@ export default function StepSizeExplorer() {
       .call(d3.axisBottom(xScale).ticks(5))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(5))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Title
     svg
@@ -310,13 +310,13 @@ export default function StepSizeExplorer() {
       .call(d3.axisBottom(xScale).ticks(5).tickFormat(d3.format('d')))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(5, '.0e'))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Title
     svg
@@ -367,9 +367,9 @@ export default function StepSizeExplorer() {
     // Axis labels
     g.append('text')
       .attr('x', w / 2)
-      .attr('y', h + 28)
+      .attr('y', h + 34)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-size', '11px')
       .text('Iteration k');
   }, [
@@ -408,7 +408,7 @@ export default function StepSizeExplorer() {
         }}
       >
         {/* κ slider */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--color-muted)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           κ = {kappa}
           <input
             type="range"
@@ -422,7 +422,7 @@ export default function StepSizeExplorer() {
         </label>
 
         {/* Armijo c slider */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--color-muted)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           c = {armijoC.toFixed(2)}
           <input
             type="range"
@@ -436,7 +436,7 @@ export default function StepSizeExplorer() {
         </label>
 
         {/* Armijo β slider */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--color-muted)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           β = {armijoBeta.toFixed(2)}
           <input
             type="range"

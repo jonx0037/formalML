@@ -10,7 +10,7 @@ import {
 const SM_BREAKPOINT = 640;
 const BAR_HEIGHT = 200;
 const HEATMAP_SIZE = 180;
-const BAR_MARGIN = { top: 20, right: 12, bottom: 28, left: 36 };
+const BAR_MARGIN = { top: 20, right: 12, bottom: 32, left: 42 };
 const HEAT_MARGIN = { top: 16, right: 4, bottom: 4, left: 4 };
 
 // ─── Color scales ───
@@ -120,8 +120,8 @@ export default function EckartYoungExplorer() {
         .attr('width', xScale.bandwidth())
         .attr('height', h - yScale(s))
         .attr('rx', 1)
-        .style('fill', i < rank ? 'var(--color-accent)' : 'var(--color-muted)')
-        .attr('opacity', i < rank ? 0.9 : 0.3);
+        .style('fill', i < rank ? 'var(--color-accent)' : 'var(--color-text-secondary)')
+        .attr('opacity', i < rank ? 0.9 : 0.35);
     });
 
     // Rank divider line
@@ -140,17 +140,17 @@ export default function EckartYoungExplorer() {
     g.append('g')
       .call(yAxis)
       .call((g) => g.select('.domain').remove())
-      .call((g) => g.selectAll('.tick line').style('stroke', 'var(--color-muted)').attr('opacity', 0.2))
-      .call((g) => g.selectAll('.tick text').style('fill', 'var(--color-muted)').attr('font-size', 9));
+      .call((g) => g.selectAll('.tick line').style('stroke', 'var(--color-muted-border)').attr('opacity', 0.6))
+      .call((g) => g.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // X axis label
     g.append('text')
       .attr('x', w / 2)
-      .attr('y', h + 20)
+      .attr('y', h + 26)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .text('Singular value index');
 
     // Title

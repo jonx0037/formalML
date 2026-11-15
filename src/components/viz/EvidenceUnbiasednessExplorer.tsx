@@ -121,12 +121,12 @@ export default function EvidenceUnbiasednessExplorer() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xA).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerA
         .append('g')
         .call(d3.axisLeft(yA).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       for (let k = 0; k < nBinsA; k++) {
         innerA
           .append('rect')
@@ -216,12 +216,12 @@ export default function EvidenceUnbiasednessExplorer() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xB).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerB
         .append('g')
         .call(d3.axisLeft(yB).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       for (let k = 0; k < nBinsB; k++) {
         innerB
           .append('rect')

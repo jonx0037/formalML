@@ -130,7 +130,7 @@ export default function TensorUnfoldingExplorer() {
         .attr('x', (I2 * cellSize) / 2)
         .attr('y', -8)
         .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-family', 'var(--font-sans)')
         .attr('font-size', 10)
         .text(`k = ${k + 1}`);
@@ -178,7 +178,7 @@ export default function TensorUnfoldingExplorer() {
         .attr('y', i * cellSize + (cellSize - 1) / 2)
         .attr('text-anchor', 'end')
         .attr('dominant-baseline', 'central')
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-family', 'var(--font-sans)')
         .attr('font-size', 9)
         .text(`i₁=${i + 1}`);
@@ -269,7 +269,7 @@ export default function TensorUnfoldingExplorer() {
         .attr('y', r * cellSize + (cellSize - 1) / 2)
         .attr('text-anchor', 'end')
         .attr('dominant-baseline', 'central')
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-family', 'var(--font-sans)')
         .attr('font-size', 9)
         .text(`${rowLabels[mode]}=${r + 1}`);
@@ -281,7 +281,7 @@ export default function TensorUnfoldingExplorer() {
         .attr('x', c * cellSize + (cellSize - 1) / 2)
         .attr('y', unfoldRows * cellSize + 12)
         .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-family', 'var(--font-sans)')
         .attr('font-size', 8)
         .text(c + 1);
@@ -348,7 +348,7 @@ export default function TensorUnfoldingExplorer() {
             Mode {m + 1}
           </label>
         ))}
-        <span className="text-xs" style={{ color: 'var(--color-muted)' }}>
+        <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
           → {unfoldRows} × {unfoldCols} matrix
         </span>
       </div>

@@ -217,13 +217,13 @@ export default function MoreauEnvelopeExplorer() {
       .call(d3.axisBottom(xScale).ticks(6))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(5))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Title
     svg
@@ -347,22 +347,30 @@ export default function MoreauEnvelopeExplorer() {
     }
 
     for (const item of legendItems) {
+      // Right-align the label at legendX, then place the swatch to its left,
+      // so long labels (e.g. the λ readout) never run past the plot edge.
+      const label = g.append('text')
+        .attr('x', legendX)
+        .attr('y', legendY + 4)
+        .attr('text-anchor', 'end')
+        .style('fill', 'var(--color-text-secondary)')
+        .style('font-size', '11px')
+        // Background-colored halo keeps the label legible where it crosses a curve.
+        .style('paint-order', 'stroke')
+        .style('stroke', 'var(--color-bg)')
+        .style('stroke-width', '3px')
+        .style('stroke-linejoin', 'round')
+        .text(item.label);
+      const labelWidth = label.node()?.getComputedTextLength() ?? 0;
+
       g.append('line')
-        .attr('x1', legendX - 60)
+        .attr('x1', legendX - labelWidth - 25)
         .attr('y1', legendY)
-        .attr('x2', legendX - 40)
+        .attr('x2', legendX - labelWidth - 5)
         .attr('y2', legendY)
         .style('stroke', item.color)
         .style('stroke-width', '2')
         .style('stroke-dasharray', item.dash);
-
-      g.append('text')
-        .attr('x', legendX - 35)
-        .attr('y', legendY + 4)
-        .attr('text-anchor', 'start')
-        .style('fill', 'var(--color-muted)')
-        .style('font-size', '11px')
-        .text(item.label);
 
       legendY += 16;
     }
@@ -372,7 +380,7 @@ export default function MoreauEnvelopeExplorer() {
       .attr('x', w / 2)
       .attr('y', h + 34)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-size', '11px')
       .text('x');
   }, [containerWidth, selectedFunc, lambda, funcData, envelopeData, huberData, panelWidth]);
@@ -390,7 +398,7 @@ export default function MoreauEnvelopeExplorer() {
         .attr('x', panelWidth / 2)
         .attr('y', panelHeight / 2)
         .attr('text-anchor', 'middle')
-        .style('fill', 'var(--color-muted)')
+        .style('fill', 'var(--color-text-secondary)')
         .style('font-size', '13px')
         .text('Enable "Show gradient" to see ∂f vs ∇Mλf');
       return;
@@ -419,13 +427,13 @@ export default function MoreauEnvelopeExplorer() {
       .call(d3.axisBottom(xScale).ticks(6))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     g.append('g')
       .call(d3.axisLeft(yScale).ticks(5))
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
       .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').style('font-size', '11px'));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Title
     svg
@@ -559,7 +567,7 @@ export default function MoreauEnvelopeExplorer() {
       .attr('x', legendX - 45)
       .attr('y', legendY + 4)
       .attr('text-anchor', 'start')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-size', '11px')
       .text('∂f(x)');
 
@@ -577,7 +585,7 @@ export default function MoreauEnvelopeExplorer() {
       .attr('x', legendX - 45)
       .attr('y', legendY + 4)
       .attr('text-anchor', 'start')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-size', '11px')
       .text('∇Mλf(x)');
 
@@ -586,7 +594,7 @@ export default function MoreauEnvelopeExplorer() {
       .attr('x', w / 2)
       .attr('y', h + 34)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-size', '11px')
       .text('x');
   }, [containerWidth, selectedFunc, lambda, showGradient, gradientData, panelWidth]);
@@ -603,7 +611,7 @@ export default function MoreauEnvelopeExplorer() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label
             htmlFor={`moreau-func-${clipId}`}
-            style={{ fontSize: '13px', color: 'var(--color-muted)', whiteSpace: 'nowrap' }}
+            style={{ fontSize: '13px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}
           >
             Function:
           </label>
@@ -629,7 +637,7 @@ export default function MoreauEnvelopeExplorer() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label
             htmlFor={`moreau-lambda-${clipId}`}
-            style={{ fontSize: '13px', color: 'var(--color-muted)', whiteSpace: 'nowrap' }}
+            style={{ fontSize: '13px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}
           >
             λ = {lambda.toFixed(1)}
           </label>
@@ -651,7 +659,7 @@ export default function MoreauEnvelopeExplorer() {
             alignItems: 'center',
             gap: 6,
             fontSize: '13px',
-            color: 'var(--color-muted)',
+            color: 'var(--color-text-secondary)',
             cursor: 'pointer',
           }}
         >

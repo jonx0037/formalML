@@ -188,12 +188,12 @@ export default function ResamplingSchemeComparator() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xA).ticks(3, '~s'))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerA
         .append('g')
         .call(d3.axisLeft(yA).ticks(3, '~e'))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerA
         .append('text')
         .attr('x', innerW / 2)
@@ -266,12 +266,12 @@ export default function ResamplingSchemeComparator() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xB).ticks(5))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerB
         .append('g')
         .call(d3.axisLeft(yB).ticks(4))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerB
         .append('text')
         .attr('x', innerW / 2)
@@ -339,12 +339,12 @@ export default function ResamplingSchemeComparator() {
         .attr('transform', `translate(0, ${innerH})`)
         .call(d3.axisBottom(xC).tickFormat((s) => SCHEME_LABELS[s].slice(0, 4)))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '9px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerC
         .append('g')
         .call(d3.axisLeft(yC).ticks(4, '.0e'))
         .call((g) => g.selectAll('text').style('fill', 'var(--color-text)').style('font-size', '10px'))
-        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted)'));
+        .call((g) => g.selectAll('line, path').style('stroke', 'var(--color-muted-border)'));
       innerC
         .append('text')
         .attr('transform', `translate(${-32}, ${innerH / 2}) rotate(-90)`)
