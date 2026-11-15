@@ -42,10 +42,10 @@ notebookPath: "notebooks/sequential-monte-carlo/01_sequential_monte_carlo.ipynb"
 githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/sequential-monte-carlo.mdx"
 datePublished: 2026-05-19
 estimatedReadTime: 55
-abstract: "Sequential Monte Carlo carries a weighted cloud of particles through a sequence of probability distributions via three alternating moves — importance reweighting, resampling, and Markov-kernel propagation. The same skeleton handles three structurally different problems: filtering on non-linear state-space models, sampling from intractable static posteriors via a synthetic annealing path, and unbiased estimation of the marginal likelihood as a side product. We develop the algorithm geometrically before formalizing it, prove unbiasedness of the evidence estimator, derive the central limit theorem with its resampling-induced variance correction, benchmark a hand-rolled NumPy implementation against PyMC's pm.sample_smc on a Gaussian-mixture model, and check it against an exact-posterior MCMC reference on a 256-dimensional log-Gaussian Cox process. SMC sits at the cost-quality Pareto frontier of Bayesian computation, complementing the specialized-sampler cluster — SG-MCMC, Riemann manifold HMC, and reversible-jump MCMC — that this topic completes."
+abstract: "Sequential Monte Carlo carries a weighted cloud of particles through a sequence of probability distributions via three alternating moves — importance reweighting, resampling, and Markov-kernel propagation. The same skeleton handles three structurally different problems: filtering on non-linear state-space models, sampling from intractable static posteriors via a synthetic annealing path, and unbiased estimation of the marginal likelihood as a side product. We develop the algorithm geometrically before formalizing it, prove unbiasedness of the evidence estimator, derive the central limit theorem with its resampling-induced variance correction, benchmark a hand-rolled NumPy implementation against bridge sampling and the harmonic mean on a Gaussian-mixture model, and check it against an exact-posterior MCMC reference on a 256-dimensional log-Gaussian Cox process. SMC sits at the cost-quality Pareto frontier of Bayesian computation, complementing the specialized-sampler cluster — SG-MCMC, Riemann manifold HMC, and reversible-jump MCMC — that this topic completes."
 connections:
   - topic: "probabilistic-programming"
-    relationship: "Probabilistic-programming exposes `pm.sample_smc` as a first-class inference engine; §8.4 here reproduces its results with a hand-rolled NumPy implementation, and §7.3 documents IMH-cloud-fit as the kernel `pm.sample_smc` uses by default. The discharge of probabilistic-programming's §6.3 forward-pointer to SMC lives in §8.2 (unbiased evidence estimation) and §11 (the LGCP worked example)."
+    relationship: "Probabilistic-programming exposes `pm.sample_smc` as a first-class inference engine; §8.4 here runs a hand-rolled NumPy sampler on the same skeleton (PyMC itself is not run; §9.4 notes where its defaults differ), and §7.3 documents IMH-cloud-fit as the kernel `pm.sample_smc` uses by default. The discharge of probabilistic-programming's §6.3 forward-pointer to SMC lives in §8.2 (unbiased evidence estimation) and §11 (the LGCP worked example)."
   - topic: "riemann-manifold-hmc"
     relationship: "RMHMC and SMC samplers solve the same problem — sampling from a hard posterior — by opposite strategies: RMHMC adaptively shapes the kinetic energy, SMC adaptively schedules an annealing path. §11 runs SMC on the LGCP target the two topics share, and §13.1 places SMC on the Pareto frontier RMHMC introduced, discharging RMHMC §12's forward-pointer to sequential Monte Carlo."
   - topic: "stochastic-gradient-mcmc"
@@ -377,7 +377,7 @@ The three moves — *reweight*, *resample*, *propagate* — are the SMC skeleton
 
 §2 reviews just enough importance sampling to set up what SMC fixes. §3 introduces the SMC skeleton abstractly. §§4–5 catalog the two ingredient choices — resampling schemes and propagation kernels. §6 specializes to particle filtering with the stochastic-volatility worked example. §7 specializes to SMC samplers on static targets, and §8 extracts the unbiased evidence estimator with the Gaussian-mixture worked example. §9 develops the two adaptive moves — ESS-thresholded resampling and adaptive temperature schedules — with the banana worked example. §10 is the convergence theory. §11 is the log-Gaussian Cox process worked example. §§12–13 are computational discipline and connections.
 
-The topic discharges three explicit forward-pointers: <ExternalLink href="https://formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="bayesian-computation-and-mcmc" />'s sampler catalog and importance-sampling variance vocabulary; **Probabilistic Programming** §6.3's forward-pointer to `pm.sample_smc`, which §8.4 reproduces with a hand-rolled NumPy implementation; and **Variational Bayes for Model Selection** §13's forward-pointer to SMC samplers as the unbiased-evidence alternative to ELBO-as-log-evidence, discharged here in §8.2 (Theorem 4) and §8.4 (the Gaussian-mixture benchmark).
+The topic discharges three explicit forward-pointers: <ExternalLink href="https://formalstatistics.com/topics/bayesian-computation-and-mcmc" site="formalstatistics" topic="bayesian-computation-and-mcmc" />'s sampler catalog and importance-sampling variance vocabulary; **Probabilistic Programming** §6.3's forward-pointer to `pm.sample_smc`, which §8.4 answers with a hand-rolled NumPy sampler on the same skeleton (PyMC itself is not run here); and **Variational Bayes for Model Selection** §13's forward-pointer to SMC samplers as the unbiased-evidence alternative to ELBO-as-log-evidence, discharged here in §8.2 (Theorem 4) and §8.4 (the Gaussian-mixture benchmark).
 
 ## §2. Importance Sampling at a Glance — What SMC Fixes
 
@@ -951,19 +951,20 @@ Scaling: the relative variance $\mathrm{Var}(\widehat Z_T)/Z_T^2 = O(T/N)$ under
 
 The 2-component GMM: $y_i \sim p \cdot \mathcal{N}(\mu_1, 1) + (1-p) \cdot \mathcal{N}(\mu_2, 1)$, priors $\mu_1, \mu_2 \sim \mathcal{N}(0, 4)$, $p \sim \mathrm{Beta}(2, 2)$. Simulate $n = 50$ at $\mu_1^\star = -2$, $\mu_2^\star = 2$, $p^\star = 0.5$. The posterior is bimodal (label switching), which is the canonical SMC win-condition.
 
-**Four estimators compared:**
+**Three estimators compared,** over $M = 10$ replicates:
 
-1. **Hand-rolled SMC sampler.** $N = 1000$, $T = 30$ geometric, IMH cloud-fit.
-2. **PyMC `pm.sample_smc`.** Same model, default settings.
-3. **Harmonic mean** (Newton and Raftery 1994). The notorious failure baseline — biased upward and infinite-variance under standard regularity.
-4. **Bridge sampling** (Meng and Wong 1996). The gold-standard reference.
+1. **Hand-rolled SMC sampler.** $N = 500$, $T = 20$ equally spaced temperatures, systematic resampling when the ESS falls below $0.5N$, IMH cloud-fit (§7.3).
+2. **Harmonic mean** (Newton and Raftery 1994). The notorious failure baseline — biased upward and infinite-variance under standard regularity.
+3. **Bridge sampling** (Meng and Wong 1996), using a Gaussian fitted to the SMC sampler's final cloud as the bridge proposal. It is the reference the other two are scored against.
 
-**Predicted ordering.** Bridge sampling and the SMC samplers (hand-rolled and PyMC) agree to Monte Carlo error. The harmonic mean is visibly biased upward — a textbook demonstration of why the harmonic-mean estimator is unfit for purpose.
+**Relation to PyMC.** We do not run PyMC here. `pm.sample_smc` uses the same reweight → resample → propagate skeleton with a cloud-fitted IMH kernel (§7.3), but it picks each temperature from the ESS of the incremental weights and resamples at every stage (§9.4), where this sampler uses a fixed schedule and resamples only when the ESS falls below $0.5N$.
+
+**Result.** Bridge sampling gives a mean $\log \widehat Z$ of $-107.39$ (SD 0.09 across replicates) and the hand-rolled SMC sampler $-107.60$ (SD 0.35): a gap of 0.21, smaller than the SMC sampler's own replicate SD. The harmonic mean averages $-103.97$, 3.42 above bridge sampling — a textbook demonstration of why the harmonic-mean estimator is unfit for purpose.
 
 <Figure
   src="/images/topics/sequential-monte-carlo/08_gmm_evidence.png"
-  alt="Three-panel comparison of log-evidence estimators on a 2-component Gaussian mixture: violin plot of log Ẑ, MC SD, and bias vs bridge-sampling reference."
-  caption="Figure 8. Log-evidence estimators on a 2-component GMM at M = 20 replicates. SMC and bridge sampling agree to within MC error; harmonic mean is visibly biased upward."
+  alt="Two-panel comparison of log-evidence estimators on a 2-component Gaussian mixture over M = 10 replicates: (A) violin plots of log Ẑ for the hand-rolled SMC sampler, bridge sampling, and the harmonic mean, with the bridge reference at −107.390; (B) bias against bridge sampling with MC SD whiskers, about −0.21 for SMC and +3.42 for the harmonic mean."
+  caption="Figure 8. Log-evidence estimators on a 2-component GMM at M = 10 replicates. The hand-rolled SMC sampler lands 0.21 below bridge sampling, inside its own replicate SD of 0.35; the harmonic mean sits 3.42 above."
 />
 
 The viz below runs $M = 150$ independent SMC instances on the §3 Gaussian-bridge target (truth $Z_T = 1$, $\log Z_T = 0$) and displays the histograms of $\widehat Z_T$ and $\log \widehat Z_T$. The $\widehat Z_T$ histogram is centered on 1 (Theorem 4); the $\log \widehat Z_T$ histogram is shifted downward by the Jensen-gap prediction $-\widehat\sigma^2/2$ (Proposition 5).
