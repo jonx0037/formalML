@@ -151,8 +151,9 @@ export default function BootstrapUQDemo() {
         </label>
       </div>
       <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '0.4rem' }}>
-        The dashed reference is the analytic Bayesian §2.3 epistemic. Wild bootstrap tracks it best on this
-        heteroscedastic toy; residual underestimates because exchangeable-residual assumption fails.
+        The dashed reference is the analytic Bayesian §2.3 epistemic. Wild and pairs bootstraps follow its growth
+        toward the edges but overstate the center, so their bands are flatter than the reference; residual
+        underestimates the edges because the exchangeable-residual assumption fails.
       </p>
     </div>
   );

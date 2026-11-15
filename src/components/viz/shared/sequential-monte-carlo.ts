@@ -832,7 +832,10 @@ export interface SmcSkeletonResult {
   betaGrid: number[];
   thetaHistory: number[][]; // [T+1][N]
   logWHistory: number[][]; // [T+1][N]
+  /** ESS at the end of each step (after any resample, so it equals N at resampled steps). */
   essHistory: number[]; // [T+1]
+  /** ESS right after reweighting, before the τN test: the value that triggers each resample. */
+  essPreResampleHistory: number[]; // [T+1]
   logZHistory: number[]; // [T+1]
   resampleMarks: boolean[]; // [T+1]
   acceptRateHistory: number[]; // [T+1]
@@ -874,11 +877,13 @@ export function smcGaussianBridge(opts: SmcSkeletonOptions = { N: 200, T: 10 }):
   const thetaHistory: number[][] = Array.from({ length: T + 1 }, () => new Array<number>(N));
   const logWHistory: number[][] = Array.from({ length: T + 1 }, () => new Array<number>(N));
   const essHistory = new Array<number>(T + 1);
+  const essPreResampleHistory = new Array<number>(T + 1);
   const logZHistory = new Array<number>(T + 1).fill(0);
   const resampleMarks = new Array<boolean>(T + 1).fill(false);
   const acceptRateHistory = new Array<number>(T + 1).fill(0);
   for (let i = 0; i < N; i++) thetaHistory[0][i] = theta[i];
   essHistory[0] = N;
+  essPreResampleHistory[0] = N;
 
   for (let t = 0; t < T; t++) {
     const betaNext = betaGrid[t + 1];
@@ -891,6 +896,7 @@ export function smcGaussianBridge(opts: SmcSkeletonOptions = { N: 200, T: 10 }):
     logZHistory[t + 1] = logZFromLogW(logW);
     const logWNorm = normalizeLogW(logW);
     const ess = logSpaceESS(logW);
+    essPreResampleHistory[t + 1] = ess;
 
     // resample if ESS below threshold
     if (ess < tau * N) {
@@ -928,6 +934,7 @@ export function smcGaussianBridge(opts: SmcSkeletonOptions = { N: 200, T: 10 }):
     thetaHistory,
     logWHistory,
     essHistory,
+    essPreResampleHistory,
     logZHistory,
     resampleMarks,
     acceptRateHistory,

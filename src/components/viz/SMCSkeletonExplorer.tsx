@@ -6,6 +6,10 @@
 // threshold τ, and the RWM step size, then watch the cloud trajectory, the
 // ESS profile, and the terminal histogram update.
 //
+// Panel B plots the ESS right after each reweight (essPreResampleHistory), the
+// value the τN test sees, so each dip below τN is visible; at every resampled
+// step a vertical tick marked R shows the reset to ESS = N.
+//
 // Reader-discoverable behaviours:
 //   - τ = 0 (never resample): ESS collapses, log Ẑ_T variance blows up.
 //   - τ = 1 (resample every step): more variance injection than necessary.
@@ -243,7 +247,7 @@ export default function SMCSkeletonExplorer() {
         .attr('text-anchor', 'middle')
         .style('font-size', '10px')
         .style('fill', 'var(--color-text-secondary)')
-        .text('ESS');
+        .text('ESS after reweight');
       // ESS threshold line
       innerB
         .append('line')
@@ -262,21 +266,52 @@ export default function SMCSkeletonExplorer() {
         .style('font-size', '9px')
         .style('fill', paletteSMC.accent)
         .text(`τ N = ${(committed.tau * N).toFixed(0)}`);
-      // ESS line
+      // Resample resets: at each resampled step, a vertical tick from the
+      // triggering post-reweight ESS up to N (the post-resample value).
+      result.resampleMarks.forEach((mark, t) => {
+        if (!mark) return;
+        const x = xB(result.betaGrid[t]);
+        innerB
+          .append('line')
+          .attr('x1', x)
+          .attr('x2', x)
+          .attr('y1', yB(result.essPreResampleHistory[t]))
+          .attr('y2', yB(N))
+          .style('stroke', paletteSMC.accent)
+          .style('stroke-width', 1.2)
+          .style('opacity', 0.8);
+        innerB
+          .append('circle')
+          .attr('cx', x)
+          .attr('cy', yB(N))
+          .attr('r', 2.5)
+          .style('fill', 'var(--color-surface)')
+          .style('stroke', paletteSMC.accent)
+          .style('stroke-width', 1.2);
+        innerB
+          .append('text')
+          .attr('x', x + 4)
+          .attr('y', yB(result.essPreResampleHistory[t]) + 3)
+          .style('font-size', '9px')
+          .style('font-weight', '700')
+          .style('fill', paletteSMC.accent)
+          .text('R');
+      });
+      // ESS line: post-reweight (pre-resample) values, the ones the τN test sees
       const essLine = d3
         .line<number>()
         .x((_, i) => xB(result.betaGrid[i]))
         .y((e) => yB(e));
       innerB
         .append('path')
-        .datum(result.essHistory)
+        .datum(result.essPreResampleHistory)
         .attr('d', essLine)
         .style('fill', 'none')
         .style('stroke', paletteSMC.cloud)
         .style('stroke-width', 1.6);
       innerB
         .selectAll('.ess-dot')
-        .data(result.essHistory)
+        .data(result.essPreResampleHistory)
         .enter()
         .append('circle')
         .attr('cx', (_, i) => xB(result.betaGrid[i]))
@@ -470,7 +505,7 @@ export default function SMCSkeletonExplorer() {
         height={panelH}
         viewBox={`0 0 ${width} ${panelH}`}
         role="img"
-        aria-label="Three-panel SMC skeleton on a Gaussian bridge: cloud trajectory, ESS, terminal histogram."
+        aria-label="Three-panel SMC skeleton on a Gaussian bridge: cloud trajectory, ESS after each reweight with resample resets marked R, terminal histogram."
       />
       <div
         className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-4"
