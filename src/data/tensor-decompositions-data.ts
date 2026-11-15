@@ -325,158 +325,218 @@ function idft3(real: number[][][], imag: number[][][]): number[][][] {
   return out;
 }
 
-/** Simple SVD for small matrices via eigendecomposition of AᵀA (power iteration). */
-function simpleSVD(
-  M: number[][],
-  maxRank: number,
-): { U: number[][]; S: number[]; Vt: number[][] } {
-  const m = M.length, n = M[0].length;
-  const rank = Math.min(maxRank, m, n);
+/** Forward DFT along the third mode of a real tensor. Returns [real, imag]. */
+function dft3(T: number[][][]): { re: number[][][]; im: number[][][] } {
+  const I1 = T.length, I2 = T[0].length, I3 = T[0][0].length;
+  const re = zeros3D(I1, I2, I3);
+  const im = zeros3D(I1, I2, I3);
+  for (let i = 0; i < I1; i++)
+    for (let j = 0; j < I2; j++)
+      for (let f = 0; f < I3; f++) {
+        let a = 0, b = 0;
+        for (let k = 0; k < I3; k++) {
+          const angle = (2 * Math.PI * f * k) / I3;
+          a += T[i][j][k] * Math.cos(angle);
+          b -= T[i][j][k] * Math.sin(angle);
+        }
+        re[i][j][f] = a;
+        im[i][j][f] = b;
+      }
+  return { re, im };
+}
 
-  // Compute MᵀM
-  const MtM = Array.from({ length: n }, () => new Array<number>(n).fill(0));
-  for (let i = 0; i < n; i++)
-    for (let j = 0; j < n; j++)
-      for (let k = 0; k < m; k++) MtM[i][j] += M[k][i] * M[k][j];
+/**
+ * Eigendecomposition of a small symmetric matrix by the cyclic Jacobi method.
+ * Returns eigenvalues in descending order with matching eigenvector columns.
+ */
+function symmetricEigen(G: number[][]): { values: number[]; vectors: number[][] } {
+  const n = G.length;
+  const A = G.map((row) => [...row]);
+  const V: number[][] = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)),
+  );
+  let scale = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) scale += A[i][j] * A[i][j];
 
-  const Vt: number[][] = [];
-  const S: number[] = [];
-  const U: number[][] = [];
-
-  // Deflated power iteration for each singular triplet
-  const deflated = MtM.map((r) => [...r]);
-
-  for (let r = 0; r < rank; r++) {
-    // Power iteration on deflated MᵀM
-    let v = new Array<number>(n).fill(0);
-    // Seed with deterministic vector
-    for (let i = 0; i < n; i++) v[i] = seededRand(500 + r * n + i);
-
-    for (let iter = 0; iter < 50; iter++) {
-      const next = new Array<number>(n).fill(0);
-      for (let i = 0; i < n; i++)
-        for (let j = 0; j < n; j++) next[i] += deflated[i][j] * v[j];
-      let norm = 0;
-      for (let i = 0; i < n; i++) norm += next[i] * next[i];
-      norm = Math.sqrt(norm) || 1;
-      for (let i = 0; i < n; i++) v[i] = next[i] / norm;
-    }
-
-    // Singular value: ||Mv||
-    const Mv = new Array<number>(m).fill(0);
-    for (let i = 0; i < m; i++)
-      for (let j = 0; j < n; j++) Mv[i] += M[i][j] * v[j];
-    let sigma = 0;
-    for (let i = 0; i < m; i++) sigma += Mv[i] * Mv[i];
-    sigma = Math.sqrt(sigma);
-
-    const u = Mv.map((x) => (sigma > 1e-12 ? x / sigma : 0));
-
-    S.push(sigma);
-    Vt.push(v);
-    U.push(u);
-
-    // Deflate: remove σ² vvᵀ from MᵀM
-    const s2 = sigma * sigma;
-    for (let i = 0; i < n; i++)
-      for (let j = 0; j < n; j++) deflated[i][j] -= s2 * v[i] * v[j];
+  for (let sweep = 0; sweep < 100; sweep++) {
+    let off = 0;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += A[p][q] * A[p][q];
+    if (off <= 1e-30 * scale) break;
+    for (let p = 0; p < n - 1; p++)
+      for (let q = p + 1; q < n; q++) {
+        if (Math.abs(A[p][q]) < 1e-300) continue;
+        const theta = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+        const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+        const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+        for (let k = 0; k < n; k++) {
+          const akp = A[k][p], akq = A[k][q];
+          A[k][p] = c * akp - s * akq;
+          A[k][q] = s * akp + c * akq;
+        }
+        for (let k = 0; k < n; k++) {
+          const apk = A[p][k], aqk = A[q][k];
+          A[p][k] = c * apk - s * aqk;
+          A[q][k] = s * apk + c * aqk;
+        }
+        for (let k = 0; k < n; k++) {
+          const vkp = V[k][p], vkq = V[k][q];
+          V[k][p] = c * vkp - s * vkq;
+          V[k][q] = s * vkp + c * vkq;
+        }
+      }
   }
 
-  // Transpose U from list-of-columns to m×rank
-  const Umat = Array.from({ length: m }, (_, i) =>
-    Array.from({ length: rank }, (_, r) => U[r][i]),
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => A[b][b] - A[a][a]);
+  return {
+    values: order.map((i) => A[i][i]),
+    vectors: V.map((row) => order.map((i) => row[i])),
+  };
+}
+
+/**
+ * SVD of a complex matrix M = Re + i·Im through its real embedding
+ * E = [[Re, −Im], [Im, Re]] (2m × 2n). Every singular value σ of M appears
+ * twice among those of E, so M's singular values are every other one of E's,
+ * and the rank-k truncation of M is the rank-2k truncation of E.
+ */
+function complexSVD(Re: number[][], Im: number[][]) {
+  const m = Re.length, n = Re[0].length;
+  const E = Array.from({ length: 2 * m }, (_, i) =>
+    Array.from({ length: 2 * n }, (_, j) => {
+      const r = i % m, c = j % n;
+      if (i < m) return j < n ? Re[r][c] : -Im[r][c];
+      return j < n ? Im[r][c] : Re[r][c];
+    }),
+  );
+  // Gram matrix EᵀE (2n × 2n); its eigenvectors are E's right singular vectors.
+  const G = Array.from({ length: 2 * n }, () => new Array<number>(2 * n).fill(0));
+  for (let i = 0; i < 2 * n; i++)
+    for (let j = i; j < 2 * n; j++) {
+      let sum = 0;
+      for (let r = 0; r < 2 * m; r++) sum += E[r][i] * E[r][j];
+      G[i][j] = G[j][i] = sum;
+    }
+  const { values, vectors } = symmetricEigen(G);
+  const p = Math.min(m, n);
+  const S = Array.from({ length: p }, (_, r) =>
+    (Math.sqrt(Math.max(values[2 * r], 0)) + Math.sqrt(Math.max(values[2 * r + 1], 0))) / 2,
   );
 
-  return { U: Umat, S, Vt };
+  /** Best rank-k approximation of M, as [real, imag]. */
+  const truncate = (k: number): { re: number[][]; im: number[][] } => {
+    const cols = Math.min(2 * k, 2 * n);
+    // E_k = E · V_{2k} V_{2k}ᵀ
+    const EV = E.map((row) =>
+      Array.from({ length: cols }, (_, c) => {
+        let sum = 0;
+        for (let j = 0; j < 2 * n; j++) sum += row[j] * vectors[j][c];
+        return sum;
+      }),
+    );
+    const Ek = EV.map((row) =>
+      Array.from({ length: 2 * n }, (_, j) => {
+        let sum = 0;
+        for (let c = 0; c < cols; c++) sum += row[c] * vectors[j][c];
+        return sum;
+      }),
+    );
+    // Read M_k off the block structure (averaging the two copies of each block).
+    const re = Array.from({ length: m }, (_, i) =>
+      Array.from({ length: n }, (_, j) => (Ek[i][j] + Ek[m + i][n + j]) / 2),
+    );
+    const im = Array.from({ length: m }, (_, i) =>
+      Array.from({ length: n }, (_, j) => (Ek[m + i][j] - Ek[i][n + j]) / 2),
+    );
+    return { re, im };
+  };
+
+  return { S, truncate };
 }
 
 function computeTSVDData(): tSVDResult[] {
   const I1 = 12, I2 = 10, I3 = 8;
   const tubalRankTrue = 4;
+  const noiseLevel = 0.05; // ‖noise‖_F / ‖noise-free tensor‖_F
+  const half = Math.floor(I3 / 2);
 
-  // Build tensor in Fourier domain with known low-tubal-rank structure.
-  // For each Fourier slice, create a rank-tubalRankTrue matrix.
+  // Build the noise-free tensor in the Fourier domain: every frontal slice
+  // Â^(j) = A_j B_j has rank exactly tubalRankTrue. A real tensor needs
+  // conjugate-symmetric slices, Â^(I3−j) = conj(Â^(j)), so we draw slices
+  // j = 0..I3/2 and mirror the rest; the j = 0 and j = I3/2 slices are real.
   let seed = 271;
+  const draw = () => seededRand(seed++) * 2 - 1;
   const fReal = zeros3D(I1, I2, I3);
   const fImag = zeros3D(I1, I2, I3);
 
-  for (let f = 0; f < I3; f++) {
-    // Low-rank factors for this slice: A (I1×tubalRankTrue), B (tubalRankTrue×I2)
-    const A: number[][] = Array.from({ length: I1 }, () => {
-      const row: number[] = [];
-      for (let r = 0; r < tubalRankTrue; r++) row.push(seededRand(seed++) * 2 - 1);
-      return row;
-    });
-    const B: number[][] = Array.from({ length: tubalRankTrue }, () => {
-      const row: number[] = [];
-      for (let r = 0; r < I2; r++) row.push(seededRand(seed++) * 2 - 1);
-      return row;
-    });
-    // Scale factor decreases with frequency for natural-looking data
+  for (let f = 0; f <= half; f++) {
+    const isReal = f === 0 || 2 * f === I3;
+    const Ar = Array.from({ length: I1 }, () => Array.from({ length: tubalRankTrue }, draw));
+    const Ai = Array.from({ length: I1 }, () =>
+      Array.from({ length: tubalRankTrue }, () => (isReal ? 0 : draw())),
+    );
+    const Br = Array.from({ length: tubalRankTrue }, () => Array.from({ length: I2 }, draw));
+    const Bi = Array.from({ length: tubalRankTrue }, () =>
+      Array.from({ length: I2 }, () => (isReal ? 0 : draw())),
+    );
+    // Scale decreases with frequency for natural-looking data
     const scale = 10 / (1 + f);
-    const slice = matMul(A, B);
+    const ArBr = matMul(Ar, Br), AiBi = matMul(Ai, Bi);
+    const ArBi = matMul(Ar, Bi), AiBr = matMul(Ai, Br);
     for (let i = 0; i < I1; i++)
       for (let j = 0; j < I2; j++) {
-        fReal[i][j][f] = slice[i][j] * scale;
-        // For real-valued tensor: enforce conjugate symmetry
-        // f and I3-f slices are conjugates. We handle imaginary part for f > 0.
-        if (f > 0 && f < I3 / 2) {
-          fImag[i][j][f] = seededRand(seed++) * scale * 0.3;
-        }
+        fReal[i][j][f] = (ArBr[i][j] - AiBi[i][j]) * scale;
+        fImag[i][j][f] = (ArBi[i][j] + AiBr[i][j]) * scale;
       }
   }
-
-  // Enforce conjugate symmetry: X̂[:,:,I3-f] = conj(X̂[:,:,f])
-  for (let f = 1; f < I3 / 2; f++) {
-    const cf = I3 - f;
+  for (let f = half + 1; f < I3; f++)
     for (let i = 0; i < I1; i++)
       for (let j = 0; j < I2; j++) {
-        fReal[i][j][cf] = fReal[i][j][f];
-        fImag[i][j][cf] = -fImag[i][j][f];
+        fReal[i][j][f] = fReal[i][j][I3 - f];
+        fImag[i][j][f] = -fImag[i][j][I3 - f];
       }
-  }
-  // f=0 and f=I3/2 are real (imag = 0, already initialized to 0)
 
-  // Convert to spatial domain
-  const tensor = idft3(fReal, fImag);
+  // Spatial-domain tensor plus a small noise floor
+  const clean = idft3(fReal, fImag);
+  const rawNoise = clean.map((s) => s.map((r) => r.map(() => draw())));
+  const noiseScale = (noiseLevel * tensorNorm(clean)) / tensorNorm(rawNoise);
+  const tensor = clean.map((s, i) =>
+    s.map((r, j) => r.map((v, k) => v + noiseScale * rawNoise[i][j][k])),
+  );
   const fullNorm = tensorNorm(tensor);
 
-  // For each Fourier slice, compute SVD and singular values
+  // SVD of each complex Fourier slice (slices past I3/2 are conjugates of
+  // earlier ones and share their singular values)
   const maxTubalRank = Math.min(I1, I2);
-  const allSingularValues: number[][] = []; // [slice][index]
+  const { re: tRe, im: tIm } = dft3(tensor);
+  const sliceSVDs = Array.from({ length: half + 1 }, (_, f) =>
+    complexSVD(
+      Array.from({ length: I1 }, (_, i) => Array.from({ length: I2 }, (_, j) => tRe[i][j][f])),
+      Array.from({ length: I1 }, (_, i) => Array.from({ length: I2 }, (_, j) => tIm[i][j][f])),
+    ),
+  );
+  const allSingularValues = Array.from(
+    { length: I3 },
+    (_, f) => sliceSVDs[f <= half ? f : I3 - f].S,
+  );
 
-  // Compute SVD of each Fourier slice
-  type SliceSVD = { U: number[][]; S: number[]; Vt: number[][] };
-  const sliceSVDs: SliceSVD[] = [];
-
-  for (let f = 0; f < I3; f++) {
-    // Extract the f-th Fourier slice as a complex I1×I2 matrix
-    // For SVD purposes, we work with the magnitude since we need real SVDs
-    // But for proper t-SVD, each Fourier slice gets its own SVD
-    const sliceReal: number[][] = Array.from({ length: I1 }, (_, i) =>
-      Array.from({ length: I2 }, (_, j) => fReal[i][j][f]),
-    );
-    const svd = simpleSVD(sliceReal, maxTubalRank);
-    sliceSVDs.push(svd);
-    allSingularValues.push(svd.S);
-  }
-
-  // For each tubal rank k, reconstruct and compute error
+  // For each tubal rank k, truncate every Fourier slice to rank k, then IDFT back
   const results: tSVDResult[] = [];
 
   for (let k = 1; k <= maxTubalRank; k++) {
-    // Truncate each Fourier slice to rank k, then IDFT back
     const truncReal = zeros3D(I1, I2, I3);
-    const truncImag = zeros3D(I1, I2, I3); // imaginary stays 0 for real slices
+    const truncImag = zeros3D(I1, I2, I3);
 
-    for (let f = 0; f < I3; f++) {
-      const { U, S, Vt } = sliceSVDs[f];
-      const rk = Math.min(k, S.length);
+    for (let f = 0; f <= half; f++) {
+      const { re, im } = sliceSVDs[f].truncate(k);
+      const isReal = f === 0 || 2 * f === I3;
       for (let i = 0; i < I1; i++)
         for (let j = 0; j < I2; j++) {
-          let val = 0;
-          for (let r = 0; r < rk; r++) val += U[i][r] * S[r] * Vt[r][j];
-          truncReal[i][j][f] = val;
+          truncReal[i][j][f] = re[i][j];
+          truncImag[i][j][f] = isReal ? 0 : im[i][j];
+          if (f > 0 && !isReal) {
+            truncReal[i][j][I3 - f] = re[i][j];
+            truncImag[i][j][I3 - f] = -im[i][j];
+          }
         }
     }
 
