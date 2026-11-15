@@ -21,6 +21,12 @@ import {
 //   3. Bits-back net      -ELBO(q) = E_q[-log p(θ) - log p(y|θ) + log q(θ)]
 //
 // The KL gap between (2) and (3) is the §6 reverse-KL projection bias.
+//
+// The hatched segment on bar 3 is the bits-back term E_q[log q] = −H(q), the
+// difference between net and gross. q* is narrow here, so its differential
+// entropy is negative and the term is positive: it lengthens the code. With θ
+// sent at finite precision δ, steps 1 and 2 each gain dim(θ)·log(1/δ) nats,
+// which cancel in the net.
 // =============================================================================
 
 const PANEL_HEIGHT = 320;
@@ -203,6 +209,39 @@ export default function BitsBackCodingDiagram() {
           .text(`${it.value.toFixed(2)} nats`);
       });
 
+      // Bits-back term E_q[log q] = −H(q): the segment of the net bar between
+      // the gross cost and the net. Hatched so it reads as the refund term,
+      // which lengthens the code when H(q) < 0.
+      const netRowY = yScale('Bits-back net (−ELBO)') ?? 0;
+      const segLo = xScale(Math.min(result.grossCost, result.bitsBackNet));
+      const segHi = xScale(Math.max(result.grossCost, result.bitsBackNet));
+      const hatchId = 'bitsback-hatch';
+      const defs = svg.append('defs');
+      const pattern = defs
+        .append('pattern')
+        .attr('id', hatchId)
+        .attr('patternUnits', 'userSpaceOnUse')
+        .attr('width', 6)
+        .attr('height', 6)
+        .attr('patternTransform', 'rotate(45)');
+      pattern.append('line').attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 6).attr('stroke', 'white').attr('stroke-width', 2).attr('stroke-opacity', 0.7);
+      g.append('rect')
+        .attr('x', segLo)
+        .attr('y', netRowY)
+        .attr('width', Math.max(1, segHi - segLo))
+        .attr('height', yScale.bandwidth())
+        .attr('fill', `url(#${hatchId})`)
+        .attr('stroke', 'var(--color-text)')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '3,2');
+      g.append('line')
+        .attr('x1', xScale(result.grossCost))
+        .attr('x2', xScale(result.grossCost))
+        .attr('y1', (yScale('Gross sender cost') ?? 0) + yScale.bandwidth())
+        .attr('y2', netRowY)
+        .attr('stroke', 'var(--color-text-secondary)')
+        .attr('stroke-dasharray', '2,3');
+
       // KL gap annotation: between bayesianOptimal and bitsBackNet
       const optY = (yScale('Bayesian-optimal') ?? 0) + yScale.bandwidth();
       const netY = yScale('Bits-back net (−ELBO)') ?? 0;
@@ -245,6 +284,12 @@ export default function BitsBackCodingDiagram() {
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
               Theorem 8: bits-back net = −ELBO; the gap to the Shannon-optimal length is the §6 KL projection bias.
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+              Hatched: bits-back term E_q[log q] = −H(q*) = {(-result.qEntropy).toFixed(2)} nats.{' '}
+              {result.qEntropy < 0
+                ? 'q* is narrow, so its differential entropy is negative and this term lengthens the code. Sending θ at a finite precision δ adds dim(θ)·log(1/δ) nats to drawing θ and to encoding it under the prior; the two cancel in the net.'
+                : 'q* has positive differential entropy here, so the refund shortens the code.'}
             </div>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
