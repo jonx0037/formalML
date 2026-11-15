@@ -546,6 +546,48 @@ console.log('\n[8] End-to-end SMC on Gaussian bridge — §3.4 cell 7 reference'
   );
 }
 
+{
+  // SMCSkeletonExplorer default (N = 200, T = 10, 3 sweeps). Panel B plots the
+  // post-reweight ESS, so it must be the quantity that triggers each resample,
+  // and the post-step ESS must reset to N exactly at the resampled steps.
+  const N = 200;
+  const tau = 0.5;
+  const r = smcGaussianBridge({
+    N,
+    T: 10,
+    mu0: 0,
+    sigma0: 2,
+    muT: 5,
+    sigmaT: 1,
+    resampleThreshold: tau,
+    rwmStep: 0.5,
+    rwmSweeps: 3,
+    scheme: 'systematic',
+    seed: SMC_SEED + 3,
+  });
+  const marks = r.resampleMarks.map((m, t) => (m ? t : -1)).filter((t) => t >= 0);
+  const triggerOk = r.resampleMarks.every((m, t) =>
+    t === 0 ? !m : m === r.essPreResampleHistory[t] < tau * N,
+  );
+  ok(
+    '8.6  resample at t  ⇔  post-reweight ESS < τN',
+    triggerOk && r.essPreResampleHistory.length === 11,
+    `resampled at t = ${marks.join(', ')}; pre-resample ESS there = ${marks
+      .map((t) => r.essPreResampleHistory[t].toFixed(1))
+      .join(', ')}`,
+  );
+  const resetOk = r.resampleMarks.every((m, t) =>
+    m
+      ? Math.abs(r.essHistory[t] - N) < 1e-6
+      : Math.abs(r.essHistory[t] - r.essPreResampleHistory[t]) < 1e-9,
+  );
+  ok(
+    '8.7  post-step ESS = N at resampled steps, = post-reweight ESS otherwise',
+    resetOk,
+    `min post-reweight ESS = ${Math.min(...r.essPreResampleHistory).toFixed(1)}`,
+  );
+}
+
 // =============================================================================
 // [9] SV particle filter (§6.4)
 //
