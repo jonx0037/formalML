@@ -981,7 +981,8 @@ export type RobinsonNuisanceFitter = (
  *     \tilde D_i = D_i − m̂^{(−k(i))}(X_i).
  *   - Solve θ̂ = Σ \tilde D \tilde Y / Σ \tilde D².
  *   - Sandwich SE via the EIF: ψ_i = \tilde D_i (\tilde Y_i − θ̂ \tilde D_i),
- *     normalized by the Jacobian (1/n) Σ \tilde D D.
+ *     normalized by the Jacobian (1/n) Σ \tilde D², the (negated) θ-derivative
+ *     of the moment.
  *
  * Naming: the moment function evaluated at θ̂ used to be called `psi_hat`; the
  * notebook renamed it `moment_at_hat` to disambiguate from the (centered) EIF
@@ -1018,9 +1019,10 @@ export function crossFitDmlPlr(
     den += tildeD[i] * tildeD[i];
   }
   const theta = num / den;
-  // Sandwich SE: Var(moment_at_hat) / (E[tildeD D])^2 / n
-  // For partial-linear E[tildeD D] = E[tildeD²] + E[tildeD m] = E[tildeD²]
-  // (since tildeD ⊥ m_hat by construction in cross-fit). Equivalently: jacobian = den/n.
+  // Sandwich SE: Var(moment_at_hat) / J² / n with J = (1/n) Σ tildeD², since
+  // ∂/∂θ [tildeD (tildeY − θ tildeD)] = −tildeD². Do not use (1/n) Σ tildeD·D:
+  // it adds (1/n) Σ tildeD·m̂, which is not zero when m̂ carries error, and
+  // inflates the SE when the nuisance is slow (the §8.4 stress test).
   let momentSq = 0;
   for (let i = 0; i < n; i++) {
     const m = tildeD[i] * (tildeY[i] - theta * tildeD[i]);
