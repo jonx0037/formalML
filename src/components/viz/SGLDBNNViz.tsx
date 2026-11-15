@@ -21,9 +21,10 @@
 //     Longer chains give smoother predictive mean / std.
 //   - Resample button — re-rolls the chain seed.
 //
-// Implementation: in-browser via sgMCMCBNNTraining (full-batch SGLD). The MAP
-// is used as the warm-start so we skip the initial chase-from-init phase that
-// would otherwise inflate burn-in.
+// Implementation: in-browser via sgMCMCBNNTraining (full-batch SGLD) with the
+// notebook's prior τ = 1. The MAP is the warm start. The in-browser chain is
+// 80 + S ≤ 480 steps, far shorter than the notebook's 5,000-step burn-in, so it
+// shows the chain leaving the MAP (|w| ≈ 7 → 24–30), not the stationary regime.
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -63,6 +64,8 @@ const ARCH: MLPArchSpec = {
   outputDim: 1,
   activation: 'relu',
 };
+// MAP warm start: Adam on the mean BCE with this weight decay (the widget's own
+// quick fit, not part of the posterior).
 const TRAINING_BASE = (seed: number): TrainingSpec => ({
   lr: 0.01,
   weightDecay: 1e-2,
@@ -70,6 +73,11 @@ const TRAINING_BASE = (seed: number): TrainingSpec => ({
   optimizer: 'adam',
   seed,
 });
+// The chain's prior: w ~ N(0, τ² I) with τ = 1, i.e. precision 1 on the summed
+// NLL — the notebook's §§6–7 prior. sgMCMCBNNTraining reads the prior precision
+// from TrainingSpec.weightDecay, so the chain gets its own spec.
+const PRIOR_PRECISION = 1;
+const CHAIN_SPEC = (seed: number): TrainingSpec => ({ ...TRAINING_BASE(seed), weightDecay: PRIOR_PRECISION });
 const N_TRAIN = 300;
 const TRAIN_NOISE = 0.2;
 const DEFAULT_LOG10_ETA = -3;
@@ -81,9 +89,9 @@ const { res: GRID_RES, xMin: GRID_X_MIN, xMax: GRID_X_MAX, yMin: GRID_Y_MIN, yMa
 
 const FIGURE_PATH = '/images/topics/bayesian-neural-networks/06_sgld_two_moons.png';
 const ALT =
-  'Three panels from the notebook run (η = 10⁻³, mini-batch b = 32, 1,200 iterations): (a) SGLD predictive mean on Two Moons from 100 thinned samples; (b) SGLD predictive standard deviation, low on most of the data and largest along the class boundary and its extension beyond the data; (c) trace of one first-layer weight over the 1,200 iterations, with the 200 burn-in iterations shaded — it wanders like a random walk instead of settling to a stationary band.';
+  'Three panels from the notebook run (η = 10⁻³, prior τ = 1, mini-batch b = 32, 10,000 iterations): (a) SGLD predictive mean on Two Moons from 200 thinned samples; (b) SGLD predictive standard deviation, low on the data and rising away from it, highest in the lower-left and upper-right corners; (c) trace of one first-layer weight over the 10,000 iterations with the 5,000 burn-in iterations shaded — after burn-in it keeps wandering between about −3.3 and −1 (a slow direction) while the weight norm |w| stays between 46.6 and 48.4.';
 const CAPTION =
-  'Figure 6. SGLD samples the posterior. (a, b) Mean and standard deviation across post-burn-in samples — comparable to the deep-ensemble §5 with a single optimizer instead of K independent retrains. (c) Sampled decision boundaries. (d) The single-component trace and ACF are the practical mixing diagnostic. Read them honestly here: at the default η = 10⁻³ (the §6.7 setting) the trace wanders like a random walk and the ACF stays high across the window, so a few hundred full-batch steps explore the neighborhood of the MAP warm start rather than the whole posterior. Slide η to trade step size for spread; reseed for a new chain.';
+  'Figure 6. SGLD samples the posterior. (a, b) Mean and standard deviation across post-burn-in samples — comparable to the deep-ensemble §5 with a single optimizer instead of K independent retrains. (c) Sampled decision boundaries. (d) The single-component trace and ACF are the practical mixing diagnostic. Read them honestly here: at the default η = 10⁻³ and prior τ = 1 (the §6.7 settings, here with full-batch gradients) the trace wanders like a random walk and the ACF stays high across the window: a few hundred steps explore the neighborhood of the MAP warm start, well short of the notebook’s 5,000-step burn-in. Slide η to trade step size for spread; reseed for a new chain.';
 const ARIA = 'Figure 6: Interactive SGLD predictive on Two Moons';
 
 // -----------------------------------------------------------------------------
@@ -122,7 +130,7 @@ async function runChain(
   await yieldToBrowser();
   const result = sgMCMCBNNTraining(
     ARCH,
-    TRAINING_BASE(chainSeed),
+    CHAIN_SPEC(chainSeed),
     cachedMAP.data,
     {
       method: 'SGLD',
