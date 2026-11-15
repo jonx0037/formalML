@@ -57,6 +57,8 @@ import {
   mulberry32,
   SMC_SEED,
 } from '../sequential-monte-carlo';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // -----------------------------------------------------------------------------
 // Assertion helpers (match verify-riemann-hmc.ts style)
@@ -657,6 +659,49 @@ console.log('\n[9] Bootstrap particle filter on stochastic-volatility (§6.4)');
     -40,
     'cumulative bootstrap PF log p̂(y_{1:T})',
   );
+}
+
+// =============================================================================
+// [10] LGCP precompute payload (§11) — the pCN mutation mixes and SMC matches
+//      the elliptical-slice reference. Reads the JSON that
+//      notebooks/sequential-monte-carlo/precompute_lgcp.py writes, so a
+//      regenerated payload from a non-mixing kernel (the old IMH cloud-fit
+//      accepted ≤ 6% per step at K = 256 and left 85 distinct particles) fails.
+// =============================================================================
+
+console.log('\n[10] LGCP precompute payload (§11, pCN mutation vs reference)');
+{
+  const path = fileURLToPath(
+    new URL('../../../../../public/sample-data/sequential-monte-carlo/lgcp.json', import.meta.url),
+  );
+  const payload = JSON.parse(readFileSync(path, 'utf8'));
+  ok('10.0  payload kernel is pCN', payload.kernel === 'pCN', `kernel = ${payload.kernel}, sweeps = ${payload.n_sweeps}`);
+  for (const mKey of ['8', '12', '16']) {
+    const g = payload.grids[mKey];
+    const beta = g.beta_trace as number[];
+    const acc = g.accept_trace as number[];
+    approx(`10.${mKey}a  β path ends at 1 (m = ${mKey})`, beta[beta.length - 1], 1, 1e-12, 'β_T');
+    ok(
+      `10.${mKey}b  all particles distinct at β = 1 (m = ${mKey})`,
+      g.distinct_final === payload.N,
+      `distinct = ${g.distinct_final} of N = ${payload.N}`,
+    );
+    within(
+      `10.${mKey}c  mean pCN acceptance in [0.2, 0.45] (m = ${mKey})`,
+      acc.reduce((s, v) => s + v, 0) / acc.length,
+      0.2,
+      0.45,
+      'mean acceptance',
+    );
+    within(
+      `10.${mKey}d  SMC E[z|y] within 0.15 of the reference (m = ${mKey})`,
+      g.dist_z_ref,
+      0,
+      0.15,
+      `RMS distance (prior mean: ${g.dist_z_prior.toFixed(3)})`,
+    );
+    within(`10.${mKey}e  reference chains converged (m = ${mKey})`, g.r_hat_max, 1, 1.05, 'max R-hat');
+  }
 }
 
 // =============================================================================
