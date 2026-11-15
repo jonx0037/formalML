@@ -489,7 +489,7 @@ Can we define a tensor factorization with an **exact Eckart–Young theorem**? F
 Let $\mathcal{A} \in \mathbb{R}^{I_1 \times I_2 \times I_3}$ and $\mathcal{B} \in \mathbb{R}^{I_2 \times J \times I_3}$. The **t-product** $\mathcal{C} = \mathcal{A} * \mathcal{B}$ is computed by:
 
 1. DFT along mode 3: $\hat{\mathcal{A}} = \text{fft}(\mathcal{A}, [], 3)$, $\hat{\mathcal{B}} = \text{fft}(\mathcal{B}, [], 3)$.
-2. Multiply frontal slices: $\hat{\mathcal{C}}^{(k)} = \hat{\mathcal{A}}^{(k)} \hat{\mathcal{B}}^{(k)}$ for each $k = 1, \ldots, I_3$.
+2. Multiply frontal slices: $\hat{\mathcal{C}}^{(j)} = \hat{\mathcal{A}}^{(j)} \hat{\mathcal{B}}^{(j)}$ for each $j = 1, \ldots, I_3$.
 3. Inverse DFT: $\mathcal{C} = \text{ifft}(\hat{\mathcal{C}}, [], 3)$.
 </TheoremBlock>
 
@@ -518,7 +518,7 @@ By Parseval's theorem, $\|\mathcal{A}\|_F^2 = \frac{1}{I_3} \sum_{j=1}^{I_3} \|\
 
 By the matrix [Eckart–Young theorem](/topics/svd) applied independently to each $\hat{\mathcal{A}}^{(j)}$, the optimal rank-$k$ approximation of $\hat{\mathcal{A}}^{(j)}$ keeps its top $k$ singular values and truncates the rest. The truncated t-SVD does exactly this: it applies rank-$k$ truncation to each Fourier-domain slice.
 
-Since the Fourier transform preserves the Frobenius norm (Parseval), minimizing $\|\mathcal{A} - \mathcal{B}\|_F^2 = \frac{1}{I_3} \sum_j \|\hat{\mathcal{A}}^{(j)} - \hat{\mathcal{B}}^{(j)}\|_F^2$ decomposes into $I_3$ independent matrix problems, each solved optimally by the truncated SVD. The inverse DFT recovers the optimal tensor approximation. $\square$
+Since the unnormalized DFT preserves the Frobenius norm up to the factor $1/I_3$ (Parseval, as above), minimizing $\|\mathcal{A} - \mathcal{B}\|_F^2 = \frac{1}{I_3} \sum_j \|\hat{\mathcal{A}}^{(j)} - \hat{\mathcal{B}}^{(j)}\|_F^2$ decomposes into $I_3$ independent matrix problems, each solved optimally by the truncated SVD. The inverse DFT recovers the optimal tensor approximation. $\square$
 </TheoremBlock>
 
 This is the only tensor decomposition with an exact Eckart–Young theorem. The CP decomposition's best rank-$k$ approximation may not even exist (the infimum is not achieved). The Tucker/HOSVD approximation is within $\sqrt{N}$ of optimal. The t-SVD achieves exact optimality by working in the Fourier domain, where the tensor problem decomposes into independent matrix problems.
@@ -531,10 +531,10 @@ def t_svd_truncated(tensor, rank):
 
     recon_hat = np.zeros_like(T_hat)
     singular_values = []
-    for k in range(I3):
-        u, s, vt = np.linalg.svd(T_hat[:, :, k], full_matrices=False)
+    for j in range(I3):
+        u, s, vt = np.linalg.svd(T_hat[:, :, j], full_matrices=False)
         r = min(rank, len(s))
-        recon_hat[:, :, k] = (u[:, :r] * s[:r]) @ vt[:r, :]
+        recon_hat[:, :, j] = (u[:, :r] * s[:r]) @ vt[:r, :]
         singular_values.append(s)
 
     return np.real(ifft(recon_hat, axis=2)), singular_values
