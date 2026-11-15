@@ -15,7 +15,7 @@ formalstatisticsPrereqs:
     relationship: "The deep prerequisite — what makes an MCMC method correct, the diagnostic vocabulary (R̂, IAT, ESS), and the standard Metropolis–Hastings / Gibbs / HMC menu against which SG-MCMC defines itself. §1 of this topic frames SG-MCMC as the scalable wing of formalstatistics's MCMC catalog; §12 returns to that catalog for the head-to-head with NUTS."
   - topic: "modes-of-convergence"
     site: "formalstatistics"
-    relationship: "The asymptotic-exactness statement (§6.3 Welling–Teh schedule) and the O(η + 1/B) bias bound (§8.3 Vollmer–Zygalakis–Teh) both rely on knowing how to interpret convergence in expectation versus convergence in distribution; the formalstatistics topic is the right place to sort that out."
+    relationship: "The asymptotic-exactness statement (§6.3 Welling–Teh schedule) and the O(η) + O(η/B) bias bound (§8.3 Vollmer–Zygalakis–Teh) both rely on knowing how to interpret convergence in expectation versus convergence in distribution; the formalstatistics topic is the right place to sort that out."
   - topic: "central-limit-theorem"
     site: "formalstatistics"
     relationship: "The §12 head-to-head benchmark uses Bayesian logistic regression with asymptotically-Gaussian posterior by Bernstein–von Mises; CLT is the underlying mechanism for that asymptotic Gaussianity."
@@ -43,7 +43,7 @@ notebookPath: "notebooks/stochastic-gradient-mcmc/01_stochastic_gradient_mcmc.ip
 githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/stochastic-gradient-mcmc.mdx"
 datePublished: 2026-05-08
 estimatedReadTime: 65
-abstract: "bayesian-neural-networks introduced SGLD and SGHMC as recipes that scale Bayesian posterior sampling to deep learning regimes. This topic supplies the theory: SGLD and SGHMC are not two unrelated tricks but two instantiations of a single object — a stochastic differential equation whose stationary distribution is the posterior we want to sample. The Ma–Chen–Fox (2015) complete-recipe framework organizes every SG-MCMC variant inside one (D, Q) skew decomposition; specializing it gives overdamped Langevin → SGLD, underdamped Langevin → SGHMC, and Riemann-manifold variants in turn. The Vollmer–Zygalakis–Teh (2016) bound quantifies the price of mini-batching as O(η + 1/B), and a head-to-head with NUTS on Bayesian logistic regression pins down the regime in which SG-MCMC is the only practical option."
+abstract: "bayesian-neural-networks introduced SGLD and SGHMC as recipes that scale Bayesian posterior sampling to deep learning regimes. This topic supplies the theory: SGLD and SGHMC are not two unrelated tricks but two instantiations of a single object — a stochastic differential equation whose stationary distribution is the posterior we want to sample. The Ma–Chen–Fox (2015) complete-recipe framework organizes every SG-MCMC variant inside one (D, Q) skew decomposition; specializing it gives overdamped Langevin → SGLD, underdamped Langevin → SGHMC, and Riemann-manifold variants in turn. The Vollmer–Zygalakis–Teh (2016) bound quantifies the price of mini-batching as an O(η/B) term on top of the O(η) discretization bias, and a head-to-head with NUTS on Bayesian logistic regression pins down the regime in which SG-MCMC is the only practical option."
 connections:
   - topic: "bayesian-neural-networks"
     relationship: "Direct prerequisite. BNN §§6–7 introduced SGLD and SGHMC as recipes for posterior sampling on neural network weights; this topic is the theoretical deepening — the underlying SDEs, the stationary-distribution proofs, the mini-batch bias bound, and the head-to-head with NUTS."
@@ -99,7 +99,7 @@ references:
     authors: "Vollmer, Zygalakis & Teh"
     year: 2016
     url: "https://jmlr.org/papers/v17/15-494.html"
-    note: "The O(η + 1/B) bias bound proved via Stein's method and the Poisson equation. §8.3's Theorem 8.1 is the headline result of this paper (JMLR)."
+    note: "The O(η) + O(η/B) bias of constant-step SGLD: a weak-error expansion of the invariant measure (§4.1) and a finite-time bound proved through the Poisson equation (Theorem 9). §8.3's Theorem 8.1 restates these results (JMLR)."
   - type: "paper"
     title: "Stochastic Gradient Riemannian Langevin Dynamics on the Probability Simplex"
     authors: "Patterson & Teh"
@@ -690,7 +690,7 @@ The viz below runs SGLD and SGHMC on a deliberately anisotropic 2D Gaussian (con
 
 ## 8. Mini-batch finite-sample bias
 
-§§5–7 set up the continuous-time SDEs and §6 quantified one source of error — the gradient-noise term that vanishes asymptotically under the Welling–Teh schedule. In practice we run constant-$\eta$ chains, often for far fewer iterations than the schedule would require for tight convergence. What does this cost us? The answer is given by Vollmer, Zygalakis, and Teh (2016): the bias of expectations under the chain's stationary distribution is $O(\eta) + O(1/B)$, with explicit (though messy) constants. This section writes the decomposition out, states the bound, and answers the standing question of why we do not patch the bias with a Metropolis–Hastings accept/reject step.
+§§5–7 set up the continuous-time SDEs and §6 quantified one source of error — the gradient-noise term that vanishes asymptotically under the Welling–Teh schedule. In practice we run constant-$\eta$ chains, often for far fewer iterations than the schedule would require for tight convergence. What does this cost us? The answer is given by Vollmer, Zygalakis, and Teh (2016): the bias of expectations under the chain's stationary distribution is $O(\eta) + O(\eta/B)$, with explicit (though messy) constants. This section writes the decomposition out, states the bound, and answers the standing question of why we do not patch the bias with a Metropolis–Hastings accept/reject step.
 
 ### 8.1 Three sources of bias
 
@@ -748,7 +748,7 @@ $$
 
 which requires evaluating $\pi(\theta) \propto \exp(-H(\theta)) = \exp\!\bigl(-\sum_i \log p(y_i \mid \theta) + \cdots\bigr)$ exactly. Computing $H$ requires summing log-likelihoods over all $N$ datapoints — exactly the $O(N)$ operation that mini-batching was introduced to avoid. An MH step at every iteration defeats the purpose.
 
-There has been work on stochastic acceptance steps (Bardenet, Doucet, and Holmes 2014, 2017 — sub-sampling MH; Korattikara, Chen, and Welling 2014 — austerity MH), but the practical regimes in which these methods improve over plain SGLD are narrow. The accepted trade is to live with the $O(\eta + 1/B)$ bias and run with $\eta$ and $B$ chosen to keep that bias smaller than the Monte Carlo variance from finite $n$, which is $O(1/\sqrt{n})$ by ergodicity. For typical posterior-mean estimation in deep learning, $B = 32$ to $128$ and $\eta = 10^{-4}$ to $10^{-3}$ leave $O(\eta + 1/B) \approx 10^{-2}$, which is well below the Monte Carlo error from any practical chain length. The bias is real but operationally small.
+There has been work on stochastic acceptance steps (Bardenet, Doucet, and Holmes 2014, 2017 — sub-sampling MH; Korattikara, Chen, and Welling 2014 — austerity MH), but the practical regimes in which these methods improve over plain SGLD are narrow. The accepted trade is to live with the $O(\eta) + O(\eta/B)$ bias and run with $\eta$ and $B$ chosen to keep that bias smaller than the Monte Carlo error from finite $n$, which is $O(1/\sqrt{n})$ by ergodicity. For typical posterior-mean estimation in deep learning, $B = 32$ to $128$ and $\eta = 10^{-4}$ to $10^{-3}$ put the factor $\eta\,(1 + 1/B)$ between about $10^{-4}$ and $10^{-3}$. The constants $C_1, C_2$ multiply that factor, and $C_2$ grows with the gradient noise, so the bias is small unless the gradient noise is large; in that case it is the $\eta/B$ term that dominates, as in §8.5. In the typical case the bias is real but operationally small.
 
 ### 8.5 Empirical verification
 
@@ -760,7 +760,7 @@ $$
 S_\lambda - \frac{1}{\lambda} = \frac{\eta\,\bigl(1 + \sigma_g^2 / (B\lambda)\bigr)}{2 - \eta\lambda}. \qquad \qquad (8.3)
 $$
 
-The bias of $\phi$ is the average of (8.3) over the two eigen-directions, weighted by the squared first coordinates of the eigenvectors. Two predictions follow. First, (8.3) is linear in $\eta$ while $\eta\lambda \ll 2$ and bends upward as $\eta$ approaches the stability limit $2/\lambda_{\max} \approx 3.4 \times 10^{-3}$. Second, at fixed $\eta$ it is a discretization floor plus a $1/B$ term, and that term carries a factor $\eta$ — the $O(\eta/B)$ of the §8.2 heuristic, well inside the bound (8.2). The log–log slope in $B$ therefore approaches $-1$ only while the gradient-noise ratio $\sigma_g^2/(B\lambda)$ dominates; as $B$ grows the curve flattens onto the floor.
+The bias of $\phi$ is the average of (8.3) over the two eigen-directions, weighted by the squared first coordinates of the eigenvectors. Two predictions follow. First, (8.3) is linear in $\eta$ while $\eta\lambda \ll 2$ and bends upward as $\eta$ approaches the stability limit $2/\lambda_{\max} \approx 3.4 \times 10^{-3}$. Second, at fixed $\eta$ it is a discretization floor plus a $1/B$ term, and that term carries a factor $\eta$ — the $O(\eta/B)$ of the §8.2 heuristic, the same form as the bound (8.2). The log–log slope in $B$ therefore approaches $-1$ only while the gradient-noise ratio $\sigma_g^2/(B\lambda)$ dominates; as $B$ grows the curve flattens onto the floor.
 
 Panel (a) plots measured bias against $\eta$ at fixed $B = 64$, panel (b) against $B$ at fixed $\eta = 10^{-4}$, each with (8.3) overlaid, and panel (c) plots measured against exact bias for all 13 grid points. In the companion notebook (4,000 independent chains of 20,000 steps per grid point, started from exact posterior draws; uncertainties are bootstrap standard errors over chains), the fitted slope is $+1.120 \pm 0.008$ in $\eta$, against $+1.121$ for (8.3) on the same grid, and $-0.769 \pm 0.005$ in $B$, against $-0.757$. The 13 measured biases lie within $2.6$ standard errors of (8.3). Neither slope is exactly $\pm 1$ on this grid, and the theory says neither should be: the $\eta$ slope picks up the curvature near the stability limit (its $\eta \to 0$ limit is $+1$), and the $B$ slope flattens toward the floor. The interactive version runs 400 chains per grid point, so its error bars are wider; slide $\sigma_g$ to $0$ and the $B$ curve collapses onto the floor.
 
@@ -768,11 +768,11 @@ Panel (a) plots measured bias against $\eta$ at fixed $B = 64$, panel (b) agains
 
 ## 9. Bias-reduction strategies
 
-Theorem 8.1 says SGLD's bias is $O(\eta) + O(1/B)$. Both terms can be attacked. The discretization term $O(\eta)$ shrinks if we can afford a smaller $\eta$ (paying in mixing time) or schedule $\eta_n \to 0$ (paying in asymptotic chain length). The mini-batch term $O(1/B)$ shrinks if we can afford a larger batch (paying in per-step cost) or — more interestingly — if we can reduce the gradient-estimator variance $V_B(\theta)$ at fixed $B$ through control-variate techniques. This section catalogs the four standard moves: step-size annealing, stochastic-gradient control variates (SVRG-LD), zero-variance control variates (ZV-SGLD), and exact-subsampling MCMC.
+Theorem 8.1 says SGLD's bias is $O(\eta) + O(\eta/B)$. Both terms can be attacked. Both carry a factor of $\eta$, so both shrink if we can afford a smaller $\eta$ (paying in mixing time) or schedule $\eta_n \to 0$ (paying in asymptotic chain length). At a fixed $\eta$, the mini-batch term $O(\eta/B)$ shrinks toward the discretization floor if we can afford a larger batch (paying in per-step cost) or — more interestingly — if we can reduce the gradient-estimator variance $V_B(\theta)$ at fixed $B$ through control-variate techniques. This section catalogs the four standard moves: step-size annealing, stochastic-gradient control variates (SVRG-LD), zero-variance control variates (ZV-SGLD), and exact-subsampling MCMC.
 
 ### 9.1 The bias-reduction landscape
 
-Each method trades a different resource for bias reduction. Step-size annealing pays in chain length: the Welling–Teh schedule (§6.3) eliminates the $O(\eta)$ term as $n \to \infty$, but the chain mixes ever more slowly along the way. Larger batches pay in per-step cost: doubling $B$ halves the $O(1/B)$ contribution but doubles the gradient-evaluation cost. Stochastic-gradient control variates pay in implementation complexity and a moderate amount of compute: SVRG-LD reduces $V_B(\theta)$ by an order of magnitude near the posterior mode, and ZV-SGLD leaves $V_B$ alone but reduces the variance of *the estimator we ultimately care about*. Exact-subsampling MCMC pays in algorithmic delicacy and the requirement that the likelihood is bounded or geometrically Lipschitz: it eliminates bias entirely while preserving the per-step subsampling speedup. The choice depends on what is cheap in the application.
+Each method trades a different resource for bias reduction. Step-size annealing pays in chain length: the Welling–Teh schedule (§6.3) eliminates both terms as $n \to \infty$, since both carry a factor of $\eta$, but the chain mixes ever more slowly along the way. Larger batches pay in per-step cost: doubling $B$ halves the $O(\eta/B)$ contribution but doubles the gradient-evaluation cost. Stochastic-gradient control variates pay in implementation complexity and a moderate amount of compute: SVRG-LD reduces $V_B(\theta)$ by an order of magnitude near the posterior mode, and ZV-SGLD leaves $V_B$ alone but reduces the variance of *the estimator we ultimately care about*. Exact-subsampling MCMC pays in algorithmic delicacy and the requirement that the likelihood is bounded or geometrically Lipschitz: it eliminates bias entirely while preserving the per-step subsampling speedup. The choice depends on what is cheap in the application.
 
 ### 9.2 Stochastic-gradient control variates: SVRG-LD
 
@@ -835,7 +835,7 @@ For deep-learning-scale problems, neither method has displaced SGLD/SGHMC as the
 For typical Bayesian deep-learning posteriors at $N \in [10^4, 10^7]$, the cost-effectiveness ranking is approximately:
 
 ~~~
-1. Vanilla SGLD/SGHMC  (baseline; bias O(η + 1/B))
+1. Vanilla SGLD/SGHMC  (baseline; bias O(η) + O(η/B))
 2. + ZV-SGLD            (free; problem-dependent estimator variance reduction, ≈1.35× on §9)
 3. + SVRG-LD            (modest cost; problem-dependent gradient variance reduction, ≈35× on §6)
 4. + step-size schedule (asymptotic exactness; pays in mixing)
@@ -1104,7 +1104,7 @@ The decision tree is not a substitute for running a small benchmark on your own 
 
 ### 13.1 Cross-site prerequisites
 
-The reader who finishes this topic with the most context will have read formalstatistics's `bayesian-computation-and-mcmc` (the deep prerequisite — what makes an MCMC method correct, the diagnostic vocabulary $\hat R$, IAT, ESS, and the standard Metropolis–Hastings / Gibbs / HMC menu against which SG-MCMC defines itself); `modes-of-convergence` (the asymptotic-exactness statement of §6.3 and the $O(\eta + 1/B)$ bound of §8.3 both rely on knowing how to interpret convergence in expectation versus convergence in distribution versus almost-sure convergence); `central-limit-theorem` (the asymptotic Gaussianity of the posterior in the §12 head-to-head benchmark is Bernstein–von Mises, which formalstatistics develops directly from CLT machinery); and formalcalculus's `jacobian` (the Riemann-manifold metric tensor $G(\theta)$ in §10 is a smooth assignment of positive-definite matrices to points in parameter space; computing its inverse and divergence requires Jacobian-style multivariable-calculus machinery).
+The reader who finishes this topic with the most context will have read formalstatistics's `bayesian-computation-and-mcmc` (the deep prerequisite — what makes an MCMC method correct, the diagnostic vocabulary $\hat R$, IAT, ESS, and the standard Metropolis–Hastings / Gibbs / HMC menu against which SG-MCMC defines itself); `modes-of-convergence` (the asymptotic-exactness statement of §6.3 and the $O(\eta) + O(\eta/B)$ bound of §8.3 both rely on knowing how to interpret convergence in expectation versus convergence in distribution versus almost-sure convergence); `central-limit-theorem` (the asymptotic Gaussianity of the posterior in the §12 head-to-head benchmark is Bernstein–von Mises, which formalstatistics develops directly from CLT machinery); and formalcalculus's `jacobian` (the Riemann-manifold metric tensor $G(\theta)$ in §10 is a smooth assignment of positive-definite matrices to points in parameter space; computing its inverse and divergence requires Jacobian-style multivariable-calculus machinery).
 
 ### 13.2 formalML connections
 
@@ -1130,5 +1130,5 @@ A non-exhaustive list of questions on which the SG-MCMC literature is currently 
 2. **VI / SG-MCMC hybrids.** A practical pattern is to use VI to get a fast first estimate, then SG-MCMC to refine. The theoretical understanding of when this hybrid dominates either method alone is incomplete.
 3. **SG-MCMC for diffusion models.** Score-based generative models train a network to approximate $\nabla \log \pi$ at every noise level. Whether SG-MCMC techniques can be adapted to sample from intermediate distributions efficiently is a current research direction.
 4. **Multi-modal posteriors.** Cyclical SGLD (Zhang et al. 2020) and parallel-tempered SGHMC are the standard tools, but neither matches the theoretical guarantees of replica-exchange MCMC.
-5. **Convergence rates beyond worst-case.** The $O(\eta + 1/B)$ bound is sharp under VZT's regularity assumptions but pessimistic for many practical posteriors.
+5. **Convergence rates beyond worst-case.** The $O(\eta) + O(\eta/B)$ bound is sharp under VZT's regularity assumptions but pessimistic for many practical posteriors.
 6. **Exact subsampling at scale.** Bardenet–Doucet–Holmes (2014, 2017) and Firefly MC (Maclaurin & Adams 2014) give bias-free SG-MCMC variants but with worst-case $O(N)$ per-step cost. Whether the gap to vanilla SGLD's $O(B)$ can be closed in practice for deep-network posteriors is unsettled.
