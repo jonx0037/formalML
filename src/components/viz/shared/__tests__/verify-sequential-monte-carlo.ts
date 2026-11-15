@@ -31,6 +31,7 @@ import {
   // reweight + adaptive schedule
   geometricPathIncrementalLogWeight,
   projectedEss,
+  conditionalEss,
   findNextBeta,
   // cloud statistics
   cloudMean1D,
@@ -47,6 +48,7 @@ import {
   gmmLogLikOne,
   // SMC harness
   smcGaussianBridge,
+  smcAdaptiveSampler,
   // SV particle filter
   simulateSV,
   svEmissionLogPdf,
@@ -307,7 +309,7 @@ console.log('\n[3] Geometric-path incremental log-weight (Proposition 3)');
 // [4] Adaptive temperature bisection (§9.4)
 // =============================================================================
 
-console.log('\n[4] Adaptive temperature bisection (Del Moral-Doucet-Jasra 2012)');
+console.log('\n[4] Adaptive temperature bisection (conditional ESS, Zhou-Johansen-Aston 2016)');
 {
   // Construct a cloud with controllable log-likelihood spread. With log L
   // standard-normal at N = 500, the projected ESS at β = 1 (starting from
@@ -342,8 +344,8 @@ console.log('\n[4] Adaptive temperature bisection (Del Moral-Doucet-Jasra 2012)'
   // Convergence within 60 iterations.
   ok('4.3  bisection converges within 60 iters', result.iters <= 60, `iters = ${result.iters}`);
 
-  // Monotonicity: projectedEss is decreasing in β (high target curvature case).
-  const essAtBeta = (b: number) => projectedEss(b, 0, logW0, logLik);
+  // Monotonicity: conditionalEss is non-increasing in β (high target curvature case).
+  const essAtBeta = (b: number) => conditionalEss(b, 0, logW0, logLik);
   const betas = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0];
   let strictlyDecr = true;
   for (let i = 1; i < betas.length; i++) {
@@ -352,7 +354,35 @@ console.log('\n[4] Adaptive temperature bisection (Del Moral-Doucet-Jasra 2012)'
       break;
     }
   }
-  ok('4.4  projectedEss is monotone non-increasing in β', strictlyDecr, 'monotone check');
+  ok('4.4  conditionalEss is monotone non-increasing in β', strictlyDecr, 'monotone check');
+
+  // With uniform weights, CESS equals the ESS of the tilted weights.
+  approx('4.5  uniform weights: CESS = projected ESS', conditionalEss(0.01, 0, logW0, logLik),
+    projectedEss(0.01, 0, logW0, logLik), 1e-8, 'CESS vs ESS at β = 0.01');
+
+  // CESS scores only the next reweighting, not degeneracy already accumulated:
+  // with half the particles carrying negligible weight (accumulated ESS = 0.5 N)
+  // CESS(β_t) is still N, and the bisection can still move β. Targeting the
+  // accumulated ESS here would pin β at β_t (the stalled-schedule bug).
+  const logWHalf = logW0.map((_, i) => (i % 2 === 0 ? 0 : -50));
+  approx('4.6  CESS(β_t) = N under degenerate weights', conditionalEss(0, 0, logWHalf, logLik), N, 1e-8, 'CESS at Δβ = 0');
+  const r2 = findNextBeta(0, logWHalf, logLik, targetEss, 1e-6, 60);
+  ok('4.7  findNextBeta moves β when accumulated ESS < targetEss', r2.beta > 1e-4, `β = ${r2.beta.toExponential(3)}, accumulated ESS = ${logSpaceESS(logWHalf).toFixed(1)}`);
+
+  // Regression for the stalled schedule: the §9.5 banana run (N = 300,
+  // τ_adapt = 0.9, τ = 0.5) must reach β = 1 well inside its step cap.
+  const SIGMA0 = 4;
+  const lp = (t: readonly number[]) => isotropicGaussianLogPdf(t, [0, 0], SIGMA0);
+  const ll = (t: readonly number[]) => bananaLogPdf(t) - lp(t);
+  const run = smcAdaptiveSampler({
+    N: 300, d: 2, logPrior: lp, logLik: ll,
+    drawPrior: (g) => [SIGMA0 * g(), SIGMA0 * g()],
+    schedule: 'adaptive', tauAdapt: 0.9, resampleThreshold: 0.5,
+    kernel: 'imh', ridge: 1e-5, seed: SMC_SEED + 9,
+  });
+  ok('4.8  adaptive banana run reaches β = 1 in ≤ 20 steps', run.betaTrace[run.T] === 1 && run.T <= 20,
+    `T = ${run.T}, β_T = ${run.betaTrace[run.T]}`);
+  approx('4.9  adaptive banana log Ẑ near 0 (normalized banana)', run.logZHat, 0, 0.25, 'log Ẑ');
 }
 
 // =============================================================================

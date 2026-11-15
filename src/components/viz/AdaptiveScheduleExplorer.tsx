@@ -11,8 +11,9 @@
 //   (B) Schedule curve (β_t vs t) for both schedules with the realized
 //       ESS profile overlaid.
 //
-// The adaptive schedule typically uses T ≈ 8-12 steps; the fixed schedule
-// requires T = 20+ to maintain the same ESS floor. The dropdown lets the
+// The adaptive schedule (conditional-ESS bisection, §9.4) reaches β = 1 in
+// T = 10 steps at τ_adapt = 0.9 (N = 300, this seed); the fixed linear schedule
+// uses T = 20 by default. The dropdown lets the
 // reader pick the fixed-schedule curvature (linear / power-2 / power-½).
 //
 // Pure TS via shared/sequential-monte-carlo.ts → smcAdaptiveSampler with
@@ -390,7 +391,7 @@ export default function AdaptiveScheduleExplorer() {
             onTouchEnd={(e) => commit({ tauAdapt: parseFloat((e.target as HTMLInputElement).value) })}
             onKeyUp={(e) => commit({ tauAdapt: parseFloat((e.target as HTMLInputElement).value) })}
             className="w-32"
-            aria-label="Target ESS fraction for adaptive schedule"
+            aria-label="Target conditional-ESS fraction for adaptive schedule"
           />
         </label>
         {isStale && (
