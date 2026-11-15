@@ -718,7 +718,7 @@ $$
 
 The drift is unchanged from the original Langevin SDE (5.1), but the diffusion has acquired an extra state-dependent piece $\tfrac{\eta}{2} V_B(\theta)$. By Theorem 2.1 with $D(\theta) = I + \tfrac{\eta}{2} V_B(\theta)$ and $Q = 0$, this perturbed SDE has stationary distribution shifted from $\pi$. The shift is the second source of bias above.
 
-For an unbiased mini-batch estimator with the $N/B$ rescaling of (6.2), the gradient covariance scales as $V_B(\theta) \asymp N^2 / B$ — so the bias contribution to expectations is $O(\eta \cdot V_B / N^2) = O(\eta / B)$ once we normalize back to per-datapoint units. Combining with the $O(\eta)$ discretization error from §8.1 gives the headline bound.
+For an unbiased mini-batch estimator with the $N/B$ rescaling of (6.2), the gradient covariance scales as $V_B(\theta) \asymp N^2 / B$ — so the bias contribution to expectations is $O(\eta \cdot V_B / N^2) = O(\eta / B)$ once we normalize back to per-datapoint units. Combining with the $O(\eta)$ discretization error from §8.1, both pieces carry a factor of $\eta$: the bias is $O(\eta) + O(\eta / B)$. The mini-batch term shrinks with $\eta$ at any fixed $B$; it is not a separate $O(1/B)$ floor.
 
 ### 8.3 The Vollmer–Zygalakis–Teh theorem
 
@@ -726,15 +726,17 @@ The argument above is heuristic — it ignores the Euler–Maruyama discretizati
 
 <TheoremBlock type="theorem" number={8.1} title="Vollmer–Zygalakis–Teh (simplified)">
 
-Let $H \in C^4(\mathbb{R}^d)$ satisfy uniform dissipativity and gradient-noise variance bounds (Assumptions A1–A4 of VZT 2016). Let $\phi \in C^4(\mathbb{R}^d)$ have polynomial growth, and let $\theta_n$ follow the SGLD chain (6.3) with constant $\eta$ and batch size $B$. Then there exist constants $C_1(\phi), C_2(\phi)$ and a transient term $R_n$ decaying exponentially in $n$ such that
+Let $\nabla H$ be smooth with bounded derivatives and dissipative outside a compact set (Assumptions 2 and 4 of VZT 2016), let $\phi$ be smooth with polynomial growth, and let $\theta_n$ follow the SGLD chain (6.3) with constant $\eta$ and batch size $B$, assumed ergodic. Then there exist constants $C_1(\phi)$ and $C_2(\phi)$, independent of $\eta$ and $B$, and a transient term $R_n \to 0$ as $n \to \infty$ such that
 
 $$
-\bigl|\mathbb{E}[\phi(\theta_n)] - \pi(\phi)\bigr| \leq C_1\, \eta + \frac{C_2}{B} + R_n. \qquad \qquad (8.2)
+\bigl|\mathbb{E}[\phi(\theta_n)] - \pi(\phi)\bigr| \leq \Bigl(C_1 + \frac{C_2}{B}\Bigr)\eta + O(\eta^2) + R_n. \qquad \qquad (8.2)
 $$
+
+Here $C_1\,\eta$ is the full-batch Euler–Maruyama bias, and $C_2\,\eta/B$ is the extra leading-order term from the gradient-estimator covariance $V_B$, which scales as $1/B$ (the product $B\,V_B$ does not depend on $B$).
 
 </TheoremBlock>
 
-The proof is in §3 of VZT 2016 and uses Stein's method via the Poisson equation; we do not reproduce it here. The takeaway is that (8.2) makes the §8.2 heuristic precise, with the constants $C_1, C_2$ depending on the smoothness of $H$ and $\phi$ and on the spectral gap of the generator $\mathcal{L}$. For our purposes, what matters is the *form* of the bound: bias decays linearly in $\eta$ at fixed $B$, and inversely in $B$ at fixed $\eta$.
+VZT obtain the expansion in their §4.1 from the Talay–Tubaro weak-error expansion of the chain's invariant measure (their Theorems 5 and 6): mini-batching adds a second-derivative term weighted by the gradient-estimator covariance to the coefficient of the leading $O(\eta)$ term, so $V_B$ enters multiplied by $\eta$. For a finite run they bound the bias of the time average $\hat\phi_K = K^{-1}\sum_{k<K} \phi(\theta_k)$ by $C\,(\eta + 1/(K\eta))$, with $C$ depending on $B$ through the gradient-noise moments (their Theorem 9, proved through the Poisson equation $\mathcal{L}\psi = \phi - \pi(\phi)$). We do not reproduce the proofs. The takeaway is that (8.2) makes the §8.2 heuristic precise, with the constants $C_1, C_2$ depending on the smoothness of $H$ and $\phi$ and on how fast the diffusion mixes. For our purposes, what matters is the *form* of the bound: bias is linear in $\eta$ at fixed $B$, and at fixed $\eta$ it falls toward the full-batch floor $C_1\,\eta$ as $B$ grows, with an excess $C_2\,\eta/B$.
 
 ### 8.4 Why we don't add a Metropolis correction
 

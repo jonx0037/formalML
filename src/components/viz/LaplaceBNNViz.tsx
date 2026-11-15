@@ -10,10 +10,12 @@
 //   (c) S sampled 0.5-probability decision boundaries overlaid (paletteBNN.laplace).
 //
 // Interactive controls:
-//   - Prior-scale slider τ² (10⁻¹–10³, log scale, default 10²). Updates λ = 1/τ²
-//     and recomputes the last-layer Hessian + Cholesky in milliseconds. The
-//     MAP is held fixed at the default τ² for interactivity (CLAUDE.md note:
-//     under reasonable τ² the MAP shift is small).
+//   - Prior-scale slider τ² (10⁻¹–10³, log scale, default 1/(n·10⁻⁴) ≈ 33).
+//     Updates λ = 1/τ² and recomputes the last-layer Hessian + Cholesky in
+//     milliseconds. The MAP is trained once, as in notebook §1, with weight
+//     decay 10⁻⁴ on the *mean* BCE — λ = n·10⁻⁴ = 0.03 on the summed scale the
+//     Hessian uses — so the default τ² is the prior the MAP was trained with.
+//     The MAP is held fixed as τ² moves (under reasonable τ² the MAP shift is small).
 //   - Sample-count slider S (10–100, default 30) — cheap re-sampling from the
 //     cached Cholesky factor.
 //   - Resample button — re-rolls the sampling seed.
@@ -69,7 +71,10 @@ const TRAINING_BASE = (seed: number, weightDecay: number): TrainingSpec => ({
 });
 const N_TRAIN = 300;
 const TRAIN_NOISE = 0.2;
-const DEFAULT_TAU2 = 1e2;
+/** Weight decay on the mean BCE, as in notebook §1. */
+const MAP_WEIGHT_DECAY = 1e-4;
+/** τ² = 1/λ with λ = n·10⁻⁴ = 0.03 on the summed scale: the MAP's own prior (≈ 33). */
+const DEFAULT_TAU2 = 1 / (N_TRAIN * MAP_WEIGHT_DECAY);
 const DEFAULT_S = 30;
 const SAMPLED_CONTOURS_PER_PANEL = 20;
 const { res: GRID_RES, xMin: GRID_X_MIN, xMax: GRID_X_MAX, yMin: GRID_Y_MIN, yMax: GRID_Y_MAX } =
@@ -95,10 +100,10 @@ interface CachedMAP {
 const yieldToBrowser = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
 
-async function trainMAP(seed: number, defaultLambda: number): Promise<CachedMAP> {
+async function trainMAP(seed: number, meanLossWeightDecay: number): Promise<CachedMAP> {
   await yieldToBrowser();
   const data = makeMoonsData(N_TRAIN, TRAIN_NOISE, seed);
-  const map = mlpTrain(ARCH, TRAINING_BASE(seed, defaultLambda), data);
+  const map = mlpTrain(ARCH, TRAINING_BASE(seed, meanLossWeightDecay), data);
   return { data, map, seed };
 }
 
@@ -142,7 +147,7 @@ export default function LaplaceBNNViz() {
   useEffect(() => {
     let alive = true;
     setState({ kind: 'training' });
-    trainMAP(seedRef.current, 1 / DEFAULT_TAU2).then((cached) => {
+    trainMAP(seedRef.current, MAP_WEIGHT_DECAY).then((cached) => {
       if (alive) setState({ kind: 'ready', cached });
     });
     return () => {

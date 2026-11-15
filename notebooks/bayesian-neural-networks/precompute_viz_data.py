@@ -67,7 +67,7 @@ SLUG = "bayesian-neural-networks"
 # --------------------------------------------------------------------------- #
 
 BCE_EPS = 1e-7                   # probability clip for log losses
-HESSIAN_STABILIZATION = 1e-3     # Tikhonov term added to last-layer Hessian
+HESSIAN_STABILIZATION = 1e-3     # TS mirror only; the last-layer Laplace below uses LAPLACE_PRIOR_PRECISION
 EIGENVALUE_FLOOR = 1e-12         # condition-number denominator floor
 
 # SG-MCMC settings match the notebook's §§6-7 cells (14, 16): 10,000 total
@@ -83,6 +83,10 @@ SGHMC_ETA = 1e-3                 # SGHMC step size (Algorithm 7.5, M = I)
 SGHMC_FRICTION = 1.0             # SGHMC friction c (C = c·I)
 
 LAPLACE_NUM_SAMPLES = 20         # MC samples drawn from the Gaussian Laplace posterior
+# Laplace prior precision on the summed NLL: the MAP's Adam weight decay of 1e-4 acts on the
+# *mean* BCE, i.e. λ = n · 1e-4 = 0.03 here (τ² ≈ 33), the prior used in notebook §3.
+TRAIN_WEIGHT_DECAY = 1e-4
+LAPLACE_PRIOR_PRECISION = 300 * TRAIN_WEIGHT_DECAY   # n = N_TRAIN = 300
 ENSEMBLE_K = 10                  # deep ensemble size
 
 NNGP_WIDTHS = [50, 100, 200, 500, 1000, 2000]
@@ -137,6 +141,7 @@ def _write_dual(filename: str, payload: dict):
 # --------------------------------------------------------------------------- #
 
 N_TRAIN = 300
+assert LAPLACE_PRIOR_PRECISION == N_TRAIN * TRAIN_WEIGHT_DECAY
 NOISE = 0.20
 X_train_np, y_train_np = make_moons(n_samples=N_TRAIN, noise=NOISE, random_state=SEED)
 X_train_np = X_train_np.astype(np.float32)
@@ -191,7 +196,7 @@ def set_inference_mode(model: MLP, training: bool = False):
 
 
 def train_mlp(seed: int, epochs: int = 200, lr: float = 0.01, dropout_p: float = 0.0,
-              wd: float = 1e-4):
+              wd: float = TRAIN_WEIGHT_DECAY):
     torch.manual_seed(seed)
     np.random.seed(seed)
     model = MLP(dropout_p=dropout_p)
@@ -265,7 +270,7 @@ t0 = time.time()
 map_model = ensemble_models[0]
 map_probs_grid = predict_grid(map_model, T=1)[0]
 
-# Last-layer Laplace: H = Φ^T diag(p(1-p)) Φ + λI in closed form
+# Last-layer Laplace: H = Φ^T diag(p(1-p)) Φ + λI in closed form, λ = LAPLACE_PRIOR_PRECISION
 with torch.no_grad():
     h = X_train
     for layer in map_model.net[:-1]:
@@ -274,7 +279,7 @@ with torch.no_grad():
     p_train = torch.sigmoid(map_model(X_train)).numpy()
     weight_diag = p_train * (1 - p_train)
 
-H_ll = Phi_train.T @ np.diag(weight_diag) @ Phi_train + HESSIAN_STABILIZATION * np.eye(Phi_train.shape[1])
+H_ll = Phi_train.T @ np.diag(weight_diag) @ Phi_train + LAPLACE_PRIOR_PRECISION * np.eye(Phi_train.shape[1])
 L_ll = np.linalg.cholesky(H_ll)
 H_inv = np.linalg.inv(H_ll)
 
@@ -312,6 +317,7 @@ _write_dual(
         "p_dim": int(Phi_train.shape[1]),
         "condition_number": condition_number,
         "method": "last-layer-laplace",
+        "prior_precision": LAPLACE_PRIOR_PRECISION,
         "data_x": X_train_np.tolist(),
         "data_y": y_train_np.tolist(),
     },
