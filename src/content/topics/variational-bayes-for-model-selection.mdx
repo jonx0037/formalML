@@ -339,7 +339,7 @@ $$
 \mathrm{ELBO}_M(q) \;=\; \mathbb{E}_q[\log p(y, \theta \mid M)] + H(q).
 $$
 
-The ELBO rewards $q$-mass in regions of high joint log-density (the *energy* term, by analogy with the Boltzmann distribution's $-\beta E$) and rewards $q$ for being spread out (the entropy term). Maximizing the ELBO trades off between concentrating on the mode of $p(y, \theta \mid M)$ and avoiding collapse to a delta. This is the form §10 leans on for the bits-back coding interpretation — the energy term is an expected description length, the entropy term is the bits-back savings, and the variational free energy $-\mathrm{ELBO}$ is the expected net code length.
+The ELBO rewards $q$-mass in regions of high joint log-density (the *energy* term, by analogy with the Boltzmann distribution's $-\beta E$) and rewards $q$ for being spread out (the entropy term). Maximizing the ELBO trades off between concentrating on the mode of $p(y, \theta \mid M)$ and avoiding collapse to a delta. This is the form §10 leans on for the bits-back coding interpretation — the energy term is an expected description length, the entropy term is the bits-back refund (for continuous $\theta$ a differential entropy, which can be negative; §10 explains the sign), and the variational free energy $-\mathrm{ELBO}$ is the expected net code length.
 
 **Form 2 — Reconstruction minus prior-KL.** Decomposing $\log p(y, \theta \mid M) = \log p(y \mid \theta, M) + \log p(\theta \mid M)$,
 
@@ -918,14 +918,16 @@ This is the [Minimum Description Length](/topics/minimum-description-length) fra
 
 ### The bits-back coding protocol
 
-The protocol, with $q(\theta)$ a variational approximation to $p(\theta \mid y)$:
+The protocol, with $q(\theta)$ a variational approximation to $p(\theta \mid y)$. Code lengths use natural logarithms, so they are in nats (divide by $\log 2$ for bits); "bits-back" is the protocol's name.
 
-1. **Sender draws $\theta \sim q(\theta)$.** The randomness used to draw $\theta$ comes from an external source (an arithmetic-coded stream of auxiliary message bits). Drawing $\theta$ from $q$ uses up $-\log q(\theta)$ bits.
-2. **Sender encodes $\theta$ using a code based on the prior $p(\theta)$.** Cost: $-\log p(\theta)$ bits.
-3. **Sender encodes $y$ using the conditional code $p(y \mid \theta)$.** Cost: $-\log p(y \mid \theta)$ bits.
-4. **Receiver receives $\theta$ and $y$, decodes $\theta$ using $q$.** Because both parties share $q$, the receiver can simulate the same arithmetic-decoding step, recovering the auxiliary message bits the sender used to draw $\theta$ — saving $-\log q(\theta)$ bits.
+1. **Sender draws $\theta \sim q(\theta)$.** The randomness used to draw $\theta$ comes from an external source (an arithmetic-coded stream of auxiliary message bits). Drawing $\theta$ from $q$ uses up $-\log q(\theta)$ nats.
+2. **Sender encodes $\theta$ using a code based on the prior $p(\theta)$.** Cost: $-\log p(\theta)$ nats.
+3. **Sender encodes $y$ using the conditional code $p(y \mid \theta)$.** Cost: $-\log p(y \mid \theta)$ nats.
+4. **Receiver receives $\theta$ and $y$, decodes $\theta$ using $q$.** Because both parties share $q$, the receiver can simulate the same arithmetic-decoding step, recovering the auxiliary message bits the sender used to draw $\theta$ — a refund of $-\log q(\theta)$ nats.
 
-The *net* cost is the gross minus the bits back, in expectation under $\theta \sim q$.
+The *net* cost is the gross (steps 2 and 3) minus the refund, in expectation under $\theta \sim q$.
+
+Because $\theta$ is continuous, the sender must transmit it to a finite precision $\delta$ per coordinate. That adds $\dim(\theta) \cdot \log(1/\delta)$ nats to the cost of drawing $\theta$ in step 1 and the same amount to the cost of encoding it under the prior in step 2, so the two cancel in the net, and Theorem 8 below can be stated with densities. Without $\delta$, the differential code length $-\log q(\theta)$ can be negative: on this section's run below (degree $d = 4$, so $\dim(\theta) = 5$), the mean-field $q^*$ is narrow, $H(q^*) = \mathbb{E}_q[-\log q(\theta)] = -5.25$ nats, and the refund term *lengthens* the code, from a gross of 12.51 nats to a net of 17.75 nats. At $\delta = 0.002$, each of steps 1 and 2 gains $5 \log 500 \approx 31.07$ nats, the expected refund becomes a genuine saving of $31.07 - 5.25 \approx 25.8$ nats, and the net is unchanged.
 
 ### The bits-back coding identity
 
@@ -961,8 +963,8 @@ The two halves of Theorem 8 say the same thing in two languages. *Probabilistica
 
 <Figure
   src="/images/topics/variational-bayes-for-model-selection/10_bits_back.png"
-  alt="Three horizontal bars: gross sender cost, Bayesian-optimal -log p(y), bits-back net -ELBO. KL gap shaded between Bayesian-optimal and bits-back net."
-  caption="Bits-back coding identity numerically verified on polynomial regression at d=4. Gross sender cost (steps 2+3 of the protocol) plus the stretch term equals the bits-back net, exactly −ELBO. The Bayesian-optimal −log p(y) sits between, and the gap is the KL projection bias of §6 — the same object viewed two ways."
+  alt="Three horizontal bars: gross sender cost, Bayesian-optimal -log p(y), bits-back net -ELBO. The net bar extends past the gross bar by the hatched bits-back term E_q[log q] = -H(q*)."
+  caption="Bits-back coding identity numerically verified on polynomial regression at d=4. Gross sender cost (steps 2+3 of the protocol, 12.51 nats) plus the bits-back term E_q[log q] = −H(q*) = +5.25 nats (the hatched “stretch term”) equals the bits-back net, 17.75 nats, exactly −ELBO. The term lengthens the code because the narrow q* has negative differential entropy; sending θ at a finite precision δ turns it into a positive saving and leaves the net unchanged. The Bayesian-optimal −log p(y) = 15.01 nats sits between, and the 2.74-nat gap is the KL projection bias of §6 — the same object viewed two ways."
 />
 
 ### VBMS as MDL: shortest expected description length
