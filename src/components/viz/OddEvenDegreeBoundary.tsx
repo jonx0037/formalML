@@ -7,7 +7,8 @@ import { boundaryBiasConstant, kGaussian, paletteKR } from './shared/kernel-regr
 // =============================================================================
 // OddEvenDegreeBoundary — analytical boundary bias-constant table for §5.3.
 // At c < ∞, the parity-zero pattern of §4.3 collapses; b_p^(c)(K) is nonzero
-// for every p, and the boundary leading rate is uniformly h^{p+1}.
+// for every p at c = 0 (and for generic c), and the boundary leading rate is
+// uniformly h^{p+1}.
 //
 // Slider: c ∈ [0, 3] (continuous boundary parameter, where c = x/h is distance
 // from the support edge in bandwidth units; c = ∞ recovers the interior limit).
