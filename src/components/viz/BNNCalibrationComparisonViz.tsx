@@ -12,6 +12,9 @@
 // per-method test predictions; ECE/Brier/NLL are recomputed in-browser via
 // bnnCalibrationDiagnostic on every bin-count or temperature-scaling change
 // so the user sees the calibration metric respond to their slider.
+// The precompute models are not the notebook's cell-18 models (last-layer
+// Laplace, dropout p = 0.2 × 50 passes, seeds 42+, ECE bins over [0, 1]), so
+// the caption says the interactive numbers differ from the §8/§9.3 text.
 // =============================================================================
 
 import { useMemo } from 'react';
@@ -50,7 +53,7 @@ interface ControlState {
 
 const METHOD_ORDER: { key: string; label: string; color: BNNColorKey }[] = [
   { key: 'point', label: 'Point estimate', color: 'point' },
-  { key: 'laplace', label: 'Laplace', color: 'laplace' },
+  { key: 'laplace', label: 'Laplace (last layer)', color: 'laplace' },
   { key: 'dropout', label: 'MC-dropout', color: 'dropout' },
   { key: 'ensemble', label: 'Deep ensemble', color: 'ensemble' },
   { key: 'sgld', label: 'SGLD', color: 'sgld' },
@@ -85,7 +88,7 @@ export default function BNNCalibrationComparisonViz() {
       initialState={initialState}
       figurePath="/images/topics/bayesian-neural-networks/08_calibration_comparison.png"
       alt="Two panels from the notebook run on 500 held-out points: panel (a) reliability diagram with mean confidence on the x-axis and decision accuracy on the y-axis, the diagonal y = x as reference, and one line per method (point estimate, Laplace, MC-dropout, deep ensemble, SGLD, SGHMC) — most test points fall in the top confidence bin, so the lower bins hold few points and the curves there are jagged; panel (b) grouped bars of ECE, Brier score and NLL for the six methods: SGHMC has the lowest Brier score (0.017) and NLL (0.064), the point estimate and MC-dropout the lowest ECE (0.017), and Laplace the highest value on all three."
-      caption="Figure 8. Head-to-head calibration on Two Moons. (a) Reliability diagram — distance from the y=x diagonal measures miscalibration. (b) Bar chart of ECE / Brier×10 / NLL×10 across methods. Toggle methods to compare; slide bin count to see binning sensitivity. The optional manual-temperature slider rescales logits as a sanity check; full temperature scaling fits T on a held-out set rather than letting the reader pick — that step is left for a v3 enhancement."
+      caption="Figure 8. Head-to-head calibration on Two Moons. (a) Reliability diagram — distance from the y=x diagonal measures miscalibration. (b) Bar chart of ECE / Brier×10 / NLL×10 across methods. The interactive panels use a separate precompute run, not the notebook models behind the static figure and the §8 and §9.3 numbers: Laplace here is last-layer only, MC-dropout uses p = 0.2 with 50 passes, the networks use other seeds, and ECE bins confidence over [0, 1] with the slider’s bin count (default 15) rather than 10 bins over [0.5, 1]. Its numbers therefore differ from the text. Toggle methods to compare; slide bin count to see binning sensitivity. The optional manual-temperature slider rescales logits as a sanity check; full temperature scaling fits T on a held-out set rather than letting the reader pick — that step is left for a v3 enhancement."
       ariaLabel="Figure 8: Interactive head-to-head calibration comparison across six methods"
       controls={(s, setS) => <CalibrationControls state={s} setState={setS} />}
       chart={(data, s, w) => <CalibrationChart data={data} state={s} width={w} />}
