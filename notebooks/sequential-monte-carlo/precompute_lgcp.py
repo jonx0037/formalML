@@ -1,15 +1,28 @@
 """precompute_lgcp.py — Log-Gaussian Cox process SMC inference at three grid
-resolutions (m ∈ {8, 12, 16}), saved as a single JSON payload for the §11.3
+resolutions (m ∈ {8, 12, 16}), saved as a single JSON payload for the §11
 LGCPInferenceExplorer viz.
 
 Writes to BOTH:
   - src/data/sampleData/sequential-monte-carlo/lgcp.json
   - public/sample-data/sequential-monte-carlo/lgcp.json
 
-The notebook's cell 23 runs only m = 16 (K = 256, ~20 s on CPU). For the
-interactive viz we precompute m = 8 (K = 64), m = 12 (K = 144), and m = 16
-(K = 256) so the reader can pick grid resolution without paying the SMC cost
-in-browser. The K = 256 case is too heavy for browser-side SMC sampling.
+The sampler is the notebook's cell 23 (Figure 11): conditional-ESS adaptive
+temperatures (Zhou, Johansen & Aston 2016), systematic resampling at
+tau_resample * N, and a preconditioned Crank–Nicolson (pCN) mutation kernel
+(Cotter, Roberts, Stuart & White 2013) applied N_SWEEPS times per SMC step.
+pCN proposes z' = mu_0 + sqrt(1 - rho^2) (z - mu_0) + rho L_K xi, which leaves
+the GP prior invariant, so the acceptance ratio involves only the tempered
+likelihood; rho is retuned between steps toward TARGET_ACC acceptance.
+
+Each grid also gets a reference posterior from elliptical slice sampling
+(Murray, Adams & MacKay 2010), N_CHAINS independent chains, so the viz can
+show how close the SMC posterior mean is to the exact posterior — and how far
+both are from the true field when only ~60–80 points are observed.
+
+The m = 16 grid uses the notebook's seeds (RNG_SEED + 11 for the data and the
+SMC run, RNG_SEED + 111 for the reference) and the same sequence of random
+draws, so its numbers match Figure 11. The m = 8 and m = 12 grids use
+deterministic offsets of those seeds.
 
 Output schema:
 {
@@ -20,6 +33,9 @@ Output schema:
   "tau_adapt": 0.9,
   "tau_resample": 0.5,
   "N": 300,
+  "kernel": "pCN",
+  "n_sweeps": 20,
+  "target_accept": 0.3,
   "grids": {
     "8":  { ...payload_for_m_8  },
     "12": { ...payload_for_m_12 },
@@ -34,21 +50,36 @@ Per-grid payload:
   "centers": [m] float,
   "y_obs": [K] int,
   "lambda_true": [K] float,
-  "lambda_post": [K] float,
-  "rmse_intensity": float,
+  "lambda_post": [K] float,          # SMC posterior mean intensity E[lambda_k | y]
+  "lambda_ref": [K] float,           # reference (elliptical slice) E[lambda_k | y]
+  "rmse_intensity": float,           # SMC posterior mean vs truth
+  "rmse_ref": float,                 # reference posterior mean vs truth
+  "dist_z_ref": float,               # RMS over cells, SMC E[z | y] vs reference E[z | y]
+  "dist_z_prior": float,             # RMS over cells, prior mean mu_0 vs reference E[z | y]
+  "dist_lambda_ref": float,          # RMS over cells, SMC E[lambda | y] vs reference
+  "r_hat_max": float,                # max over cells of the reference chains' R-hat
   "beta_trace": [T+1] float,
   "ess_trace": [T+1] float,
   "log_z_trace": [T+1] float,
+  "accept_trace": [T] float,         # mean pCN acceptance over the step's sweeps
+  "rho_trace": [T] float,            # pCN step used at each SMC step
+  "distinct_final": int,             # distinct particles at beta = 1
   "lambda_high_trace": [T+1] float,  # posterior mean intensity at the max-truth cell
   "lambda_low_trace":  [T+1] float,  # posterior mean intensity at the min-truth cell
   "high_cell_idx": int,
   "low_cell_idx":  int,
-  "lambda_max": float,                # color-scale upper bound
+  "lambda_high_truth": float,
+  "lambda_low_truth": float,
+  "lambda_high_ref": float,
+  "lambda_low_ref": float,
+  "lambda_max": float,               # color-scale upper bound (truth)
   "T_steps": int,
-  "wall_seconds": float
+  "wall_seconds": float,             # SMC only
+  "log_z_T": float
 }
 
-Runs in ~25-40 s end-to-end on a 2020-era laptop CPU.
+Runs in about 20 s end-to-end on an Apple-silicon laptop CPU (SMC under 1 s
+per grid; the reference chains take the rest).
 """
 
 import json
@@ -66,6 +97,11 @@ N_SMC = 300
 TAU_ADAPT = 0.9
 TAU_RESAMPLE = 0.5
 MAX_STEPS = 200  # safety cap; the CESS schedule reaches beta = 1 well before it
+N_SWEEPS = 20  # pCN sweeps per SMC step
+TARGET_ACC = 0.30  # pCN step rho is retuned between steps toward this acceptance rate
+RHO_GAIN = 2.0  # log rho moves by RHO_GAIN * (observed - target) acceptance
+RHO_INIT = 1.0  # rho = 1 is an independent draw from the GP prior
+N_CHAINS, N_ITER, N_BURN = 16, 20000, 4000  # elliptical-slice reference
 M_VALUES = [8, 12, 16]
 
 THIS_DIR = Path(__file__).resolve().parent
@@ -94,7 +130,65 @@ def truth_field(cx: np.ndarray, cy: np.ndarray, mu0: float) -> np.ndarray:
     ).ravel()
 
 
-def run_one(m: int, rng_master: np.random.Generator) -> dict:
+def pcn_sweeps(theta, log_lik_curr, beta, rho, n_sweeps, rng, log_lik, L_K):
+    """n_sweeps of pCN, invariant for gamma_beta(z) ∝ N(z; mu_0 1, Sigma_K) exp(beta * loglik(z)).
+
+    The proposal is reversible for the GP prior, so the prior cancels and the
+    acceptance ratio is exp(beta * (loglik(z') - loglik(z))).
+    """
+    accepts = []
+    for _ in range(n_sweeps):
+        prop = (
+            MU_0
+            + np.sqrt(1.0 - rho**2) * (theta - MU_0)
+            + rho * (rng.normal(0, 1, size=theta.shape) @ L_K.T)
+        )
+        log_lik_prop = log_lik(prop)
+        accept = np.log(rng.random(theta.shape[0])) < beta * (log_lik_prop - log_lik_curr)
+        theta = np.where(accept[:, None], prop, theta)
+        log_lik_curr = np.where(accept, log_lik_prop, log_lik_curr)
+        accepts.append(accept.mean())
+    return theta, log_lik_curr, float(np.mean(accepts))
+
+
+def elliptical_slice_reference(log_lik, L_K, K, rng):
+    """Elliptical slice sampling (Murray, Adams & MacKay 2010), N_CHAINS chains
+    vectorized across chains. Returns per-cell E[z|y], E[lambda|y], max R-hat."""
+    z_ch = MU_0 + rng.normal(0, 1, size=(N_CHAINS, K)) @ L_K.T
+    ll_ch = log_lik(z_ch)
+    sum_z = np.zeros((N_CHAINS, K))
+    sum_z2 = np.zeros((N_CHAINS, K))
+    sum_lam = np.zeros((N_CHAINS, K))
+    for it in range(N_ITER):
+        nu = rng.normal(0, 1, size=(N_CHAINS, K)) @ L_K.T
+        log_thresh = ll_ch + np.log(rng.random(N_CHAINS))
+        ang = rng.uniform(0, 2 * np.pi, N_CHAINS)
+        ang_lo, ang_hi = ang - 2 * np.pi, ang.copy()
+        pending = np.ones(N_CHAINS, dtype=bool)
+        z_next, ll_next = z_ch.copy(), ll_ch.copy()
+        while pending.any():
+            prop = MU_0 + (z_ch - MU_0) * np.cos(ang)[:, None] + nu * np.sin(ang)[:, None]
+            ll_prop = log_lik(prop)
+            ok = pending & (ll_prop > log_thresh)
+            z_next[ok], ll_next[ok] = prop[ok], ll_prop[ok]
+            pending &= ~ok
+            ang_lo = np.where(pending & (ang < 0), ang, ang_lo)
+            ang_hi = np.where(pending & (ang >= 0), ang, ang_hi)
+            ang = np.where(pending, rng.uniform(ang_lo, ang_hi), ang)
+        z_ch, ll_ch = z_next, ll_next
+        if it >= N_BURN:
+            sum_z += z_ch
+            sum_z2 += z_ch**2
+            sum_lam += np.exp(z_ch)
+    n_keep = N_ITER - N_BURN
+    chain_mean_z = sum_z / n_keep
+    W_within = (sum_z2 / n_keep - chain_mean_z**2).mean(axis=0)
+    B_between = n_keep * chain_mean_z.var(axis=0, ddof=1)
+    r_hat = np.sqrt(((n_keep - 1) / n_keep * W_within + B_between / n_keep) / W_within)
+    return chain_mean_z.mean(axis=0), (sum_lam / n_keep).mean(axis=0), float(r_hat.max())
+
+
+def run_one(m: int) -> dict:
     K = m * m
     A = 1.0 / K
     edges = np.linspace(0.0, 1.0, m + 1)
@@ -105,25 +199,16 @@ def run_one(m: int, rng_master: np.random.Generator) -> dict:
     Sigma_K = kernel_matrix(centroids, SIGMA_Z, ELL) + 1e-6 * np.eye(K)
     L_K = np.linalg.cholesky(Sigma_K)
 
-    # Match the notebook's seed for m=16 (cell 23 uses RNG_SEED + 11);
-    # offset other grids deterministically so each m has its own stream.
-    rng = np.random.default_rng(SEED + 11 + m * 53)
+    # m = 16 reproduces the notebook's cell 23 exactly (same seeds, same draw
+    # order); the other grids get deterministic offsets of the same seeds.
+    offset = 0 if m == 16 else m * 53
+    rng = np.random.default_rng(SEED + 11 + offset)
     z_true = truth_field(cx, cy, MU_0)
     lambda_true = np.exp(z_true)
     y_obs = rng.poisson(A * lambda_true)
 
-    def log_prior(z_batch: np.ndarray) -> np.ndarray:
-        diff = z_batch - MU_0
-        u = np.linalg.solve(L_K, diff.T)
-        quad = (u**2).sum(axis=0)
-        log_det = 2.0 * np.log(np.diag(L_K)).sum()
-        return -0.5 * quad - 0.5 * (K * np.log(2 * np.pi) + log_det)
-
     def log_lik(z_batch: np.ndarray) -> np.ndarray:
         return (y_obs[None, :] * z_batch).sum(axis=1) - A * np.exp(z_batch).sum(axis=1)
-
-    def log_gamma(z_batch: np.ndarray, beta: float) -> np.ndarray:
-        return log_prior(z_batch) + beta * log_lik(z_batch)
 
     t0 = time.perf_counter()
 
@@ -134,13 +219,16 @@ def run_one(m: int, rng_master: np.random.Generator) -> dict:
 
     beta = 0.0
     log_z_running = 0.0
+    rho = RHO_INIT
     beta_trace = [0.0]
     ess_trace = [float(N_SMC)]
     log_z_trace = [0.0]
-    posterior_mean_history = [theta.mean(axis=0)]
+    accept_trace: list[float] = []
+    rho_trace: list[float] = []
+    posterior_mean_history = [np.exp(theta).mean(axis=0)]
 
     step = 0
-    while beta < 1.0 - 1e-9 and step < MAX_STEPS:
+    while beta < 1.0 and step < MAX_STEPS:
         # Conditional-ESS bisection (Zhou, Johansen & Aston 2016), as in the
         # notebook's cell 23: choose beta_{t+1} so that the incremental weights
         # keep CESS = tau_adapt * N under the current normalized weights.
@@ -178,57 +266,37 @@ def run_one(m: int, rng_master: np.random.Generator) -> dict:
             theta = theta[idx]
             log_lik_curr = log_lik_curr[idx]
             log_w = np.full(N_SMC, log_z_running)
-            log_w_norm = log_w - logsumexp(log_w)
 
-        # IMH cloud-fit propagation
-        w_norm = np.exp(log_w_norm)
-        mu_fit = (w_norm[:, None] * theta).sum(axis=0)
-        diff_fit = theta - mu_fit
-        cov_fit = (w_norm[:, None] * diff_fit).T @ diff_fit + 1e-4 * np.eye(K)
-        L_fit = np.linalg.cholesky(cov_fit)
-        prop = mu_fit + rng.normal(0, 1, size=(N_SMC, K)) @ L_fit.T
-        u_fit = np.linalg.solve(L_fit, (prop - mu_fit).T).T
-        log_q_prop = (
-            -0.5 * (u_fit**2).sum(axis=1)
-            - np.log(np.diag(L_fit)).sum()
-            - 0.5 * K * np.log(2 * np.pi)
+        # pCN mutation targeting gamma_{beta_{t+1}}: rho fixed within the step,
+        # retuned from this step's acceptance before the next step.
+        theta, log_lik_curr, acc = pcn_sweeps(
+            theta, log_lik_curr, new_beta, rho, N_SWEEPS, rng, log_lik, L_K
         )
-        u_curr = np.linalg.solve(L_fit, (theta - mu_fit).T).T
-        log_q_curr = (
-            -0.5 * (u_curr**2).sum(axis=1)
-            - np.log(np.diag(L_fit)).sum()
-            - 0.5 * K * np.log(2 * np.pi)
-        )
-        log_acc = (
-            log_gamma(prop, new_beta)
-            - log_gamma(theta, new_beta)
-            + log_q_curr
-            - log_q_prop
-        )
-        accept = np.log(rng.random(N_SMC)) < log_acc
-        theta = np.where(accept[:, None], prop, theta)
-        log_lik_curr = np.where(accept, log_lik(prop), log_lik_curr)
+        accept_trace.append(acc)
+        rho_trace.append(rho)
+        rho = float(np.clip(rho * np.exp(RHO_GAIN * (acc - TARGET_ACC)), 0.01, 1.0))
 
         beta = new_beta
         step += 1
         beta_trace.append(float(beta))
         ess_trace.append(ess)
         log_z_trace.append(log_z_running)
-        posterior_mean_history.append(np.exp(log_w - logsumexp(log_w)) @ theta)  # weighted cloud mean
+        posterior_mean_history.append(np.exp(log_w - logsumexp(log_w)) @ np.exp(theta))
 
     elapsed = time.perf_counter() - t0
 
-    log_w_norm = log_w - logsumexp(log_w)
-    w_norm = np.exp(log_w_norm)
-    z_post_mean = (w_norm[:, None] * theta).sum(axis=0)
-    lambda_post = np.exp(z_post_mean)
+    w_norm = np.exp(log_w - logsumexp(log_w))
+    z_post_mean = w_norm @ theta
+    lambda_post = w_norm @ np.exp(theta)
     rmse_intensity = float(np.sqrt(np.mean((lambda_post - lambda_true) ** 2)))
+
+    rng_ref = np.random.default_rng(SEED + 111 + offset)
+    z_ref, lambda_ref, r_hat_max = elliptical_slice_reference(log_lik, L_K, K, rng_ref)
+    rmse_ref = float(np.sqrt(np.mean((lambda_ref - lambda_true) ** 2)))
 
     high_cell = int(np.argmax(lambda_true))
     low_cell = int(np.argmin(lambda_true))
     post_history_arr = np.array(posterior_mean_history)
-    lambda_high_trace = np.exp(post_history_arr[:, high_cell]).astype(float).tolist()
-    lambda_low_trace = np.exp(post_history_arr[:, low_cell]).astype(float).tolist()
 
     return {
         "m": m,
@@ -237,16 +305,27 @@ def run_one(m: int, rng_master: np.random.Generator) -> dict:
         "y_obs": y_obs.astype(int).tolist(),
         "lambda_true": lambda_true.astype(float).tolist(),
         "lambda_post": lambda_post.astype(float).tolist(),
+        "lambda_ref": lambda_ref.astype(float).tolist(),
         "rmse_intensity": rmse_intensity,
+        "rmse_ref": rmse_ref,
+        "dist_z_ref": float(np.sqrt(np.mean((z_post_mean - z_ref) ** 2))),
+        "dist_z_prior": float(np.sqrt(np.mean((MU_0 - z_ref) ** 2))),
+        "dist_lambda_ref": float(np.sqrt(np.mean((lambda_post - lambda_ref) ** 2))),
+        "r_hat_max": r_hat_max,
         "beta_trace": beta_trace,
         "ess_trace": ess_trace,
         "log_z_trace": log_z_trace,
-        "lambda_high_trace": lambda_high_trace,
-        "lambda_low_trace": lambda_low_trace,
+        "accept_trace": accept_trace,
+        "rho_trace": rho_trace,
+        "distinct_final": int(len(np.unique(theta[:, 0]))),
+        "lambda_high_trace": post_history_arr[:, high_cell].astype(float).tolist(),
+        "lambda_low_trace": post_history_arr[:, low_cell].astype(float).tolist(),
         "high_cell_idx": high_cell,
         "low_cell_idx": low_cell,
         "lambda_high_truth": float(lambda_true[high_cell]),
         "lambda_low_truth": float(lambda_true[low_cell]),
+        "lambda_high_ref": float(lambda_ref[high_cell]),
+        "lambda_low_ref": float(lambda_ref[low_cell]),
         "lambda_max": float(lambda_true.max()),
         "T_steps": step,
         "wall_seconds": float(elapsed),
@@ -256,8 +335,7 @@ def run_one(m: int, rng_master: np.random.Generator) -> dict:
 
 def main() -> None:
     print(f"precompute_lgcp.py: running LGCP SMC at m ∈ {M_VALUES}, N = {N_SMC}, "
-          f"adaptive schedule (τ_adapt = {TAU_ADAPT})")
-    rng_master = np.random.default_rng(SEED)
+          f"adaptive schedule (τ_adapt = {TAU_ADAPT}), pCN × {N_SWEEPS} sweeps/step")
     payload = {
         "seed": SEED,
         "sigma_z_sq": SIGMA_Z**2,
@@ -266,15 +344,24 @@ def main() -> None:
         "tau_adapt": TAU_ADAPT,
         "tau_resample": TAU_RESAMPLE,
         "N": N_SMC,
+        "kernel": "pCN",
+        "n_sweeps": N_SWEEPS,
+        "target_accept": TARGET_ACC,
         "grids": {},
     }
     for m in M_VALUES:
         print(f"  running m = {m} (K = {m*m})...", flush=True)
-        grid_payload = run_one(m, rng_master)
-        payload["grids"][str(m)] = grid_payload
+        g = run_one(m)
+        payload["grids"][str(m)] = g
         print(
-            f"    T = {grid_payload['T_steps']}, RMSE = {grid_payload['rmse_intensity']:.3f}, "
-            f"log Ẑ = {grid_payload['log_z_T']:.3f}, wall = {grid_payload['wall_seconds']:.1f}s"
+            f"    points = {sum(g['y_obs'])}, T = {g['T_steps']}, "
+            f"ESS {min(g['ess_trace'][1:]):.1f}–{max(g['ess_trace'][1:]):.1f}, "
+            f"acc mean {np.mean(g['accept_trace']):.3f} "
+            f"(min {min(g['accept_trace']):.3f}, max {max(g['accept_trace']):.3f}), "
+            f"distinct = {g['distinct_final']}, log Ẑ = {g['log_z_T']:.3f}, wall = {g['wall_seconds']:.1f}s\n"
+            f"    RMSE vs truth: SMC {g['rmse_intensity']:.2f}, reference {g['rmse_ref']:.2f}; "
+            f"distance to reference: z {g['dist_z_ref']:.3f} (prior {g['dist_z_prior']:.3f}), "
+            f"λ {g['dist_lambda_ref']:.2f}; max R-hat {g['r_hat_max']:.3f}"
         )
 
     serialized = json.dumps(payload, allow_nan=False, separators=(",", ":"))
