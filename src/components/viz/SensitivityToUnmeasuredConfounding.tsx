@@ -26,7 +26,10 @@ import {
 //      unmeasured-confounder strength U_strength ∈ [0, 1.5]; tipping point
 //      marker where the implied 95% CI lower bound crosses zero.
 //  (B) E-value bar chart with VanderWeele–Ding benchmarks (1.5 / 3 / 5).
-//  (C) Cinelli–Hazlett RV contour over (R²_Y~Z|D,X, R²_D~Z|X).
+//  (C) Cinelli–Hazlett contour over (R²_D~Z|X, R²_Y~Z|D,X): the curve where the
+//      bias bound SE·√df·√(R²_Y·R²_D/(1 − R²_D)) equals |τ̂| (region above it
+//      shaded, since there the bias can reach |τ̂|). It crosses the diagonal at
+//      RV_q; the dashed curve is the α-version, crossing it at RV_{q,α}.
 //
 // All three diagnostics live in one panel per topic-specific note 5.
 // =============================================================================
@@ -74,11 +77,14 @@ export default function SensitivityToUnmeasuredConfounding() {
       let v = 0;
       for (const t of taus) v += (t - m) ** 2;
       biases[k] = m - 1;
+      // Across-replicate SD of τ̂ (≈ the sampling SE of one estimate), not the
+      // MC SE of the mean (which would be SD/√B_REP).
       ses[k] = Math.sqrt(v / Math.max(taus.length - 1, 1));
     }
     if (!baseline) baseline = { tauHat: 1, se: 0.05, sdY: 1.6 };
-    // Tipping point: smallest U-strength where the lower edge of the bias 95% band
-    // crosses zero (using the per-strength MC SE we plot in the band).
+    // Tipping point: smallest U-strength where the lower edge of the band
+    // (mean − 1.96·across-replicate SD, an implied single-sample 95% interval)
+    // crosses zero.
     const tip = biases.findIndex((b, i) => (1 + b) - 1.96 * ses[i] <= 0);
     const tippingIdx = tip >= 0 ? tip : -1;
     const ev = eValueContinuous(baseline.tauHat, baseline.se, baseline.sdY);
@@ -113,7 +119,7 @@ export default function SensitivityToUnmeasuredConfounding() {
         .style('stroke', '#3a6e3a').style('stroke-width', 1.5);
       g.append('line').attr('x1', 0).attr('x2', W).attr('y1', yScale(0)).attr('y2', yScale(0))
         .style('stroke', '#000').style('stroke-width', 0.8).style('stroke-dasharray', '4 4');
-      // Bias points + 95% MC band (mean ± 1.96·SE at each strength).
+      // Mean estimate + implied single-sample 95% band (mean ± 1.96·SD across replicates).
       const bandArea = d3.area<number>()
         .x((_, i) => xScale(STRENGTHS[i]))
         .y0((_, i) => yScale(1 + biases[i] - 1.96 * ses[i]))
@@ -133,7 +139,7 @@ export default function SensitivityToUnmeasuredConfounding() {
       }
       g.append('text').attr('x', W / 2).attr('y', H + 28).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text)').style('font-size', '11px').text('Unmeasured-confounder strength');
-      g.append('text').attr('x', 4).attr('y', 12).style('fill', 'var(--color-text-secondary)').style('font-size', '10px').text('(A) AIPW estimate vs U strength (mean ± 1.96·MC SE)');
+      g.append('text').attr('x', 4).attr('y', 12).style('fill', 'var(--color-text-secondary)').style('font-size', '10px').text('(A) AIPW estimate vs U strength (mean ± 1.96·SD across replicates)');
     },
     [containerWidth, biases, ses, tippingIdx, isMobile],
   );
@@ -188,25 +194,41 @@ export default function SensitivityToUnmeasuredConfounding() {
       const yScale = d3.scaleLinear().domain([0, 1]).range([H, 0]);
       g.append('g').attr('transform', `translate(0, ${H})`).call(d3.axisBottom(xScale).ticks(4));
       g.append('g').call(d3.axisLeft(yScale).ticks(4));
-      // Shade R²_D, R²_Y both ≥ RV → bias ≥ tau_hat (the "nullify" region).
-      g.append('rect').attr('x', xScale(rvQ)).attr('y', 0).attr('width', W - xScale(rvQ))
-        .attr('height', yScale(rvQ)).style('fill', '#c0504d').style('opacity', 0.15);
-      // Vertical / horizontal lines at RV_q.
-      g.append('line').attr('x1', xScale(rvQ)).attr('x2', xScale(rvQ)).attr('y1', 0).attr('y2', H)
-        .style('stroke', '#c0504d').style('stroke-width', 1.2).style('stroke-dasharray', '3 3');
-      g.append('line').attr('x1', 0).attr('x2', W).attr('y1', yScale(rvQ)).attr('y2', yScale(rvQ))
-        .style('stroke', '#c0504d').style('stroke-width', 1.2).style('stroke-dasharray', '3 3');
-      g.append('line').attr('x1', xScale(rvQAlpha)).attr('x2', xScale(rvQAlpha)).attr('y1', 0).attr('y2', H)
-        .style('stroke', '#7b3c10').style('stroke-width', 1).style('stroke-dasharray', '2 4');
-      g.append('text').attr('x', W - 4).attr('y', 16).attr('text-anchor', 'end')
+      // Contour R²_Y·R²_D/(1 − R²_D) = f², i.e. R²_Y = f²(1 − x)/x, with
+      // f² = RV²/(1 − RV) (the identity that defines RV). It passes through (RV, RV).
+      const contour = (rv: number, steps = 80): [number, number][] => {
+        const f2 = (rv * rv) / (1 - rv);
+        const x0 = f2 / (1 + f2); // where the curve meets R²_Y = 1
+        return d3.range(steps + 1).map((i) => {
+          const x = x0 + ((1 - x0) * i) / steps;
+          return [x, Math.min(1, (f2 * (1 - x)) / x)] as [number, number];
+        });
+      };
+      const toPx = d3.line<[number, number]>().x((d) => xScale(d[0])).y((d) => yScale(d[1]));
+      const main = contour(rvQ);
+      // Shade the region above the contour (bias bound ≥ |τ̂|): curve, then the (1, 1) corner.
+      g.append('path').datum([...main, [1, 1] as [number, number]]).attr('d', (d) => `${toPx(d)}Z`)
+        .style('fill', '#c0504d').style('opacity', 0.15);
+      g.append('path').datum(main).attr('d', toPx)
+        .style('fill', 'none').style('stroke', '#c0504d').style('stroke-width', 1.5);
+      if (rvQAlpha > 0) {
+        g.append('path').datum(contour(rvQAlpha)).attr('d', toPx)
+          .style('fill', 'none').style('stroke', '#7b3c10').style('stroke-width', 1).style('stroke-dasharray', '2 4');
+      }
+      // Diagonal R²_Y = R²_D and the RV_q crossing point.
+      g.append('line').attr('x1', xScale(0)).attr('x2', xScale(1)).attr('y1', yScale(0)).attr('y2', yScale(1))
+        .style('stroke', 'var(--color-text-secondary)').style('stroke-width', 0.8).style('stroke-dasharray', '3 3');
+      g.append('circle').attr('cx', xScale(rvQ)).attr('cy', yScale(rvQ)).attr('r', 3.5).style('fill', '#c0504d');
+      // Labels sit in the shaded region, left of the diagonal (which ends at the top-right corner).
+      g.append('text').attr('x', xScale(0.3)).attr('y', 40).attr('text-anchor', 'start')
         .style('fill', '#c0504d').style('font-size', '10px').text(`RV_q = ${rvQ.toFixed(3)}`);
-      g.append('text').attr('x', W - 4).attr('y', 32).attr('text-anchor', 'end')
+      g.append('text').attr('x', xScale(0.3)).attr('y', 56).attr('text-anchor', 'start')
         .style('fill', '#7b3c10').style('font-size', '10px').text(`RV_{q, α} = ${rvQAlpha.toFixed(3)}`);
       g.append('text').attr('x', W / 2).attr('y', H + 28).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text)').style('font-size', '11px').text('R²_{D ~ Z | X}');
       g.append('text').attr('transform', `translate(-32, ${H / 2}) rotate(-90)`).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text)').style('font-size', '11px').text('R²_{Y ~ Z | D, X}');
-      g.append('text').attr('x', 4).attr('y', 12).style('fill', 'var(--color-text-secondary)').style('font-size', '10px').text('(C) Cinelli–Hazlett RV');
+      g.append('text').attr('x', 4).attr('y', -6).style('fill', 'var(--color-text-secondary)').style('font-size', '10px').text('(C) Cinelli–Hazlett contour: bias bound = |τ̂|');
     },
     [containerWidth, rvQ, rvQAlpha, isMobile],
   );
