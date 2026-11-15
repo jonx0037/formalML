@@ -1,48 +1,45 @@
 // =============================================================================
 // FiniteSampleBiasExplorer.tsx
 //
-// §8 The Vollmer–Zygalakis–Teh (2016) finite-sample bias bound made empirical.
-// Three log-log panels on the §6 BLR posterior:
+// §8.5 The Vollmer–Zygalakis–Teh (2016) finite-sample bias made empirical.
+// SGLD on the §6 BLR posterior with synthetic gradient noise N(0, σ_g²/B · I),
+// which decouples η from B. On this Gaussian target the stationary bias is
+// known exactly (eq. 8.3, `sgldStationaryBiasExact`), so every panel compares
+// measurements against that prediction:
 //
-//   (a) Bias vs η at fixed B = 64. Slope-+1 reference line shows the
-//       O(η) bias contribution from §8.1's Euler–Maruyama discretization.
-//   (b) Bias vs B at fixed η = 1e-4. Slope-−1 reference line shows the
-//       O(1/B) contribution from §8.1's mini-batch noise injection.
-//   (c) The collapse: bias vs (η + ĉ/B) on log axes — both sweeps
-//       collapse onto a single line whose slope is the linear fit.
+//   (a) Bias vs η at fixed B = 64, with the exact curve (slope → +1 as η → 0,
+//       steeper near the stability limit 2/λ_max).
+//   (b) Bias vs B at fixed η = 1e-4, with the exact curve and its B → ∞
+//       discretization floor. The 1/B term carries a factor η, so the slope
+//       approaches −1 only where σ_g²/(Bλ) dominates.
+//   (c) Measured vs exact bias for all 13 grid points (line: measured = exact).
 //
-// The test statistic is φ(θ) = (θ_1 - μ_post[0])²; under π, E_π[φ] =
-// Σ_post[0,0]. Mini-batch noise is simulated synthetically: full gradient
-// + N(0, σ_g²/B · I). This decouples η from B in a way the natural N/B-
-// rescaled estimator does not (cf. notebook cell 16).
+// Test statistic φ(θ) = (θ_1 − μ_post[0])²; π(φ) = Σ_post[0,0]. Each grid
+// point averages N_REP independent chains started from exact posterior draws;
+// error bars are ±2 standard errors across chains. Mirrors notebook cell 16
+// (4,000 chains × 20,000 steps there; fewer here, so wider error bars).
 //
 // Interactive controls:
-//   - Chain length T (3000..15000, default 6000) — longer chains tighten
-//     the bias estimate at proportional runtime cost.
-//   - σ_g slider (1.0..10.0, default 5.0) — synthetic gradient-noise scale.
-//     Larger σ_g makes the §8 1/B contribution dominant; smaller σ_g
-//     makes the §8 η contribution dominant.
+//   - Chain length T (3000..15000, default 10000).
+//   - σ_g slider (0..400, default 225 — the §6 mini-batch estimator's noise
+//     level; σ_g = 0 leaves only the discretization bias, flat in B).
 //   - Resample button — re-rolls all chain seeds.
 //
-// Computation: in-browser via shared/sgmcmc.ts. 13 chains per run (6 η-sweep
-// + 7 B-sweep — the η-sweep was trimmed from 7 to 6 because the largest
-// notebook η = 5e-3 sits at the EM stability threshold for the BLR Hessian
-// and contaminates the in-browser estimate at the shorter T we run; see the
-// ETA_GRID note below). At the default T = 10000 the run takes ≈ 5 s on
-// commodity laptops; longer T tightens the bias estimates linearly.
+// Computation: in-browser via shared/sgmcmc.ts (running sums, no chain
+// storage); ≈ 2–3 s at the defaults.
 // Static fallback: /images/topics/stochastic-gradient-mcmc/08_vzt_bias.png.
 // =============================================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { mulberry32 } from './shared/bayesian-ml';
 import { useResizeObserver } from './shared/useResizeObserver';
 import {
-  blrGradSyntheticNoise,
   blrPosterior,
   makeBLRDataset,
   paletteSGMCMC,
-  sgldChain,
+  sgldStationaryBiasExact,
+  sgldSyntheticNoisePhiMeans,
 } from './shared/sgmcmc';
 
 // -----------------------------------------------------------------------------
@@ -51,22 +48,21 @@ import {
 
 const DATA_SEED = 41;
 // η range stays below the Euler–Maruyama stability threshold for the BLR
-// Hessian (max eigenvalue ≈ 530 ⇒ η_max ≈ 3.7e-3). The notebook uses 5e-3
-// as well but with 30,000-step chains; in-browser at 6,000 steps the
-// occasional divergence inflates the bias estimate, so we cap at 2e-3.
+// Hessian (max eigenvalue ≈ 570 ⇒ 2/λ_max ≈ 3.5e-3); same grid as the notebook.
 const ETA_GRID = [5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3] as const;
 const B_GRID = [4, 8, 16, 32, 64, 128, 256] as const;
 const B_FIXED = 64;
 const ETA_FIXED = 1e-4;
+const N_REP = 400;
 const DEFAULT_T = 10000;
 const DEFAULT_BURN_FRAC = 0.2;
-const DEFAULT_SIGMA_G = 5.0;
+const DEFAULT_SIGMA_G = 225;
 
 const FIGURE_PATH = '/images/topics/stochastic-gradient-mcmc/08_vzt_bias.png';
 const ALT =
-  'Three-panel log-log figure on the Vollmer–Zygalakis–Teh bias bound. (a) Empirical bias vs step size η at fixed B = 64 — slope matches +1 (O(η)). (b) Bias vs batch size B at fixed η = 10⁻⁴ — slope matches −1 (O(1/B)). (c) Combined collapse: bias against η + ĉ/B fits the line bias ≈ Ĉ₁(η + ĉ/B), confirming the additive structure of Theorem 8.1.';
+  'Three-panel log-log figure comparing measured SGLD bias with the exact stationary bias on the Gaussian §6 posterior (σ_g = 225, 4,000 chains of 20,000 steps per point). (a) Bias vs step size η at B = 64: fitted slope +1.12 ± 0.01, matching the exact +1.12; the curve steepens above slope 1 near the stability limit. (b) Bias vs batch size B at η = 10⁻⁴: slope −0.77 ± 0.01 against the exact −0.76, flattening toward the discretization floor at large B. (c) Measured against exact bias for all 13 grid points, all on the line measured = exact.';
 const CAPTION =
-  'Figure 8. The Vollmer–Zygalakis–Teh (2016) bound made empirical. (a) Slope +1 in η, (b) slope −1 in B, (c) bias ≈ Ĉ₁ · (η + ĉ/B) for an empirically-fit ratio ĉ. Slide σ_g to shift the η/B trade-off; longer T tightens the estimate.';
+  'Figure 8. SGLD bias on the §6 posterior with synthetic gradient noise σ_g²/B · I, measured over independent chains (±2 SE) against the exact stationary bias (8.3). (a) Linear in η until the stability limit bends it upward. (b) A 1/B term (carrying a factor η) above a discretization floor; the slope nears −1 only while the gradient-noise term dominates. (c) Measured vs exact. Slide σ_g to 0 and the B curve collapses onto the floor.';
 const ARIA = 'Figure 8: Interactive VZT finite-sample bias verification';
 
 // -----------------------------------------------------------------------------
@@ -74,45 +70,54 @@ const ARIA = 'Figure 8: Interactive VZT finite-sample bias verification';
 // -----------------------------------------------------------------------------
 
 interface CachedDataset {
-  spec: ReturnType<typeof makeBLRDataset>;
   posterior: ReturnType<typeof blrPosterior>;
   phiTrue: number;
-  thetaInit: Float32Array;
 }
 
 interface BiasGrid {
-  biasEta: Float32Array; // length |ETA_GRID|, at B = B_FIXED
-  biasB: Float32Array; // length |B_GRID|, at η = ETA_FIXED
+  biasEta: Float64Array; // length |ETA_GRID|, at B = B_FIXED
+  seEta: Float64Array;
+  biasB: Float64Array; // length |B_GRID|, at η = ETA_FIXED
+  seB: Float64Array;
   T: number;
-  burn: number;
   sigmaG: number;
   chainSeed: number;
-  C1Hat: number; // bias ≈ C1 · (η + c/B)
-  cRatio: number; // ĉ = C2 / C1
 }
 
 function makeDataset(): CachedDataset {
   const spec = makeBLRDataset(DATA_SEED);
   const posterior = blrPosterior(spec);
-  const phiTrue = posterior.sigmaPost[0]; // Σ_post[0, 0]
-  const thetaInit = new Float32Array([posterior.muPost[0], posterior.muPost[1]]);
-  return { spec, posterior, phiTrue, thetaInit };
+  return { posterior, phiTrue: posterior.sigmaPost[0] };
 }
 
-function biasOfChain(chain: Float32Array[], burn: number, mu0: number, phiTrue: number): number {
-  let sum = 0;
-  let count = 0;
-  for (let n = burn; n < chain.length; n++) {
-    const v = chain[n][0];
-    // Skip diverged samples — the EM scheme can blow up near the stability
-    // threshold and contaminate the bias estimate with NaN/Infinity.
-    if (!Number.isFinite(v)) continue;
-    const d = v - mu0;
-    sum += d * d;
-    count++;
+function meanAndSe(xs: Float64Array): [number, number] {
+  const n = xs.length;
+  let m = 0;
+  for (let i = 0; i < n; i++) m += xs[i];
+  m /= n;
+  let v = 0;
+  for (let i = 0; i < n; i++) v += (xs[i] - m) * (xs[i] - m);
+  v /= n - 1;
+  return [m, Math.sqrt(v / n)];
+}
+
+/** Least-squares slope of log y on log x; NaN unless every y is positive. */
+function logLogSlope(xs: readonly number[], ys: ArrayLike<number>): number {
+  const n = xs.length;
+  let sx = 0,
+    sy = 0,
+    sxx = 0,
+    sxy = 0;
+  for (let i = 0; i < n; i++) {
+    if (!(ys[i] > 0)) return NaN;
+    const lx = Math.log(xs[i]);
+    const ly = Math.log(ys[i]);
+    sx += lx;
+    sy += ly;
+    sxx += lx * lx;
+    sxy += lx * ly;
   }
-  if (count === 0) return NaN;
-  return Math.abs(sum / count - phiTrue);
+  return (n * sxy - sx * sy) / (n * sxx - sx * sx);
 }
 
 const yieldToBrowser = (): Promise<void> =>
@@ -126,54 +131,28 @@ async function runBiasSweep(
   chainSeed: number,
 ): Promise<BiasGrid> {
   const burn = Math.floor(T * burnFrac);
-  const biasEta = new Float32Array(ETA_GRID.length);
-  const biasB = new Float32Array(B_GRID.length);
+  const biasEta = new Float64Array(ETA_GRID.length);
+  const seEta = new Float64Array(ETA_GRID.length);
+  const biasB = new Float64Array(B_GRID.length);
+  const seB = new Float64Array(B_GRID.length);
 
-  // η sweep at fixed B = 64.
   for (let i = 0; i < ETA_GRID.length; i++) {
     await yieldToBrowser();
     const rng = mulberry32(chainSeed * 977 + 200 + i);
-    const grad = blrGradSyntheticNoise(ds.spec, sigmaG, B_FIXED, rng);
-    const chain = sgldChain(grad, ds.thetaInit, T, ETA_GRID[i], rng);
-    biasEta[i] = biasOfChain(chain, burn, ds.posterior.muPost[0], ds.phiTrue);
+    const m = sgldSyntheticNoisePhiMeans(ds.posterior, ETA_GRID[i], B_FIXED, sigmaG, N_REP, T, burn, rng);
+    const [mean, se] = meanAndSe(m);
+    biasEta[i] = mean - ds.phiTrue;
+    seEta[i] = se;
   }
-
-  // B sweep at fixed η = 1e-4.
   for (let i = 0; i < B_GRID.length; i++) {
     await yieldToBrowser();
     const rng = mulberry32(chainSeed * 977 + 300 + i);
-    const grad = blrGradSyntheticNoise(ds.spec, sigmaG, B_GRID[i], rng);
-    const chain = sgldChain(grad, ds.thetaInit, T, ETA_FIXED, rng);
-    biasB[i] = biasOfChain(chain, burn, ds.posterior.muPost[0], ds.phiTrue);
+    const m = sgldSyntheticNoisePhiMeans(ds.posterior, ETA_FIXED, B_GRID[i], sigmaG, N_REP, T, burn, rng);
+    const [mean, se] = meanAndSe(m);
+    biasB[i] = mean - ds.phiTrue;
+    seB[i] = se;
   }
-
-  // Joint linear fit: bias ≈ C1 · η + C2 · (1/B). Least squares on stacked rows
-  // (skip any rows where the chain diverged and bias is NaN).
-  let AtA00 = 0,
-    AtA01 = 0,
-    AtA11 = 0,
-    Aty0 = 0,
-    Aty1 = 0;
-  const accumulate = (a0: number, a1: number, yv: number) => {
-    if (!Number.isFinite(yv)) return;
-    AtA00 += a0 * a0;
-    AtA01 += a0 * a1;
-    AtA11 += a1 * a1;
-    Aty0 += a0 * yv;
-    Aty1 += a1 * yv;
-  };
-  for (let i = 0; i < ETA_GRID.length; i++) accumulate(ETA_GRID[i], 1 / B_FIXED, biasEta[i]);
-  for (let i = 0; i < B_GRID.length; i++) accumulate(ETA_FIXED, 1 / B_GRID[i], biasB[i]);
-  const det = AtA00 * AtA11 - AtA01 * AtA01;
-  let C1Hat = NaN,
-    cRatio = NaN;
-  if (Number.isFinite(det) && Math.abs(det) > 1e-30) {
-    C1Hat = (AtA11 * Aty0 - AtA01 * Aty1) / det;
-    const C2Hat = (-AtA01 * Aty0 + AtA00 * Aty1) / det;
-    cRatio = C2Hat / Math.max(C1Hat, 1e-12);
-  }
-
-  return { biasEta, biasB, T, burn, sigmaG, chainSeed, C1Hat, cRatio };
+  return { biasEta, seEta, biasB, seB, T, sigmaG, chainSeed };
 }
 
 // -----------------------------------------------------------------------------
@@ -262,7 +241,7 @@ export default function FiniteSampleBiasExplorer() {
           <FallbackWithBanner
             label={
               state.kind === 'sampling' && state.reason === 'first'
-                ? 'Running 13 SGLD chains across η × B grid (~5 s)…'
+                ? `Running ${N_REP} SGLD chains at each of 13 (η, B) points (~3 s)…`
                 : state.kind === 'sampling'
                   ? 'Re-running η × B sweep…'
                   : 'Loading…'
@@ -278,7 +257,7 @@ export default function FiniteSampleBiasExplorer() {
               onReseed={handleReseed}
               isBlocked={isBlocked}
             />
-            <Panels grid={ready.grid} width={width} />
+            <Panels grid={ready.grid} ds={ready.ds} width={width} />
           </>
         )}
       </div>
@@ -395,9 +374,9 @@ function Controls({
         <span>σ_g:</span>
         <input
           type="range"
-          min={1.0}
-          max={10.0}
-          step={0.5}
+          min={0}
+          max={400}
+          step={25}
           value={localSigma}
           onChange={(e) => setLocalSigma(Number(e.target.value))}
           onMouseUp={(e) => onSigmaGCommit(Number((e.target as HTMLInputElement).value))}
@@ -408,7 +387,7 @@ function Controls({
           aria-label="Synthetic gradient noise scale sigma_g"
         />
         <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: '2.5em' }}>
-          {localSigma.toFixed(1)}
+          {localSigma.toFixed(0)}
         </span>
       </label>
       <button
@@ -440,11 +419,23 @@ function Controls({
 // Panels
 // -----------------------------------------------------------------------------
 
-function Panels({ grid, width }: { grid: BiasGrid; width: number }) {
+function Panels({ grid, ds, width }: { grid: BiasGrid; ds: CachedDataset; width: number }) {
   const layoutWidth = Math.max(width, 320);
   const stack = layoutWidth < 720;
   const panelW = stack ? layoutWidth : (layoutWidth - 32) / 3;
   const panelH = 240;
+
+  const exactAt = (eta: number, B: number) =>
+    sgldStationaryBiasExact(ds.posterior, eta, B, grid.sigmaG);
+  const exactEta = ETA_GRID.map((eta) => exactAt(eta, B_FIXED));
+  const exactB = B_GRID.map((B) => exactAt(ETA_FIXED, B));
+  // A measured slope is reported only when every point clears 2 SE; otherwise
+  // the smallest biases are within noise of zero and the log-log fit is noise.
+  const resolved = (b: Float64Array, se: Float64Array) => b.every((v, i) => v > 2 * se[i]);
+  const slopeEta = resolved(grid.biasEta, grid.seEta) ? logLogSlope(ETA_GRID, grid.biasEta) : NaN;
+  const slopeB = resolved(grid.biasB, grid.seB) ? logLogSlope(B_GRID, grid.biasB) : NaN;
+  const fmtSlope = (v: number) =>
+    Number.isFinite(v) ? `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}` : 'unresolved (a point is within 2 SE of 0)';
 
   return (
     <div
@@ -455,30 +446,45 @@ function Panels({ grid, width }: { grid: BiasGrid; width: number }) {
         alignItems: stack ? 'center' : 'flex-start',
       }}
     >
-      <Panel title={`(a) bias vs η (B = ${B_FIXED})`} width={panelW} height={panelH}>
+      <Panel
+        title={`(a) bias vs η (B = ${B_FIXED}): slope ${fmtSlope(slopeEta)} (exact ${fmtSlope(logLogSlope(ETA_GRID, exactEta))})`}
+        width={panelW}
+        height={panelH}
+      >
         <BiasVsParam
           xs={ETA_GRID as unknown as number[]}
           ys={Array.from(grid.biasEta)}
-          slope={1}
+          ses={Array.from(grid.seEta)}
+          exact={(eta) => exactAt(eta, B_FIXED)}
           width={panelW}
           height={panelH}
           xLabel="step size η (log)"
-          referenceLabel="slope +1 (O(η))"
+          legendBottom
         />
       </Panel>
-      <Panel title={`(b) bias vs B (η = ${ETA_FIXED.toExponential(0)})`} width={panelW} height={panelH}>
+      <Panel
+        title={`(b) bias vs B (η = ${ETA_FIXED.toExponential(0)}): slope ${fmtSlope(slopeB)} (exact ${fmtSlope(logLogSlope(B_GRID, exactB))})`}
+        width={panelW}
+        height={panelH}
+      >
         <BiasVsParam
           xs={B_GRID as unknown as number[]}
           ys={Array.from(grid.biasB)}
-          slope={-1}
+          ses={Array.from(grid.seB)}
+          exact={(B) => exactAt(ETA_FIXED, B)}
+          floor={exactAt(ETA_FIXED, Infinity)}
           width={panelW}
           height={panelH}
           xLabel="batch size B (log)"
-          referenceLabel="slope −1 (O(1/B))"
         />
       </Panel>
-      <Panel title={`(c) collapse: bias vs (η + ĉ/B), ĉ ≈ ${grid.cRatio.toExponential(1)}`} width={panelW} height={panelH}>
-        <CollapsePanel grid={grid} width={panelW} height={panelH} />
+      <Panel title="(c) measured vs exact bias, all 13 points" width={panelW} height={panelH}>
+        <ParityPanel
+          etaPts={exactEta.map((x, i) => ({ x, y: grid.biasEta[i], se: grid.seEta[i] }))}
+          bPts={exactB.map((x, i) => ({ x, y: grid.biasB[i], se: grid.seB[i] }))}
+          width={panelW}
+          height={panelH}
+        />
       </Panel>
     </div>
   );
@@ -503,6 +509,7 @@ function Panel({
           fontWeight: 600,
           color: 'var(--color-text, #333)',
           marginBottom: '0.25rem',
+          minHeight: '2.4em',
         }}
       >
         {title}
@@ -514,57 +521,30 @@ function Panel({
   );
 }
 
-// -----------------------------------------------------------------------------
-// Bias-vs-parameter log-log scatter
-// -----------------------------------------------------------------------------
+const MARGIN = { top: 8, right: 12, bottom: 28, left: 44 };
+const fmtPow = (v: number) => `10^${Math.round(Math.log10(v))}`;
 
-function BiasVsParam({
-  xs,
-  ys,
-  slope,
-  width,
-  height,
+function Axes({
+  xS,
+  yS,
+  innerW,
+  innerH,
   xLabel,
-  referenceLabel,
+  yLabel,
 }: {
-  xs: number[];
-  ys: number[];
-  slope: number;
-  width: number;
-  height: number;
+  xS: d3.ScaleLogarithmic<number, number>;
+  yS: d3.ScaleLogarithmic<number, number>;
+  innerW: number;
+  innerH: number;
   xLabel: string;
-  referenceLabel: string;
+  yLabel: string;
 }) {
-  const margin = { top: 8, right: 12, bottom: 28, left: 44 };
-  const innerW = width - margin.left - margin.right;
-  const innerH = height - margin.top - margin.bottom;
-
-  // biasOfChain returns NaN when all post-burn samples are non-finite (the
-  // EM scheme can occasionally diverge near the stability threshold). Filter
-  // before reducing so a single NaN doesn't poison the log-scale domain.
-  const finiteYs = ys.filter((y) => Number.isFinite(y) && y > 0);
-  const yMin = finiteYs.length > 0 ? Math.min(...finiteYs) * 0.7 : 1e-5;
-  const yMax = (finiteYs.length > 0 ? Math.max(...finiteYs, 1e-3) : 1e-3) * 1.5;
-  const xMin = Math.min(...xs);
-  const xMax = Math.max(...xs);
-
-  const xS = d3.scaleLog().domain([xMin * 0.8, xMax * 1.2]).range([0, innerW]);
-  const yS = d3.scaleLog().domain([yMin, yMax]).range([innerH, 0]);
-
-  // Reference line: anchor at the median index of the empirical curve.
-  const med = Math.floor(xs.length / 2);
-  const xRef = xs[med];
-  const yRef = ys[med] > 0 ? ys[med] : yMax / 10;
-  const refX = xS.domain();
-  const refY = refX.map((x) => yRef * Math.pow(x / xRef, slope));
-
-  const fmtPow = (v: number) => `10^${Math.round(Math.log10(v))}`;
-
+  const [x0, x1] = xS.domain();
+  const [y0, y1] = yS.domain();
   return (
-    <g transform={`translate(${margin.left},${margin.top})`}>
+    <>
       <rect x={0} y={0} width={innerW} height={innerH} fill="var(--color-surface, #fafafa)" />
-      {/* x grid (log decades) */}
-      {decadeTicks(xMin * 0.8, xMax * 1.2).map((t) => (
+      {decadeTicks(x0, x1).map((t) => (
         <g key={`xg-${t}`}>
           <line x1={xS(t)} x2={xS(t)} y1={0} y2={innerH} stroke="var(--color-text-muted, #888)" strokeOpacity={0.15} />
           <text x={xS(t)} y={innerH + 16} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
@@ -572,7 +552,7 @@ function BiasVsParam({
           </text>
         </g>
       ))}
-      {decadeTicks(yMin, yMax).map((t) => (
+      {decadeTicks(y0, y1).map((t) => (
         <g key={`yg-${t}`}>
           <line x1={0} x2={innerW} y1={yS(t)} y2={yS(t)} stroke="var(--color-text-muted, #888)" strokeOpacity={0.15} />
           <text x={-6} y={yS(t) + 3} textAnchor="end" fontSize={10} fill="var(--color-text, #333)">
@@ -580,163 +560,163 @@ function BiasVsParam({
           </text>
         </g>
       ))}
-      {/* Reference slope line */}
-      <line
-        x1={xS(refX[0])}
-        x2={xS(refX[1])}
-        y1={yS(refY[0])}
-        y2={yS(refY[1])}
-        stroke={paletteSGMCMC.biasBound}
-        strokeWidth={1.4}
-        strokeDasharray="4 3"
-      />
-      {/* Empirical points + connecting line — skip non-finite y values
-          (chain divergence) instead of letting them poison the path string. */}
-      <path
-        d={d3
-          .line<[number, number]>()
-          .defined((d) => Number.isFinite(d[1]) && d[1] > 0)
-          .x((d) => xS(d[0]))
-          .y((d) => yS(Math.max(d[1], yMin)))(xs.map((x, i) => [x, ys[i]] as [number, number])) ?? ''}
-        fill="none"
-        stroke={paletteSGMCMC.sgld}
-        strokeWidth={1.6}
-      />
-      {xs.map((x, i) =>
-        Number.isFinite(ys[i]) && ys[i] > 0 ? (
-          <circle key={i} cx={xS(x)} cy={yS(Math.max(ys[i], yMin))} r={4} fill={paletteSGMCMC.sgld} />
-        ) : null,
-      )}
-      {/* Axes */}
       <line x1={0} x2={innerW} y1={innerH} y2={innerH} stroke="var(--color-text-muted, #888)" />
       <line x1={0} x2={0} y1={0} y2={innerH} stroke="var(--color-text-muted, #888)" />
-      <text x={innerW / 2} y={innerH + 24} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
+      <text x={innerW / 2} y={innerH + 26} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
         {xLabel}
       </text>
       <text transform={`translate(${-34}, ${innerH / 2}) rotate(-90)`} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
-        |E[φ] − π(φ)| (log)
+        {yLabel}
       </text>
-      <text x={innerW - 6} y={14} textAnchor="end" fontSize={10} fill={paletteSGMCMC.biasBound}>
-        {referenceLabel}
+    </>
+  );
+}
+
+/** Points with ±2 SE bars; non-positive values (possible when σ_g is small and
+ *  the bias is within noise of zero) are dropped from the log axes. */
+function ErrorPoints({
+  pts,
+  xS,
+  yS,
+  color,
+  square = false,
+}: {
+  pts: { x: number; y: number; se: number }[];
+  xS: d3.ScaleLogarithmic<number, number>;
+  yS: d3.ScaleLogarithmic<number, number>;
+  color: string;
+  square?: boolean;
+}) {
+  const [yLo, yHi] = yS.domain();
+  return (
+    <>
+      {pts.map((p, i) => {
+        if (!Number.isFinite(p.y)) return null;
+        // Points below the axis floor (bias within noise of zero, or negative)
+        // are drawn hollow on the bottom edge.
+        const clamped = p.y < yLo;
+        const yv = Math.min(Math.max(p.y, yLo), yHi);
+        const hi = p.y + 2 * p.se;
+        return (
+          <g key={i}>
+            {hi > yLo && (
+              <line
+                x1={xS(p.x)}
+                x2={xS(p.x)}
+                y1={yS(Math.min(Math.max(p.y - 2 * p.se, yLo), yHi))}
+                y2={yS(Math.min(hi, yHi))}
+                stroke={color}
+                strokeWidth={1.2}
+              />
+            )}
+            {square ? (
+              <rect
+                x={xS(p.x) - 3.5}
+                y={yS(yv) - 3.5}
+                width={7}
+                height={7}
+                fill={clamped ? 'none' : color}
+                stroke={color}
+              />
+            ) : (
+              <circle cx={xS(p.x)} cy={yS(yv)} r={4} fill={clamped ? 'none' : color} stroke={color} />
+            )}
+          </g>
+        );
+      })}
+    </>
+  );
+}
+
+function BiasVsParam({
+  xs,
+  ys,
+  ses,
+  exact,
+  floor,
+  width,
+  height,
+  xLabel,
+  legendBottom = false,
+}: {
+  xs: number[];
+  ys: number[];
+  ses: number[];
+  exact: (x: number) => number;
+  floor?: number;
+  width: number;
+  height: number;
+  xLabel: string;
+  legendBottom?: boolean;
+}) {
+  const innerW = width - MARGIN.left - MARGIN.right;
+  const innerH = height - MARGIN.top - MARGIN.bottom;
+  const xLo = Math.min(...xs) * 0.8;
+  const xHi = Math.max(...xs) * 1.2;
+  const fine = d3.range(61).map((k) => xLo * Math.pow(xHi / xLo, k / 60));
+  const exactFine = fine.map(exact);
+  // The y-range follows the exact curve, so a noisy point near zero cannot
+  // stretch the log axis; such points are drawn hollow on the bottom edge.
+  const ref = [...exactFine, ...(floor ? [floor] : [])];
+  const yLo = Math.min(...ref) * 0.3;
+  const yHi = Math.max(...ref, ...ys.filter((y) => Number.isFinite(y))) * 1.6;
+  const xS = d3.scaleLog().domain([xLo, xHi]).range([0, innerW]);
+  const yS = d3.scaleLog().domain([yLo, yHi]).range([innerH, 0]);
+  const exactPath =
+    d3
+      .line<number>()
+      .x((x) => xS(x))
+      .y((_, k) => yS(exactFine[k]))(fine) ?? '';
+
+  return (
+    <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+      <Axes xS={xS} yS={yS} innerW={innerW} innerH={innerH} xLabel={xLabel} yLabel="E[φ] − π(φ) (log)" />
+      {floor !== undefined && floor > 0 && (
+        <>
+          <line x1={0} x2={innerW} y1={yS(floor)} y2={yS(floor)} stroke={paletteSGMCMC.target} strokeWidth={1} strokeDasharray="2 3" />
+          <text x={6} y={yS(floor) - 4} fontSize={9.5} fill={paletteSGMCMC.target}>
+            B → ∞ floor (discretization)
+          </text>
+        </>
+      )}
+      <path d={exactPath} fill="none" stroke={paletteSGMCMC.biasBound} strokeWidth={1.5} strokeDasharray="5 3" />
+      <ErrorPoints pts={xs.map((x, i) => ({ x, y: ys[i], se: ses[i] }))} xS={xS} yS={yS} color={paletteSGMCMC.sgld} />
+      <text x={innerW - 6} y={legendBottom ? innerH - 22 : 14} textAnchor="end" fontSize={10} fill={paletteSGMCMC.biasBound}>
+        exact (8.3)
+      </text>
+      <text x={innerW - 6} y={legendBottom ? innerH - 9 : 27} textAnchor="end" fontSize={10} fill={paletteSGMCMC.sgld}>
+        measured ± 2 SE
       </text>
     </g>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Collapse panel
-// -----------------------------------------------------------------------------
-
-function CollapsePanel({ grid, width, height }: { grid: BiasGrid; width: number; height: number }) {
-  const margin = { top: 8, right: 12, bottom: 28, left: 44 };
-  const innerW = width - margin.left - margin.right;
-  const innerH = height - margin.top - margin.bottom;
-
-  const cRatio = grid.cRatio;
-  const C1 = grid.C1Hat;
-
-  // Guard against runBiasSweep returning NaN cRatio / NaN C1Hat when every
-  // chain in the sweep diverged. With NaN cRatio the x-axis values would
-  // also be NaN and the log scales below would crash at runtime — render a
-  // status overlay instead.
-  if (!Number.isFinite(cRatio) || !Number.isFinite(C1)) {
-    return (
-      <g transform={`translate(${margin.left},${margin.top})`}>
-        <rect x={0} y={0} width={innerW} height={innerH} fill="var(--color-surface, #fafafa)" />
-        <text x={innerW / 2} y={innerH / 2} textAnchor="middle" fontSize={11} fill="var(--color-text-muted, #666)">
-          fit failed — all chains diverged at this (T, σ_g). Try a longer T.
-        </text>
-      </g>
-    );
-  }
-
-  // Combined x: η + cRatio/B for the 13 sweep points (6 η-sweep at B = B_FIXED;
-  // 7 B-sweep at η = ETA_FIXED). Filter non-finite biases (chain divergence).
-  const etaPoints: { x: number; y: number }[] = ETA_GRID.map((eta, i) => ({
-    x: eta + cRatio / B_FIXED,
-    y: grid.biasEta[i],
-  })).filter((p) => Number.isFinite(p.y) && p.y > 0);
-  const bPoints: { x: number; y: number }[] = B_GRID.map((B, i) => ({
-    x: ETA_FIXED + cRatio / B,
-    y: grid.biasB[i],
-  })).filter((p) => Number.isFinite(p.y) && p.y > 0);
-
-  const allX = [...etaPoints, ...bPoints].map((p) => p.x);
-  const allY = [...etaPoints, ...bPoints].map((p) => p.y);
-  const xMin = allX.length > 0 ? Math.max(Math.min(...allX) * 0.7, 1e-7) : 1e-7;
-  const xMax = allX.length > 0 ? Math.max(...allX) * 1.3 : 1e-3;
-  const yMin = (allY.length > 0 ? Math.min(...allY) : 1e-5) * 0.7;
-  const yMax = (allY.length > 0 ? Math.max(...allY, 1e-3) : 1e-3) * 1.5;
-
-  const xS = d3.scaleLog().domain([xMin, xMax]).range([0, innerW]);
-  const yS = d3.scaleLog().domain([yMin, yMax]).range([innerH, 0]);
-
-  const fitX = [xMin, xMax];
-  const fitY = fitX.map((x) => Math.max(C1 * x, yMin));
-
-  const fmtPow = (v: number) => `10^${Math.round(Math.log10(v))}`;
-
+function ParityPanel({
+  etaPts,
+  bPts,
+  width,
+  height,
+}: {
+  etaPts: { x: number; y: number; se: number }[];
+  bPts: { x: number; y: number; se: number }[];
+  width: number;
+  height: number;
+}) {
+  const innerW = width - MARGIN.left - MARGIN.right;
+  const innerH = height - MARGIN.top - MARGIN.bottom;
+  const all = [...etaPts, ...bPts];
+  const lo = Math.min(...all.map((p) => p.x)) * 0.3;
+  const hi = Math.max(...all.map((p) => p.x), ...all.map((p) => p.y).filter((y) => Number.isFinite(y))) * 1.6;
+  const xS = d3.scaleLog().domain([lo, hi]).range([0, innerW]);
+  const yS = d3.scaleLog().domain([lo, hi]).range([innerH, 0]);
   return (
-    <g transform={`translate(${margin.left},${margin.top})`}>
-      <rect x={0} y={0} width={innerW} height={innerH} fill="var(--color-surface, #fafafa)" />
-      {decadeTicks(xMin, xMax).map((t) => (
-        <g key={`xg-${t}`}>
-          <line x1={xS(t)} x2={xS(t)} y1={0} y2={innerH} stroke="var(--color-text-muted, #888)" strokeOpacity={0.15} />
-          <text x={xS(t)} y={innerH + 16} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
-            {fmtPow(t)}
-          </text>
-        </g>
-      ))}
-      {decadeTicks(yMin, yMax).map((t) => (
-        <g key={`yg-${t}`}>
-          <line x1={0} x2={innerW} y1={yS(t)} y2={yS(t)} stroke="var(--color-text-muted, #888)" strokeOpacity={0.15} />
-          <text x={-6} y={yS(t) + 3} textAnchor="end" fontSize={10} fill="var(--color-text, #333)">
-            {fmtPow(t)}
-          </text>
-        </g>
-      ))}
-      {/* Linear fit through origin in (η + ĉ/B, bias) on log axes ⇒ a slope-+1 line. */}
-      <line
-        x1={xS(fitX[0])}
-        x2={xS(fitX[1])}
-        y1={yS(fitY[0])}
-        y2={yS(fitY[1])}
-        stroke={paletteSGMCMC.biasBound}
-        strokeWidth={1.4}
-        strokeDasharray="4 3"
-      />
-      {/* η sweep — circles in SGLD purple */}
-      {etaPoints.map((p, i) => (
-        <circle
-          key={`e-${i}`}
-          cx={xS(p.x)}
-          cy={yS(Math.max(p.y, yMin))}
-          r={4}
-          fill={paletteSGMCMC.sgld}
-        />
-      ))}
-      {/* B sweep — squares in SGHMC teal */}
-      {bPoints.map((p, i) => (
-        <rect
-          key={`b-${i}`}
-          x={xS(p.x) - 3.5}
-          y={yS(Math.max(p.y, yMin)) - 3.5}
-          width={7}
-          height={7}
-          fill={paletteSGMCMC.sghmc}
-        />
-      ))}
-      <line x1={0} x2={innerW} y1={innerH} y2={innerH} stroke="var(--color-text-muted, #888)" />
-      <line x1={0} x2={0} y1={0} y2={innerH} stroke="var(--color-text-muted, #888)" />
-      <text x={innerW / 2} y={innerH + 24} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
-        η + ĉ/B (log)
-      </text>
-      <text transform={`translate(${-34}, ${innerH / 2}) rotate(-90)`} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
-        |E[φ] − π(φ)| (log)
-      </text>
-      {/* Legend */}
-      <g transform={`translate(${innerW - 90}, 10)`}>
-        <rect x={0} y={-6} width={86} height={42} fill="var(--color-surface, #fff)" stroke="var(--color-border, #ccc)" />
+    <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+      <Axes xS={xS} yS={yS} innerW={innerW} innerH={innerH} xLabel="exact bias (8.3) (log)" yLabel="measured bias (log)" />
+      <line x1={xS(lo)} x2={xS(hi)} y1={yS(lo)} y2={yS(hi)} stroke={paletteSGMCMC.biasBound} strokeWidth={1.4} strokeDasharray="5 3" />
+      <ErrorPoints pts={etaPts} xS={xS} yS={yS} color={paletteSGMCMC.sgld} />
+      <ErrorPoints pts={bPts} xS={xS} yS={yS} color={paletteSGMCMC.sghmc} square />
+      <g transform="translate(8, 10)">
+        <rect x={0} y={-6} width={92} height={42} fill="var(--color-surface, #fff)" stroke="var(--color-border, #ccc)" />
         <circle cx={10} cy={4} r={4} fill={paletteSGMCMC.sgld} />
         <text x={20} y={7} fontSize={10} fill="var(--color-text, #333)">η sweep</text>
         <rect x={6} y={18} width={7} height={7} fill={paletteSGMCMC.sghmc} />

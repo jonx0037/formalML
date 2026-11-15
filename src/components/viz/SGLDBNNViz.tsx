@@ -12,9 +12,11 @@
 //       (Q4: trace-plot + autocorrelation panels).
 //
 // Interactive controls:
-//   - log₁₀ η slider (-7..-5, default ≈ -6.3 → η ≈ 5e-7) — step size. Smaller
-//     η → less noise, slower mixing; larger η → more noise, faster but
-//     coarser exploration. Re-runs the chain on commit.
+//   - log₁₀ η slider (-5..-2.5, default -3 → η = 1e-3, the §6.7 notebook's
+//     step size) — step size. Smaller η → smaller moves, a chain that barely
+//     leaves the MAP (at η ≈ 5e-7 the predictive sd is ≈ 0.003); larger η →
+//     larger moves and a wider predictive spread. η = 1e-2 diverges.
+//     Re-runs the chain on commit.
 //   - Samples slider S (50..400, default 200) — post-burn-in chain length.
 //     Longer chains give smoother predictive mean / std.
 //   - Resample button — re-rolls the chain seed.
@@ -70,7 +72,7 @@ const TRAINING_BASE = (seed: number): TrainingSpec => ({
 });
 const N_TRAIN = 300;
 const TRAIN_NOISE = 0.2;
-const DEFAULT_LOG10_ETA = -6.3;
+const DEFAULT_LOG10_ETA = -3;
 const DEFAULT_S = 200;
 const BURN_IN = 80;
 const SAMPLED_CONTOURS_PER_PANEL = 20;
@@ -79,9 +81,9 @@ const { res: GRID_RES, xMin: GRID_X_MIN, xMax: GRID_X_MAX, yMin: GRID_Y_MIN, yMa
 
 const FIGURE_PATH = '/images/topics/bayesian-neural-networks/06_sgld_two_moons.png';
 const ALT =
-  'Three spatial panels and one diagnostic panel: (a) SGLD predictive mean on Two Moons; (b) SGLD predictive standard deviation, comparable to the deep ensemble; (c) sampled 0.5-probability decision boundaries from SGLD chain in purple; (d) single-component weight trace across the chain plus the autocorrelation function.';
+  'Three panels from the notebook run (η = 10⁻³, mini-batch b = 32, 1,200 iterations): (a) SGLD predictive mean on Two Moons from 100 thinned samples; (b) SGLD predictive standard deviation, low on most of the data and largest along the class boundary and its extension beyond the data; (c) trace of one first-layer weight over the 1,200 iterations, with the 200 burn-in iterations shaded — it wanders like a random walk instead of settling to a stationary band.';
 const CAPTION =
-  'Figure 6. SGLD samples the posterior. (a, b) Mean and standard deviation across post-burn-in samples — comparable to the deep-ensemble §5 with a single optimizer instead of K independent retrains. (c) Sampled decision boundaries. (d) The single-component trace and ACF are the practical mixing diagnostic — large noise early signals exploration, smaller post-burn-in oscillations signal the chain has settled into the typical set. Slide η to trade noise for mixing speed; reseed for a new chain.';
+  'Figure 6. SGLD samples the posterior. (a, b) Mean and standard deviation across post-burn-in samples — comparable to the deep-ensemble §5 with a single optimizer instead of K independent retrains. (c) Sampled decision boundaries. (d) The single-component trace and ACF are the practical mixing diagnostic. Read them honestly here: at the default η = 10⁻³ (the §6.7 setting) the trace wanders like a random walk and the ACF stays high across the window, so a few hundred full-batch steps explore the neighborhood of the MAP warm start rather than the whole posterior. Slide η to trade step size for spread; reseed for a new chain.';
 const ARIA = 'Figure 6: Interactive SGLD predictive on Two Moons';
 
 // -----------------------------------------------------------------------------
@@ -354,8 +356,8 @@ function Controls({
         <span>log₁₀ η:</span>
         <input
           type="range"
-          min={-7}
-          max={-5}
+          min={-5}
+          max={-2.5}
           step={0.1}
           value={localEta}
           onChange={(e) => setLocalEta(Number(e.target.value))}
