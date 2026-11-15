@@ -122,40 +122,63 @@ export default function MutualInformationDiagram() {
       const { hX, hY, mi, hYgX, hXgY, hXY } = quantities;
       const w = vennWidth;
       const h = VENN_HEIGHT;
-      const cx = w / 2;
       const cy = h / 2;
 
       // Area-proportional Venn: each circle's area is scale²·π·H, so radii go
       // as sqrt(entropy), and the lens area is scale²·π·I.
-      const maxR = Math.min(w, h) * 0.32;
-      const scale = maxR / Math.max(Math.sqrt(hX), Math.sqrt(hY), 0.01);
-      const rX = Math.max(10, scale * Math.sqrt(hX));
-      const rY = Math.max(10, scale * Math.sqrt(hY));
-
       // Solve the center separation from the circle-circle lens-area formula.
       // I = 0 → circles touch; I = min(H(X), H(Y)) → smaller circle nested.
       const miClamped = Math.min(Math.max(mi, 0), Math.min(hX, hY));
+
+      // Fit the whole diagram (both circles at their solved separation, the
+      // H(X,Y) frame, and the labels under the circles) inside the SVG: lay it
+      // out at unit scale first, then pick the largest scale that fits.
+      const PAD_X = 34; // frame inset + room for the frame stroke
+      const PAD_TOP = 34; // frame inset + the H(X,Y) label
+      const PAD_BOTTOM = 40; // frame inset + the H(X) / H(Y) labels
+      const ruX = Math.sqrt(Math.max(hX, 0));
+      const ruY = Math.sqrt(Math.max(hY, 0));
+      const sepU = lensSeparation(ruX, ruY, Math.PI * miClamped);
+      const spanU = Math.max(sepU / 2 + ruY, ruX - sepU / 2) - Math.min(-sepU / 2 - ruX, sepU / 2 - ruY);
+      const heightU = 2 * Math.max(ruX, ruY);
+      const maxR = Math.min(w, h) * 0.32; // cap on the larger radius
+      const scale = Math.min(
+        maxR / Math.max(ruX, ruY, 0.01),
+        (w - 2 * PAD_X) / Math.max(spanU, 0.01),
+        (h - PAD_TOP - PAD_BOTTOM) / Math.max(heightU, 0.01),
+      );
+      const rX = Math.max(10, scale * ruX);
+      const rY = Math.max(10, scale * ruY);
       const sep = lensSeparation(rX, rY, Math.PI * scale * scale * miClamped);
 
+      // Horizontal extent of the two circles, centered in the SVG.
+      const left = Math.min(-sep / 2 - rX, sep / 2 - rY);
+      const right = Math.max(-sep / 2 + rX, sep / 2 + rY);
+      const cx = w / 2 - (left + right) / 2;
       const cxLeft = cx - sep / 2;
       const cxRight = cx + sep / 2;
+      const rMax = Math.max(rX, rY);
 
       const g = svg.append('g');
 
-      // Bounding rectangle for H(X,Y)
+      // Bounding rectangle for H(X,Y), enclosing both circles
+      const frameX0 = Math.max(2, cx + left - 24);
+      const frameX1 = Math.min(w - 2, cx + right + 24);
+      const frameY0 = Math.max(2, cy - rMax - 24);
+      const frameY1 = Math.min(h - 2, cy + rMax + 30);
       g.append('rect')
-        .attr('x', cx - maxR - 30)
-        .attr('y', cy - maxR - 20)
-        .attr('width', 2 * maxR + 60)
-        .attr('height', 2 * maxR + 40)
+        .attr('x', frameX0)
+        .attr('y', frameY0)
+        .attr('width', frameX1 - frameX0)
+        .attr('height', frameY1 - frameY0)
         .attr('rx', 8)
         .attr('fill', 'none')
         .attr('stroke', 'var(--color-border)')
         .attr('stroke-dasharray', '4,3');
 
       g.append('text')
-        .attr('x', cx + maxR + 28)
-        .attr('y', cy - maxR - 6)
+        .attr('x', frameX1 - 4)
+        .attr('y', frameY0 + 14)
         .attr('text-anchor', 'end')
         .style('fill', 'var(--color-text-secondary)')
         .style('font-size', '11px')

@@ -7,7 +7,7 @@ import { getTSVDResults, type tSVDResult } from '../../data/tensor-decomposition
 
 const SM_BREAKPOINT = 640;
 const CHART_HEIGHT = 240;
-const MARGIN = { top: 28, right: 16, bottom: 36, left: 44 };
+const MARGIN = { top: 28, right: 16, bottom: 40, left: 48 };
 
 // ─── Component ───
 
@@ -65,15 +65,15 @@ export default function TSVDExplorer() {
     g.append('g')
       .call(yAxis)
       .call((sel) => sel.select('.domain').remove())
-      .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-muted)').attr('opacity', 0.2))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').attr('font-size', 9));
+      .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-muted-border)').attr('opacity', 0.6))
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     const xAxis = d3.axisBottom(xScale).ticks(maxRank).tickFormat(d3.format('d'));
     g.append('g')
       .attr('transform', `translate(0,${h})`)
       .call(xAxis)
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').attr('font-size', 9));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Line
     const line = d3.line<tSVDResult>()
@@ -106,21 +106,21 @@ export default function TSVDExplorer() {
     // Axis labels
     g.append('text')
       .attr('x', w / 2)
-      .attr('y', h + 30)
+      .attr('y', h + 34)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .text('Tubal rank k');
 
     g.append('text')
       .attr('transform', 'rotate(-90)')
       .attr('x', -h / 2)
-      .attr('y', -32)
+      .attr('y', -36)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .text('Relative error');
 
     // Title
@@ -165,15 +165,15 @@ export default function TSVDExplorer() {
     g.append('g')
       .call(yAxis)
       .call((sel) => sel.select('.domain').remove())
-      .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-muted)').attr('opacity', 0.2))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').attr('font-size', 9));
+      .call((sel) => sel.selectAll('.tick line').style('stroke', 'var(--color-muted-border)').attr('opacity', 0.6))
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     const xAxis = d3.axisBottom(xScale).tickFormat((d) => `${Number(d) + 1}`);
     g.append('g')
       .attr('transform', `translate(0,${h})`)
       .call(xAxis)
       .call((sel) => sel.select('.domain').style('stroke', 'var(--color-border)'))
-      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-muted)').attr('font-size', 9));
+      .call((sel) => sel.selectAll('.tick text').style('fill', 'var(--color-text-secondary)').style('font-size', '11px'));
 
     // Bars
     svs.forEach((s, i) => {
@@ -183,8 +183,8 @@ export default function TSVDExplorer() {
         .attr('width', xScale.bandwidth())
         .attr('height', h - yScale(s))
         .attr('rx', 1)
-        .style('fill', i < tubalRank ? 'var(--color-accent)' : 'var(--color-muted)')
-        .attr('opacity', i < tubalRank ? 0.9 : 0.3);
+        .style('fill', i < tubalRank ? 'var(--color-accent)' : 'var(--color-text-secondary)')
+        .attr('opacity', i < tubalRank ? 0.9 : 0.35);
     });
 
     // Rank divider
@@ -201,21 +201,21 @@ export default function TSVDExplorer() {
     // Axis labels
     g.append('text')
       .attr('x', w / 2)
-      .attr('y', h + 30)
+      .attr('y', h + 34)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .text('Singular value index');
 
     g.append('text')
       .attr('transform', 'rotate(-90)')
       .attr('x', -h / 2)
-      .attr('y', -32)
+      .attr('y', -36)
       .attr('text-anchor', 'middle')
-      .style('fill', 'var(--color-muted)')
+      .style('fill', 'var(--color-text-secondary)')
       .style('font-family', 'var(--font-sans)')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .text('Magnitude');
 
     // Title

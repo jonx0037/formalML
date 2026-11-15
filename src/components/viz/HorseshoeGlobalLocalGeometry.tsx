@@ -16,6 +16,11 @@ import {
 //   (b) posterior shrinkage profile E[κ | y] for the same three priors
 //
 // Sliders: τ ∈ [0.2, 3], comparison toggle (LASSO vs horseshoe vs regularized).
+//
+// Bayesian LASSO rate, in the §5 parameterization λ² ~ Exp(ρ), β | λ ~ N(0, λ²τ²):
+//   panel (a) draws the Laplace marginal with scale τ/√2, i.e. ρ = 1;
+//   panel (b) uses bayesianLassoShrinkageMarginal, whose λ²τ² has mean 2τ², i.e. ρ = ½.
+//   Each panel title states its ρ.
 // =============================================================================
 
 const PANEL_HEIGHT = 320;
@@ -112,7 +117,7 @@ export default function HorseshoeGlobalLocalGeometry() {
         .attr('y', -8)
         .style('font-size', '11px')
         .style('font-weight', '600')
-        .text('(a) prior tail decay');
+        .text('(a) prior tail decay — Bayesian LASSO at ρ = 1');
 
       const drawTrace = (
         parent: d3.Selection<SVGGElement, unknown, null, undefined>,
@@ -188,7 +193,7 @@ export default function HorseshoeGlobalLocalGeometry() {
         .attr('y', -8)
         .style('font-size', '11px')
         .style('font-weight', '600')
-        .text('(b) posterior shrinkage');
+        .text('(b) posterior shrinkage — Bayesian LASSO at ρ = ½');
 
       drawTrace(gB, data.shrinkRidge, RIDGE_COLOR, xB, yB, data.yGrid);
       drawTrace(gB, data.shrinkLasso, LASSO_COLOR, xB, yB, data.yGrid);
