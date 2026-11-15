@@ -14,7 +14,7 @@ formalstatisticsPrereqs:
     relationship: "AIC, BIC, and MDL are parametric SRM analogs that share the training-error-plus-capacity-penalty shape but differ in penalty form (linear $d_k$ vs square-root $\\sqrt{d_k}$), $\\log n$ scaling, and asymptotic goal (prediction efficiency vs selection consistency vs description length). The §24.10 Rem 26 forward-pointer on the formalstatistics side declares SRM as the generalization to function classes; this topic discharges it."
   - topic: "regularization-and-penalized-estimation"
     site: "formalstatistics"
-    relationship: "Tikhonov, ridge, and lasso are concrete instances of the soft-SRM rule (Definition 4) with capacity functionals $\\|\\theta\\|_2^2$ and $\\|\\theta\\|_1$ respectively. The implicit nested family is the parameter-space norm ball, indexed by the penalty parameter $\\lambda$. §7 of this topic reframes those penalty rules as continuous-capacity SRM."
+    relationship: "Tikhonov, ridge, and lasso are concrete instances of the soft-SRM rule (Definition 5) with capacity functionals $\\|\\theta\\|_2^2$ and $\\|\\theta\\|_1$ respectively. The implicit nested family is the parameter-space norm ball, indexed by the penalty parameter $\\lambda$. §7 of this topic reframes those penalty rules as continuous-capacity SRM."
   - topic: "linear-regression"
     site: "formalstatistics"
     relationship: "Parametric substrate for the polynomial-regression worked example threaded through §§1, 2, 4, 5, 6, 7, 9, 10, 11. The bias-variance decomposition (§1.2) and Gauss–Markov variance bound (§1.3) are stated by name and used as given — the U-shape of MSE-versus-capacity is read off the parametric variance term $\\sigma^2(k+1)/n$ from least squares."
@@ -337,7 +337,7 @@ Four families recur throughout the topic and across the broader ML literature.
 
 **Polynomials by degree.** $\mathcal{H}_k = \{p: [-1, 1] \to \mathbb{R} \mid \deg p \le k\}$, the toy from §1. The capacity is $C(\mathcal{H}_k) = k + 1$ — the dimension of the parameter space; for the threshold-classification variant of the same family, the VC dimension is also $k + 1$. This is the example we'll use for all numerics through §11.
 
-**SVMs by inverse margin.** $\mathcal{H}_\gamma = \{h \mid h(x) = \mathrm{sign}(\langle w, x \rangle + b),\ \|w\| \le 1/\gamma\}$, the large-margin family from Vapnik (1995). Larger $\gamma$ means a *smaller* class — the linear classifiers are restricted to those that separate with margin at least $\gamma$. Capacity scales as $1/\gamma^2$ for the worst-case Rademacher bound, independent of input dimension. This is the celebrated dimension-free property that motivates kernel methods, and it anchors §12.1.
+**SVMs by inverse margin.** $\mathcal{H}_\gamma = \{h \mid h(x) = \mathrm{sign}(\langle w, x \rangle + b),\ \|w\| \le 1/\gamma\}$, the large-margin family from Vapnik (1995). Larger $\gamma$ means a *smaller* class — the linear classifiers are restricted to those that separate with margin at least $\gamma$. With inputs in a ball of radius $R$, the fat-shattering dimension at margin $\gamma$ scales as $R^2/\gamma^2$ and the Rademacher bound as $R/(\gamma\sqrt{n})$ (§12.1), both independent of input dimension. This is the celebrated dimension-free property that motivates kernel methods, and it anchors §12.1.
 
 **Neural networks by width.** $\mathcal{H}_w = \{\text{depth-}L \text{ feedforward nets with} \le w \text{ neurons per layer}\}$. The nesting is honest — a width-$w$ net is a special case of a width-$(w+1)$ net by zeroing out the last neuron — but the classical capacity measures are loose enough that the SRM bound is uninformative for any realistic deep net. This is the family where classical theory breaks (§12.2–12.4) and where implicit regularization takes over.
 
@@ -1102,12 +1102,14 @@ Belkin, Hsu, Ma, Mandal (2019); Nakkiran et al. (2020): test risk as a function 
 
 ### SVM-$C$ sweep on a 2D classification toy
 
-A 2D binary classification toy ($n = 100$, two Gaussian clusters). RBF-kernel SVM across $C \in [10^{-2}, 10^2]$. 5-fold CV picks $\hat C$. The four-panel figure shows decision boundaries at three $C$ values plus the CV error vs $C$ path.
+A 2D binary classification toy ($n = 100$, two Gaussian clusters with 8% label noise). RBF-kernel SVM with the default bandwidth across 25 log-spaced values $C \in [10^{-2}, 10^2]$. 5-fold CV picks $\hat C$. The four-panel figure shows decision boundaries at three $C$ values plus the CV and training error vs $C$ paths.
+
+The CV curve is a cliff followed by a plateau, not a U. For $C \le 0.022$ the penalty dominates and CV error sits at $0.40$; it drops to $0.09$ at $C = 0.032$ and then holds flat at $0.070$ at every grid point from $C = 0.046$ to $C = 31.6$. Training error is flat at $0.07$ from $C = 0.032$ on: the same seven training points are misclassified at every $C$ on the plateau. Since 18 grid points tie at the minimum, $\hat C = 0.0464$ is the argmin's first tie, the widest-margin (lowest-capacity) end of the plateau, not a sharp sweet spot. At the top of the grid CV error edges up to $0.08$ at $C = 46$ and $0.09$ at $C = 68$–$100$ (one or two extra held-out errors out of 100) while training error stays at $0.07$, so there is no clear overfit regime inside $[10^{-2}, 10^2]$. Reaching one takes larger $C$ or a narrower RBF bandwidth: at $C = 10^5$ training error falls to $0.04$ while CV error rises to $0.12$, and with ten times the default $\gamma$, $C = 10^3$ gives training error $0.03$ against CV error $0.14$.
 
 <Figure
   src="/images/topics/structural-risk-minimization/12_svm_C_sweep.png"
-  alt="Four-panel figure: three RBF-SVM decision boundaries at C ∈ {0.01, $\\hat C$, 100} on a 2D Gaussian-cluster toy showing the regularization-to-overfit transition; fourth panel shows 5-fold CV error vs C on a log scale with $\\hat C$ marked."
-  caption="SVM C-parameter sweep on a 2D binary classification toy. Small C: underfit; large C: overfit; $\\hat C$ at the CV minimum: the SRM-picked margin-capacity sweet spot. The SVM is the cleanest classical-SRM application: hinge loss plus norm penalty plus margin-ball implicit family."
+  alt="Four-panel figure: three RBF-SVM decision boundaries at C ∈ {0.01, $\\hat C$, 100} on a 2D Gaussian-cluster toy; fourth panel shows 5-fold CV error and training error vs C on a log scale, a cliff followed by a flat plateau, with $\\hat C$ marked at the left end of the plateau."
+  caption="SVM C-parameter sweep on a 2D binary classification toy. CV error falls off a cliff (0.40 to 0.09) by C ≈ 0.03, then sits on a flat 0.070 plateau from C = 0.046 to 31.6; $\\hat C$ = 0.0464 is the first, widest-margin tie on that plateau. Training error is flat at 0.07, so this grid shows no clear overfit; that needs larger C or a narrower RBF bandwidth. The SVM is the cleanest classical-SRM application: hinge loss plus norm penalty plus margin-ball implicit family."
 />
 
 ## Connections and limits

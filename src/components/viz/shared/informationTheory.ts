@@ -62,6 +62,42 @@ export function mutualInformation(joint: number[][]): number {
   return entropy(pX) + entropy(pY) - jointEntropy(joint);
 }
 
+/**
+ * Area of the lens where two circles of radii r1, r2 overlap when their
+ * centers are a distance d apart. Returns π·min(r1, r2)² when one circle is
+ * nested in the other and 0 when they touch or are apart.
+ */
+export function circleLensArea(r1: number, r2: number, d: number): number {
+  const rMin = Math.min(r1, r2);
+  if (d <= Math.abs(r1 - r2)) return Math.PI * rMin * rMin;
+  if (d >= r1 + r2) return 0;
+  const clamp = (x: number) => Math.min(1, Math.max(-1, x));
+  const a1 = Math.acos(clamp((d * d + r1 * r1 - r2 * r2) / (2 * d * r1)));
+  const a2 = Math.acos(clamp((d * d + r2 * r2 - r1 * r1) / (2 * d * r2)));
+  const k = (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2);
+  return r1 * r1 * a1 + r2 * r2 * a2 - 0.5 * Math.sqrt(Math.max(0, k));
+}
+
+/**
+ * Center separation at which two circles of radii r1, r2 overlap in a lens of
+ * the given area, found by bisection (lens area decreases monotonically in d).
+ * targetArea ≤ 0 gives touching circles (d = r1 + r2); targetArea ≥ π·min(r)²
+ * gives internally tangent, nested circles (d = |r1 − r2|).
+ */
+export function lensSeparation(r1: number, r2: number, targetArea: number): number {
+  const rMin = Math.min(r1, r2);
+  let lo = Math.abs(r1 - r2);
+  let hi = r1 + r2;
+  if (targetArea <= 0) return hi;
+  if (targetArea >= Math.PI * rMin * rMin) return lo;
+  for (let it = 0; it < 60; it++) {
+    const mid = 0.5 * (lo + hi);
+    if (circleLensArea(r1, r2, mid) > targetArea) lo = mid;
+    else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+
 /** Differential entropy of a Gaussian N(mu, sigma^2) in bits. */
 export function gaussianDifferentialEntropy(sigma: number): number {
   // h(X) = 0.5 * log2(2 * pi * e * sigma^2)
