@@ -31,6 +31,7 @@ import {
   kmmFit,
   // §5
   kliepFit,
+  gaussianBasisDesign,
   kliepKFoldCV,
   evaluateLinearBasisGrid,
   // §6
@@ -284,11 +285,16 @@ console.log('\n[6] kmm_weights_track_ratio  (notebook §4.4: Pearson ≈ 0.67, m
 
 // =============================================================================
 // Assertion 7 — §5.3 KLIEP convergence and bulk-grid Pearson.
-// Notebook: final LL ≈ 0.30, truth-evaluated ceiling 0.42.
-// Full-grid Pearson can be negative at median bandwidth; bulk-grid x∈[-2,3] >0.85.
+// Notebook (backtracking η: start 0.5, halve whenever a step would lower L̂;
+// tol 1e-7, cap 20,000): at the median-heuristic σ = 1.046 the run stops at
+// t = 557 with L̂ = 0.3501 (constrained optimum 0.3823; L̂ at the true ratio
+// 0.4169). A fixed η = 0.5 falls into a period-2 cycle there (L̂ alternating
+// 0.148 / 0.302). This RNG draws a different sample, so we check convergence
+// behavior (stops before the cap, monotone trace, feasibility), not the values.
+// Notebook bulk fit at σ* = 1.0: log-Pearson 0.968 on x ∈ [-2, 3].
 // =============================================================================
 
-console.log('\n[7] kliep_convergence_and_bulk_fit  (notebook §5.3: LL ≈ 0.30, bulk Pearson > 0.85 at σ*)');
+console.log('\n[7] kliep_convergence_and_bulk_fit  (notebook §5.3: converges at t = 557, L̂ = 0.3501 on its sample)');
 {
   const rng = mulberry32(0x5050);
   const muQ = 1.0;
@@ -296,13 +302,31 @@ console.log('\n[7] kliep_convergence_and_bulk_fit  (notebook §5.3: LL ≈ 0.30,
   const pooled = new Float64Array(xP.length + xQ.length);
   for (let i = 0; i < xP.length; i++) pooled[i] = xP[i];
   for (let i = 0; i < xQ.length; i++) pooled[xP.length + i] = xQ[i];
-  // Use the σ that KL-CV picks (small bandwidth — notebook σ* ≈ 0.25)
-  // Use the median heuristic as a working bandwidth for the convergence test
+  // Median heuristic as the working bandwidth for the convergence test
   const sigma = medianHeuristicBandwidth(pooled);
-  const fit = kliepFit(xP, xQ, sigma, { b: 100, eta: 0.5, maxIter: 500 });
-  console.log(`     sigma=${sigma.toFixed(3)}, final LL=${fit.logLikelihood.toFixed(3)}, iters=${fit.iterations}`);
-  // KLIEP final LL should be > 0 (positive log-likelihood, well-fit)
-  atLeast('kliep_final_ll', fit.logLikelihood, -0.5, 'KLIEP final log-likelihood at median-σ');
+  const maxIter = 20_000;
+  const fit = kliepFit(xP, xQ, sigma, { b: 100, eta: 0.5, maxIter, tol: 1e-7 });
+  console.log(`     sigma=${sigma.toFixed(3)}, final LL=${fit.logLikelihood.toFixed(4)}, stop t=${fit.iterations}`);
+  ok('kliep_converges', fit.iterations < maxIter, `KLIEP stops on tolerance before the cap: t=${fit.iterations} < ${maxIter}`);
+  // Backtracking never accepts a step that lowers L̂, so the trace is non-decreasing.
+  const tr = fit.logLikelihoodTrace;
+  let maxDrop = 0;
+  for (let t = 1; t < tr.length; t++) maxDrop = Math.max(maxDrop, tr[t - 1] - tr[t]);
+  atMost('kliep_trace_monotone', maxDrop, 0, 'largest drop in L̂ between iterates');
+  // Feasibility: α ≥ 0 and ψ̄_q' α = 1.
+  const PsiQ = gaussianBasisDesign(xQ, fit.centers, sigma);
+  const bAct = fit.centers.length;
+  let dot = 0;
+  let minAlpha = Infinity;
+  for (let l = 0; l < bAct; l++) {
+    let m = 0;
+    for (let i = 0; i < xQ.length; i++) m += PsiQ[i * bAct + l];
+    dot += (m / xQ.length) * fit.alpha[l];
+    minAlpha = Math.min(minAlpha, fit.alpha[l]);
+  }
+  atLeast('kliep_alpha_nonneg', minAlpha, 0, 'min α');
+  within('kliep_equality', dot, 1 - 1e-9, 1 + 1e-9, 'ψ̄_q\' α');
+  atLeast('kliep_final_ll', fit.logLikelihood, 0, 'KLIEP final log-likelihood at median-σ');
   // Eval on bulk grid
   const G = 300;
   const grid = new Float64Array(G);
@@ -312,7 +336,7 @@ console.log('\n[7] kliep_convergence_and_bulk_fit  (notebook §5.3: LL ≈ 0.30,
   for (let g = 0; g < G; g++) rTrue[g] = trueRatio(grid[g], muQ);
   const corrBulk = pearsonCorrelation(rHat, rTrue);
   console.log(`     bulk-grid Pearson(KLIEP, true r)=${corrBulk.toFixed(3)}`);
-  atLeast('kliep_bulk_pearson', corrBulk, 0.5, 'KLIEP bulk-grid Pearson (notebook > 0.85 at σ*)');
+  atLeast('kliep_bulk_pearson', corrBulk, 0.5, 'KLIEP bulk-grid Pearson at median-σ');
 }
 
 // =============================================================================

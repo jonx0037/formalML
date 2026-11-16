@@ -322,9 +322,14 @@ export function symmetrizationStats(
 // §8 Dudley's entropy integral (linear classes)
 // -----------------------------------------------------------------------------
 
-/** log N(ε, F, L_2) ≤ d log(3B/ε) for linear classes ||w|| ≤ B in R^d. */
+/**
+ * Upper bound on log N(ε, F, L_2) for the linear class F = {x ↦ ⟨w, x⟩ : ||w|| ≤ B}
+ * in R^d (inputs ||x|| ≤ 1). Covering the parameter ball gives
+ * N ≤ (1 + 2B/ε)^d ≤ (3B/ε)^d for ε ≤ B. For ε ≥ B the single function f_0 = 0
+ * covers the class (||f_w|| ≤ ||w|| ≤ B ≤ ε), so N = 1 and log N = 0.
+ */
 export function linearCoveringLogN(epsilon: number, d: number, B: number): number {
-  if (epsilon >= 3 * B) return 0;
+  if (epsilon >= B) return 0;
   return d * Math.log((3 * B) / epsilon);
 }
 

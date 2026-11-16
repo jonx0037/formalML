@@ -222,8 +222,11 @@ console.log('\n[6] §7 Corollary 3 canonical bound');
 console.log('\n[7] §8 covering numbers + Dudley');
 
 {
-  // log N(ε, F, L_2) ≤ d log(3B/ε), so log N at ε = 3B is 0 (single covering element).
-  approxEq('cover_log_at_3B', linearCoveringLogN(3.0, 10, 1.0), 0.0, 1e-9, 'log N(3B) = 0');
+  // log N(ε, F, L_2) ≤ d log(3B/ε) for ε < B; for ε ≥ B the zero function alone
+  // covers the class, so log N = 0 there.
+  approxEq('cover_log_at_B', linearCoveringLogN(1.0, 10, 1.0), 0.0, 1e-9, 'log N(B) = 0');
+  approxEq('cover_log_above_B', linearCoveringLogN(2.0, 10, 1.0), 0.0, 1e-9, 'log N(2B) = 0');
+  approxEq('cover_log_below_B', linearCoveringLogN(0.5, 10, 1.0), 10 * Math.log(6), 1e-9, 'log N(B/2) = d log 6');
   // log N decreases as ε grows.
   ok('cover_decreasing', linearCoveringLogN(0.1, 10, 1.0) > linearCoveringLogN(0.5, 10, 1.0), 'log N decreasing in ε');
   // Dudley integral at (n=200, d=10, B=1, D_n=1).  The brief's table compared
