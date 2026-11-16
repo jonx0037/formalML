@@ -22,7 +22,10 @@
 //
 // Computation: in-browser via shared/sgmcmc.ts.brownianPath. K paths × T_MAX/dt
 // steps each ≈ instantaneous.
-// Static fallback: /images/topics/stochastic-gradient-mcmc/03_brownian.png.
+// Static fallback: /images/topics/stochastic-gradient-mcmc/03_brownian.png —
+// the notebook's three-panel figure (paths + envelope, one path at three
+// resolutions, Var(W_t) vs t), not a still of the two live panels; ALT
+// describes that image.
 // =============================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -38,7 +41,7 @@ const DEFAULT_DT = 0.01;
 
 const FIGURE_PATH = '/images/topics/stochastic-gradient-mcmc/03_brownian.png';
 const ALT =
-  'Two-panel figure of standard 1D Brownian motion. (a) Sample paths against the ±√t envelope. (b) Histogram of W_T at the terminal time vs the analytic N(0, T) density.';
+  'Three-panel figure of standard 1D Brownian motion. (a) Ten sample paths on [0, 1] against the ±√t standard-deviation envelope. (b) The same path at three step sizes (η = 0.05, 0.005, 0.0005), showing that refining η does not change the limit. (c) Empirical Var(W_t) over 5000 seeds tracking the theoretical line Var(W_t) = t.';
 const CAPTION =
   'Figure 3. Standard Brownian motion: the canonical source of continuous-time noise behind every SDE in the topic. Variance grows as t (not t²), so the typical magnitude of W_t is √t — what the dashed envelope tracks. Sample paths are continuous but nowhere differentiable; the SDE machinery in §§4–7 is the workaround for that.';
 const ARIA = 'Figure 3: Interactive Brownian motion paths';
