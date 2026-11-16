@@ -722,12 +722,12 @@ Architecture: 2-layer MLP encoder (hidden 64, embedding 64), 2-layer MLP decoder
 
 Notebook outputs at our scale and horizon: CNP NLL 31.92 → 42.91 over 1000 epochs; Latent NP -ELBO 31.37 → 43.91. Both *increase* across training — at this single-task-per-epoch budget, neither architecture's training objective is monotonically minimized as a function of epoch count. The Latent NP additionally has the -ELBO's KL term contributing to the upward drift. The figures show smoothed curves that make the underlying noisy training dynamics visible.
 
-The *held-out comparison* below is the stronger evidence that the trained NPs have learned something useful: both predictive means interpolate the context well and grow uncertainty away from context regions, qualitatively matching the exact GP posterior even though the NPs don't know the kernel. The training dynamics warn that NPs at the scale Garnelo et al. originally trained at (multiple tasks per batch, longer horizons, larger models) are needed for the loss curves to drop cleanly.
+The *held-out comparison* below makes the same gap visible from the prediction side. At this training budget (one task per epoch, 1000 epochs, the small encoder and decoder above) neither NP interpolates the context. Both predictive means stay nearly constant across the input range and pass well away from most of the eight context points. The CNP's predictive band is roughly uniform in width, with no narrowing at the context points. The Latent NP's band is the spread of the decoder means across 20 sampled latents, with no decoder noise added, so it reflects latent uncertainty only: narrow everywhere, and still missing most of the context. The exact GP posterior in the left panel, which pinches at the context points and widens between and beyond them, is the reference for what a well-trained NP should approach without knowing the kernel. The loss curves and the held-out panels point the same way: NPs at the scale Garnelo et al. originally trained at (multiple tasks per batch, longer horizons, larger models) are needed for the loss curves to drop cleanly and for the predictive to track the context.
 
 <Figure
   src="/images/topics/meta-learning/08_np_training_curves.png"
   alt="Two panels: CNP NLL and Latent NP negative-ELBO training curves over 1000 epochs. Both curves rise across training; smoothed line makes the trend visible above the per-iter noise."
-  caption="Figure 8. CNP and Latent NP training curves. At one task per epoch and the notebook's small architectures, neither curve descends monotonically — the curves trend upward. The held-out evaluation (Figure 9) is the substantive evidence of meta-learning."
+  caption="Figure 8. CNP and Latent NP training curves. At one task per epoch and the notebook's small architectures, neither curve descends monotonically — the curves trend upward. The held-out evaluation (Figure 9) shows the same budget gap from the prediction side."
 />
 
 <NpTrainingCurvesExplorer client:visible />
@@ -735,7 +735,7 @@ The *held-out comparison* below is the stronger evidence that the trained NPs ha
 <Figure
   src="/images/topics/meta-learning/09_np_held_out_comparison.png"
   alt="Three side-by-side panels on a held-out GP task with 8 context points: exact GP posterior with known lengthscale, CNP predictive, Latent NP predictive with 20 sampled latents."
-  caption="Figure 9. Held-out GP task (ℓ = 1.0, 8 context points). The trained NPs interpolate context well and grow predictive uncertainty away from context regions, qualitatively matching the exact GP posterior with known ℓ."
+  caption="Figure 9. Held-out GP task (ℓ = 1.0, 8 context points). At the notebook's training budget neither NP interpolates the context: both predictive means stay nearly constant, the CNP band is roughly uniform in width, and the Latent NP spread (20 sampled latents, no decoder noise) reflects latent uncertainty only. The exact GP posterior with known ℓ is the reference a well-trained NP should approach."
 />
 
 ---
@@ -1237,10 +1237,10 @@ The unifying structural claim — every lens implements an approximate posterior
 <Figure
   src="/images/topics/meta-learning/14_cross_lens_synthesis.png"
   alt="Three-panel synthesis: trained MAML on a held-out sinusoidal task, trained Latent NP on a held-out GP task with exact GP overlay, trained Prototypical Network on a held-out 5-way 5-shot 2D task."
-  caption="Figure 14. Cross-lens synthesis: three methods on their native task families. Each panel shows the meta-trained model adapting to a held-out task. Visually similar 'few-shot adaptation' through different mechanisms."
+  caption="Figure 14. Cross-lens synthesis: three methods on their native task families. Each panel shows the meta-trained model on a held-out task: three different adaptation mechanisms side by side. The Latent NP panel, trained at the §4.5 budget, stays near-constant and does not yet track the context the way the exact GP posterior does."
 />
 
-The figure is visual rather than quantitative: it shows the three methods produce qualitatively similar "few-shot adaptation" on their respective task families, despite operating through completely different mechanisms. The MAML panel reproduces the §2.5 adaptation evolution at the final $n=5$ inner step. The Latent NP panel overlays the trained NP's mean and 95% predictive band against the exact GP posterior. The Prototypical Network panel shows input-space decision regions from a held-out task.
+The figure is visual rather than quantitative: it sets the three methods side by side on their respective task families, each adapting through a completely different mechanism. The MAML panel reproduces the §2.5 adaptation evolution at the final $n=5$ inner step. The Latent NP panel overlays the trained NP's mean, with a band of ±1.96 standard deviations of the decoder means across 10 sampled latents (latent uncertainty only, no decoder noise), against the exact GP posterior mean. As in Figure 9, the NP mean stays near-constant and misses most of the context points, so the panel shows the gap a larger training budget has to close rather than a match. The Prototypical Network panel shows input-space decision regions from a held-out task.
 
 ### 9.2 Sample-efficiency curves
 

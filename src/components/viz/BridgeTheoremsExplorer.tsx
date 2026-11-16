@@ -502,7 +502,7 @@ export default function BridgeTheoremsExplorer() {
 
       <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
         {mode === 't51' &&
-          'Theorem 5.1(ii): the CQR conditional-coverage gap at each x is bounded by 4·f_max·(Δ_n(x) + E[Δ_n]). All empirical points should sit below the dashed bound. The bound is loose by design — it has to absorb the conformalisation slack.'}
+          'Theorem 5.1(ii): the CQR conditional-coverage gap at each x is bounded by 4·f_max·(Δ_n(x) + E[Δ_n]). All empirical points should sit below the dashed bound. The bound is loose by design — it has to absorb the conformalization slack.'}
         {mode === 't52' &&
           'Theorem 5.2: the CQR/SC width ratio is bounded below by E[σ(X)]/σ₊ (the theory point: 1 at σ_max = 0, 0.625 at σ_max = 0.6, RE1). The exact limit is much closer to 1 — 0.94 at RE1 — because a constant-width band trades under-coverage at large |x| for over-coverage near 0. The simulated ratio (≈ 0.86–1.03 across the slider and seeds) sits near that limit, as in Figure 12.'}
         {mode === 't53' &&
