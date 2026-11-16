@@ -61,9 +61,9 @@ export interface KLIEPFitResult {
   sigma: number;
   /** Final empirical log-likelihood (1/n_p) Σ log r_hat(X_j^p). */
   logLikelihood: number;
-  /** Per-iteration log-likelihood trace (for convergence visualization). */
+  /** Log-likelihood trace L̂(α_t), t = 0..iterations (t = 0 is the initialization). */
   logLikelihoodTrace: Float64Array;
-  /** Iterations completed. */
+  /** Index T of the stopping iterate (number of projected-gradient steps taken). */
   iterations: number;
 }
 
@@ -514,6 +514,9 @@ export function evaluateLinearBasisGrid(
 // where ψ̄_q = (1/n_q) Σ ψ(X_i^q) ∈ R^b.
 // Projected-gradient ascent: GD step → equality projection → non-negativity
 // projection → renormalization. Sugiyama recommends b=100 centres from x_p.
+// Step size backtracks (matches the notebook's fit_kliep): start at η = 0.5 and
+// halve η whenever the projected step would lower L̂, keeping the halved value.
+// A fixed η = 0.5 falls into a period-2 cycle on the article's running toy.
 // -----------------------------------------------------------------------------
 
 export function kliepFit(
@@ -523,13 +526,16 @@ export function kliepFit(
   options: {
     b?: number;
     seed?: number;
+    /** Initial step size; halved whenever a step would lower L̂. */
     eta?: number;
     maxIter?: number;
     tol?: number;
     centers?: ArrayLike<number>;
   } = {},
 ): KLIEPFitResult {
-  const { b = 100, seed = 0xBEEF, eta = 0.5, maxIter = 500, tol = 1e-6 } = options;
+  const { b = 100, seed = 0xBEEF, maxIter = 20_000, tol = 1e-7 } = options;
+  let eta = options.eta ?? 0.5;
+
   const nP = xP.length;
   const nQ = xQ.length;
   const rng = mulberry32(seed);
@@ -564,74 +570,87 @@ export function kliepFit(
     for (let l = 0; l < bActual; l++) alpha[l] = 1;
   }
 
-  // Hot-path scratch buffers.
-  const rP = new Float64Array(nP); // Ψ_p α
-  const invRP = new Float64Array(nP);
   const grad = new Float64Array(bActual);
-  const logLLTrace = new Array<number>();
-
-  let iter = 0;
-  let prevLL = -Infinity;
+  const candidate = new Float64Array(bActual);
   const epsLog = 1e-12;
 
-  for (; iter < maxIter; iter++) {
-    // r_p = Psi_p α
-    for (let j = 0; j < nP; j++) {
-      let s = 0;
-      const rowBase = j * bActual;
-      for (let l = 0; l < bActual; l++) s += PsiP[rowBase + l] * alpha[l];
-      rP[j] = Math.max(s, epsLog);
-      invRP[j] = 1 / rP[j];
-    }
-    // grad = (1/n_p) Psi_p^T (1 / r_p)
-    for (let l = 0; l < bActual; l++) grad[l] = 0;
-    for (let j = 0; j < nP; j++) {
-      const rowBase = j * bActual;
-      const inv = invRP[j];
-      for (let l = 0; l < bActual; l++) grad[l] += PsiP[rowBase + l] * inv;
-    }
-    for (let l = 0; l < bActual; l++) grad[l] /= nP;
-    // 2a: Gradient ascent
-    for (let l = 0; l < bActual; l++) alpha[l] += eta * grad[l];
-    // 2b: Project onto ψ̄_q' α = 1.
-    // α ← α + (1 - ψ̄_q' α) * ψ̄_q / ||ψ̄_q||²
-    let dotQ = 0;
-    for (let l = 0; l < bActual; l++) dotQ += psiBarQ[l] * alpha[l];
-    const shift = (1 - dotQ) / psiBarQNormSq;
-    for (let l = 0; l < bActual; l++) alpha[l] += shift * psiBarQ[l];
-    // 2c: Project onto α ≥ 0
-    for (let l = 0; l < bActual; l++) if (alpha[l] < 0) alpha[l] = 0;
-    // 2d: Renormalize ψ̄_q' α = 1
-    let dotQ2 = 0;
-    for (let l = 0; l < bActual; l++) dotQ2 += psiBarQ[l] * alpha[l];
-    if (dotQ2 > 1e-20) {
-      const factor = 1 / dotQ2;
-      for (let l = 0; l < bActual; l++) alpha[l] *= factor;
-    }
-    // Convergence check on log-likelihood
+  // L̂(a) = (1/n_p) Σ_j log(max((Ψ_p a)_j, ε)).
+  const logLik = (a: Float64Array): number => {
     let ll = 0;
     for (let j = 0; j < nP; j++) {
       let s = 0;
       const rowBase = j * bActual;
-      for (let l = 0; l < bActual; l++) s += PsiP[rowBase + l] * alpha[l];
+      for (let l = 0; l < bActual; l++) s += PsiP[rowBase + l] * a[l];
       ll += Math.log(Math.max(s, epsLog));
     }
-    ll /= nP;
-    logLLTrace.push(ll);
-    if (Math.abs(ll - prevLL) < tol) {
-      iter++;
-      break;
+    return ll / nP;
+  };
+
+  // grad = (1/n_p) Ψ_p^T (1 / Ψ_p α), evaluated at the current α.
+  const computeGrad = (): void => {
+    for (let l = 0; l < bActual; l++) grad[l] = 0;
+    for (let j = 0; j < nP; j++) {
+      let s = 0;
+      const rowBase = j * bActual;
+      for (let l = 0; l < bActual; l++) s += PsiP[rowBase + l] * alpha[l];
+      const inv = 1 / Math.max(s, epsLog);
+      for (let l = 0; l < bActual; l++) grad[l] += PsiP[rowBase + l] * inv;
     }
+    for (let l = 0; l < bActual; l++) grad[l] /= nP;
+  };
+
+  // candidate ← projected step of size `step` from α (steps 2a–2d).
+  const projectedStep = (step: number): void => {
+    // 2a: Gradient ascent
+    for (let l = 0; l < bActual; l++) candidate[l] = alpha[l] + step * grad[l];
+    // 2b: Project onto ψ̄_q' α = 1:  α ← α + (1 - ψ̄_q' α) ψ̄_q / ||ψ̄_q||²
+    let dotQ = 0;
+    for (let l = 0; l < bActual; l++) dotQ += psiBarQ[l] * candidate[l];
+    const shift = (1 - dotQ) / psiBarQNormSq;
+    for (let l = 0; l < bActual; l++) candidate[l] += shift * psiBarQ[l];
+    // 2c: Project onto α ≥ 0
+    for (let l = 0; l < bActual; l++) if (candidate[l] < 0) candidate[l] = 0;
+    // 2d: Renormalize ψ̄_q' α = 1
+    let dotQ2 = 0;
+    for (let l = 0; l < bActual; l++) dotQ2 += psiBarQ[l] * candidate[l];
+    if (dotQ2 > 1e-20) {
+      const factor = 1 / dotQ2;
+      for (let l = 0; l < bActual; l++) candidate[l] *= factor;
+    }
+  };
+
+  // Trace holds L̂(α_t) for t = 0..T (t = 0 is the initialization), so
+  // `iterations` = T is the index of the stopping iterate.
+  const logLLTrace: number[] = [];
+  let ll = logLik(alpha);
+  logLLTrace.push(ll);
+  let prevLL = -Infinity;
+  let t = 0;
+  // Stop at the first t > 20 with |L̂(α_t) - L̂(α_{t-1})| < tol, as in the notebook.
+  while (!(Math.abs(ll - prevLL) < tol && t > 20) && t < maxIter) {
+    computeGrad();
+    projectedStep(eta);
+    let llCand = logLik(candidate);
+    // Backtracking: halve η until the step does not lower L̂.
+    while (llCand < ll && eta > 1e-8) {
+      eta *= 0.5;
+      projectedStep(eta);
+      llCand = logLik(candidate);
+    }
+    alpha.set(candidate);
     prevLL = ll;
+    ll = llCand;
+    logLLTrace.push(ll);
+    t++;
   }
 
   return {
     alpha,
     centers,
     sigma,
-    logLikelihood: logLLTrace[logLLTrace.length - 1] ?? -Infinity,
+    logLikelihood: ll,
     logLikelihoodTrace: Float64Array.from(logLLTrace),
-    iterations: iter,
+    iterations: t,
   };
 }
 
@@ -647,7 +666,7 @@ export function kliepKFoldCV(
   K = 5,
   options: { b?: number; eta?: number; maxIter?: number; seed?: number } = {},
 ): { sigmaStar: number; cvScores: Float64Array; bestIdx: number } {
-  const { b = 100, eta = 0.5, maxIter = 200, seed = 0xCAFE } = options;
+  const { b = 100, eta = 0.5, maxIter = 20_000, seed = 0xCAFE } = options;
   const nP = xP.length;
   const rng = mulberry32(seed);
   // Deterministic shuffle of p indices
