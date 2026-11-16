@@ -42,7 +42,7 @@ notebookPath: "notebooks/meta-learning/01_meta_learning.ipynb"
 githubUrl: "https://github.com/jonx0037/formalML/blob/main/src/content/topics/meta-learning.mdx"
 datePublished: 2026-05-18
 estimatedReadTime: 60
-abstract: "Meta-learning lifts the inference target from a single task to a distribution over tasks. We develop three classical lenses — gradient-based (MAML), Bayesian (Neural Processes), and metric-based (Prototypical Networks) — prove they share a hierarchical-Bayes structure, and lift PAC-Bayes generalization theory to the meta-distribution level via the Amit–Meir bound. Convergence guarantees for MAML under non-convex inner loss follow Fallah–Mokhtari–Ozdaglar. Three synthetic benchmarks (sinusoidal regression, 1D GP few-shot, 2D prototypical clustering) validate each lens on CPU."
+abstract: "Meta-learning lifts the inference target from a single task to a distribution over tasks. We develop three classical lenses — gradient-based (MAML), Bayesian (Neural Processes), and metric-based (Prototypical Networks) — prove they share a hierarchical-Bayes structure, and lift PAC-Bayes generalization theory to the meta-distribution level via the Amit–Meir bound. Convergence guarantees for MAML under non-convex inner loss follow Fallah–Mokhtari–Ozdaglar. Three synthetic benchmarks (sinusoidal regression, 1D GP few-shot, 2D prototypical clustering) exercise each lens on CPU."
 connections:
   - topic: "bayesian-neural-networks"
     relationship: "Latent NPs are amortized Bayesian neural networks specialized to context-conditional prediction. §4's encoder is the inference network; §4.3's ELBO derivation lifts the single-task VI machinery from BNNs to the meta-distribution level."
@@ -356,9 +356,9 @@ These three look different in implementation, but they share a deep common struc
 
 ### 1.4 The three running demos at a glance
 
-The notebook validates each lens on a small synthetic problem, chosen to match the canonical demonstration in the original paper, scaled to run on CPU within the 60-second budget.
+The notebook demonstrates each lens on a small synthetic problem, chosen to match the canonical demonstration in the original paper, scaled to run on CPU within the 60-second budget.
 
-The first demo is **sinusoidal regression** for the gradient lens. Tasks are $y = A \sin(x + \phi)$ with $(A, \phi) \sim \mathrm{Uniform}([0.1, 5] \times [0, 2\pi])$. Support size $K = 5$. MAML learns an initialization from which one or a few SGD steps recover the correct sinusoid. This is Finn–Abbeel–Levine's Figure 2 reproduction at the architecture they originally used — two hidden layers, 40 ReLU units.
+The first demo is **sinusoidal regression** for the gradient lens. Tasks are $y = A \sin(x + \phi)$ with $(A, \phi) \sim \mathrm{Uniform}([0.1, 5] \times [0, 2\pi])$. Support size $K = 5$. MAML aims for an initialization from which a few SGD steps on the support set reach the correct sinusoid. The setup follows Finn–Abbeel–Levine's Figure 2 at the architecture they originally used — two hidden layers, 40 ReLU units — but at a far smaller meta-training budget, and §2.5 shows that budget falls short of their result.
 
 The second is **1D GP few-shot regression** for the Bayesian lens. Each task is a draw from a Gaussian process with an RBF kernel of randomized lengthscale $\ell$. A Neural Process is trained to perform amortized regression on context-target splits of each task. The GP backbone reuses the kernel-evaluation and Cholesky machinery from formalML's [Gaussian Processes](/topics/gaussian-processes) notebook.
 
@@ -500,7 +500,7 @@ def task_meta_loss(params, sx, sy, qx, qy, alpha, n_inner):
 batched_meta_loss = vmap(task_meta_loss, in_dims=(None, 0, 0, 0, 0, None, None))
 ```
 
-Training: $B = 4$ tasks per meta-iter, $N = 5$ inner steps, $\alpha = 0.01$ inner-loop SGD rate, $\beta = 10^{-3}$ outer-loop Adam rate, 100 meta-iters. Under 60 s of CPU time. The notebook prints the meta-loss at iters 0, 50, 99 — values approximately $4.46$, $5.46$, $4.15$. The meta-loss curve oscillates rather than dropping monotonically over 100 iters; the *adaptation-evolution* figure below is the qualitatively stronger evidence that the meta-trained $\theta_0$ has acquired family structure.
+Training: $B = 4$ tasks per meta-iter, $N = 5$ inner steps, $\alpha = 0.01$ inner-loop SGD rate, $\beta = 10^{-3}$ outer-loop Adam rate, 100 meta-iters. Under 60 s of CPU time. The notebook prints the meta-loss at iters 0, 50, 99 — values approximately $4.46$, $5.46$, $4.15$. The meta-loss curve oscillates rather than dropping monotonically over 100 iters. This budget is far smaller than the original paper's, and the *adaptation-evolution* figure below shows how far short of their result it stops.
 
 <Figure
   src="/images/topics/meta-learning/05_maml_meta_loss.png"
@@ -512,11 +512,11 @@ Training: $B = 4$ tasks per meta-iter, $N = 5$ inner steps, $\alpha = 0.01$ inne
 
 <Figure
   src="/images/topics/meta-learning/06_maml_adaptation_evolution.png"
-  alt="A held-out sinusoidal task with four panels: predictions at n=0, n=1, n=3, n=5 inner steps. At n=0 the predictions are near-zero; each inner step pulls predictions toward the true sinusoid."
-  caption="Figure 6. A held-out task at A=3.2, φ=1.7. Four panels show predictions at n=0, 1, 3, 5 inner steps. The meta-trained θ₀ predicts approximately the zero function (conditional mean over the task family); five inner steps recover the sinusoid."
+  alt="A held-out sinusoidal task with four panels: predictions at n=0, n=1, n=3, n=5 inner steps. At n=0 the prediction is nearly flat near zero; each inner step bends it only slightly toward the true sinusoid, and at n=5 it is still far from the wave."
+  caption="Figure 6. A held-out task at A=3.2, φ=1.7. Four panels show predictions at n=0, 1, 3, 5 inner steps. The meta-trained θ₀ predicts a nearly flat function close to zero, the conditional mean over the task family. Five inner steps move the prediction only slightly toward the sinusoid; after 100 meta-iterations it does not recover the wave."
 />
 
-The adaptation-evolution figure reproduces Finn–Abbeel–Levine's Figure 2: $\theta_0$ predicts approximately the zero function — the conditional mean $\mathbb{E}_{A,\phi}[A \sin(x + \phi)]$ over uniform $\phi$ is zero — and each inner step pulls predictions toward the new task's sinusoid. Compare with §1's Figure 1: 200 SGD steps from random init memorized 5 points and failed; meta-trained $\theta_0$ achieves a better fit in 5 steps. The difference is the initialization, not the algorithm.
+The adaptation-evolution figure shows the starting point of Finn–Abbeel–Levine's Figure 2, not its payoff. At $n = 0$, $\theta_0$ predicts a nearly flat function close to zero. That is what the theory predicts: with $\phi$ uniform on $[0, 2\pi]$, the conditional mean $\mathbb{E}_{A,\phi}[A \sin(x + \phi)]$ is zero, so the best prediction before seeing any support data is the zero function. A freshly initialized network of the same size also outputs a nearly flat function, though, so this panel alone doesn't show what meta-training contributed. The inner steps then move the prediction only slightly. By $n = 5$ the curve's half-range is about $0.7$ against the true amplitude $3.2$, and its RMSE against the true sinusoid on the plotted interval falls from $2.16$ at $n = 0$ to $1.98$, where predicting zero everywhere scores $2.20$. The explorer's right panel above comes from a separate run of the same configuration and tells the same story: half-range about $0.5$ (peak about $0.86$), RMSE falling only from $2.21$ to $2.05$. At full meta-training scale, Finn–Abbeel–Levine's Figure 2 shows the MAML prediction close to the wave after a few gradient steps; 100 meta-iterations at $B = 4$ is far short of that budget. Nor does the figure support a comparison with §1's Figure 1, which shows a different task: there, 200 SGD steps from a random initialization memorized the 5 points, and here five steps from $\theta_0$ barely leave the flat function. Neither recovers the wave. What Figure 6 does show is the mechanism the rest of the article analyzes. Adaptation is the same plain SGD in both cases, so everything MAML can gain lives in where the initialization sits.
 
 ---
 
@@ -1237,10 +1237,10 @@ The unifying structural claim — every lens implements an approximate posterior
 <Figure
   src="/images/topics/meta-learning/14_cross_lens_synthesis.png"
   alt="Three-panel synthesis: trained MAML on a held-out sinusoidal task, trained Latent NP on a held-out GP task with exact GP overlay, trained Prototypical Network on a held-out 5-way 5-shot 2D task."
-  caption="Figure 14. Cross-lens synthesis: three methods on their native task families. Each panel shows the meta-trained model on a held-out task: three different adaptation mechanisms side by side. The Latent NP panel, trained at the §4.5 budget, stays near-constant and does not yet track the context the way the exact GP posterior does."
+  caption="Figure 14. Cross-lens synthesis: three methods on their native task families. Each panel shows the meta-trained model on a held-out task: three different adaptation mechanisms side by side. The MAML panel, trained at the §2.5 budget, stays far from the held-out sinusoid after five inner steps. The Latent NP panel, trained at the §4.5 budget, stays near-constant and does not yet track the context the way the exact GP posterior does."
 />
 
-The figure is visual rather than quantitative: it sets the three methods side by side on their respective task families, each adapting through a completely different mechanism. The MAML panel reproduces the §2.5 adaptation evolution at the final $n=5$ inner step. The Latent NP panel overlays the trained NP's mean, with a band of ±1.96 standard deviations of the decoder means across 10 sampled latents (latent uncertainty only, no decoder noise), against the exact GP posterior mean. As in Figure 9, the NP mean stays near-constant and misses most of the context points, so the panel shows the gap a larger training budget has to close rather than a match. The Prototypical Network panel shows input-space decision regions from a held-out task.
+The figure is visual rather than quantitative: it sets the three methods side by side on their respective task families, each adapting through a completely different mechanism. The MAML panel shows Figure 6's held-out task ($A = 3.2$, $\phi = 1.7$) after $n = 5$ inner steps, from a fixed, evenly spread support set rather than Figure 6's random draw. As in Figure 6, the adapted prediction stays far from the wave, so the panel shows the §2.5 budget's shortfall rather than a fit. The Latent NP panel overlays the trained NP's mean, with a band of ±1.96 standard deviations of the decoder means across 10 sampled latents (latent uncertainty only, no decoder noise), against the exact GP posterior mean. As in Figure 9, the NP mean stays near-constant and misses most of the context points, so the panel shows the gap a larger training budget has to close rather than a match. The Prototypical Network panel shows input-space decision regions from a held-out task.
 
 ### 9.2 Sample-efficiency curves
 
@@ -1265,12 +1265,12 @@ Evaluate the three trained $\theta_0$s from §§2–3 on 20 fresh held-out sinus
 <Figure
   src="/images/topics/meta-learning/16_inner_loop_sensitivity.png"
   alt="Mean test query MSE vs N_test, one curve per method (MAML, FOMAML, Reptile)."
-  caption="Figure 16. Inner-loop sensitivity: held-out query MSE vs test-time inner-loop step count. All three methods' MSE drops sharply from N=0 to N=5 (meta-training step count) and plateaus."
+  caption="Figure 16. Inner-loop sensitivity: held-out query MSE vs test-time inner-loop step count. All three methods start near 3.46, the MSE of predicting zero everywhere on these tasks. Each reaches its lowest MSE at or before the meta-training N = 5 (MAML about 3.06 at N = 2–3, FOMAML about 3.11 at N = 3, Reptile about 3.14 at N = 1), at most about an 11% improvement, and MSE rises again at larger N."
 />
 
 <InnerLoopSensitivityExplorer client:visible />
 
-Pedagogical takeaway: all three methods produce $\theta_0$s that "work well" with their meta-training $N$ but tolerate $N_{\mathrm{test}}$ deviations within a factor of two. Consistent with the §6.2 hierarchical-Bayes interpretation: meta-trained $\theta_0$ encodes a prior precision via $(\alpha, N)$, and small changes in effective prior precision give small changes in MAP quality.
+Pedagogical takeaway: at the §§2–3 training budget, test-time inner steps buy little. Query MSE falls by at most about 11% from its $N_{\mathrm{test}} = 0$ value, which is close to the zero function's, and every method's best $N_{\mathrm{test}}$ sits at or below the meta-training $N = 5$ (Reptile's at $N_{\mathrm{test}} = 1$). Past $N = 5$ all three get worse, Reptile fastest. The §6.2 hierarchical-Bayes reading says what to expect from a fully meta-trained $\theta_0$: it encodes a prior precision via $(\alpha, N)$, so the best $N_{\mathrm{test}}$ should sit near the meta-training $N$ and small deviations should cost little. This run is too short to test that prediction.
 
 ### 9.4 Task-batch size and meta-gradient variance
 
@@ -1356,7 +1356,7 @@ For the ANP variant of §4.4, the natural implementation uses `torch.nn.Multihea
 
 ### 11.1 What this topic delivered
 
-We developed meta-learning through three lenses — gradient-based (MAML and first-order approximations in §§2–3), Bayesian (Neural Processes in §4), metric-based (Prototypical Networks in §5) — each with algorithmic derivation, working implementation, and held-out validation. We unified the three via hierarchical Bayes (§6), showing that MAML's inner-loop initialization is a Gaussian-prior mean (Grant et al. 2018, Theorem 2), Latent NPs amortize variational inference over a task-distribution prior, and Prototypical Networks specialize discriminative training to a task-level decomposition. The unification carried two theoretical results: the Amit–Meir PAC-Bayes meta-generalization bound (§7) and the Fallah–Mokhtari–Ozdaglar convergence theorem for MAML (§8).
+We developed meta-learning through three lenses — gradient-based (MAML and first-order approximations in §§2–3), Bayesian (Neural Processes in §4), metric-based (Prototypical Networks in §5) — each with algorithmic derivation, working implementation, and held-out evaluation. We unified the three via hierarchical Bayes (§6), showing that MAML's inner-loop initialization is a Gaussian-prior mean (Grant et al. 2018, Theorem 2), Latent NPs amortize variational inference over a task-distribution prior, and Prototypical Networks specialize discriminative training to a task-level decomposition. The unification carried two theoretical results: the Amit–Meir PAC-Bayes meta-generalization bound (§7) and the Fallah–Mokhtari–Ozdaglar convergence theorem for MAML (§8).
 
 The topic discharges twelve previously-deferred forward-pointers across formalML — six in [PAC-Bayes Bounds](/topics/pac-bayes-bounds), plus one each in [Stochastic-Gradient MCMC](/topics/stochastic-gradient-mcmc), [Bayesian Neural Networks](/topics/bayesian-neural-networks), [Gaussian Processes](/topics/gaussian-processes), [Sparse Bayesian Priors](/topics/sparse-bayesian-priors), and [Variational Inference](/topics/variational-inference) — plus the formalstatistics §28.10 Ex 14 pointer. The longest-running cross-site dependency in the formalML triad is now closed.
 
