@@ -107,7 +107,7 @@ import BootstrapQuantileCI from '../../components/viz/BootstrapQuantileCI.tsx';
 
 ## The Pinball Loss and the Population Quantile
 
-Quantile regression rests on a single asymmetric loss function, the *check* or *pinball* loss. Where squared loss penalises positive and negative residuals symmetrically and recovers the conditional **mean** at its minimum, the pinball loss penalises them asymmetrically and recovers the conditional **quantile**. The next two results make this statement precise.
+Quantile regression rests on a single asymmetric loss function, the *check* or *pinball* loss. Where squared loss penalizes positive and negative residuals symmetrically and recovers the conditional **mean** at its minimum, the pinball loss penalizes them asymmetrically and recovers the conditional **quantile**. The next two results make this statement precise.
 
 <TheoremBlock type="definition" number={1} title="Pinball loss">
 For $\tau \in (0, 1)$ and any real residual $u$, the **pinball loss** at level $\tau$ is
@@ -140,7 +140,7 @@ $$
 L(q) \;=\; \mathbb{E}\bigl[\rho_\tau(Y - q)\bigr] \;=\; \tau \int_q^\infty (y - q)\, dF(y) \;+\; (1 - \tau) \int_{-\infty}^q (q - y)\, dF(y).
 $$
 
-The first term penalises $Y > q$ at rate $\tau$ (the "right side"); the second penalises $Y < q$ at rate $1 - \tau$ (the "left side"). Differentiate $L(q)$ under the integral. The derivative of the first term with respect to $q$ is $-\tau (1 - F(q))$ — the Leibniz contribution from the lower limit, plus the constant $-\tau$ under the integrand. The derivative of the second term is $(1 - \tau) F(q)$ — matching contribution from the upper limit and integrand. Adding:
+The first term penalizes $Y > q$ at rate $\tau$ (the "right side"); the second penalizes $Y < q$ at rate $1 - \tau$ (the "left side"). Differentiate $L(q)$ under the integral. The derivative of the first term with respect to $q$ is $-\tau (1 - F(q))$ — the Leibniz contribution from the lower limit, plus the constant $-\tau$ under the integrand. The derivative of the second term is $(1 - \tau) F(q)$ — matching contribution from the upper limit and integrand. Adding:
 
 $$
 L'(q) \;=\; -\tau\,(1 - F(q)) \;+\; (1 - \tau)\, F(q) \;=\; F(q) - \tau.
@@ -215,16 +215,16 @@ The workhorse fit-and-predict helper used throughout this topic — a thin wrapp
 from sklearn.linear_model import QuantileRegressor
 from sklearn.preprocessing import PolynomialFeatures
 
-def fit_predict_quantile(x_train, y_train, x_eval, tau, alpha_l2=0.01, degree=3):
+def fit_predict_quantile(x_train, y_train, x_eval, tau, alpha_l1=0.01, degree=3):
     """Quantile regression at level τ on degree-`degree` polynomial features.
 
-    alpha_l2: small L2 penalty for numerical stability (kept tiny so KB78
-              asymptotics are not distorted).
+    alpha_l1: sklearn's `alpha`, which multiplies an L1 penalty on the
+              coefficients (kept tiny so KB78 asymptotics are not distorted).
     """
     poly = PolynomialFeatures(degree=degree, include_bias=False)
     Phi_train = poly.fit_transform(np.asarray(x_train).reshape(-1, 1))
     Phi_eval = poly.transform(np.asarray(x_eval).reshape(-1, 1))
-    qr = QuantileRegressor(quantile=tau, alpha=alpha_l2, solver='highs')
+    qr = QuantileRegressor(quantile=tau, alpha=alpha_l1, solver='highs')
     qr.fit(Phi_train, y_train)
     return qr.predict(Phi_eval)
 ```
@@ -471,7 +471,7 @@ But there is a problem. The population conditional quantiles are weakly increasi
 <TheoremBlock type="remark" number={10} title="Quantile crossing as a coherence violation; constrained-LP fix">
 Crossing is not just an aesthetic flaw. It produces probabilistic nonsense: $\mathbb{P}(Y < q_{0.6}(x)) > 0.6$ and $\mathbb{P}(Y < q_{0.7}(x)) < 0.7$ cannot both hold if $q_{0.7}(x) < q_{0.6}(x)$. Any downstream procedure that treats the bands as CDF estimates (CQR uses them as prediction-interval endpoints; quantile forests use them for distribution prediction) inherits the incoherence. Two structural fixes exist:
 
-1. **Joint estimation with monotonicity constraints (Bondell–Reich–Wang 2010).** Augment the LP with linear inequalities $q_{\tau_k}(x_l) \leq q_{\tau_{k+1}}(x_l)$ at a grid of evaluation points; solve a single bigger LP. Pros: exact monotonicity by construction. Cons: scales poorly in $n \times K \times |\text{grid}|$; loses the per-$\tau$ decoupling that makes QR fast and parallelisable.
+1. **Joint estimation with monotonicity constraints (Bondell–Reich–Wang 2010).** Augment the LP with linear inequalities $q_{\tau_k}(x_l) \leq q_{\tau_{k+1}}(x_l)$ at a grid of evaluation points; solve a single bigger LP. Pros: exact monotonicity by construction. Cons: scales poorly in $n \times K \times |\text{grid}|$; loses the per-$\tau$ decoupling that makes QR fast and parallelizable.
 2. **Marginal estimation followed by REARRANGEMENT (Chernozhukov–Fernández-Val–Galichon 2010).** Fit each $\tau$ independently as before, then at every evaluation point sort the $K$ predicted values along the $\tau$-axis. The rearranged curves are monotone by construction, equal to the originals when no crossing is present, and never worse in $L^p$ for any $p \geq 1$ (CFV-G 2010 Theorem 1). This is the path we take.
 </TheoremBlock>
 
@@ -486,13 +486,13 @@ i.e., the rearranged estimate at level $\tau_k$ equals the $k$-th order statisti
 </TheoremBlock>
 
 <TheoremBlock type="remark" number={11} title="Rearrangement weakly improves Lᵖ approximation">
-If the true conditional quantile function $\tau \mapsto q_\tau(x)$ is monotone (which it is, by definition), then for any $p \geq 1$ the $L^p$ distance from the rearranged estimates to the truth is no larger than the $L^p$ distance from the original marginal estimates. The proof is rearrangement-inequality combinatorics: matching a monotone target with a monotone candidate is always at least as good as matching a monotone target with a non-monotone one. Strict improvement happens whenever crossing is present in the original estimates. So rearrangement is a **free lunch** as a post-processing step, never harmful.
+If the true conditional quantile function $\tau \mapsto q_\tau(x)$ is monotone (which it is, by definition), then for any $p \geq 1$ the $L^p$ distance from the rearranged estimates to the truth is no larger than the $L^p$ distance from the original marginal estimates. The proof is rearrangement-inequality combinatorics: matching a monotone target with a monotone candidate is always at least as good as matching a monotone target with a non-monotone one. For $p > 1$ and a strictly increasing $\tau \mapsto q_\tau(x)$, the improvement is strict whenever crossing is present in the original estimates; at $p = 1$ it can tie (in the notebook run behind the crossing figure below, $n = 120$ with $K = 11$ levels, the $L^1$ distance ties at 25 of the 58 crossing points, while the $L^2$ distance is strictly smaller at all 58). So rearrangement is a **free lunch** as a post-processing step, never harmful.
 </TheoremBlock>
 
 Two helpers — fit a $K$-quantile bundle independently and then sort along the $\tau$-axis at every evaluation point:
 
 ```python
-def fit_multiple_quantiles(x_train, y_train, x_eval, taus, alpha_l2=0.01, degree=3):
+def fit_multiple_quantiles(x_train, y_train, x_eval, taus, alpha_l1=0.01, degree=3):
     """Fit QR at each τ in `taus` on degree-`degree` polynomial features.
 
     Returns a (K, |x_eval|) array Q where Q[k, j] = q̂_{taus[k]}(x_eval[j]).
@@ -502,7 +502,7 @@ def fit_multiple_quantiles(x_train, y_train, x_eval, taus, alpha_l2=0.01, degree
     Phi_eval = poly.transform(np.asarray(x_eval).reshape(-1, 1))
     out = np.empty((len(taus), len(x_eval)))
     for k, tau in enumerate(taus):
-        qr = QuantileRegressor(quantile=tau, alpha=alpha_l2, solver='highs')
+        qr = QuantileRegressor(quantile=tau, alpha=alpha_l1, solver='highs')
         qr.fit(Phi_train, y_train)
         out[k] = qr.predict(Phi_eval)
     return out
@@ -518,16 +518,16 @@ def rearrange_quantile_estimates(Q):
 <noscript>
 <Figure
   src="/images/topics/quantile-regression/qr_crossing_rearrangement.png"
-  alt="Eleven marginal QR fits at tau in {0.05, 0.10, ..., 0.95} on heteroscedastic data, before and after rearrangement; crossings visible in the marginal fits, monotone after rearrangement."
-  caption="Eleven QR fits at τ ∈ {0.05, 0.10, …, 0.95} on heteroscedastic data (n = 120). Left: marginal fits show crossings at multiple evaluation points — visible where adjacent τ-curves dip past one another. Right: rearrangement (CFV-G 2010) sorts each evaluation point along the τ-axis, producing monotone fits with weakly smaller L² error to the true conditional quantile (Remark 11)."
+  alt="Eleven marginal QR fits at tau in {0.05, 0.10, 0.20, ..., 0.90, 0.95} on heteroscedastic data, before and after rearrangement; crossings visible in the marginal fits, monotone after rearrangement."
+  caption="Eleven QR fits at τ ∈ {0.05, 0.10, 0.20, …, 0.90, 0.95} on heteroscedastic data (n = 120). Left: marginal fits show crossings at multiple evaluation points — visible where adjacent τ-curves dip past one another. Right: rearrangement (CFV-G 2010) sorts each evaluation point along the τ-axis, producing monotone fits with weakly smaller L² error to the true conditional quantile (Remark 11)."
 />
 </noscript>
 
 ## Penalized Quantile Regression
 
-Two settings push QR away from its plain Koenker–Bassett 1978 form. First, when $p > n$ or $p \sim n$ the unregularised QR LP is under-determined and badly behaved. Second, even at moderate $p$ with $n$ large enough for asymptotics, an $L^1$ penalty drives variable selection that simple shrinkage cannot match. Both settings use the same trick: add a penalty term to the pinball-loss objective.
+Two settings push QR away from its plain Koenker–Bassett 1978 form. First, when $p > n$ or $p \sim n$ the unregularized QR LP is under-determined and badly behaved. Second, even at moderate $p$ with $n$ large enough for asymptotics, an $L^1$ penalty drives variable selection that simple shrinkage cannot match. Both settings use the same trick: add a penalty term to the pinball-loss objective.
 
-The $L^2$ penalty (already familiar from sklearn's `alpha` parameter):
+The $L^2$ (ridge) penalty:
 
 $$
 \min_\beta \; \sum_i \rho_\tau(Y_i - X_i^\top \beta) \;+\; \lambda\, \lVert \beta \rVert_2^2.
@@ -535,7 +535,7 @@ $$
 
 This has a closed-form Hessian (modulo the non-smoothness of $\rho_\tau$) and can be solved either by augmenting the LP with linear-quadratic structure or via the smoothed-check-loss accelerated-gradient solver we use in the in-browser viz components.
 
-The $L^1$ penalty (the focus of this section, "QR-lasso" or "L1-QR"):
+The $L^1$ penalty (the focus of this section, "QR-lasso" or "L1-QR"; it is also the penalty behind sklearn's `QuantileRegressor(alpha=…)`, which minimizes $\tfrac{1}{n}\sum_i \rho_\tau(Y_i - X_i^\top \beta) + \alpha \lVert \beta \rVert_1$ with the intercept unpenalized, so $\alpha = \lambda / n$):
 
 $$
 \min_\beta \; \sum_i \rho_\tau(Y_i - X_i^\top \beta) \;+\; \lambda\, \lVert \beta \rVert_1.
@@ -544,7 +544,7 @@ $$
 This stays a linear program, since $\lVert \beta \rVert_1 = \mathbf{1}^\top \beta^+ + \mathbf{1}^\top \beta^-$ splits cleanly with $\beta = \beta^+ - \beta^-$. Augment the QR LP with these auxiliary variables and solve for the full path of $\lambda$ values.
 
 <TheoremBlock type="remark" number={12} title="Why L1-QR is the natural high-dim QR">
-At the population level, suppose the true conditional $\tau$-quantile is linear with sparse slope vector $\beta_0(\tau)$ — only $s$ out of $p$ coordinates are nonzero. The LP-lasso-QR estimator targets that sparse $\beta_0(\tau)$ directly. By contrast, ridge-QR ($L^2$-penalised) shrinks all coordinates uniformly and never sets any to exactly zero, so it cannot recover the sparsity pattern; its high-dim rate is correspondingly slower.
+At the population level, suppose the true conditional $\tau$-quantile is linear with sparse slope vector $\beta_0(\tau)$ — only $s$ out of $p$ coordinates are nonzero. The LP-lasso-QR estimator targets that sparse $\beta_0(\tau)$ directly. By contrast, ridge-QR ($L^2$-penalized) shrinks all coordinates uniformly and never sets any to exactly zero, so it cannot recover the sparsity pattern; its high-dim rate is correspondingly slower.
 </TheoremBlock>
 
 <TheoremBlock type="theorem" number={4} title="Belloni–Chernozhukov 2011 oracle rate for L1-QR">
@@ -581,7 +581,7 @@ The L1-QR LP splits $\beta = \beta^+ - \beta^-$ with $\beta^+, \beta^- \geq 0$, 
 
 ```python
 def solve_lasso_qr_linprog(X, y, tau, lam, no_penalty_mask=None):
-    """L1-penalised QR via the standard LP reformulation.
+    """L1-penalized QR via the standard LP reformulation.
 
     Variables z = [β⁺ (p), β⁻ (p), u⁺ (n), u⁻ (n)].
     Objective:   λ·(1ᵀβ⁺ + 1ᵀβ⁻) + τ·1ᵀu⁺ + (1−τ)·1ᵀu⁻,
@@ -665,4 +665,4 @@ The two QR fits define the band shape; $\hat Q_\alpha$ is a single scalar that i
 
 - [Convex Analysis](/topics/convex-analysis) — the pinball loss is convex but non-smooth; the LP reformulation exploits its piecewise-linear structure.
 
-- [Gradient Descent](/topics/gradient-descent) — the smoothed-check-loss accelerated-gradient solver is what powers the in-browser visualisation widgets, where running an LP solver in the user's browser is impractical.
+- [Gradient Descent](/topics/gradient-descent) — the smoothed-check-loss accelerated-gradient solver is what powers the in-browser visualization widgets, where running an LP solver in the user's browser is impractical.

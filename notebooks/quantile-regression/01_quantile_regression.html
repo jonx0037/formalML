@@ -8205,20 +8205,21 @@ Saved: figures/qr_pinball_loss.png
 <span class="c1">#</span>
 <span class="c1"># Helper: the workhorse fit_predict_quantile used throughout this notebook.</span>
 <span class="c1"># Same shape as the conformal-prediction notebook (sklearn QuantileRegressor</span>
-<span class="c1"># on PolynomialFeatures(degree=3, include_bias=False) with a small L2 ridge).</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">fit_predict_quantile</span><span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">x_eval</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="n">alpha_l2</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">degree</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+<span class="c1"># on PolynomialFeatures(degree=3, include_bias=False) with a small L1 penalty,</span>
+<span class="c1"># since sklearn's alpha multiplies an L1 penalty on the coefficients).</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">fit_predict_quantile</span><span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">x_eval</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="n">alpha_l1</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">degree</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Quantile regression at level tau on degree-`degree` polynomial features.</span>
 
 <span class="sd">    x_train, y_train: 1D arrays.</span>
 <span class="sd">    x_eval:           1D array of points at which to predict the conditional tau-quantile.</span>
-<span class="sd">    alpha_l2:         small L2 penalty for numerical stability (kept tiny so KB78</span>
-<span class="sd">                      asymptotics are not distorted).</span>
+<span class="sd">    alpha_l1:         sklearn's alpha, which multiplies an L1 penalty on the</span>
+<span class="sd">                      coefficients (kept tiny so KB78 asymptotics are not distorted).</span>
 <span class="sd">    Returns: 1D array of fitted conditional-quantile predictions on x_eval.</span>
 <span class="sd">    """</span>
     <span class="n">poly</span> <span class="o">=</span> <span class="n">PolynomialFeatures</span><span class="p">(</span><span class="n">degree</span><span class="o">=</span><span class="n">degree</span><span class="p">,</span> <span class="n">include_bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="n">Phi_train</span> <span class="o">=</span> <span class="n">poly</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x_train</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
     <span class="n">Phi_eval</span> <span class="o">=</span> <span class="n">poly</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x_eval</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
-    <span class="n">qr</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l2</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span>
+    <span class="n">qr</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l1</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span>
     <span class="n">qr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">Phi_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">qr</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">Phi_eval</span><span class="p">)</span>
 
@@ -9075,7 +9076,7 @@ Saved: figures/qr_asymptotic_normality.png
 <span class="c1">#      q_{tau_{k+1}}(x_l) at a grid of evaluation points; solve a single</span>
 <span class="c1">#      bigger LP. Pros: exact monotonicity by construction. Cons: scales</span>
 <span class="c1">#      poorly in n × K × |grid|; loses the per-tau decoupling that makes QR</span>
-<span class="c1">#      fast and parallelisable.</span>
+<span class="c1">#      fast and parallelizable.</span>
 <span class="c1"># (ii) Marginal estimation followed by REARRANGEMENT (Chernozhukov,</span>
 <span class="c1">#      Fernández-Val &amp; Galichon 2010). Fit each tau independently as before,</span>
 <span class="c1">#      then at every evaluation point sort the K predicted values along the</span>
@@ -9103,11 +9104,13 @@ Saved: figures/qr_asymptotic_normality.png
 <span class="c1"># the original marginal estimates. The proof is rearrangement-inequality</span>
 <span class="c1"># combinatorics: matching a monotone target with a monotone candidate is</span>
 <span class="c1"># always at least as good as matching a monotone target with a non-monotone</span>
-<span class="c1"># one. Strict improvement happens whenever crossing is present in the</span>
-<span class="c1"># original estimates. So rearrangement is a free lunch as a post-processing</span>
-<span class="c1"># step, never harmful.</span>
+<span class="c1"># one. For p &gt; 1 and a strictly increasing tau -&gt; q_tau(x), the improvement</span>
+<span class="c1"># is strict whenever crossing is present in the original estimates; at p = 1</span>
+<span class="c1"># it can tie (in the run below, the L^1 distance ties at 25 of the 58 crossing</span>
+<span class="c1"># points, while the L^2 distance is strictly smaller at all 58). So</span>
+<span class="c1"># rearrangement is a free lunch as a post-processing step, never harmful.</span>
 
-<span class="k">def</span><span class="w"> </span><span class="nf">fit_multiple_quantiles</span><span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">x_eval</span><span class="p">,</span> <span class="n">taus</span><span class="p">,</span> <span class="n">alpha_l2</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">degree</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">fit_multiple_quantiles</span><span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">x_eval</span><span class="p">,</span> <span class="n">taus</span><span class="p">,</span> <span class="n">alpha_l1</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">degree</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Fit QR at each tau in taus on degree-`degree` polynomial features.</span>
 
 <span class="sd">    Returns a (len(taus), len(x_eval)) array Q where Q[k, j] = q-hat_{taus[k]}(x_eval[j]).</span>
@@ -9118,7 +9121,7 @@ Saved: figures/qr_asymptotic_normality.png
     <span class="n">K</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">taus</span><span class="p">)</span>
     <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">K</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">x_eval</span><span class="p">)))</span>
     <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">tau</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">taus</span><span class="p">):</span>
-        <span class="n">qr</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l2</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span>
+        <span class="n">qr</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l1</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span>
         <span class="n">qr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">Phi_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
         <span class="n">out</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">qr</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">Phi_eval</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">out</span>
@@ -9280,20 +9283,23 @@ Saved: figures/qr_crossing_rearrangement.png
 <div class="cm-editor cm-s-jupyter">
 <div class="highlight hl-ipython3"><pre><span></span><span class="c1"># === Penalized Quantile Regression ===</span>
 <span class="c1"># Two settings push QR away from its plain Koenker-Bassett 1978 form. First,</span>
-<span class="c1"># when p &gt; n or p ~ n the unregularised QR LP is under-determined and badly</span>
+<span class="c1"># when p &gt; n or p ~ n the unregularized QR LP is under-determined and badly</span>
 <span class="c1"># behaved. Second, even at moderate p with n large enough for asymptotics, an</span>
 <span class="c1"># L1 penalty drives variable selection that simple shrinkage cannot match.</span>
 <span class="c1"># Both settings use the same trick: add a penalty term to the pinball-loss</span>
 <span class="c1"># objective.</span>
 <span class="c1">#</span>
-<span class="c1"># L2 penalty (already familiar from sklearn\'s alpha parameter):</span>
+<span class="c1"># L2 (ridge) penalty:</span>
 <span class="c1">#     min_beta  sum_i rho_tau(Y_i - X_i^T beta) + lambda * ||beta||_2^2.</span>
 <span class="c1"># This has a closed-form Hessian (modulo the non-smoothness of rho_tau) and</span>
 <span class="c1"># can be solved either by augmenting the LP with linear-quadratic structure</span>
 <span class="c1"># or via the smoothed-check-loss accelerated-gradient solver we use in the</span>
 <span class="c1"># in-browser viz components.</span>
 <span class="c1">#</span>
-<span class="c1"># L1 penalty (the focus of this section, "QR-lasso" or "L1-QR"):</span>
+<span class="c1"># L1 penalty (the focus of this section, "QR-lasso" or "L1-QR"; it is also the</span>
+<span class="c1"># penalty behind sklearn's QuantileRegressor(alpha=...), which minimizes</span>
+<span class="c1"># (1/n) sum_i rho_tau(Y_i - X_i^T beta) + alpha * ||beta||_1 with the intercept</span>
+<span class="c1"># unpenalized, so alpha = lambda / n):</span>
 <span class="c1">#     min_beta  sum_i rho_tau(Y_i - X_i^T beta) + lambda * ||beta||_1.</span>
 <span class="c1"># This stays a linear program, since ||beta||_1 = 1^T beta^+ + 1^T beta^-</span>
 <span class="c1"># splits cleanly with beta = beta^+ - beta^-. Augment the QR LP with these</span>
@@ -9303,7 +9309,7 @@ Saved: figures/qr_crossing_rearrangement.png
 <span class="c1"># At the population level, suppose the true conditional tau-quantile is linear</span>
 <span class="c1"># with sparse slope vector beta_0(tau) — only s out of p coordinates are</span>
 <span class="c1"># nonzero. The LP-lasso-QR estimator targets that sparse beta_0(tau) directly.</span>
-<span class="c1"># By contrast, ridge-QR (L2-penalised) shrinks all coordinates uniformly and</span>
+<span class="c1"># By contrast, ridge-QR (L2-penalized) shrinks all coordinates uniformly and</span>
 <span class="c1"># never sets any to exactly zero, so it cannot recover the sparsity pattern;</span>
 <span class="c1"># its high-dim rate is correspondingly slower.</span>
 <span class="c1">#</span>
@@ -9622,7 +9628,7 @@ Saved: figures/qr_penalized_path.png
 <span class="c1"># inflates or deflates the band uniformly to hit the target coverage.</span>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">cqr_interval</span><span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">x_cal</span><span class="p">,</span> <span class="n">y_cal</span><span class="p">,</span> <span class="n">x_eval</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span>
-                  <span class="n">alpha_l2</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">degree</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+                  <span class="n">alpha_l1</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">degree</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""CQR prediction interval (Topic 1, §6).</span>
 
 <span class="sd">    Returns (lo, hi, Q_hat) where lo, hi are arrays at x_eval and Q_hat is the</span>
@@ -9635,8 +9641,8 @@ Saved: figures/qr_penalized_path.png
     <span class="n">Phi_tr</span> <span class="o">=</span> <span class="n">poly</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">x_train</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
     <span class="n">Phi_cal</span> <span class="o">=</span> <span class="n">poly</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">x_cal</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
     <span class="n">Phi_ev</span> <span class="o">=</span> <span class="n">poly</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">x_eval</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
-    <span class="n">qr_lo</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau_lo</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l2</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">Phi_tr</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
-    <span class="n">qr_hi</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau_hi</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l2</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">Phi_tr</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+    <span class="n">qr_lo</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau_lo</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l1</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">Phi_tr</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+    <span class="n">qr_hi</span> <span class="o">=</span> <span class="n">QuantileRegressor</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="n">tau_hi</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_l1</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="s1">'highs'</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">Phi_tr</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
     <span class="c1"># Calibration scores</span>
     <span class="n">pred_lo_cal</span> <span class="o">=</span> <span class="n">qr_lo</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">Phi_cal</span><span class="p">)</span>
     <span class="n">pred_hi_cal</span> <span class="o">=</span> <span class="n">qr_hi</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">Phi_cal</span><span class="p">)</span>
