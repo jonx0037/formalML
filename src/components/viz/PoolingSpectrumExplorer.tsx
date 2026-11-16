@@ -22,9 +22,12 @@ import {
 // slider. At τ² = 0 the six lines collapse onto the population-mean line
 // (complete pooling); at τ² → ∞ each line returns to its OLS fit (no pooling).
 // The default τ²/σ² ≈ 0.07 reproduces the REML shrinkage factors (~0.22 for
-// n=4, ~0.59 for n=20) the topic reports at line 249. The size-dependent
-// drift — small classrooms collapsing hard, large classrooms barely moving —
-// is the §1.2 pedagogical payoff before §3 names the BLUP formula.
+// n=4, ~0.59 for n=20) the topic reports in §1.3. What depends on classroom
+// size is the share of its gap to the population-mean line that each line
+// closes (1 − λⱼ), not the distance it travels: the smallest classroom closes
+// the largest share and the largest classroom the smallest, though the largest
+// can still move more than a point because it starts farther away. That is
+// the §1.2 pedagogical payoff before §3 names the BLUP formula.
 //
 // DGP and shrinkage helpers are imported from shared/mixed-effects.ts so the
 // §3.3 BLUPShrinkageDial (A2) sees the same six classrooms.

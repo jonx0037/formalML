@@ -1,6 +1,13 @@
 """
 precompute_protonet_training.py — ProtoNet training curves + held-out decision
-regions, matching cells 44-46 of the notebook.
+regions, from cells 44-46 of the notebook (Figures 10-11).
+
+Executes the notebook's code cells 0-44 in order via _notebook_exec.py, so the
+ProtoNet is the one trained in cell 44 on the module-level `rng` after the
+earlier cells have advanced it. The two held-out tasks are then recomputed
+exactly as cell 46 does (its own `default_rng(SEED + 100)`, no other RNG). An
+earlier version trained from a fresh `default_rng(SEED)` and did not match the
+notebook's run (first-iteration loss 0.977 instead of the notebook's 0.888).
 
 Writes to BOTH:
   - src/data/sampleData/meta-learning/protonet_training.json
@@ -13,152 +20,88 @@ Output schema:
   "accCurve":  [...500 floats],
   "smoothedLoss": [...476 floats],
   "smoothedAcc":  [...476 floats],
+  "gridX": [...220 floats],     // linspace(-4, 4, 220) (same for gridY)
+  "gridY": [...220 floats],
   "heldOutTasks": [
     { "Xs": [[x,y], ...], "ys": [...], "Xq": [[x,y], ...], "yq": [...],
       "queryAcc": float,
-      "gridX":    [...220 floats],  // linspace(-4, 4, 220) (same for gridY)
-      "predGrid": [...48400 ints in {0..4}]  // pred[i*220 + j]
+      "predGrid": [...48400 ints in {0..4}]  // pred[iy*220 + ix], meshgrid order
     }, ...2 tasks
   ]
 }
 
-Runs in ~30-60s on CPU.
+Runs in ~5 s on CPU.
 """
 
-import json
 import sys
-from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
+from _notebook_exec import floats, run_notebook_through, write_json
+
+LAST_CELL = 44
 SEED = 20260518
-DEVICE = torch.device("cpu")
-
-THIS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = THIS_DIR.parent.parent
-OUT_DIRS = [
-    REPO_ROOT / "src" / "data" / "sampleData" / "meta-learning",
-    REPO_ROOT / "public" / "sample-data" / "meta-learning",
-]
-
-
-def sample_protonet_task(rng, n_classes=5, k_shot=5, m_query=15, sigma=0.35, radius=2.5):
-    base = rng.uniform(0, 2 * np.pi)
-    angles = np.linspace(0, 2 * np.pi, n_classes, endpoint=False) + base
-    means = radius * np.stack([np.cos(angles), np.sin(angles)], axis=1)
-    Xs, ys, Xq, yq = [], [], [], []
-    for c, mu in enumerate(means):
-        Xs.append(mu + sigma * rng.standard_normal((k_shot, 2)))
-        ys.extend([c] * k_shot)
-        Xq.append(mu + sigma * rng.standard_normal((m_query, 2)))
-        yq.extend([c] * m_query)
-    return np.vstack(Xs), np.array(ys), np.vstack(Xq), np.array(yq), means
-
-
-class ProtoNet(nn.Module):
-    def __init__(self, in_dim=2, h_dim=64, emb_dim=32):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, h_dim), nn.ReLU(),
-            nn.Linear(h_dim, h_dim), nn.ReLU(),
-            nn.Linear(h_dim, emb_dim),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-def proto_loss_and_acc(model, support_x, support_y, query_x, query_y, n_classes=5):
-    sup_emb = model(support_x)
-    qry_emb = model(query_x)
-    prototypes = torch.stack([
-        sup_emb[support_y == k].mean(dim=0) for k in range(n_classes)
-    ])
-    dists = torch.cdist(qry_emb, prototypes, p=2) ** 2
-    logits = -dists
-    loss = F.cross_entropy(logits, query_y)
-    acc = (logits.argmax(dim=-1) == query_y).float().mean()
-    return loss, acc, prototypes
 
 
 def smooth(a, w=25):
     a = np.asarray(a)
     kernel = np.ones(w) / w
-    return np.convolve(a, kernel, mode='valid')
+    return np.convolve(a, kernel, mode="valid")
 
 
 def main():
-    rng = np.random.default_rng(SEED)
-    torch.manual_seed(SEED)
-    proto = ProtoNet().to(DEVICE)
-    opt = torch.optim.Adam(proto.parameters(), lr=1e-3)
-    n_iters = 500
-    losses, accs = [], []
-    print(f"Training ProtoNet for {n_iters} iters…", file=sys.stderr)
-    for ep in range(n_iters):
-        Xs, ys_np, Xq, yq_np, _ = sample_protonet_task(rng)
-        Xs_t = torch.tensor(Xs, dtype=torch.float32)
-        ys_t = torch.tensor(ys_np, dtype=torch.long)
-        Xq_t = torch.tensor(Xq, dtype=torch.float32)
-        yq_t = torch.tensor(yq_np, dtype=torch.long)
-        opt.zero_grad()
-        loss, acc, _ = proto_loss_and_acc(proto, Xs_t, ys_t, Xq_t, yq_t)
-        loss.backward()
-        opt.step()
-        losses.append(float(loss.item()))
-        accs.append(float(acc.item()))
+    print(f"Executing notebook cells 0-{LAST_CELL}…", file=sys.stderr)
+    ns = run_notebook_through(LAST_CELL)
+    proto = ns["proto"]
+    sample_protonet_task = ns["sample_protonet_task"]
+    losses, accs = ns["proto_losses"], ns["proto_accs"]
+    print(f"loss {losses[0]:.3f} -> {losses[-1]:.3f}; "
+          f"acc {accs[0]:.2f} -> {accs[-1]:.2f}", file=sys.stderr)
 
-    # Held-out tasks
+    # Held-out tasks: the same computation as cell 46.
     held_rng = np.random.default_rng(SEED + 100)
-    held_tasks = []
     gx = np.linspace(-4, 4, 220)
     gy = np.linspace(-4, 4, 220)
     XX, YY = np.meshgrid(gx, gy)
-    grid_t = torch.tensor(np.column_stack([XX.ravel(), YY.ravel()]), dtype=torch.float32)
-    print("Computing held-out decision regions…", file=sys.stderr)
+    grid_t = torch.tensor(np.column_stack([XX.ravel(), YY.ravel()]),
+                          dtype=torch.float32)
+    held_tasks = []
     for _ in range(2):
-        Xs, ys_np, Xq, yq_np, _ = sample_protonet_task(held_rng)
+        Xs, ys_np, Xq, yq_np, _means = sample_protonet_task(held_rng)
         Xs_t = torch.tensor(Xs, dtype=torch.float32)
         ys_t = torch.tensor(ys_np, dtype=torch.long)
         Xq_t = torch.tensor(Xq, dtype=torch.float32)
         with torch.no_grad():
             sup_emb = proto(Xs_t)
-            protos = torch.stack([sup_emb[ys_t == k].mean(dim=0) for k in range(5)])
-            qry_emb = proto(Xq_t)
-            q_dists = torch.cdist(qry_emb, protos, p=2) ** 2
+            prototypes = torch.stack([sup_emb[ys_t == k].mean(dim=0)
+                                      for k in range(5)])
+            q_dists = torch.cdist(proto(Xq_t), prototypes, p=2) ** 2
             q_preds = q_dists.argmin(dim=-1).numpy()
-            emb_grid = proto(grid_t)
-            grid_dists = torch.cdist(emb_grid, protos, p=2) ** 2
-            pred_grid = grid_dists.argmin(dim=-1).numpy().astype(int)
+            g_dists = torch.cdist(proto(grid_t), prototypes, p=2) ** 2
+            pred_grid = g_dists.argmin(dim=-1).numpy()  # flat, meshgrid ravel order
         q_acc = float((q_preds == yq_np).mean())
+        print(f"held-out query acc {q_acc:.2f}", file=sys.stderr)
         held_tasks.append({
             "Xs": Xs.tolist(),
             "ys": ys_np.tolist(),
             "Xq": Xq.tolist(),
             "yq": yq_np.tolist(),
             "queryAcc": q_acc,
-            "predGrid": pred_grid.tolist(),
+            "predGrid": pred_grid.astype(int).tolist(),
         })
 
     payload = {
-        "metaIters": n_iters,
-        "lossCurve": [float(x) for x in losses],
-        "accCurve": [float(x) for x in accs],
-        "smoothedLoss": [float(x) for x in smooth(losses).tolist()],
-        "smoothedAcc": [float(x) for x in smooth(accs).tolist()],
-        "gridX": gx.tolist(),
-        "gridY": gy.tolist(),
+        "metaIters": int(ns["N_EPOCHS_PROTO"]),
+        "lossCurve": floats(losses),
+        "accCurve": floats(accs),
+        "smoothedLoss": floats(smooth(losses)),
+        "smoothedAcc": floats(smooth(accs)),
+        "gridX": floats(gx),
+        "gridY": floats(gy),
         "heldOutTasks": held_tasks,
     }
-
-    for outdir in OUT_DIRS:
-        outdir.mkdir(parents=True, exist_ok=True)
-        with open(outdir / "protonet_training.json", "w") as f:
-            json.dump(payload, f, allow_nan=False)
-        print(f"wrote {outdir / 'protonet_training.json'}", file=sys.stderr)
+    write_json("protonet_training.json", payload)
 
 
 if __name__ == "__main__":

@@ -474,7 +474,7 @@ $$
 N \cdot T_{\mathrm{grad}}^{\mathrm{S}} + T_{\mathrm{grad}}^{\mathrm{Q}} + N \cdot T_{\mathrm{HVP}}^{\mathrm{S}} \;\approx\; (3N + 1) \cdot T_{\mathrm{grad}}
 $$
 
-For $N = 5$, that's $16\times$ the cost of plain SGD per task per meta-iter. Multiply by task batch size $B$; `torch.func.vmap` parallelizes the task dimension. Practical consequences: small $\alpha$ is good for cost-bound regimes, and $N \le 5$ is the practical sweet spot where adaptation saturates.
+For $N = 5$, that's $16\times$ the cost of plain SGD per task per meta-iter. Multiply by task batch size $B$; `torch.func.vmap` parallelizes the task dimension. Practical consequences: small $\alpha$ is good for cost-bound regimes, and because the cost grows linearly in $N$, practice keeps $N$ small. Finn, Abbeel, and Levine's experiments use between one and ten inner steps, and §2.5 uses $N = 5$.
 
 ### 2.5 Sinusoidal regression: MAML in action
 
@@ -504,7 +504,7 @@ Training: $B = 4$ tasks per meta-iter, $N = 5$ inner steps, $\alpha = 0.01$ inne
 
 <Figure
   src="/images/topics/meta-learning/05_maml_meta_loss.png"
-  alt="MAML meta-training loss curve, log-scaled, over 100 meta-iters. Curve fluctuates in the 4–6 range."
+  alt="MAML meta-training loss curve, log-scaled, over 100 meta-iters. Curve fluctuates between about 0.5 and 9, mostly between 2.5 and 5."
   caption="Figure 5. MAML on sinusoidal regression — meta-training curve, log scale. Loss fluctuates without strong monotonic decrease at this short horizon; the across-task averaging at B=4 produces high variance."
 />
 
@@ -516,7 +516,7 @@ Training: $B = 4$ tasks per meta-iter, $N = 5$ inner steps, $\alpha = 0.01$ inne
   caption="Figure 6. A held-out task at A=3.2, φ=1.7. Four panels show predictions at n=0, 1, 3, 5 inner steps. The meta-trained θ₀ predicts a nearly flat function close to zero, the conditional mean over the task family. Five inner steps move the prediction only slightly toward the sinusoid; after 100 meta-iterations it does not recover the wave."
 />
 
-The adaptation-evolution figure shows the starting point of Finn–Abbeel–Levine's Figure 2, not its payoff. At $n = 0$, $\theta_0$ predicts a nearly flat function close to zero. That is what the theory predicts: with $\phi$ uniform on $[0, 2\pi]$, the conditional mean $\mathbb{E}_{A,\phi}[A \sin(x + \phi)]$ is zero, so the best prediction before seeing any support data is the zero function. A freshly initialized network of the same size also outputs a nearly flat function, though, so this panel alone doesn't show what meta-training contributed. The inner steps then move the prediction only slightly. By $n = 5$ the curve's half-range is about $0.7$ against the true amplitude $3.2$, and its RMSE against the true sinusoid on the plotted interval falls from $2.16$ at $n = 0$ to $1.98$, where predicting zero everywhere scores $2.20$. The explorer's right panel above comes from a separate run of the same configuration and tells the same story: half-range about $0.5$ (peak about $0.86$), RMSE falling only from $2.21$ to $2.05$. At full meta-training scale, Finn–Abbeel–Levine's Figure 2 shows the MAML prediction close to the wave after a few gradient steps; 100 meta-iterations at $B = 4$ is far short of that budget. Nor does the figure support a comparison with §1's Figure 1, which shows a different task: there, 200 SGD steps from a random initialization memorized the 5 points, and here five steps from $\theta_0$ barely leave the flat function. Neither recovers the wave. What Figure 6 does show is the mechanism the rest of the article analyzes. Adaptation is the same plain SGD in both cases, so everything MAML can gain lives in where the initialization sits.
+The adaptation-evolution figure shows the starting point of Finn–Abbeel–Levine's Figure 2, not its payoff. At $n = 0$, $\theta_0$ predicts a nearly flat function close to zero. That is what the theory predicts: with $\phi$ uniform on $[0, 2\pi]$, the conditional mean $\mathbb{E}_{A,\phi}[A \sin(x + \phi)]$ is zero, so the best prediction before seeing any support data is the zero function. A freshly initialized network of the same size also outputs a nearly flat function, though, so this panel alone doesn't show what meta-training contributed. The inner steps then move the prediction only slightly. By $n = 5$ the curve's half-range is about $0.7$ against the true amplitude $3.2$, and its RMSE against the true sinusoid on the plotted interval falls from $2.16$ at $n = 0$ to $1.98$, where predicting zero everywhere scores $2.20$. The explorer's right panel above plots these same predictions, and its default $(\alpha, N) = (0.01, 5)$ curve is this same training run. At full meta-training scale, Finn–Abbeel–Levine's Figure 2 shows the MAML prediction close to the wave after a few gradient steps; 100 meta-iterations at $B = 4$ is far short of that budget. Nor does the figure support a comparison with §1's Figure 1, which shows a different task: there, 200 SGD steps from a random initialization memorized the 5 points, and here five steps from $\theta_0$ barely leave the flat function. Neither recovers the wave. What Figure 6 does show is the mechanism the rest of the article analyzes. Adaptation is the same plain SGD in both cases, so everything MAML can gain lives in where the initialization sits.
 
 ---
 
@@ -834,8 +834,8 @@ This is a feature, not a bug, of the demo: the meta-learning story still goes th
 
 <Figure
   src="/images/topics/meta-learning/10_protonet_training.png"
-  alt="Two panels: cross-entropy loss decreasing from ~0.9 to ~0 over 500 meta-iters; accuracy at 1.00 throughout."
-  caption="Figure 10. Prototypical Network training. Accuracy stays at 1.00 from epoch 0 (clusters are linearly separable in input space); loss decreases as the embedding sharpens softmax confidence. The accuracy curve is uninformative at this scale; the loss curve shows the embedding refinement."
+  alt="Two panels: cross-entropy loss decreasing from ~0.9 to ~0 over 500 meta-iters; accuracy at or near 1.00 throughout."
+  caption="Figure 10. Prototypical Network training. Accuracy is 1.00 from epoch 0 and stays there on all but 5 of the 500 iterations, never dropping below 0.98 (clusters are linearly separable in input space); loss decreases as the embedding sharpens softmax confidence. The accuracy curve is uninformative at this scale; the loss curve shows the embedding refinement."
 />
 
 <ProtoNetTrainingExplorer client:visible />
@@ -1206,7 +1206,7 @@ $$
 
 **Inner-loop step size $\alpha$.** $L_F$ grows polynomially in $\alpha$ (8.4); variance (8.5) grows quadratically in $\alpha$ for the second-order pieces. Large $\alpha$ is bad for convergence. $\alpha = 0$ degenerates the meta-objective (no inner adaptation). Practical $\alpha$ is small but positive.
 
-**Inner-loop step count $N$.** Multi-step MAML inherits an $L_F$ scaling as $(1 + \alpha L)^{2N}$ — exponential in $N$. $N = 5$ in §2 is the practical sweet spot; beyond $N \approx 10$, the smoothness constant becomes large enough to require much smaller outer step sizes.
+**Inner-loop step count $N$.** Multi-step MAML inherits an $L_F$ scaling as $(1 + \alpha L)^{2N}$ — exponential in $N$. That growth, together with the per-step cost from §2.4, is why practice keeps $N$ small (between one and ten inner steps in Finn, Abbeel, and Levine's experiments; $N = 5$ in §2): as $N$ grows, the smoothness constant grows fast enough to require much smaller outer step sizes. §9.3 measures what test-time inner steps buy at this article's training budget.
 
 **Mini-batch size effects.** Variance terms scale inversely in mini-batch size $b$. FMO Theorem 4.5: $K$ iterations with batch size $b$ converge at $\mathcal{O}(1/\sqrt{Kb})$ — additional batch buys $\sqrt{b}$ improvement.
 
@@ -1249,12 +1249,12 @@ Evaluate trained CNP and Latent NP from §4 on 20 fresh held-out GP tasks, sweep
 <Figure
   src="/images/topics/meta-learning/15_sample_efficiency.png"
   alt="Test NLL vs context size on held-out GP tasks. CNP and Latent NP curves, error bars over 20 tasks."
-  caption="Figure 15. Sample efficiency: test NLL vs context size on held-out GP tasks. CNP and Latent NP track each other closely; NLL decreases as context grows and plateaus around K_C ≈ 12–16."
+  caption="Figure 15. Sample efficiency: test NLL vs context size on held-out GP tasks (mean ± SE over 20 tasks). Both models' NLL falls from K_C = 2 (CNP 1.39, Latent NP 1.36) to K_C = 20 (CNP 0.84, Latent NP 1.08), though not monotonically: both rise slightly at K_C = 8. From K_C = 4 on, the Latent NP sits above the CNP."
 />
 
 <SampleEfficiencyExplorer client:visible />
 
-CNP and Latent NP track each other closely with the Latent NP's mean (over 20 sampled latents per task) sitting slightly below CNP. Steep descent for $K_{\mathrm{C}} \in [2, 8]$, plateau for $K_{\mathrm{C}} \ge 12$. The transfer to MAML and Prototypical Networks is direct but the experiment shape differs (varying support size for MAML, varying shots per class for Prototypical). We don't run those sweeps separately — qualitatively the same story.
+The run only partly matches that expectation. The two models start level at $K_{\mathrm{C}} = 2$ (CNP $1.39$, Latent NP $1.36$, the Latent NP's NLL averaged over 20 sampled latents per task), and the largest drop for both comes from 2 to 4 context points. After a small rise at $K_{\mathrm{C}} = 8$, the CNP keeps falling to $0.84$ at $K_{\mathrm{C}} = 20$ and the Latent NP falls more slowly to $1.08$, so from $K_{\mathrm{C}} = 4$ on the Latent NP sits above the CNP, by about $0.24$ at $K_{\mathrm{C}} = 16$. Neither curve shows a clear plateau over this range. The transfer to MAML and Prototypical Networks is direct but the experiment shape differs (varying support size for MAML, varying shots per class for Prototypical). We don't run those sweeps separately — qualitatively the same story.
 
 ### 9.3 Inner-loop step-count sensitivity for MAML / FOMAML / Reptile
 
