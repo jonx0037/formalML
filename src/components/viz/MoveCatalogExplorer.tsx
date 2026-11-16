@@ -58,6 +58,8 @@ export default function MoveCatalogExplorer() {
   const [K, setK] = useState(10);
 
   const split = useMemo(() => rgSplit(0, 1, 1, u1, u2, u3), [u1, u2, u3]);
+  // Birth/death Jacobian at the balanced split u_w = 0.5 for the current K.
+  const jacMid = Math.pow(0.5, K - 1);
 
   const { ref: containerRef, width: containerWidth } = useResizeObserver<HTMLDivElement>();
   const W = containerWidth || 800;
@@ -162,22 +164,16 @@ export default function MoveCatalogExplorer() {
       });
       // Reference marker at u_w = 0.5 — the balanced-split midpoint where the
       // birth/death Jacobian on the current K reaches the value (1/2)^(K-1).
-      const valHere = Math.pow(1 - 0.5, K - 1);
-      g.append('circle').attr('cx', xS(0.5)).attr('cy', yS(Math.max(valHere, 1e-17))).attr('r', 4).style('fill', 'var(--color-accent)');
-      g.append('text')
-        .attr('x', xS(0.5) + 6)
-        .attr('y', yS(Math.max(valHere, 1e-17)) - 8)
-        .style('font-size', '11px')
-        .style('font-family', 'var(--font-mono)')
-        .style('fill', 'var(--color-accent)')
-        .text(`K=${K}, u_w=0.5: ${valHere.toExponential(2)}`);
+      // Its value is printed in the readout above the plot: an in-plot label
+      // next to the marker collides with the K=3/K=5 curve labels at u_w = 0.85.
+      g.append('circle').attr('cx', xS(0.5)).attr('cy', yS(Math.max(jacMid, 1e-17))).attr('r', 4).style('fill', 'var(--color-accent)');
 
       g.append('g').attr('transform', `translate(0,${h})`).call(d3.axisBottom(xS).ticks(6)).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('g').call(d3.axisLeft(yS).ticks(7, '~e')).selectAll('text').style('fill', 'var(--color-text-secondary)');
       g.append('text').attr('x', w / 2).attr('y', h + 30).attr('text-anchor', 'middle').style('font-size', '12px').style('font-family', 'var(--font-sans)').style('fill', 'var(--color-text)').text('u_w  (Beta(1, K) auxiliary)');
       g.append('text').attr('x', -h / 2).attr('y', -42).attr('text-anchor', 'middle').attr('transform', 'rotate(-90)').style('font-size', '12px').style('font-family', 'var(--font-sans)').style('fill', 'var(--color-text)').text('|det J_birth| = (1 - u_w)^(K-1)');
     },
-    [K, panelW, panelH],
+    [K, jacMid, panelW, panelH],
   );
 
   const sliderRow = (
@@ -238,6 +234,9 @@ export default function MoveCatalogExplorer() {
         </div>
         <div style={{ width: isMobile ? '100%' : panelW }}>
           {sliderRow('K', K, (v) => setK(Math.round(v)), 1, 50, 1, (n) => n.toFixed(0), 'Current mixture order K')}
+          <div style={{ marginBottom: 6, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-accent)' }}>
+            ● K={K}, u_w=0.5: |det J_birth| = {jacMid.toExponential(2)}
+          </div>
           <svg ref={jacRef} width={panelW} height={panelH} />
         </div>
       </div>
