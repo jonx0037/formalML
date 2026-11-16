@@ -5,8 +5,7 @@ import { useResizeObserver } from './shared/useResizeObserver';
 import { dimensionColors } from './shared/colorScales';
 import {
   naturalToExpectation,
-  solveGeodesicGaussian,
-  fisherMetricGaussian,
+  fisherRaoGeodesicGaussian,
   clamp,
 } from './shared/manifoldGeometry';
 
@@ -26,7 +25,7 @@ const DRAG_PAD_X = 0.2;
 const DRAG_PAD_Y_LO = 0.15;
 const DRAG_PAD_Y_HI = 0.2;
 
-type CoordGrid = 'none' | 'theta' | 'eta';
+type CoordGrid = 'none' | 'natural' | 'expectation';
 
 const fmt = (x: number) => x.toFixed(2);
 
@@ -107,24 +106,10 @@ export default function DualGeometryExplorer() {
       }
     }
 
-    // Levi-Civita geodesic via ODE solver
-    // Find initial velocity toward end point (shooting heuristic)
-    const dmu0 = endMu - startMu;
-    const dsig0 = endSig - startSig;
-    // Normalize to unit speed in Fisher metric
-    const metric = fisherMetricGaussian(startSig);
-    const speed = Math.sqrt(
-      metric.g[0][0] * dmu0 * dmu0 + metric.g[1][1] * dsig0 * dsig0
-    );
-    const scale = speed > 1e-8 ? 1 / speed : 1;
-    const lcPts = solveGeodesicGaussian(
-      startMu, startSig,
-      dmu0 * scale, dsig0 * scale,
-      speed, 200
-    );
-    const lcGeo = lcPts
-      .filter((p) => p.y > 0.05 && p.y < 5 && Math.abs(p.x) < 5)
-      .map((p) => ({ x: p.x, y: p.y }));
+    // Levi-Civita (Fisher-Rao) geodesic: closed form through both endpoints —
+    // a semicircle centered on the μ-axis in (μ, √2σ), i.e. a half-ellipse in (μ, σ)
+    const lcGeo = fisherRaoGeodesicGaussian(startMu, startSig, endMu, endSig, nPts)
+      .filter((p) => p.y > 0.05 && p.y < 5 && Math.abs(p.x) < 5);
 
     return { eGeo, mGeo, lcGeo };
   }, [startMu, startSig, endMu, endSig]);
@@ -134,7 +119,7 @@ export default function DualGeometryExplorer() {
     const lines: { pts: { x: number; y: number }[]; dim: number }[] = [];
     const nPts = 80;
 
-    if (coordGrid === 'theta') {
+    if (coordGrid === 'natural') {
       // Lines of constant η₁ and constant η₂ in (μ, σ) space
       for (let eta1 = -4; eta1 <= 4; eta1 += 0.8) {
         const pts: { x: number; y: number }[] = [];
@@ -156,7 +141,7 @@ export default function DualGeometryExplorer() {
         }
         if (pts.length > 2) lines.push({ pts, dim: 1 });
       }
-    } else if (coordGrid === 'eta') {
+    } else if (coordGrid === 'expectation') {
       // Lines of constant μ and constant (μ²+σ²) in (μ, σ) space
       // Constant μ: vertical lines — trivial grid
       for (let mu = -3; mu <= 3; mu += 0.6) {
@@ -362,8 +347,8 @@ export default function DualGeometryExplorer() {
             className="rounded border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-2 py-0.5 text-[var(--color-text-primary)]"
           >
             <option value="none">None</option>
-            <option value="theta">η (natural params)</option>
-            <option value="eta">μ (expectation params)</option>
+            <option value="natural">η (natural params)</option>
+            <option value="expectation">μ (expectation params)</option>
           </select>
         </label>
       </div>

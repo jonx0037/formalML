@@ -888,6 +888,42 @@ export function fisherRaoDistanceGaussian(
   return Math.sqrt(2) * Math.acosh(Math.max(1, arg));
 }
 
+/** Closed-form Fisher-Rao (Levi-Civita, α = 0) geodesic between two univariate
+ *  Gaussians for ds² = (1/σ²)(dμ² + 2 dσ²). With y = √2·σ this is twice the
+ *  Poincaré half-plane metric, so the geodesic is the arc of the semicircle
+ *  centered on the μ-axis through both points (a half-ellipse in (μ, σ)), or the
+ *  vertical segment when μ₁ = μ₂. Returns nPts + 1 points (x = μ, y = σ) running
+ *  from (μ₁, σ₁) to (μ₂, σ₂). */
+export function fisherRaoGeodesicGaussian(
+  mu1: number, sigma1: number,
+  mu2: number, sigma2: number,
+  nPts = 100
+): { x: number; y: number }[] {
+  const s1 = Math.max(1e-12, sigma1);
+  const s2 = Math.max(1e-12, sigma2);
+  const y1 = Math.SQRT2 * s1;
+  const y2 = Math.SQRT2 * s2;
+  const dmu = mu2 - mu1;
+  const pts: { x: number; y: number }[] = [];
+  if (Math.abs(dmu) < 1e-6) {
+    // Vertical geodesic; geometric interpolation in σ is constant Fisher speed
+    for (let i = 0; i <= nPts; i++) {
+      const t = i / nPts;
+      pts.push({ x: mu1 + t * dmu, y: s1 * Math.pow(s2 / s1, t) });
+    }
+    return pts;
+  }
+  const c = (mu2 * mu2 + y2 * y2 - mu1 * mu1 - y1 * y1) / (2 * dmu);
+  const r = Math.hypot(mu1 - c, y1);
+  const a1 = Math.atan2(y1, mu1 - c);
+  const a2 = Math.atan2(y2, mu2 - c);
+  for (let i = 0; i <= nPts; i++) {
+    const a = a1 + (i / nPts) * (a2 - a1);
+    pts.push({ x: c + r * Math.cos(a), y: (r * Math.sin(a)) / Math.SQRT2 });
+  }
+  return pts;
+}
+
 /** Convert Gaussian natural parameters (η₁, η₂) to (μ, σ²).
  *  η₁ = μ/σ², η₂ = -1/(2σ²) → σ² = -1/(2η₂), μ = η₁ σ² */
 export function naturalToExpectation(
