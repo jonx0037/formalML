@@ -9,8 +9,8 @@ seeded in cell 1, which cells 3-33 have already advanced. A fresh
 produces different curves (the pre-2026-11 JSON did exactly that: CNP NLL
 35.24 -> 58.72 instead of the notebook's 31.92 -> 42.91). To guarantee the
 JSON reproduces the notebook's own run, this script executes the notebook's
-code cells 1-37 in order (Agg backend, figure saving and display stubbed
-out) and serializes the resulting arrays.
+code cells 0-37 in order via _notebook_exec.py and serializes the resulting
+arrays.
 
 Writes to BOTH:
   - src/data/sampleData/meta-learning/np_curves.json
@@ -44,24 +44,14 @@ Output schema:
 Runs in ~5-10 s on CPU (cells 1-37 include the §2-3 MAML/FOMAML/Reptile runs).
 """
 
-import json
+
 import sys
-from pathlib import Path
 
-import matplotlib
+import numpy as np
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+from _notebook_exec import floats, run_notebook_through, write_json
 
-THIS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = THIS_DIR.parent.parent
-NOTEBOOK = THIS_DIR / "01_meta_learning.ipynb"
 LAST_CELL = 37  # held-out comparison cell (Figure 09)
-OUT_DIRS = [
-    REPO_ROOT / "src" / "data" / "sampleData" / "meta-learning",
-    REPO_ROOT / "public" / "sample-data" / "meta-learning",
-]
 
 
 def smooth(a, w=25):
@@ -70,24 +60,8 @@ def smooth(a, w=25):
     return np.convolve(a, kernel, mode="valid")
 
 
-def run_notebook_through(last_cell):
-    """Execute code cells 0..last_cell of the notebook; return the namespace."""
-    nb = json.loads(NOTEBOOK.read_text())
-    plt.savefig = lambda *a, **k: None  # never overwrite the notebook's PNGs
-    plt.show = lambda *a, **k: None
-    ns = {"__name__": "__notebook__"}
-    for i, cell in enumerate(nb["cells"][: last_cell + 1]):
-        if cell["cell_type"] != "code":
-            continue
-        exec(compile("".join(cell["source"]), f"<cell {i}>", "exec"), ns)
-        plt.close("all")
-    return ns
-
-
 def main():
-    if not NOTEBOOK.exists():
-        sys.exit(f"notebook not found: {NOTEBOOK}")
-    print(f"Executing {NOTEBOOK.name} cells 0-{LAST_CELL}…", file=sys.stderr)
+    print(f"Executing notebook cells 0-{LAST_CELL}…", file=sys.stderr)
     ns = run_notebook_through(LAST_CELL)
 
     cnp_losses = ns["cnp_losses"]
@@ -96,9 +70,6 @@ def main():
     print(f"CNP NLL {cnp_losses[0]:.2f} -> {cnp_losses[-1]:.2f}; "
           f"Latent NP -ELBO {lnp_losses[0]:.2f} -> {lnp_losses[-1]:.2f}",
           file=sys.stderr)
-
-    def floats(a):
-        return [float(x) for x in np.asarray(a).ravel().tolist()]
 
     payload = {
         "epochs": int(ns["N_EPOCHS_NP"]),
@@ -123,12 +94,7 @@ def main():
             "lnpSamples": [floats(row) for row in lnp_samples[:5]],
         },
     }
-
-    for outdir in OUT_DIRS:
-        outdir.mkdir(parents=True, exist_ok=True)
-        with open(outdir / "np_curves.json", "w") as f:
-            json.dump(payload, f, allow_nan=False)
-        print(f"wrote {outdir / 'np_curves.json'}", file=sys.stderr)
+    write_json("np_curves.json", payload)
 
 
 if __name__ == "__main__":
