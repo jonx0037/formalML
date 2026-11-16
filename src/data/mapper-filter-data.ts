@@ -4,10 +4,15 @@
  *
  * The figure-eight has H₁ = 2 (two independent loops). Different filter functions
  * produce different Mapper graphs — demonstrating that the choice of filter is
- * a modelling decision with topological consequences.
+ * a modeling decision with topological consequences.
  *
- * Parametric form: x = sin(t), y = sin(t) cos(t), t ∈ [0, 2π).
+ * Parametric form (lemniscate of Gerono): x = sin(t), y = sin(t) cos(t), t ∈ [0, 2π).
  * 100 points with small deterministic noise.
+ *
+ * NOTE: the filter values below are computed from these points, but the Mapper
+ * graphs in `filterVariants` are hand-authored illustrative sketches. They were
+ * not produced by running Mapper on this point cloud, and they do not match the
+ * article's notebook runs (lemniscate of Bernoulli, KDE density, PCA filter).
  */
 
 export interface FilterPoint {
@@ -23,7 +28,7 @@ export interface FilterVariant {
   description: string;
   /** One filter value per point (same order as figureEightPoints). */
   filterValues: number[];
-  /** Pre-computed Mapper graph for this filter. */
+  /** Hand-authored illustrative sketch of a Mapper graph for this filter (not computed). */
   graph: {
     nodes: { id: number; size: number; filterValue: number }[];
     edges: [number, number][];
@@ -73,7 +78,7 @@ function eccentricityFilter(pts: FilterPoint[]): number[] {
   });
 }
 
-/** Density: count of neighbours within radius 0.3. */
+/** Density: count of neighbors within radius 0.3. */
 function densityFilter(pts: FilterPoint[]): number[] {
   const radius = 0.3;
   return pts.map((p) => {
@@ -87,13 +92,13 @@ function densityFilter(pts: FilterPoint[]): number[] {
   });
 }
 
-// ─── Pre-computed Mapper graphs ─────────────────────────
+// ─── Illustrative Mapper graph sketches (hand-authored, not computed) ───
 
 /**
  * Three filter function variants applied to the same figure-eight point cloud.
  *
  * 1. x-coordinate — captures the two-loop structure via a path with 2 cycles.
- * 2. Eccentricity — emphasises extremal geometry, different connectivity.
+ * 2. Eccentricity — emphasizes extremal geometry, different connectivity.
  * 3. Density — highlights the dense crossing point at the origin.
  */
 export const filterVariants: FilterVariant[] = [
@@ -183,7 +188,7 @@ export const filterVariants: FilterVariant[] = [
   {
     name: 'Density',
     description:
-      'Neighbour count within r=0.3. The crossing point has highest density, connecting both loops.',
+      'Neighbor count within r = 0.3. The crossing point has the highest density.',
     filterValues: densityFilter(figureEightPoints),
     graph: {
       nodes: [
