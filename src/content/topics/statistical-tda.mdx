@@ -490,76 +490,93 @@ Because persistence landscapes live in a Banach space and satisfy a CLT, we can 
 <TheoremBlock type="definition" number={4} title="Topological Two-Sample Test">
 Given two point clouds $X = \{x_1, \ldots, x_m\}$ and $Y = \{y_1, \ldots, y_n\}$, we test:
 
-$$H_0: \lambda_X = \lambda_Y \quad \text{(same underlying topology)}$$
-$$H_1: \lambda_X \neq \lambda_Y \quad \text{(different topology)}$$
+$$H_0: P_X = P_Y \quad \text{(both samples come from the same distribution)}$$
+$$H_1: \lambda_X \neq \lambda_Y \quad \text{(the population landscapes differ, e.g. a different number of loops)}$$
+
+Here $\lambda_X$ and $\lambda_Y$ are the population mean landscapes of the distributions $P_X$ and $P_Y$. The null is stronger than equal landscapes: $P_X = P_Y$ implies $\lambda_X = \lambda_Y$, but not conversely. The permutation step needs that strength (Theorem 6), and the statistic is built to detect the alternatives in which the landscapes differ.
 
 **Procedure:**
 
-1. Compute mean persistence landscapes $\bar{\lambda}_X$ and $\bar{\lambda}_Y$ from bootstrap resamples of each dataset.
-2. Define the test statistic $T = \|\bar{\lambda}_X - \bar{\lambda}_Y\|_2$.
+1. Fix one evaluation grid on $[0, \operatorname{diam}(X \cup Y)]$. Vietoris–Rips births and deaths are pairwise distances, so this interval contains the diagram of every resample of every relabeling, and the grid does not depend on the labels. On this grid, compute mean persistence landscapes $\bar{\lambda}_X$ and $\bar{\lambda}_Y$ from bootstrap resamples of each dataset.
+2. Define the test statistic $T = \|\bar{\lambda}_X - \bar{\lambda}_Y\|_2 = \big(\sum_{k=1}^{K} \int (\bar{\lambda}_{X,k}(t) - \bar{\lambda}_{Y,k}(t))^2 \, dt\big)^{1/2}$, summed over the first $K$ landscape layers (in code, a Riemann sum on the grid).
 3. Under $H_0$, permute the labels: pool $X \cup Y$, randomly split into groups of size $m$ and $n$, recompute $T$.
 4. Repeat $B$ times to build the null distribution of $T$.
-5. Compute the $p$-value: $p = \frac{1}{B} \sum_{b=1}^{B} \mathbf{1}[T_b \geq T_\text{obs}]$.
+5. Compute the $p$-value, counting the observed labeling as one of the $B + 1$: $p = \frac{1 + \sum_{b=1}^{B} \mathbf{1}[T_b \geq T_\text{obs}]}{B + 1}$. Reject $H_0$ at level $\alpha$ when $p \leq \alpha$.
 </TheoremBlock>
 
 ### Test 1: Circle vs. Figure-Eight
 
-We test whether a circle ($\beta_1 = 1$) and a figure-eight ($\beta_1 = 2$) have statistically different $H_1$ topology. They should — the circle has one independent loop, the figure-eight has two.
+We test whether a circle ($\beta_1 = 1$) and a figure-eight ($\beta_1 = 2$) have statistically different $H_1$ topology. They should — the circle has one independent loop, the figure-eight has two. Both tests in this section use 150 points per sample, $B = 200$ permutations, and 15 bootstrap resamples per mean landscape (the code block below defaults to 500 permutations and 30 resamples).
 
-![Three panels: circle point cloud, figure-eight point cloud, null distribution with T_obs far in the right tail](/images/topics/statistical-tda/permutation_test.png)
+![Three panels: circle point cloud, figure-eight point cloud, null distribution with T_obs = 0.30 far to the right of all 200 permuted statistics, p = 1/201](/images/topics/statistical-tda/permutation_test.png)
 
-The observed test statistic $T_\text{obs}$ lands far in the right tail of the null distribution, yielding $p \approx 0.00$ — we reject $H_0$ and conclude the two shapes have statistically different topology. The permutation test correctly detects the topological difference between $\beta_1 = 1$ and $\beta_1 = 2$.
+The observed test statistic $T_\text{obs} \approx 0.302$ lands far in the right tail of the null distribution: none of the 200 permuted statistics reaches it (the largest is about $0.114$), so $p = 1/201 \approx 0.005$, the smallest value the test can return with $B = 200$. We reject $H_0$ and conclude the two shapes have statistically different topology. The permutation test correctly detects the topological difference between $\beta_1 = 1$ and $\beta_1 = 2$.
 
 ### Sanity Check: Circle vs. Circle
 
-To check that the test isn't rejecting everything regardless of the data, we test two samples from the *same* distribution — both circles with $\beta_1 = 1$. Here $H_0$ is true, so a level-$0.05$ test should **fail to reject** on all but about one draw in twenty.
+To check that the test isn't rejecting everything regardless of the data, we test two samples from the *same* distribution — both circles with $\beta_1 = 1$. Here $H_0$ is true, so a level-$0.05$ test should **fail to reject** on all but at most one draw in twenty, in the long run.
 
-![Three panels: two circle point clouds, null distribution with T_obs in the upper tail at p = 0.01](/images/topics/statistical-tda/permutation_test_null.png)
+![Three panels: two circle point clouds, null distribution with T_obs = 0.14 in the upper tail, 2 of 200 permuted statistics at least as large, p ≈ 0.015](/images/topics/statistical-tda/permutation_test_null.png)
 
-This particular pair lands in the upper tail of the null distribution ($p = 0.01$), so at $\alpha = 0.05$ the test rejects — a false rejection, since both samples come from the same circle. One draw cannot demonstrate size either way: the size guarantee (Theorem 6) is a long-run rate, $\mathbb{P}[\text{reject} \mid H_0] \approx \alpha$, and this draw is one of the roughly one-in-twenty that a size-$0.05$ test is allowed to reject. Power is the opposite story: against a genuinely different topology (Test 1) the test rejects decisively.
+This particular pair lands in the upper tail of the null distribution: $T_\text{obs} \approx 0.141$, and only 2 of the 200 permuted statistics are at least that large, so $p = 3/201 \approx 0.015$. At $\alpha = 0.05$ the test rejects — a false rejection, since both samples come from the same circle. One draw cannot demonstrate size either way: the size guarantee (Theorem 6) bounds a long-run rate, $\mathbb{P}[\text{reject} \mid H_0] \leq \alpha$, and this draw is one of the at most one-in-twenty that a level-$0.05$ test is allowed to reject. Power is the opposite story: against a genuinely different topology (Test 1) the test rejects decisively.
 
 <TheoremBlock type="theorem" number={6} title="Permutation Test Validity">
-Under the null hypothesis $H_0: \lambda_X = \lambda_Y$ (both samples drawn from distributions with the same population landscape), the permutation distribution of $T$ converges to the null distribution of the test statistic. The permutation test has asymptotically correct size: $\mathbb{P}[\text{reject} \mid H_0] \to \alpha$ as the number of permutations $B \to \infty$.
+Suppose that under $H_0$ the pooled sample $(x_1, \ldots, x_m, y_1, \ldots, y_n)$ is exchangeable — for instance, all $m + n$ points are drawn i.i.d. from one distribution, $P_X = P_Y$. Let $T$ be computed by the same procedure for every labeling (a grid fixed by the pooled data, fresh bootstrap randomness on each evaluation), and let the $B$ permutations be drawn independently and uniformly at random. Then the $p$-value $p = \frac{1 + \sum_{b=1}^{B} \mathbf{1}[T_b \geq T_\text{obs}]}{B + 1}$ satisfies $\mathbb{P}[p \leq \alpha \mid H_0] \leq \alpha$ for every $\alpha \in [0, 1]$ and every $B \geq 1$. The test is exactly valid at finite $B$, not only as $B \to \infty$.
 </TheoremBlock>
+
+The reason is a ranking argument: under $H_0$ the $B + 1$ values $T_\text{obs}, T_1, \ldots, T_B$ are exchangeable, so $T_\text{obs}$ is equally likely to sit at any rank among them, and $p \leq \alpha$ requires it to rank among the top $\lfloor \alpha (B + 1) \rfloor$. Two conditions carry the weight. First, equal population landscapes alone ($\lambda_X = \lambda_Y$) do not make the pooled sample exchangeable, which is why $H_0$ asks for equal distributions. Second, the $+1$ matters: dropping it gives $\frac{1}{B} \sum_b \mathbf{1}[T_b \geq T_\text{obs}]$, a Monte Carlo estimate of the exact permutation $p$-value, which can return $0$ and is not exactly valid at finite $B$.
 
 <TheoremBlock type="proposition" number={2} title="Power of the Landscape Test">
 Under the alternative $H_1: \lambda_X \neq \lambda_Y$, the test rejects $H_0$ with probability approaching 1 as $m, n \to \infty$, provided $\|\lambda_X - \lambda_Y\|_2 > 0$. The convergence rate of the test power depends on the signal strength $\|\lambda_X - \lambda_Y\|_2$ relative to the landscape variance — stronger topological differences are detected with fewer samples.
 </TheoremBlock>
 
 ```python
+from scipy.spatial.distance import pdist
+
 def landscape_permutation_test(X, Y, maxdim=1, k_max=3, n_perm=500,
-                                n_bootstrap=30, seed=42):
+                                n_bootstrap=30, n_points=1000, seed=42):
     """
     Permutation test on persistence landscapes.
-    Tests H0: same topology vs H1: different topology.
+    H0: X and Y are drawn from the same distribution (pooled sample
+    exchangeable); T targets differences in the mean landscape.
 
     Returns: p_value, T_obs, T_null
     """
     rng = np.random.default_rng(seed)
     m, n = len(X), len(Y)
+    pooled = np.vstack([X, Y])
+
+    # One grid for every landscape: Rips births/deaths are pairwise
+    # distances, so [0, diam(pooled)] covers every resample of every
+    # relabeling, and the grid never depends on the labels.
+    t_max = pdist(pooled).max()
+    dt = t_max / (n_points - 1)
 
     def mean_landscape(data, n_boot, rng_local):
-        all_landscapes = []
+        L_sum = np.zeros((k_max, n_points))
         for _ in range(n_boot):
             idx = rng_local.choice(len(data), size=len(data), replace=True)
             dgm = ripser(data[idx], maxdim=maxdim)['dgms'][maxdim]
-            t, L = persistence_landscape(dgm, k_max=k_max, n_points=200)
-            all_landscapes.append(L.ravel())
-        return np.mean(all_landscapes, axis=0)
+            _, L = persistence_landscape(dgm, k_max=k_max, t_min=0.0,
+                                         t_max=t_max, n_points=n_points)
+            L_sum += L
+        return L_sum / n_boot          # pointwise mean on the common grid
 
     def test_statistic(a, b, rng_local):
-        return np.linalg.norm(mean_landscape(a, n_bootstrap, rng_local)
-                              - mean_landscape(b, n_bootstrap, rng_local))
+        diff = (mean_landscape(a, n_bootstrap, rng_local)
+                - mean_landscape(b, n_bootstrap, rng_local))
+        return np.sqrt(np.sum(diff ** 2) * dt)   # discretized L2 norm
 
     T_obs = test_statistic(X, Y, rng)
 
-    pooled = np.vstack([X, Y])
     T_null = np.zeros(n_perm)
     for p in range(n_perm):
         perm = rng.permutation(m + n)
         T_null[p] = test_statistic(pooled[perm[:m]], pooled[perm[m:]], rng)
 
-    return np.mean(T_null >= T_obs), T_obs, T_null
+    # +1 counts the observed labeling: exactly valid for every n_perm
+    p_value = (1 + np.sum(T_null >= T_obs)) / (n_perm + 1)
+    return p_value, T_obs, T_null
 ```
 
 ---
