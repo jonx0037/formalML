@@ -206,7 +206,7 @@ This filter peaks at the crossing point where data is dense. It emphasizes the p
 
 **PCA projection** projects onto the first principal component:
 $$f(x) = \langle x - \bar{x}, v_1 \rangle$$
-This separates the two lobes along the axis of maximum variance. The resulting Mapper graph will clearly show the two loops as separate cycles connected at the crossing.
+This separates the two lobes along the axis of maximum variance. With 15 intervals, 45% overlap, and DBSCAN at $\varepsilon = 0.20$, the resulting Mapper graph shows the two loops as separate cycles connected at the crossing.
 
 Choosing a filter is choosing a perspective. Each filter reveals different topological features, and an exploratory analysis will often try several filters to build a complete picture.
 
@@ -371,7 +371,9 @@ A figure-eight (wedge of two circles) has $\beta_0 = 1$ and $\beta_1 = 2$. Mappe
 
 ### The Torus
 
-A torus embedded in $\mathbb{R}^3$ has $\beta_0 = 1$, $\beta_1 = 2$ (two independent loops — meridional and longitudinal), and $\beta_2 = 1$ (a cavity). While the 1-skeleton Mapper graph cannot directly detect the $\beta_2$ feature, it reveals the two independent cycles and the overall connectivity structure of the torus.
+A torus embedded in $\mathbb{R}^3$ has $\beta_0 = 1$, $\beta_1 = 2$ (two independent loops — meridional, around the tube, and longitudinal, around the central hole), and $\beta_2 = 1$ (a cavity). The 1-skeleton Mapper graph cannot detect $\beta_2$, and with the height filter $f = z$ it cannot cleanly show both loops either. Each slice of the torus is one or two rings around the central hole, and a well-resolved Mapper graph turns each ring into a single node, which collapses the longitudinal loop. At best, Mapper then approximates the Reeb graph of the height function (see Statistical Convergence below): a single cycle that runs from the bottom of the tube up the outer wall, over the top, and down the inner wall. That cycle is the meridional loop. Recovering both loops takes a bivariate filter, or persistent homology on the point cloud itself.
+
+The run in the figure below (800 points on a torus with center radius 2 and tube radius 0.8, 15 intervals, 40% overlap, DBSCAN with $\varepsilon = 0.5$) does not reach even that one cycle. The thin slices sample the tube sparsely, so DBSCAN breaks most rings into arcs and leaves 175 of the 800 points in no node. The graph has 67 nodes, 62 edges, 11 connected components, and 6 short cycles among staggered arcs, each spanning at most five adjacent intervals; none runs from the bottom of the tube to the top. Changing $\varepsilon$ alone does not repair it: at $\varepsilon = 1.1$ the graph is connected but still has 4 cycles, and from $\varepsilon = 1.6$ (the gap between the inner and outer walls at mid-height, twice the tube radius) each slice merges into one cluster and the graph becomes a 15-node path with no cycles.
 
 ![Classic Mapper examples](/images/topics/mapper-algorithm/mapper-classic-examples.png)
 
@@ -407,10 +409,11 @@ graph_km_circle = mapper_km.map(lens_circle, circle,
                                  clusterer=DBSCAN(eps=0.3, min_samples=3))
 
 # Figure-eight with L2 norm filter
+# eps = 0.25: at eps = 0.15 or 0.20 a sampling gap on the left lobe opens that loop (1 cycle instead of 2)
 lens_fig8 = mapper_km.fit_transform(fig8, projection="l2norm")
 graph_km_fig8 = mapper_km.map(lens_fig8, fig8,
                                cover=km.Cover(n_cubes=15, perc_overlap=0.45),
-                               clusterer=DBSCAN(eps=0.15, min_samples=5))
+                               clusterer=DBSCAN(eps=0.25, min_samples=5))
 ```
 
 ![KeplerMapper output](/images/topics/mapper-algorithm/keplermapper-examples.png)

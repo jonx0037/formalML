@@ -124,23 +124,25 @@ export default function MoveCatalogExplorer() {
       const xS = d3.scaleLinear().domain([0, 1]).range([0, w]);
       const yS = d3.scaleLog().domain([1e-17, 2]).range([h, 0]).clamp(true);
 
-      // Rounding-loss horizon — below this the det-then-log idiom accumulates
-      // serious error long before the value itself underflows (~2e-308).
+      // Reference line at float64 machine epsilon. Epsilon bounds relative
+      // rounding error, not magnitude: values below it keep 53 significant
+      // bits. Log-space arithmetic guards against under/overflow of raw
+      // products (smallest normal ~2.2e-308), not against rounding.
       g.append('line')
         .attr('x1', 0)
         .attr('x2', w)
-        .attr('y1', yS(1e-15))
-        .attr('y2', yS(1e-15))
+        .attr('y1', yS(Number.EPSILON))
+        .attr('y2', yS(Number.EPSILON))
         .style('stroke', 'var(--color-text-secondary)')
         .attr('stroke-dasharray', '3 3');
       g.append('text')
         .attr('x', w - 4)
-        .attr('y', yS(1e-15) - 4)
+        .attr('y', yS(Number.EPSILON) - 4)
         .attr('text-anchor', 'end')
         .style('font-size', '10px')
         .style('font-family', 'var(--font-sans)')
         .style('fill', 'var(--color-text-secondary)')
-        .text('rounding-loss horizon ≈ 10⁻¹⁵');
+        .text('float64 ε ≈ 2.2×10⁻¹⁶ (relative, not a floor)');
 
       const colors = d3.schemeTableau10;
       Ks.forEach((Kk, idx) => {
