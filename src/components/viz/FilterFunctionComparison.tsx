@@ -94,7 +94,7 @@ export default function FilterFunctionComparison() {
       .style('font-family', 'var(--font-sans)')
       .attr('font-size', 12)
       .attr('font-weight', 600)
-      .text('Mapper Graph');
+      .text('Mapper Graph (illustrative sketch)');
 
     // Force layout
     interface FilterGraphNode { id: number; size: number; filterValue: number }
@@ -169,7 +169,7 @@ export default function FilterFunctionComparison() {
       .style('font-family', 'var(--font-sans)')
       .attr('font-size', 10)
       .attr('opacity', 0.5)
-      .text(`${graph.nodes.length} nodes, ${graph.edges.length} edges`);
+      .text(`Sketch, not computed: ${graph.nodes.length} nodes, ${graph.edges.length} edges`);
   }, [variant, panelWidth]);
 
   return (
