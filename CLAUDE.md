@@ -219,7 +219,7 @@ Use the `<Figure>` component from `src/components/ui/Figure.astro` for any image
 
 Topic MDX files use YAML frontmatter between `---` lines for content-collection metadata; JS imports go **after** the closing `---`, at the top of the MDX body. `Figure` must be imported explicitly — no global MDX components mapping is configured.
 
-The `caption` prop is a plain string — `$x$` math syntax inside it does NOT get KaTeX-processed; it renders as literal text. Match the track-mate precedent (rank-tests, conformal-prediction) rather than working around it. If you need rendered math in a caption, that's a `Figure.astro` architecture change.
+The `caption` prop is a plain string that MDX passes through untouched (remark-math never sees it), so `Figure.astro` renders its `$…$` math itself via `src/lib/renderInlineMath.ts` — KaTeX at build time, same defaults as MDX math. Write single backslashes (`$\hat f_h$`); JS-style doubled ones (`$\\hat f_h$`) are tolerated inside math. `\$` is a literal dollar, and Pandoc delimiter rules keep prose like "$5 to $10" as text. `alt` stays plain text (no math rendering) — describe the math in words there. Tests: `pnpm exec tsx --test src/lib/__tests__/renderInlineMath.test.ts`.
 
 **Optimized path (preferred for new images):** place the file in `src/assets/topics/<topic>/` and import it. Astro generates srcset, WebP, and width/height automatically.
 
