@@ -658,7 +658,7 @@ Substituting the linear model and replacing expectations with sample averages,
 $$
 \max_{\boldsymbol{\alpha} \in \mathbb{R}^b}\; \hat{\mathcal{L}}(\boldsymbol{\alpha}) \;:=\; \frac{1}{n_p} \sum_{j=1}^{n_p} \log\!\bigl(\boldsymbol{\alpha}^\top \boldsymbol{\psi}(X_j^p)\bigr) \quad \text{subject to} \quad \boldsymbol{\alpha}^\top \bar{\boldsymbol{\psi}}_q = 1, \quad \boldsymbol{\alpha} \geq \mathbf{0},
 $$
-where $\bar{\boldsymbol{\psi}}_q := (1/n_q) \sum_i \boldsymbol{\psi}(X_i^q) \in \mathbb{R}^b$. The objective is the average of $\log$ of a linear function of $\boldsymbol{\alpha}$ — concave on the feasible region. The feasible set $\{\boldsymbol{\alpha} \geq 0,\; \bar{\boldsymbol{\psi}}_q^\top \boldsymbol{\alpha} = 1\}$ is a convex polytope. The constrained maximization is therefore a convex program with a unique global optimum.
+where $\bar{\boldsymbol{\psi}}_q := (1/n_q) \sum_i \boldsymbol{\psi}(X_i^q) \in \mathbb{R}^b$. The objective is the average of $\log$ of a linear function of $\boldsymbol{\alpha}$ — concave on the feasible region. The feasible set $\{\boldsymbol{\alpha} \geq 0,\; \bar{\boldsymbol{\psi}}_q^\top \boldsymbol{\alpha} = 1\}$ is a convex polytope. The constrained maximization is therefore a convex program: every local maximum is global, and the optimal value is unique. The maximizer $\boldsymbol{\alpha}$ itself is unique when $\boldsymbol{\Psi}_p$ (defined below) has full column rank; with $b = 100$ Gaussian centers on a 1-D toy it usually does not (on the running toy its numerical rank is $18$), so different solvers can return different optimal $\boldsymbol{\alpha}$.
 
 ### Projected-gradient ascent — Sugiyama et al. (2008), Algorithm 1
 
@@ -678,12 +678,12 @@ where the division is component-wise. Each iteration takes a gradient-ascent ste
 3. Until $|\hat{\mathcal{L}}(\boldsymbol{\alpha}_{t}) - \hat{\mathcal{L}}(\boldsymbol{\alpha}_{t-1})| < \mathrm{tol}$ or max iterations reached.
 </TheoremBlock>
 
-Convergence of alternating projection onto convex sets is classical (von Neumann 1933; Dykstra 1983); KLIEP's variant doesn't add the Dykstra correction, but in practice it converges to a feasible point within numerical tolerance of the constrained optimum, especially when the active set on the non-negativity constraint stabilizes after a few hundred iterations.
+Convergence of alternating projection onto convex sets is classical (von Neumann 1933; Dykstra 1983); KLIEP's variant doesn't add the Dykstra correction, and clip-then-rescale (the last three steps) is not an exact projection onto the polytope $\{\boldsymbol{\alpha} \geq \mathbf{0},\ \bar{\boldsymbol{\psi}}_q^\top \boldsymbol{\alpha} = 1\}$. The iteration therefore reaches a feasible fixed point that need not be the constrained optimum. The step size matters too: with a fixed $\eta = 0.5$ the running toy never settles (the iterates cycle between two points), so the notebook halves $\eta$ whenever a step would lower $\hat{\mathcal{L}}$. With that rule the run stops at $\hat{\mathcal{L}} = 0.350$, while an EM solve of the same convex program, checked against the KKT conditions ($g_\ell / \bar\psi_{q,\ell} = 1$ on the support and $\leq 1$ off it, with $\boldsymbol{g} = \nabla_{\boldsymbol{\alpha}} \hat{\mathcal{L}}$), reaches $0.382$: a gap of $0.032$.
 
 <Figure
   src="/images/topics/density-ratio-estimation/04_kliep_convergence.png"
-  alt="Two-panel figure showing KLIEP convergence. Left panel: log-likelihood vs iteration with horizontal reference line at the truth-evaluated ceiling. Right panel: recovered r-hat overlaid on the true ratio on a log y-axis."
-  caption="KLIEP convergence trace at the median-heuristic bandwidth on the running toy. The projected-gradient log-likelihood approaches its truth-evaluated ceiling within a few hundred iterations. The limiting r-hat tracks the true ratio in the bulk and slightly mis-fits the deep left tail where q-samples are scarce."
+  alt="Two-panel figure showing KLIEP convergence. Left panel: log-likelihood vs iteration with step-size backtracking, with horizontal lines at the constrained optimum and, for reference, at the log-likelihood of the true ratio. Right panel: recovered r-hat overlaid on the true ratio on a log y-axis."
+  caption="KLIEP convergence trace at the median-heuristic bandwidth (sigma ≈ 1.05) on the running toy, with step-size backtracking. The log-likelihood rises monotonically and the run stops at t = 557 at L-hat = 0.350 with 50 of 100 coefficients at zero, below the constrained optimum of 0.382. The dashed line is L-hat at the true ratio, shown for reference only: it is not a bound, because r lies outside the kernel model. r-hat stays within about 30% of r on [−0.5, 3.5] and badly underestimates the deep left tail (r-hat(−3) ≈ 1 vs r(−3) ≈ 33), where few samples fall."
 />
 
 ### Bandwidth selection by KL cross-validation
@@ -700,10 +700,10 @@ This is the principled bandwidth-selection scheme KMM (§4) lacked.
 <Figure
   src="/images/topics/density-ratio-estimation/05_kliep_kl_cv.png"
   alt="Two-panel figure of KLIEP bandwidth selection. Left: KL cross-validation score vs bandwidth on a log-sigma axis with sigma-star marked. Right: KLIEP fits at three bandwidths (too-small, sigma-star, too-large) overlaid on the true ratio."
-  caption="KL cross-validation for KLIEP bandwidth selection on the running toy. Left: the 5-fold CV log-likelihood vs log sigma; on this toy its maximum sits at the smallest grid value, which becomes sigma-star (a finite-sample artifact discussed below). Right: the recovered r-hat at sigma-star fits the bulk well, the under-smoothed version is jagged, and the over-smoothed version flattens the exponential left tail."
+  caption="KL cross-validation for KLIEP bandwidth selection on the running toy. Left: the 5-fold CV log-likelihood vs log sigma; it peaks at sigma-star = 1.00, with a shallow dip at 0.50 and a steep drop above 1.4. Right: the recovered r-hat at sigma-star fits the bulk, the under-smoothed version (sigma ≈ 0.33) is wiggly and collapses in the right tail, and the over-smoothed version (sigma = 3) stays near 1 and misses the exponential trend."
 />
 
-On the verified-execution stack the CV-picked bandwidth ends up at the *smallest* value in the sweep grid — a finite-sample artifact of the kernel basis being centred on $p$-samples (which have little mass in the deep left tail where the true ratio is largest). The meaningful comparison metric is therefore *bulk-grid* Pearson on $x \in [-2, 3]$ rather than full-grid Pearson, and the bulk-grid fit is high (Pearson on the log scale $> 0.85$). uLSIF in §6 gives us a smoother LOO-CV landscape and dominates KLIEP in operational use.
+On the verified-execution stack the CV-picked bandwidth is $\sigma^\star = 1.00$, close to the median-heuristic $1.05$ used in the convergence trace. The bulk-grid fit on $x \in [-2, 3]$ is high (Pearson on the log scale $0.97$). Full-grid linear Pearson is only $0.15$, because the deep left tail dominates it: the true ratio reaches about $33$ at $x = -3$, where $\hat r \approx 1$. One caveat: the CV scores rank Algorithm 1's stopping points, not the constrained optima. On the training folds those stopping points fall short of the optimum by up to $0.12$ for $\sigma \leq 1$ and by $0.06$–$0.21$ for $\sigma \geq 1.4$, so the steep drop on the right partly reflects the solver. Scored at the optima from an EM solve instead, the CV curve peaks at the smallest grid value. uLSIF in §6 gives us a smoother LOO-CV landscape and dominates KLIEP in operational use.
 
 ## LSIF and uLSIF — least-squares importance fitting
 
@@ -799,7 +799,7 @@ We sweep uLSIF over a grid of $(\sigma, \lambda)$ pairs, pick the analytic-LOO-C
 <Figure
   src="/images/topics/density-ratio-estimation/06_ulsif_loocv.png"
   alt="Two-panel figure of uLSIF LOO-CV. Left panel: heatmap of LOO score over a sigma-lambda grid with argmin marked. Right panel: three-way comparison of true ratio, uLSIF fit at optimum, and KLIEP fit overlaid on a log y-axis."
-  caption="uLSIF LOO-CV landscape and three-way fit comparison on the running toy. The analytic LOO-CV surface is smooth and unimodal in log sigma. The optimum-bandwidth uLSIF fit tracks the true ratio with Pearson approximately 0.86; the KLIEP and uLSIF fits agree closely in the bulk and both compress the deep left tail (a generic kernel-basis limitation discussed in §12.3)."
+  caption="uLSIF LOO-CV landscape and three-way fit comparison on the running toy. The analytic LOO-CV surface is smooth and unimodal in log sigma. The optimum-bandwidth uLSIF fit tracks the true ratio with Pearson approximately 0.86; the KLIEP and uLSIF fits agree within about 8% on [−1, 1] and both compress the deep left tail (a generic kernel-basis limitation discussed in §12.3)."
 />
 
 ```python
@@ -817,7 +817,7 @@ def ulsif_fit(x_p, x_q, sigma, lam, b=100, rng=None):
     return alpha, centers
 ```
 
-On the verified-execution stack the uLSIF analytic-LOO sweep and KLIEP 5-fold CV sweep land within a constant factor of each other on this toy. The systematic difference is what uLSIF buys per *fit*: the LOO score sweeps $\lambda$ in the same matrix inverse, while KLIEP requires $K$ refits per $(\sigma)$ for the K-fold CV. uLSIF also dominates on accuracy: full-grid Pearson(uLSIF, true r) is approximately 0.86 vs KLIEP's 0.04 at its KL-CV-selected bandwidth (KLIEP fits the bulk well; the gap is the deep left tail).
+On the verified-execution stack the uLSIF analytic-LOO sweep and KLIEP 5-fold CV sweep land within a constant factor of each other on this toy. The systematic difference is what uLSIF buys per *fit*: the LOO score sweeps $\lambda$ in the same matrix inverse, while KLIEP requires $K$ refits per $(\sigma)$ for the K-fold CV. uLSIF also dominates on accuracy: full-grid Pearson(uLSIF, true r) is approximately 0.86 vs KLIEP's 0.15 at its KL-CV-selected bandwidth (KLIEP fits the bulk well; the gap is the deep left tail).
 
 ## Probabilistic classification as DRE
 
