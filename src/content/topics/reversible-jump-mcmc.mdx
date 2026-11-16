@@ -812,7 +812,7 @@ $$
 |\det J_{T_m}(\theta_K, u_\mu, u_\sigma, u_w)| \;=\; (1 - u_w)^{K - 1}.
 $$
 
-Figure 8B plots this Jacobian for $K = 1, 3, 5, 10$ on a log $y$-axis. At $K = 50$ and $u_w = 0.5$, $|\det J_{T_m}| \approx 1.8 \times 10^{-15}$ — within an order of magnitude of float64's machine epsilon ($\varepsilon \approx 2.2 \times 10^{-16}$), so direct `det` evaluation followed by `log` accumulates serious rounding error long before the value itself underflows. The computational notes (§12.2) explain why `numpy.linalg.slogdet` is mandatory.
+Figure 8B plots this Jacobian for $K = 1, 3, 5, 10$ on a log $y$-axis. It shrinks geometrically in $K$: at $K = 50$ and $u_w = 0.5$, $|\det J_{T_m}| = 0.5^{49} \approx 1.8 \times 10^{-15}$. Small is not the same as inaccurate. Float64's machine epsilon ($\varepsilon \approx 2.2 \times 10^{-16}$) bounds *relative* rounding error, so a value far below $\varepsilon$ is stored with the same 53 significant bits as $1.0$ ($0.5^{49}$, a power of two, is exact), and each multiplication in a product adds at most $\varepsilon / 2$ relative error. The real hazard is range: raw products of Jacobians, prior densities, and likelihoods can underflow to $0$ or overflow to $\infty$, and the log of $0$ is $-\infty$. The computational notes (§12.2) explain why the acceptance ratio is assembled in log space, with `numpy.linalg.slogdet` whenever a Jacobian has no closed form.
 
 **The death move.** From $\theta_{K+1}$, pick $j^\star \in \{1, \ldots, K+1\}$ uniformly and remove it. Deterministic inverse: $u_\mu = \mu_{j^\star},\; u_\sigma = \sigma_{j^\star}^2,\; u_w = w_{j^\star}$, $w_j'' = w_j / (1 - w_{j^\star})$ for $j \neq j^\star$. Reverse Jacobian $(1 - u_w)^{-(K-1)}$; the Theorem 2(c) product identity holds.
 
@@ -904,11 +904,11 @@ For §9: conjugate Gaussian-Gibbs sample of $\beta_S \mid \mathcal{D}, S$ from t
 
 <Figure
   src="/images/topics/reversible-jump-mcmc/fig08_move_catalog.png"
-  alt="Two-panel figure for the move catalog. Left: three variants of the split move on a single N(0,1) source component, showing the two new components and their moment-preserving weighted sum. Right: birth/death Jacobian (1-u_w)^(K-1) on log scale for K=1,3,5,10 with a marker at the rounding-loss horizon where direct det-then-log arithmetic becomes unsafe."
-  caption="Figure 8. The move catalog made concrete. Left — three split variants on a single $\mathcal{N}(0, 1)$ component for $(u_1, u_2, u_3)$ at $(0.5, 0.5, 0.5)$, $(0.3, 0.7, 0.5)$, $(0.5, 0.3, 0.7)$, all preserving mean 0 and second moment 1 by construction. Right — the birth/death Jacobian $(1 - u_w)^{K-1}$ on log scale for $K \in \{1, 3, 5, 10\}$, with the rounding-loss horizon marked at $\sim 10^{-15}$ (close to float64 machine epsilon) around $K = 50$.  "
+  alt="Two-panel figure for the move catalog. Left: three variants of the split move on a single N(0,1) source component, showing the two new components and their moment-preserving weighted sum. Right: birth/death Jacobian (1-u_w)^(K-1) on log scale for K=1,3,5,10, with a dotted reference line at float64 machine epsilon."
+  caption="Figure 8. The move catalog made concrete. Left — three split variants on a single $\mathcal{N}(0, 1)$ component for $(u_1, u_2, u_3)$ at $(0.5, 0.5, 0.5)$, $(0.3, 0.7, 0.5)$, $(0.5, 0.3, 0.7)$, all preserving mean 0 and second moment 1 by construction. Right — the birth/death Jacobian $(1 - u_w)^{K-1}$ on log scale for $K \in \{1, 3, 5, 10\}$, with float64 machine epsilon (≈ 2.2 × 10⁻¹⁶) marked for reference. Epsilon bounds relative rounding error, not how small a value can be: values below it are still stored to full precision."
 />
 
-Drag $(u_1, u_2, u_3)$ to see how the auxiliaries control width imbalance ($u_1$), mean separation ($u_2$), and variance allocation ($u_3$). The right panel shows why the birth/death Jacobian crosses float64's rounding-loss horizon (combined with other small terms in the acceptance ratio) at $K \gtrsim 50$.
+Drag $(u_1, u_2, u_3)$ to see how the auxiliaries control width imbalance ($u_1$), mean separation ($u_2$), and variance allocation ($u_3$). The right panel shows how fast the birth/death Jacobian shrinks with $K$. Values far below machine epsilon are still stored to full precision in float64; what forces log-space arithmetic is the range of raw products (§12.2).
 
 <MoveCatalogExplorer client:visible />
 
@@ -1159,21 +1159,21 @@ For §9 (variable selection): no hoisting needed — $\boldsymbol{\gamma}$ is fi
 
 For §10 (Galaxy mixture): the notebook code uses `np.concatenate` in the move functions for clarity; the on-site live-implementation rewrite hoists into pre-allocated buffers. Notebook prioritizes pedagogical clarity; production prioritizes performance. Same RNG seed produces identical chain output either way.
 
-### 12.2 `slogdet` over `det` — the rounding-loss case
+### 12.2 `slogdet` over `det` — the range case
 
-The Jacobian determinant appears in every trans-dim acceptance ratio. For nontrivial bijections at moderate dimension, evaluating $|\det J_{T_m}|$ via `det` and then taking $\log$ is numerically unsafe — long before the determinant itself underflows to zero, rounding error in the product accumulates and the final log is wrong by several digits.
+The Jacobian determinant appears in every trans-dim acceptance ratio, and it can be very small or very large. Smallness alone costs no accuracy. Float64 machine epsilon $\varepsilon \approx 2.2 \times 10^{-16}$ bounds *relative* rounding error: every normal double, from about $2.2 \times 10^{-308}$ to $1.8 \times 10^{308}$, carries 53 significant bits. A product of $n$ factors accumulates at most about $n \varepsilon / 2$ relative error, which shifts its logarithm by about the same tiny absolute amount. What breaks is range: once a product leaves the normal range it loses precision, and once it rounds to $0$ (or overflows to $\infty$) its log is $-\infty$ (or $+\infty$).
 
-**Precision trajectory** for the birth/death Jacobian $(1 - u_w)^{K-1}$ at $u_w = 0.5$ (float64 machine epsilon $\varepsilon \approx 2.2 \times 10^{-16}$; smallest normal $\approx 2.2 \times 10^{-308}$):
+**Range trajectory** for the birth/death Jacobian $(1 - u_w)^{K-1}$ at $u_w = 0.5$:
 
-| $K$ | $\|\det J_T\|$ | Status |
-|---|---|---|
-| 1 | $1.0$ | safe |
-| 10 | $1.95 \times 10^{-3}$ | safe |
-| 30 | $1.86 \times 10^{-9}$ | representable; precision becoming lossy when multiplied |
-| 50 | $1.78 \times 10^{-15}$ | within ~$10\varepsilon$ — `det`-then-`log` accumulates several digits of error |
-| 60 | $1.73 \times 10^{-18}$ | still representable as a double, but products with other small acceptance-ratio terms round to 0 |
+| $K$ | $\lvert \det J_T \rvert$ | $\log \lvert \det J_T \rvert$ | Status |
+|---|---|---|---|
+| 1 | $1$ | $0$ | exact |
+| 10 | $1.95 \times 10^{-3}$ | $-6.24$ | exact (a power of two) |
+| 50 | $1.78 \times 10^{-15}$ | $-33.96$ | exact; below $\varepsilon$ but a normal double |
+| 1024 | $1.11 \times 10^{-308}$ | $-709.09$ | below the smallest normal ($2.2 \times 10^{-308}$): subnormal, with fewer significant bits for general $u_w$ |
+| 1076 | rounds to $0$ | $-745.13$ | the raw product underflows; its `log` is $-\infty$ |
 
-True float64 underflow on this particular Jacobian only happens at $K \gtrsim 1080$ — well past any practically interesting setting. The numerical hazard at $K \approx 50$–$60$ is rounding loss, not underflow per se; the `slogdet` idiom (or summing elementary logs directly, §8.2) sidesteps both. The Richardson–Green split Jacobian has the same scaling problem at extreme weight splits.
+On this Jacobian alone, range trouble needs $K$ above 1000, far past any practical mixture. The products that do underflow in practice are the other factors in the acceptance ratio: a likelihood over a few hundred observations is a product of a few hundred densities, and $0.05^{300} \approx 10^{-390}$ rounds to $0$ in float64. A $0$ or $\infty$ factor turns the ratio into $0$, $\infty$, or NaN ($0/0$, $\infty/\infty$), whatever the true value. The `slogdet` idiom (or summing elementary logs directly, §8.2) and the log-space composition of §12.3 keep every term finite. The Richardson–Green split Jacobian, whose factors can be tiny at extreme weight splits, is handled the same way.
 
 **The `slogdet` idiom.** `numpy.linalg.slogdet(J)` returns $(\text{sign}, \log |\det|)$ directly:
 
@@ -1181,7 +1181,7 @@ True float64 underflow on this particular Jacobian only happens at $K \gtrsim 10
 sign_J, log_abs_det_J = np.linalg.slogdet(J_matrix)
 ```
 
-`log_abs_det_J` is well-defined for any $|\det J|$ in float64's exponent range.
+`slogdet` uses the same LU factorization as `det`, so it is no more accurate; it sums $\log |U_{ii}|$ instead of multiplying the $U_{ii}$, so `log_abs_det_J` stays finite even when $|\det J|$ itself would underflow or overflow.
 
 For closed-form Jacobians (§8, §10), we sum elementary logarithms directly — never construct the matrix. The `slogdet` idiom is for cases where the Jacobian has no closed form.
 
