@@ -7,7 +7,17 @@
 // of T happens in §2's ChangeOfVariablesAnimator.
 //
 // Pure-SVG, no D3, no math module — content is fixed at compile time.
+// No state or handlers, so the MDX renders it server-only (no client:*
+// directive): the caption's $…$ math goes through KaTeX at build time and
+// no JS (or KaTeX) ships to the browser.
 // =============================================================================
+
+import { renderInlineMath } from '../../lib/renderInlineMath';
+
+const CAPTION =
+  "Figure 1.1 — the two endpoints of the flow: a unimodal base on the left, a bimodal target on the right. " +
+  "§2 derives the formula relating their densities under a diffeomorphism $T$; §4 builds the family of $T$'s " +
+  'that flows parameterize.';
 
 export default function BimodalPreview() {
   // Pre-computed standard-Gaussian curve and 0.5 N(-2, 0.5²) + 0.5 N(2, 0.5²)
@@ -146,11 +156,11 @@ export default function BimodalPreview() {
           (unbuilt — §3 and §4)
         </text>
       </svg>
-      <figcaption className="text-sm mt-2 text-center" style={{ color: 'var(--color-text-secondary)' }}>
-        Figure 1.1 — the two endpoints of the flow: a unimodal base on the left, a bimodal target on the right. §2 derives
-        the formula relating their densities under a diffeomorphism $T$; §4 builds the family of $T$'s that flows
-        parameterize.
-      </figcaption>
+      <figcaption
+        className="text-sm mt-2 text-center"
+        style={{ color: 'var(--color-text-secondary)' }}
+        dangerouslySetInnerHTML={{ __html: renderInlineMath(CAPTION) }}
+      />
     </figure>
   );
 }
