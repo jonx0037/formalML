@@ -10,12 +10,12 @@ const N_Y = 3;
 const K_CLUSTERS = 4;
 
 const T3_P_YgX: number[][] = [
-  [0.85, 0.1, 0.05],
-  [0.85, 0.1, 0.05],
-  [0.1, 0.85, 0.05],
-  [0.1, 0.85, 0.05],
-  [0.15, 0.15, 0.7],
-  [0.15, 0.15, 0.7],
+  [0.65, 0.3, 0.05], // docs 0, 1: mostly topic 0, heavy topic-1 overlap
+  [0.65, 0.3, 0.05],
+  [0.3, 0.65, 0.05], // docs 2, 3: the mirror image
+  [0.3, 0.65, 0.05],
+  [0.1, 0.1, 0.8], // docs 4, 5: sharply topic 2
+  [0.1, 0.1, 0.8],
 ];
 const T3_P_x = 1 / N_DOCS;
 
@@ -39,11 +39,42 @@ function klDiv(p: number[], q: number[]): number {
   return s;
 }
 
-function effectiveClusters(pt: number[]): number {
+// Perplexity exp H(p(t)) of the cluster marginal (§5.4, eq. 5.2) — shown only for contrast:
+// it scores a uniform trivial encoder as k and counts duplicate clusters twice.
+function perplexity(pt: number[]): number {
   let H = 0;
   for (const p of pt) if (p > 0) H -= p * Math.log(p);
   return Math.exp(H);
 }
+
+// First split, predicted (§5.4, eq. 5.5): the trivial encoder loses stability at β = 1/λ₂(C), where
+// C(x, x') = Σ_y p(y|x) p(x'|y) is the two-step chain x → y → x'. Power iteration on p-mean-zero
+// vectors removes λ₁ = 1 (constant eigenvector); C is symmetric here because p(x) is uniform.
+const T3_BETA_SPLIT = (() => {
+  const py = new Array(N_Y).fill(0);
+  for (let x = 0; x < N_DOCS; x++) for (let y = 0; y < N_Y; y++) py[y] += T3_P_x * T3_P_YgX[x][y];
+  const C = Array.from({ length: N_DOCS }, (_, x) =>
+    Array.from({ length: N_DOCS }, (_, xp) => {
+      let s = 0;
+      for (let y = 0; y < N_Y; y++) s += (T3_P_YgX[x][y] * T3_P_x * T3_P_YgX[xp][y]) / py[y];
+      return s;
+    }),
+  );
+  let v = Array.from({ length: N_DOCS }, (_, x) => Math.cos(1 + 2.3 * x));
+  let lambda = 0;
+  for (let it = 0; it < 500; it++) {
+    const mean = v.reduce((a, b) => a + T3_P_x * b, 0);
+    v = v.map((vi) => vi - mean);
+    const w = C.map((row) => row.reduce((a, c, xp) => a + c * v[xp], 0));
+    const norm = Math.hypot(...w);
+    lambda = norm / Math.hypot(...v);
+    v = w.map((wi) => wi / norm);
+  }
+  return 1 / lambda;
+})();
+
+// Two-cluster plateau: a hard split into blocks of mass 1/3 and 2/3 has exp I(X;T) = exp H(1/3, 2/3)
+const PLATEAU = Math.exp(-(1 / 3) * Math.log(1 / 3) - (2 / 3) * Math.log(2 / 3));
 
 function mulberry32(seed: number) {
   let state = seed >>> 0;
@@ -70,7 +101,8 @@ type IBState = {
   logPtgx: number[][];
   pt: number[];
   pYgt: number[][];
-  K_eff: number;
+  K_eff: number; // exp I(X;T): effective number of distinguishable clusters (§5.4, eq. 5.3)
+  perplexity: number; // exp H(p(t)), for contrast
 };
 
 function runIB(beta: number, init: number[][], maxIters = 120, tol = 1e-8): IBState {
@@ -128,12 +160,18 @@ function runIB(beta: number, init: number[][], maxIters = 120, tol = 1e-8): IBSt
           ITY += pTY * Math.log(pTY / (m.pt[t] * py[y]));
       }
     const F_beta = IXT - beta * ITY;
-    if (Math.abs(last_F - F_beta) < tol * (Math.abs(last_F) + 1e-12)) break;
+    if (it > 20 && Math.abs(last_F - F_beta) < tol * (Math.abs(last_F) + 1e-12)) break;
     last_F = F_beta;
   }
 
   const { pt, pYgt } = computeMarginals(logPtgx);
-  return { logPtgx, pt, pYgt, K_eff: effectiveClusters(pt) };
+  let IXT = 0;
+  for (let x = 0; x < N_DOCS; x++)
+    for (let t = 0; t < K_CLUSTERS; t++) {
+      const ptgx = Math.exp(logPtgx[x][t]);
+      if (ptgx > 0 && pt[t] > 0) IXT += T3_P_x * ptgx * (logPtgx[x][t] - Math.log(pt[t]));
+    }
+  return { logPtgx, pt, pYgt, K_eff: Math.exp(IXT), perplexity: perplexity(pt) };
 }
 
 function annealSweep(betas: number[], seed = 7): IBState[] {
@@ -141,7 +179,8 @@ function annealSweep(betas: number[], seed = 7): IBState[] {
   const trace: IBState[] = [];
   let init = randomSoftmaxInit(rng, 0.3);
   for (const b of betas) {
-    const s = runIB(b, init, 120, 1e-9);
+    // Generous cap: convergence slows sharply near each phase transition
+    const s = runIB(b, init, 3000, 1e-12);
     trace.push(s);
     init = s.logPtgx.map((row) => {
       const perturbed = row.map((v) => v + 0.01 * (rng() - 0.5));
@@ -172,7 +211,7 @@ export default function ClusterBifurcationCascade() {
   const beta = betas[betaIdx];
   const cur = trace[betaIdx];
 
-  // Panel (a): K_eff(β) staircase on log-β
+  // Panel (a): K_eff(β) = exp I(X;T) on log-β, with the perplexity for contrast and the predicted split
   const staircaseRef = useD3<SVGSVGElement>(
     (svg) => {
       svg.selectAll('*').remove();
@@ -187,8 +226,12 @@ export default function ClusterBifurcationCascade() {
       const xScale = d3.scaleLog().domain([betas[0], betas[betas.length - 1]]).range([0, innerW]);
       const yScale = d3.scaleLinear().domain([0.8, K_CLUSTERS + 0.2]).range([innerH, 0]);
 
-      // Horizontal guides at K_eff = 1, 2, 3, 4
-      [1, 2, 3, 4].forEach((k) => {
+      // Horizontal guides at 1 cluster, the two-cluster plateau exp H(1/3, 2/3), and 3 clusters
+      [
+        { k: 1, label: '1' },
+        { k: PLATEAU, label: `exp H(⅓, ⅔) = ${PLATEAU.toFixed(2)}` },
+        { k: 3, label: '3' },
+      ].forEach(({ k, label }) => {
         g.append('line')
           .attr('x1', xScale(betas[0])).attr('x2', xScale(betas[betas.length - 1]))
           .attr('y1', yScale(k)).attr('y2', yScale(k))
@@ -198,8 +241,19 @@ export default function ClusterBifurcationCascade() {
         g.append('text')
           .attr('x', xScale(betas[0]) + 4).attr('y', yScale(k) - 3)
           .style('fill', 'var(--color-text-secondary)').attr('font-size', 9)
-          .text(`K_eff = ${k}`);
+          .text(label);
       });
+
+      // Predicted first split β = 1/λ₂
+      g.append('line')
+        .attr('x1', xScale(T3_BETA_SPLIT)).attr('x2', xScale(T3_BETA_SPLIT))
+        .attr('y1', yScale(0.8)).attr('y2', yScale(K_CLUSTERS + 0.2))
+        .style('stroke', 'var(--color-text-secondary)')
+        .attr('stroke-dasharray', '6 3').attr('stroke-width', 1.1);
+      g.append('text')
+        .attr('x', xScale(T3_BETA_SPLIT) + 4).attr('y', yScale(K_CLUSTERS + 0.05))
+        .style('fill', 'var(--color-text-secondary)').attr('font-size', 9)
+        .text(`predicted split 1/λ₂ = ${T3_BETA_SPLIT.toFixed(2)}`);
 
       // Axes
       const xAxis = d3.axisBottom(xScale).ticks(6, '.1f');
@@ -218,13 +272,25 @@ export default function ClusterBifurcationCascade() {
       g.append('text')
         .attr('transform', `translate(-34,${innerH / 2}) rotate(-90)`).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text)').attr('font-size', 11)
-        .text('K_eff(β) = exp(H(p(t)))');
+        .text('K_eff(β) = exp I(X;T)');
       g.append('text')
         .attr('x', innerW / 2).attr('y', -10).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text-secondary)').attr('font-size', 11)
-        .text('Effective cluster count across the β sweep');
+        .text('Distinguishable clusters across the β sweep');
 
-      // Plot the staircase
+      // Perplexity exp H(p(t)) for contrast (dotted)
+      const perpLine = d3.line<IBState>().x((d, i) => xScale(betas[i])).y((d) => yScale(d.perplexity));
+      g.append('path')
+        .attr('d', perpLine(trace) ?? '')
+        .style('fill', 'none').style('stroke', 'var(--color-text-secondary)')
+        .attr('stroke-dasharray', '1.5 3').attr('stroke-width', 1.4);
+      g.append('text')
+        .attr('x', xScale(betas[betas.length - 1]) - 4).attr('y', yScale(trace[trace.length - 1].perplexity) - 5)
+        .attr('text-anchor', 'end')
+        .style('fill', 'var(--color-text-secondary)').attr('font-size', 9)
+        .text('perplexity exp H(p(t))');
+
+      // Plot K_eff = exp I(X;T)
       const line = d3.line<IBState>().x((d, i) => xScale(betas[i])).y((d) => yScale(d.K_eff));
       g.append('path')
         .attr('d', line(trace) ?? '')
@@ -330,7 +396,7 @@ export default function ClusterBifurcationCascade() {
       g.append('text')
         .attr('x', innerW / 2).attr('y', innerH + 26).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text)').attr('font-size', 11)
-        .text('document x  (A: docs 0–1 topic-0 pure · B: 2–3 topic-1 · C: 4–5 topic-2)');
+        .text('document x  (A: docs 0–1 mostly topic 0 · B: 2–3 mostly topic 1 · C: 4–5 sharply topic 2)');
       g.append('text')
         .attr('x', innerW / 2).attr('y', -38).attr('text-anchor', 'middle')
         .style('fill', 'var(--color-text-secondary)').attr('font-size', 11)
@@ -373,14 +439,14 @@ export default function ClusterBifurcationCascade() {
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <svg ref={staircaseRef} role="img" aria-label="K_eff staircase across the beta sweep" />
+          <svg ref={staircaseRef} role="img" aria-label="Effective cluster count exp I(X;T) across the beta sweep" />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <svg ref={heatmapRef} role="img" aria-label="Encoder p(t|x) heatmap at the active beta" />
         </div>
       </div>
       <p style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: '0.75rem' }}>
-        At small β, all six documents share one cluster (K_eff ≈ 1). Crossing the first phase transition splits the cluster structure — first the topic-2 pair separates from the topic-0/topic-1 group (purity 0.70 is the least correlated), then the topic-0 and topic-1 pairs separate at a higher β. The fourth allocated cluster self-disables. At large β, assignments approach one-hot and K_eff stabilizes near 3.
+        K_eff = exp I(X;T) counts distinguishable clusters. At small β every document has the same assignment (K_eff = 1). The trivial encoder loses stability at the predicted β = 1/λ₂ ≈ {T3_BETA_SPLIT.toFixed(2)}, where the topic-2 pair — the documents farthest from the rest — splits off; K_eff then levels off near {PLATEAU.toFixed(2)}, not 2, because that cluster holds a third of the documents. Topics 0 and 1 separate near β ≈ 7.8, a value that has to be measured, and K_eff climbs to 3. All four clusters stay in use: the topic-2 pair is spread over two that make identical predictions, which the dotted perplexity counts twice.
       </p>
     </div>
   );
