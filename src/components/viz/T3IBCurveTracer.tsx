@@ -3,19 +3,19 @@ import * as d3 from 'd3';
 import { useD3 } from './shared/useD3';
 import { useResizeObserver } from './shared/useResizeObserver';
 
-// T3 toy: 6 documents, 3 topics, graded-purity p(y|x).
-// I(X;Y) = 0.470 nats (per brief §5.3); saturation rate R^dagger = log 3 ≈ 1.099 nats.
+// T3 toy (§5.3): 6 documents, 3 topics — topics 0 and 1 confusable, topic 2 distinct.
+// I(X;Y) = 0.356 nats (computed below as T3_I_XY); saturation rate R^dagger = log 3 ≈ 1.099 nats.
 const N_DOCS = 6;
 const N_Y = 3;
-const K_CLUSTERS = 4; // one spare; should self-disable
+const K_CLUSTERS = 4; // one more than the three distinguishable clusters the data supports
 
 const T3_P_YgX: number[][] = [
-  [0.85, 0.1, 0.05],
-  [0.85, 0.1, 0.05],
-  [0.1, 0.85, 0.05],
-  [0.1, 0.85, 0.05],
-  [0.15, 0.15, 0.7],
-  [0.15, 0.15, 0.7],
+  [0.65, 0.3, 0.05], // docs 0, 1: mostly topic 0, heavy topic-1 overlap
+  [0.65, 0.3, 0.05],
+  [0.3, 0.65, 0.05], // docs 2, 3: the mirror image
+  [0.3, 0.65, 0.05],
+  [0.1, 0.1, 0.8], // docs 4, 5: sharply topic 2
+  [0.1, 0.1, 0.8],
 ];
 const T3_P_x = 1 / N_DOCS;
 
@@ -69,12 +69,18 @@ function muiTY(pTY: number[][], pt: number[], py: number[]): number {
   return s;
 }
 
-// Effective cluster count K_eff(β) = exp(H(p(t)))
-function effectiveClusters(pt: number[]): number {
-  let H = 0;
-  for (const p of pt) if (p > 0) H -= p * Math.log(p);
-  return Math.exp(H);
-}
+// I(X;Y) of the T3 toy, in nats — the DPI ceiling of the IB curve
+const T3_I_XY = (() => {
+  const py = new Array(N_Y).fill(0);
+  for (let x = 0; x < N_DOCS; x++) for (let y = 0; y < N_Y; y++) py[y] += T3_P_x * T3_P_YgX[x][y];
+  let s = 0;
+  for (let x = 0; x < N_DOCS; x++)
+    for (let y = 0; y < N_Y; y++) {
+      const pyx = T3_P_YgX[x][y];
+      if (pyx > 0) s += T3_P_x * pyx * Math.log(pyx / py[y]);
+    }
+  return s;
+})();
 
 // Mulberry32 — deterministic seedable PRNG
 function mulberry32(seed: number) {
@@ -106,7 +112,7 @@ type IBState = {
   pYgt: number[][]; // shape [K_CLUSTERS][N_Y]
   IXT: number; // in nats
   ITY: number; // in nats
-  K_eff: number;
+  K_eff: number; // exp I(X;T): effective number of distinguishable clusters (§5.4, eq. 5.3)
   F_beta: number;
   iters: number;
 };
@@ -158,14 +164,14 @@ function runIB(beta: number, init: number[][], maxIters = 120, tol = 1e-8): IBSt
     const m = computeMarginals(logPtgx);
     const F_beta = muiXT(logPtgx, m.pt) - beta * muiTY(m.pTY, m.pt, py);
     iters = it + 1;
-    if (Math.abs(last_F - F_beta) < tol * (Math.abs(last_F) + 1e-12)) break;
+    if (it > 20 && Math.abs(last_F - F_beta) < tol * (Math.abs(last_F) + 1e-12)) break;
     last_F = F_beta;
   }
 
   const { pt, pTY, pYgt } = computeMarginals(logPtgx);
   const IXT = muiXT(logPtgx, pt);
   const ITY = muiTY(pTY, pt, py);
-  return { logPtgx, pt, pYgt, IXT, ITY, K_eff: effectiveClusters(pt), F_beta: IXT - beta * ITY, iters };
+  return { logPtgx, pt, pYgt, IXT, ITY, K_eff: Math.exp(IXT), F_beta: IXT - beta * ITY, iters };
 }
 
 // Annealing sweep across log-spaced β, warm-starting each next β from the previous
@@ -174,7 +180,8 @@ function annealSweep(betas: number[], seed = 7): IBState[] {
   const trace: IBState[] = [];
   let init = randomSoftmaxInit(rng, 0.3);
   for (const b of betas) {
-    const s = runIB(b, init, 120, 1e-9);
+    // Generous cap: convergence slows sharply near each phase transition
+    const s = runIB(b, init, 3000, 1e-12);
     trace.push(s);
     // Warm-start; add a tiny perturbation to break exact saddle-point degeneracy
     init = s.logPtgx.map((row) => {
@@ -206,8 +213,8 @@ export default function T3IBCurveTracer() {
   const beta = betas[betaIdx];
   const cur = trace[betaIdx];
 
-  // Saturation lines from brief
-  const IXY = 0.470;
+  // Saturation lines
+  const IXY = T3_I_XY;
   const Rdagger = Math.log(3); // = 1.0986 nats
 
   // Panel (a): IB plane
@@ -228,7 +235,7 @@ export default function T3IBCurveTracer() {
       const xScale = d3.scaleLinear().domain([0, maxIXT]).range([0, innerW]);
       const yScale = d3.scaleLinear().domain([0, maxITY]).range([innerH, 0]);
 
-      // DPI ceiling at I(X;Y) = 0.470
+      // DPI ceiling at I(X;Y)
       g.append('line')
         .attr('x1', xScale(0)).attr('x2', xScale(maxIXT))
         .attr('y1', yScale(IXY)).attr('y2', yScale(IXY))
@@ -432,7 +439,7 @@ export default function T3IBCurveTracer() {
         </div>
       </div>
       <p style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: '0.75rem' }}>
-        The sweep is β-annealed (each new β warm-starts from the previous β's converged encoder). Saturation point sits at (R†, I(X;Y)) = (log 3, 0.470) nats; the spare fourth cluster self-disables. Two phase transitions are visible in the right panel as steepness changes in I(T;Y).
+        The sweep is β-annealed (each new β warm-starts from the previous β's converged encoder). Saturation point sits at (R†, I(X;Y)) = (log 3, {IXY.toFixed(3)}) nats. Two phase transitions show in the right panel as steepness changes: near β ≈ 1.7 the topic-2 pair splits off, and near β ≈ 7.8 topics 0 and 1 separate. K_eff = exp I(X;T) counts distinguishable clusters: four are allocated, but the topic-2 pair ends up spread over two clusters that duplicate each other, so K_eff tops out at 3.
       </p>
     </div>
   );
