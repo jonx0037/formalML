@@ -221,25 +221,25 @@ $$
 
 At $n = 1000$ the $\sqrt n$ asymptotics are visible and the experiment runs in seconds. One feature worth noting up front: $g$ depends on $(x_1, \ldots, x_4)$ and $m$ on $x_5$ alone, so $g(X)$ and $m(X)$ are independent. The naive OLS slope of $Y$ on $D$ is therefore *asymptotically unbiased* — what's at stake in this section is *efficiency*, not bias. Bias-correction enters the story in §5 from a different source: the finite-sample plug-in error in $\hat\eta$, which the efficient influence function exists to neutralize.
 
-Three estimators of $\theta_0$ exemplify the spectrum. The naive one runs ordinary least squares of $Y$ on $(1, D)$, ignoring $X$ entirely. The linear one runs OLS of $Y$ on $(1, D, X)$ with linear-in-$X$ controls — by Frisch–Waugh–Lovell, equivalent to partialling out the best-linear-projection of both $Y$ and $D$ onto $X$. The ML one runs a single two-fold cross-fitting protocol: fit random-forest estimates $\hat g, \hat m$ on each half of the data, predict on the held-out half, and regress the residuals. We formalize cross-fitting in §8; for now treat it as a black-box trick that makes flexible nuisance estimators safe to combine with parametric inference.
+Three estimators of $\theta_0$ exemplify the spectrum. The naive one runs ordinary least squares of $Y$ on $(1, D)$, ignoring $X$ entirely. The linear one runs OLS of $Y$ on $(1, D, X)$ with linear-in-$X$ controls — by Frisch–Waugh–Lovell, equivalent to partialling out the best-linear-projection of both $Y$ and $D$ onto $X$. The ML one runs a single two-fold cross-fitting protocol: fit random forests for $\mathbb{E}[Y \mid X] = \theta_0 m(X) + g(X)$ and for $m(X) = \mathbb{E}[D \mid X]$ on each half of the data, predict on the held-out half, and regress the $Y$-residuals on the $D$-residuals. We formalize cross-fitting in §8; for now treat it as a black-box trick that makes flexible nuisance estimators safe to combine with parametric inference.
 
 ### 1.4 What's at stake
 
-The companion notebook runs all three estimators across $B = 200$ Monte Carlo replications at $n = 1000$ and prints a summary table of empirical means, standard deviations, and RMSEs alongside the histogram of $\hat\theta$ values. The pattern is monotone in the flexibility of the nuisance fit. All three histograms center on $\theta_0 = 1$, but the spread shrinks visibly as we move from naive (no controls) to linear partial-out (best-linear-in-$X$ controls) to ML cross-fit (random-forest controls, two-fold cross-fitting). The ML version absorbs essentially all of $g$ and lands close to the *oracle SD floor*
+The companion notebook runs all three estimators across $B = 200$ Monte Carlo replications at $n = 1000$ and prints a summary table of empirical means, standard deviations, and RMSEs alongside the histogram of $\hat\theta$ values. The pattern is *not* monotone in the flexibility of the nuisance fit. The naive and linear estimators both center on $\theta_0 = 1$ (means $1.003$ and $1.001$) — there is no omitted-variable bias to remove, because $g$ depends on $(x_1, \ldots, x_4)$ and $m$ on $x_5$ alone — and the linear controls shrink the SD from $0.055$ to $0.043$. The random-forest version has the narrowest histogram (SD $0.039$), but it centers at about $0.972$, not $1$. The 50-tree forest learns $m(x)$ poorly: its held-out error is about as large as $\mathrm{Var}(m(X))$ itself, so it barely improves on predicting a constant. That error enters the $D$-residuals, inflates the denominator of the residual-on-residual slope, and attenuates $\hat\theta$ toward zero — the errors-in-variables mechanism that §8.4 makes explicit with controlled noise. The ML estimator trades a smaller variance for a bias, and its RMSE ($0.048$) ends up worse than the linear estimator's ($0.043$). Even its SD sits $1.23\times$ above the *oracle SD floor*
 
 $$
 \mathrm{SD}(\hat\theta_{\rm oracle}) = \frac{\mathrm{SD}(\varepsilon)}{\sqrt{n \cdot \mathrm{Var}(\nu)}} = \frac{0.5}{\sqrt{1000 \cdot 0.25}} \approx 0.0316,
 $$
 
-which is the value the *semiparametric efficiency bound* (§4) will identify as the lower envelope of achievable asymptotic variance on this DGP.
+which is the value the *semiparametric efficiency bound* (§4) will identify as the lower envelope of achievable asymptotic variance on this DGP. Flexibility alone does not get us there: the nuisance has to be estimated *well enough*, and how well is exactly the rate question the rest of this topic answers.
 
 <Figure
   src="/images/topics/semiparametric-inference/01_motivation_three_histograms.png"
-  alt="Three histograms of estimated theta_0 across B=200 Monte Carlo replications: naive OLS (gray), linear partial-out (blue), ML cross-fit (red)."
-  caption="Three estimators on the Robinson partial-linear DGP at n=1000, B=200 MC replications. All three histograms center on θ_0 = 1; the spread shrinks as the nuisance becomes more flexible. ML cross-fit (red) lands near the oracle SD floor ≈ 0.0316."
+  alt="Three histograms of estimated theta_0 across B=200 Monte Carlo replications: naive OLS (gray) and linear partial-out (blue) centered near 1, ML cross-fit (red) narrower but centered near 0.97."
+  caption="Three estimators on the Robinson partial-linear DGP at n=1000, B=200 MC replications. Naive OLS (mean 1.003, SD 0.055) and linear partial-out (mean 1.001, SD 0.043) center on θ_0 = 1. ML cross-fit (red) is the narrowest (SD 0.039, 1.23× the oracle floor ≈ 0.0316) but centers near 0.972: the 50-tree forest estimates m poorly, which attenuates θ̂, so its RMSE (0.048) is worse than linear partial-out’s (0.043)."
 />
 
-What's the catch? Two things, both developed in detail downstream. First, the ML estimator's good behavior depends on cross-fitting — fitting the random forest on the same data we use to compute the partial-out residuals introduces an own-fold bias that, without splitting, slowly dominates the variance reduction (§7–§8). Second, the rate at which the nuisance estimator converges has to satisfy a specific condition: $\|\hat g - g\|_{L^2(P)} \cdot \|\hat m - m\|_{L^2(P)} = o_P(n^{-1/2})$, which is satisfied if each individual nuisance converges faster than $n^{-1/4}$. Random forests on five-dimensional smooth problems clear this bar; high-dimensional sparse problems clear it only with the help of the debiased lasso ([high-dimensional-regression](/topics/high-dimensional-regression) §12.1).
+What's the catch? Two things, both developed in detail downstream. First, the ML estimator's guarantees depend on cross-fitting — fitting the random forest on the same data we use to compute the partial-out residuals introduces an own-fold bias that, without splitting, slowly dominates the variance reduction (§7–§8). Second, the rate at which the nuisance estimator converges has to satisfy a specific condition: $\|\hat g - g\|_{L^2(P)} \cdot \|\hat m - m\|_{L^2(P)} = o_P(n^{-1/2})$, which is satisfied if each individual nuisance converges faster than $n^{-1/4}$. Random forests on five-dimensional smooth problems clear this bar asymptotically (§7.3), though the attenuation above shows that at a fixed $n$ the constants in those rates still matter; high-dimensional sparse problems clear it only with the help of the debiased lasso ([high-dimensional-regression](/topics/high-dimensional-regression) §12.1).
 
 The path from here: §2 sets up the geometry that lets us *describe* the space of all estimators (parametric submodels, tangent spaces, the $L^2(P)$ ambient), §3 picks out the efficient one inside that space (the efficient influence function), §4 quantifies the efficiency bound it achieves, and §5–§7 give us three constructive routes — one-step, TMLE, DML — to estimators that hit it.
 
@@ -775,8 +775,8 @@ solved for $\hat\theta = \mathbb{P}_n[(D - \hat m)\, Y]/\mathbb{P}_n[(D - \hat m
 
 <Figure
   src="/images/topics/semiparametric-inference/07_dml_rf_histogram.png"
-  alt="Histogram of cross-fit DML θ̂ at n=1000, B=100, with the BKRW Gaussian density overlaid through the histogram peak."
-  caption="Cross-fit DML with random-forest nuisance on the Robinson DGP, B=100 MC at n=1000. Empirical SD matches the BKRW bound σ_ε/(σ_ν √n) ≈ 0.0316. Naive (non-cross-fit) DML in grey shows a small but unambiguous bias the cross-fitting eliminates."
+  alt="Histograms of cross-fit and naive DML θ̂ at n=1000, B=100, with the BKRW Gaussian density N(θ_0, V_eff/n) overlaid."
+  caption="Cross-fit DML with random-forest nuisance on the Robinson DGP, B=100 MC at n=1000. Empirical SD (0.0325) is close to the BKRW bound σ_ε/(σ_ν √n) ≈ 0.0316. Naive (non-cross-fit) DML in grey is nearly identical here (mean 0.983 vs 0.981, SD 0.0323 vs 0.0325): both sit slightly low at n = 1000 with these learners, and the over-fitting bias that cross-fitting removes (§8.1) is not visible in this run."
 />
 
 <DMLCrossFitting client:visible />
@@ -865,8 +865,8 @@ The setup is unchanged from §1.3 and §7. What changes is the nuisance estimato
 
 <Figure
   src="/images/topics/semiparametric-inference/09_2_robinson_poly_vs_rf.png"
-  alt="Histogram of cross-fit DML θ̂ with polynomial-degree-3 nuisance, overlaid with random-forest nuisance from §7, both centered on θ_0 = 1."
-  caption="Robinson partial-linear, B=100 MC at n=1000. Polynomial-degree-3 nuisance (orange) achieves the BKRW bound just as well as random forests (red) from §7. The DML framework is method-agnostic — what matters is the rate, not the function class."
+  alt="Histogram of cross-fit DML θ̂ with polynomial-degree-3 nuisance (centered near 1), overlaid with random-forest nuisance from §7 (centered near 0.976)."
+  caption="Robinson partial-linear, B=100 MC at n=1000. Polynomial-degree-3 nuisance (orange; mean 0.997, SD 0.041) centers on θ_0 = 1; random-forest nuisance from §7 (red; mean 0.976, SD 0.038) sits low, as in §1.4. Both SDs are above the BKRW bound ≈ 0.0316 at this n (1.28× and 1.19×). The DML framework is method-agnostic — what matters asymptotically is the rate, not the function class."
 />
 
 <RobinsonPartialLinear client:visible />
