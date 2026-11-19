@@ -223,6 +223,23 @@ section('§2 DGP shape and oracle nuisances');
   for (let i = 0; i < 5000; i++) avgEffect += sample.mu1Oracle[i] - sample.mu0Oracle[i];
   avgEffect /= 5000;
   approxEq('§2 sampleAte (μ_1 − μ_0) = 1', avgEffect, 1.0, 1e-12, 'constant true ATE');
+  // μ_0(x) = 1 + 2 x_1 + x_2², mean over [0,1]^5 = 1 + 1 + 1/3 ≈ 2.333.
+  within('§2 sampleAte mean(μ_0) ≈ 2.333', mean(sample.mu0Oracle), 2.30, 2.37, 'E[μ_0] = 7/3');
+}
+
+// sampleAte confounding is real: x_1 lowers π and raises μ_0, so the naive
+// difference in means sits below the true ATE (exact bias ≈ −0.123 by quadrature).
+{
+  const rng = mulberry32(7);
+  const nBig = 200000;
+  const sample = sampleAte(nBig, rng);
+  let s1 = 0, n1 = 0, s0 = 0, n0 = 0;
+  for (let i = 0; i < nBig; i++) {
+    if (sample.D[i] === 1) { s1 += sample.Y[i]; n1 += 1; }
+    else { s0 += sample.Y[i]; n0 += 1; }
+  }
+  const naiveBias = s1 / n1 - s0 / n0 - 1.0;
+  within('§2 sampleAte naive diff-in-means bias ≈ −0.123', naiveBias, -0.145, -0.10, 'confounding does not cancel');
 }
 
 // sampleUq oracle f formula.
@@ -511,7 +528,7 @@ section('§11 Cross-fit σ̂² vs in-sample σ̂²');
     cfResult.sigma2,
     0.85,
     1.15,
-    `true σ² = 1; cross-fit estimator is unbiased`,
+    `true σ² = 1; cross-fit removes the over-fit bias (nuisance MSE leaves a small upward remainder)`,
   );
   // In-sample σ̂² is biased downward (over-fit residuals smaller than out-of-sample).
   ok(

@@ -13,7 +13,7 @@ import {
 // AIPWvsIPWvsPlugin — §9.1 (ATE under unconfoundedness, n=600)
 //
 // Three side-by-side histograms across MC replications:
-//   - "naive diff-in-means": Ȳ_{D=1} − Ȳ_{D=0} (confounded — biased)
+//   - "naive diff-in-means": Ȳ_{D=1} − Ȳ_{D=0} (confounded through x_1 — biased ≈ −0.12)
 //   - "AIPW (oracle)": truth-substituted AIPW (efficient at the BKRW bound)
 //   - "cross-fit DML": K=5 cross-fit AIPW with polynomial-degree-2 nuisance
 //
@@ -174,7 +174,7 @@ export default function AIPWvsIPWvsPlugin() {
         <svg ref={ref3} style={{ width: isMobile ? '100%' : '50%', height: HEIGHT_PANEL, display: 'block' }} />
         <div style={{ width: isMobile ? '100%' : '50%', padding: '8px 12px', fontSize: 12, lineHeight: 1.5, color: 'var(--color-text-secondary)' }}>
           <strong style={{ color: 'var(--color-text)', display: 'block', marginBottom: 6 }}>What to look for</strong>
-          The naive estimator (grey) is biased — the histogram center sits off the true ATE=1 because D and X are confounded. AIPW with truth-substituted nuisances (red) is unbiased and asymptotically efficient. Cross-fit DML with polynomial nuisance (purple) approaches the same efficient distribution as B grows, demonstrating that ML-fitted nuisance clears the rate condition on this smooth DGP.
+          The naive estimator (grey) is biased: its histogram centers near 0.88, below the true ATE = 1, because x₁ both lowers the propensity and raises the control outcome, so treated units start from lower baselines. AIPW with truth-substituted nuisances (red) centers on 1 with SD near the efficiency bound √(V_eff/n) ≈ 0.083 at n = 600. Cross-fit DML with degree-2 polynomial nuisance (purple) also centers on 1, with SD about 10% above the bound; on this DGP the degree-2 features contain the true μ₀, μ₁ and the logit of π, so the nuisance fits are well specified. Raising B fills in the histograms; it does not move them.
         </div>
       </div>
     </div>

@@ -15,7 +15,8 @@ import {
 // EIFCorrectionForVariance — §11
 // Two histograms across MC replications:
 //   - in-sample plug-in σ̂² (biased downward by over-fitting)
-//   - cross-fit one-step σ̂² (centered at the true σ² = 1)
+//   - cross-fit one-step σ̂² (over-fit bias removed; it still sits above σ² = 1
+//     by the out-of-fold nuisance MSE, about +0.06 with this poly-degree-2 fitter at n=500)
 // True σ² = 1 from the §11 DGP.
 // =============================================================================
 

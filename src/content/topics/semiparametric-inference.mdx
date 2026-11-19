@@ -847,12 +847,12 @@ $$
 
 This is the [causal-inference-methods](/topics/causal-inference-methods) §6 estimator viewed as a specific instance of the §3 construction.
 
-**Three estimators on a simulated DGP.** Take $X \sim U([0, 1]^5)$, $\pi(x) = \sigma(0.5 - x_1 + 0.5 x_2)$, $\mu_0(x) = 1 + 0.5 x_1 + x_2^2$, $\mu_1(x) = \mu_0(x) + 1$ (constant treatment effect, so the true ATE is 1.0). The notebook produces a three-histogram comparison.
+**Three estimators on a simulated DGP.** Take $X \sim U([0, 1]^5)$, $\pi(x) = \sigma(0.5 - x_1 + 0.5 x_2)$, $\mu_0(x) = 1 + 2 x_1 + x_2^2$, $\mu_1(x) = \mu_0(x) + 1$ (constant treatment effect, so the true ATE is 1.0). The covariate $x_1$ lowers the propensity and raises the control outcome, so treated units start from lower baselines; $x_2$ raises both and pushes the other way, but more weakly. The net confounding bias of the naive difference in means is $\mathbb{E}[\mu_0(X) \mid D = 1] - \mathbb{E}[\mu_0(X) \mid D = 0] \approx -0.123$. With unit noise variance and a constant effect, the efficiency bound is $V_{\rm eff} = \mathbb{E}[1/\pi(X) + 1/(1 - \pi(X))] \approx 4.17$, so $\sqrt{V_{\rm eff}/n} \approx 0.0646$ at $n = 1000$. The notebook produces a three-histogram comparison.
 
 <Figure
   src="/images/topics/semiparametric-inference/09_1_ate_three_histograms.png"
-  alt="Three histograms: naive diff-in-means, AIPW with truth-substituted nuisances, cross-fit DML with RF nuisance."
-  caption="ATE under unconfoundedness, n=1000, B=50 MC. Naive diff-in-means is shifted off the true ATE=1; AIPW with truth-substituted nuisances is unbiased at the BKRW bound; cross-fit DML with RF nuisance is also centered at 1 with empirical SD essentially at the bound."
+  alt="Three overlaid histograms over B = 200 replications: naive diff-in-means centered near 0.89, left of the true ATE = 1; AIPW with truth-substituted nuisances and cross-fit DML with RF nuisance both centered near 1."
+  caption="ATE under unconfoundedness, n=1000, B=200 MC. Naive diff-in-means sits below the true ATE=1 (mean 0.890, bias −0.110; exact confounding bias −0.123). AIPW with truth-substituted nuisances has mean 1.012 and SD 0.067, 1.03× the efficiency bound √(V_eff/n) ≈ 0.0646. Cross-fit DML with RF nuisance has mean 1.014 and SD 0.073 (1.13× the bound), and its 95% Wald CIs cover the truth in 190 of 200 replications. All three means sit about 0.013 above their exact centers, a Monte Carlo offset shared across the common draws."
 />
 
 <AIPWvsIPWvsPlugin client:visible />
@@ -875,7 +875,7 @@ The setup is unchanged from §1.3 and §7. What changes is the nuisance estimato
 
 The MAR-mean example has been developed across §3.4 (EIF), §5.4 (one-step), §6.4 (TMLE), and §7 (AIPW connection). §9.3 is the end-to-end synthesis with K=5 cross-fitting.
 
-The sandwich SE for the MAR mean follows the §10 recipe. The Wald CI $\hat\psi \pm 1.96 \cdot \widehat{\rm SE}(\hat\psi)$ has empirical coverage ≈ 94% across MC replications at $n = 1000$ (slightly below nominal due to finite-sample undercoverage typical of asymptotic CIs).
+The sandwich SE for the MAR mean follows the §10 recipe. Across $B = 50$ MC replications at $n = 1000$, the Wald CI $\hat\psi \pm 1.96 \cdot \widehat{\rm SE}(\hat\psi)$ covers $\psi_0$ in 49 of 50 (98%), and the empirical SD matches the mean sandwich SE (ratio 1.01). With $B = 50$ the Monte Carlo standard error of a coverage estimate is about 3 percentage points, so 98% is consistent with the nominal 95%.
 
 ### 9.4 Quantile treatment effects (forward-pointer stub)
 
@@ -973,19 +973,19 @@ Substituting $\hat\psi = \hat\psi_{\rm cf} := n^{-1} \sum_i (Y_i - \hat m^{(-k(i
 
 The numerical demo. Take a regression DGP $Y = f(X) + \varepsilon$ with $X \sim U([0, 1]^5)$, $f(x) = 1 + x_1 + x_2^2 + \sin(\pi x_3)$, $\varepsilon \sim \mathcal{N}(0, 1)$, so $\sigma^2 = 1$.
 
-The in-sample plug-in fit on full data has residuals that are systematically smaller than out-of-sample residuals, so $\hat\sigma^2_{\rm in}$ is biased *downward*. The cross-fit one-step is unbiased and efficient.
+The in-sample plug-in fit on full data has residuals that are systematically smaller than out-of-sample residuals, so $\hat\sigma^2_{\rm in}$ is biased *downward*. Cross-fitting removes that over-fit bias, but not all of the bias. With an out-of-fold $\hat m$, $\mathbb{E}[(Y - \hat m(X))^2] = \sigma^2 + \mathbb{E}[(\hat m(X) - m(X))^2]$, so the cross-fit one-step overshoots by the nuisance mean squared error — the functional's second-order term. Efficiency needs that term to be $o(n^{-1/2})$, which is the $\|\hat m - m\| = o(n^{-1/4})$ rate condition again. In the demo the random-forest nuisance (30 trees, minimum leaf size 2) has an out-of-fold MSE of about 0.13 when measured on fresh draws, which accounts for the cross-fit estimator's $+0.11$ bias up to Monte Carlo noise. That bias is 2.4 times the theoretical standard error $\sqrt{2\sigma^4/n} \approx 0.0447$, so at $n = 1000$ this forest has not yet reached the efficient regime.
 
 <Figure
   src="/images/topics/semiparametric-inference/11_plugin_vs_crossfit_variance.png"
-  alt="Histograms of in-sample and cross-fit σ̂² across B MC replications, with σ²=1 marked. In-sample is shifted left of σ²=1."
-  caption="In-sample plug-in σ̂² vs cross-fit one-step σ̂² across 50 MC replications at n=1000. In-sample clusters below σ² = 1 — the over-fit bias is systematic, not Monte Carlo noise. Cross-fit clusters around σ² = 1 with empirical spread matching the theoretical N(σ², 2σ⁴/n)."
+  alt="Histogram of cross-fit σ̂² across 50 MC replications, sitting to the right of the marked σ² = 1 and of the theoretical N(σ², 2σ⁴/n) curve centered there. The in-sample estimates (mean 0.248) fall outside the plotted range; only their legend entry appears."
+  caption="In-sample plug-in σ̂² vs cross-fit one-step σ̂² across 50 MC replications at n=1000. The in-sample estimates average 0.248 (bias −0.752, SD 0.011), off the left edge of the plot; the over-fit bias is systematic, not Monte Carlo noise. Cross-fitting cuts the bias to +0.109 but does not center on σ² = 1: the remainder is the forest's out-of-fold nuisance error, the second-order term. The cross-fit SD (0.053) is 1.19× the efficient N(σ², 2σ⁴/n) benchmark drawn at the truth."
 />
 
 <EIFCorrectionForVariance client:visible />
 
 ### 11.3 Semiparametric-efficient calibration
 
-The standard frequentist recipe for calibrating prediction intervals in regression problems is to use out-of-sample residual variance — typically via cross-validation or a held-out test set. The §11 development shows this recipe is *exactly* the semiparametric-efficient estimator of $\sigma^2$: the cross-fit residual variance is the EIF-based one-step estimator, achieving the BKRW bound.
+The standard frequentist recipe for calibrating prediction intervals in regression problems is to use out-of-sample residual variance — typically via cross-validation or a held-out test set. The §11 development shows this recipe is *exactly* the EIF-based estimator of $\sigma^2$: the cross-fit residual variance is the one-step estimator, and it achieves the BKRW bound once the nuisance fit clears the $n^{-1/4}$ rate condition — which the §11.2 forest at $n = 1000$ does not yet do.
 
 This is the pedagogical synthesis. Different research communities have arrived at the same recipe — cross-fit residuals for calibration — via different theoretical lenses. The semiparametric framework places the recipe in a unified construction that applies to mean, variance, quantile, and ATE-style functionals.
 
@@ -1091,7 +1091,7 @@ This topic was scoped around discharging six internal forward-pointers across fi
 
 The §4.1 BKRW theorem, the §5.3 one-step asymptotic normality theorem, and the §7 DML CLT are all *asymptotic* statements. In finite samples, the asymptotic claims are *approximations*.
 
-The notebook MC experiments at $n = 1000$ show: Wald 95% CIs cover at empirical rates of roughly 92–95% — within a few percentage points of nominal, but reliably *below* nominal at modest $n$. The empirical SD of cross-fit DML matches $\sqrt{V_{\rm eff}/n}$ to within ~10%, not exactly. The asymptotic normal approximation has detectable skewness in the bulk and especially in the tails.
+The notebook MC experiments at $n = 1000$ show: in the experiments that do not deliberately violate the rate condition, Wald 95% CIs cover at empirical rates of 94–98% (95% in §7, 95% in §9.1, 98% in §9.3, 94% in §10.2), all within Monte Carlo error of nominal at $B = 50$–$200$ replications. The empirical SD of cross-fit DML sits 3–28% above $\sqrt{V_{\rm eff}/n}$ (1.03× in §7, 1.13× in §9.1, 1.19× and 1.28× in §9.2), not exactly at it. The asymptotic normal approximation has detectable skewness in the bulk and especially in the tails.
 
 These are *not* defects of the framework. The asymptotic theory is correctly applied; the finite-sample residuals are the natural consequence of working at $n = 1000$ with constants the asymptotics don't capture. As $n$ grows, the gaps shrink.
 

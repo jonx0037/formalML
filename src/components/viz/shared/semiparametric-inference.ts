@@ -227,7 +227,7 @@ export type AteSemiSample = {
   Y: Float64Array;
   /** Oracle propensity π(X_i) = σ(0.5 − x_1 + 0.5 x_2). */
   piOracle: Float64Array;
-  /** Oracle response under control μ_0(X_i) = 1 + 0.5 x_1 + x_2². */
+  /** Oracle response under control μ_0(X_i) = 1 + 2 x_1 + x_2². */
   mu0Oracle: Float64Array;
   /** Oracle response under treatment μ_1(X_i) = μ_0(X_i) + 1. */
   mu1Oracle: Float64Array;
@@ -238,7 +238,11 @@ export type AteSemiSample = {
 /**
  * Sample from the ATE DGP with constant true effect θ = 1.
  *   X ~ U([0,1]^5), π(x) = σ(0.5 − x_1 + 0.5 x_2),
- *   μ_0(x) = 1 + 0.5 x_1 + x_2², μ_1 = μ_0 + 1, Y = μ_D(X) + ε, ε ~ N(0,1).
+ *   μ_0(x) = 1 + 2 x_1 + x_2², μ_1 = μ_0 + 1, Y = μ_D(X) + ε, ε ~ N(0,1).
+ * x_1 lowers π and raises μ_0, so treated units have lower baseline outcomes
+ * and the naive difference in means is biased downward (exact bias ≈ −0.123).
+ * The x_2 path pushes the other way but is weaker, so the confounding does not
+ * cancel. The ATE efficiency bound is V_eff = E[1/π + 1/(1 − π)] ≈ 4.172.
  */
 export function sampleAte(
   n: number,
@@ -260,7 +264,7 @@ export function sampleAte(
       if (j === 0) x0 = v;
       else if (j === 1) x1 = v;
     }
-    const mu0 = 1 + 0.5 * x0 + x1 * x1;
+    const mu0 = 1 + 2 * x0 + x1 * x1;
     const mu1 = mu0 + 1;
     const pi = sigmoid(0.5 - x0 + 0.5 * x1);
     mu0Oracle[i] = mu0;
