@@ -15,8 +15,9 @@ import {
 // =============================================================================
 // CoverageCalibrationExplorer — §§1–3 widget.
 //
-// Lets the reader interpolate between homoscedastic (σ_max = 0) and strongly
-// heteroscedastic (σ_max = 0.6) noise on the running example, vary the data
+// Lets the reader interpolate between homoscedastic (noise slope = 0) and
+// strongly heteroscedastic noise on the running example (slope 0.6 is the
+// default: σ(x) = 0.2 + slope·|x|/3, so max σ = 0.2 + slope), vary the data
 // budget n, and toggle between four band types:
 //
 //   - constant-width: |y - sin(x)| ≤ w with w tuned to give 90% marginal
@@ -439,7 +440,7 @@ export default function CoverageCalibrationExplorer() {
 
       <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
         <label className="flex items-center gap-2 text-[var(--color-text-secondary)]">
-          <span className="font-mono text-xs">σ_max</span>
+          <span className="font-mono text-xs">noise slope</span>
           <input
             type="range"
             min={0}
@@ -492,7 +493,7 @@ export default function CoverageCalibrationExplorer() {
       </div>
 
       <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
-        Drag σ_max from 0 (homoscedastic) to 1 (strongly heteroscedastic) with the constant-width band selected:
+        Drag the noise slope s in σ(x) = 0.2 + s·|x|/3 from 0 (homoscedastic) to 1 (strongly heteroscedastic) with the constant-width band selected:
         the strip chart deforms from flat to U-shaped while the marginal stays near 0.9 — the gap Definition 2
         anticipates. Switch to pure-QR or oracle to flatten the strip chart at heteroscedasticity. Switch to
         split-conformal to see the same constant-width pathology under the proper conformal threshold.
