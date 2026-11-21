@@ -193,26 +193,28 @@ export default function VariationalBoundsExplorer() {
     [fenchelWidth, slopeS]
   );
 
-  // ── Right panel: NWJ bound for Gaussians ─────────────────────────
-  const nwjWidth = isStacked
+  // ── Right panel: Donsker–Varadhan bound for Gaussians ────────────
+  const dvWidth = isStacked
     ? containerWidth
     : containerWidth - fenchelWidth;
 
   // True KL divergence: KL(N(mu_p, 1) || N(0, 1)) = mu_p^2 / 2
   const trueKL = useMemo(() => (muP * muP) / 2, [muP]);
 
-  const nwjRef = useD3<SVGSVGElement>(
+  const dvRef = useD3<SVGSVGElement>(
     (svg) => {
       svg.selectAll('*').remove();
-      if (nwjWidth <= 0) return;
+      if (dvWidth <= 0) return;
 
-      const w = nwjWidth - MARGIN.left - MARGIN.right;
+      const w = dvWidth - MARGIN.left - MARGIN.right;
       const h = PANEL_HEIGHT - MARGIN.top - MARGIN.bottom;
       const g = svg
         .append('g')
         .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
-      // NWJ bound for linear T(x) = ax: bound = a*mu_p - a^2/2
+      // Donsker–Varadhan bound for linear T(x) = ax with p = N(mu_p, 1), q = N(0, 1):
+      // E_p[T] - log E_q[e^T] = a*mu_p - a^2/2. (The NWJ value a*mu_p - e^(a^2/2 - 1)
+      // is lower: 4 - e ≈ 1.28 at a = mu_p = 2, where DV reaches the true KL of 2.)
       const aMax = Math.max(muP * 2, 4);
       const aGrid = d3.range(-aMax, aMax, 0.05);
       const boundData = aGrid.map((a) => ({
@@ -319,12 +321,12 @@ export default function VariationalBoundsExplorer() {
         .style('fill', 'var(--color-text)')
         .style('font-size', '13px')
         .style('font-weight', '600')
-        .text('NWJ bound: E_p[T] − E_q[e^(T−1)]');
+        .text('DV bound: E_p[T] − log E_q[e^T]');
 
       g.selectAll('.domain').style('stroke', 'var(--color-border)');
       g.selectAll('.tick line').style('stroke', 'var(--color-border)');
     },
-    [nwjWidth, muP, trueKL]
+    [dvWidth, muP, trueKL]
   );
 
   return (
@@ -402,8 +404,8 @@ export default function VariationalBoundsExplorer() {
           style={{ overflow: 'visible' }}
         />
         <svg role="img" aria-label="Variational bounds explorer visualization (panel 2 of 2)"
-          ref={nwjRef}
-          width={nwjWidth}
+          ref={dvRef}
+          width={dvWidth}
           height={PANEL_HEIGHT}
           style={{ overflow: 'visible' }}
         />
