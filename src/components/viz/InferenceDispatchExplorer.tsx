@@ -8,22 +8,21 @@ import { useResizeObserver } from './shared/useResizeObserver';
 // paragraph in the probabilistic-programming topic. Three engines fitted
 // to the §4.1 Bayesian logistic regression on Iris versicolor-vs-virginica:
 //
-//   - NUTS:  scatter of 2000 posterior draws (β_1, β_2), tilted by the
-//            mild negative correlation between petal-length and petal-
-//            width slopes.
+//   - NUTS:  scatter of 2000 posterior draws (β_1, β_2). No tilt (the
+//            petal-length and petal-width slopes have correlation
+//            +0.066), but mildly right-skewed (skewness ≈ 0.5 each).
 //   - ADVI:  the mean-field Gaussian variational approximation rendered
 //            as a 95%-credible ellipse — necessarily axis-aligned because
-//            the family is mean-field, conspicuously so when overlaid on
-//            NUTS's tilted scatter.
-//   - MAP:   the L-BFGS optimum as a single star at the mode.
+//            the family is mean-field; its sds are ≈ 0.83× NUTS's, so
+//            293 of the 2000 NUTS draws fall outside it (the right tail).
+//   - MAP:   the L-BFGS optimum as a single star at the mode, (4.16, 4.01),
+//            below and left of the NUTS mean (5.03, 4.53).
 //
-// The §4.5 claim "the three methods converge to the same answer at very
+// The §4.5 claim that "all three methods give similar answers at very
 // different costs" becomes the visible fact that all three indicators
-// land in the same neighborhood. The §4.5 caveat that "ADVI's mean-field
-// marginals are slightly tighter than NUTS's" because the diagonal
-// covariance ignores the petal-length/width correlation becomes the
-// visible orientation gap between the orange ellipse and the blue
-// scatter.
+// land in the same neighborhood. The §4.5 caveat that ADVI's mean-field
+// marginals are tighter than NUTS's becomes the visible right tail of the
+// blue scatter that the orange ellipse leaves out.
 //
 // A side panel renders the ADVI -ELBO loss trajectory across 20000
 // optimization iterations (thinned to ~400 points for transport).

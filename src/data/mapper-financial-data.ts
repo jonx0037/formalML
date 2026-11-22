@@ -3,7 +3,9 @@
  *
  * 150 trading days across 3 regimes: bull → transition → bear → transition → bull.
  * The Mapper algorithm clusters these into ~9 nodes connected in a path graph,
- * revealing how market regimes transition smoothly — a key insight for risk management.
+ * revealing which regimes look alike in feature space — a key insight for risk
+ * management. Edges mean adjacency in the lens, not order in time: the lens and the
+ * clustering never see t.
  *
  * All values are deterministic via a hash-based noise function.
  */
