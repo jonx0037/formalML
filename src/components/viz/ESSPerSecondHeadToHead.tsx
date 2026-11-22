@@ -278,12 +278,18 @@ function PosteriorMeansPanel({ payload, width, height }: { payload: HeadToHeadPa
           <text x={-6} y={yS(t) + 3} textAnchor="end" fontSize={10} fill="var(--color-text, #333)">{t}</text>
         </g>
       ))}
-      {/* Truth markers (black diamonds) */}
+      {/* Truth: a dashed segment spanning all three methods, in the theme's text color, so it
+          is neither hidden under the centered SGHMC dot nor black-on-dark in dark mode. */}
       {truth.map((v, i) => (
-        <polygon
+        <line
           key={`truth-${i}`}
-          points={`${center(i)},${yS(v) - 5} ${center(i) + 5},${yS(v)} ${center(i)},${yS(v) + 5} ${center(i) - 5},${yS(v)}`}
-          fill="black"
+          x1={center(i) - 0.45 * bw}
+          x2={center(i) + 0.45 * bw}
+          y1={yS(v)}
+          y2={yS(v)}
+          stroke="var(--color-text, #333)"
+          strokeWidth={1.4}
+          strokeDasharray="4 3"
         />
       ))}
       {series.map(({ name, color, offset }) =>
@@ -324,7 +330,7 @@ function PosteriorMeansPanel({ payload, width, height }: { payload: HeadToHeadPa
           </g>
         ))}
         <g transform={`translate(0, 56)`}>
-          <polygon points={`10,-3 14,0 10,3 6,0`} fill="black" />
+          <line x1={4} x2={16} y1={0} y2={0} stroke="var(--color-text, #333)" strokeWidth={1.4} strokeDasharray="4 3" />
           <text x={20} y={3} fontSize={10} fill="var(--color-text, #333)">truth</text>
         </g>
       </g>
