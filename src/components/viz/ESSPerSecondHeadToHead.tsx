@@ -7,18 +7,20 @@
 // at N = 50,000 is infeasible to run in-browser (genuinely non-conjugate).
 //
 // Two panels:
-//   (a) ESS per second of wall-clock time vs N (log-log). NUTS dominates
-//       at small N; SGLD/SGHMC scale beyond it as full-batch gradients
-//       become the bottleneck. The crossover is around N ≈ 5k for this
-//       problem.
-//   (b) Posterior-mean estimates at N_max for the first 5 components,
-//       compared against the true β. NUTS recovers truth; SGLD lands at
-//       roughly 10× truth (the §8 mini-batch bias is dominant at these
-//       hyperparameters); SGHMC diverges at large N for the chosen
-//       friction–step pair. The §12.3 lesson: hyperparameters tuned for
-//       smaller N do not transfer automatically — the (η, C) pair we use
-//       here was tuned at N ≈ 1,000 and degrades visibly as N grows.
+//   (a) ESS per second of wall-clock time vs N (log-log). SG-MCMC step sizes
+//       are scaled to the posterior curvature, which grows linearly in N
+//       (SGLD η ∝ 1/N; SGHMC η ∝ 1/√N with C ∝ √N). NUTS leads at N = 500;
+//       SG-MCMC leads from N = 2,000 on and the gap widens with N, because
+//       NUTS pays O(N) per gradient.
+//   (b) Posterior mean ± 1 sd at N_max for the first 5 components, against
+//       the true β. All three methods recover the means; at fixed B = 32 the
+//       SG-MCMC spread is 5–10× NUTS's — the gradient-noise bias of (8.3),
+//       which ESS/sec does not see. With a FIXED η instead, SGLD crosses its
+//       stability limit ηλ_max < 2 near N = 10,000 and both chains diverge.
 //
+// Data: public/sample-data/stochastic-gradient-mcmc/head_to_head.json, written
+// by notebooks/stochastic-gradient-mcmc/precompute_head_to_head.py (same code
+// as notebook cell 26). ess_per_sec and wall_clock_sec are machine-dependent.
 // Controls: N selector. Other parameters fixed (this is a precomputed sweep).
 // Static fallback: /images/topics/stochastic-gradient-mcmc/12_head_to_head.png.
 // =============================================================================
@@ -35,13 +37,14 @@ interface HeadToHeadPayload {
   ess_per_sec: { SGLD: number[]; SGHMC: number[]; NUTS: number[] };
   wall_clock_sec: { SGLD: number[]; SGHMC: number[]; NUTS: number[] };
   posterior_means_at_N_max: { SGLD: number[]; SGHMC: number[]; NUTS: number[] };
+  posterior_sd_at_N_max?: { SGLD: number[]; SGHMC: number[]; NUTS: number[] };
 }
 
 const FIGURE_PATH = '/images/topics/stochastic-gradient-mcmc/12_head_to_head.png';
 const ALT =
-  'Two-panel head-to-head benchmark on Bayesian logistic regression. (a) ESS per second of wall-clock time vs dataset size N: NUTS dominates at small N; SGLD/SGHMC scale beyond it once full-batch gradients become the bottleneck. (b) Posterior means at N = 50,000 for the first 5 regression coefficients vs the true β.';
+  'Three-panel head-to-head benchmark on Bayesian logistic regression with step sizes scaled to N. (a) ESS per second vs dataset size N: NUTS leads at N = 500, SGLD and SGHMC lead from N = 2,000 on and the gap widens with N. (b) Posterior mean plus or minus one standard deviation at N = 50,000 for the first five coefficients: all methods recover the true means, but the SG-MCMC intervals are several times wider than NUTS\'s. (c) Wall-clock time vs N: NUTS grows roughly linearly in N while SG-MCMC stays flat.';
 const CAPTION =
-  'Figure 12. The §12 head-to-head decision pin. NUTS gives high-quality samples but pays O(N) per gradient; SGLD/SGHMC pay O(B) at the cost of finite-sample bias. NUTS recovers the true β at every N; SGLD lands roughly 10× off (the §8 O(η + 1/B) bias dominates here); SGHMC diverges at large N for this particular (η, C) pair — the same hyperparameters that worked at N ≈ 1,000 stop working at N = 50,000. The crossover in panel (a) happens around N ≈ 5,000; deeper architectures push it lower. The whole figure is a reminder that getting the bias-variance trade-off right takes per-N hyperparameter tuning, not one-shot defaults.';
+  'Figure 12. ESS per second vs N for SGLD, SGHMC and NUTS on Bayesian logistic regression, with the SG-MCMC step sizes scaled to the posterior curvature (∝ N). NUTS leads at N = 500 by about 1.5×; SG-MCMC leads from N = 2,000 on, by about 90× (SGLD) and 56× (SGHMC) at N = 50,000, because NUTS pays O(N) per gradient. Panel (b): all three recover the posterior means, but at fixed B = 32 the SG-MCMC posteriors are 5–10× too wide at N = 50,000 — the gradient-noise bias of eq. (8.3), invisible to ESS per second. With a fixed step size instead, SGLD crosses its stability limit near N = 10,000 and the chains diverge. Timings come from one machine.';
 const ARIA = 'Figure 12: SG-MCMC vs NUTS head-to-head on Bayesian logistic regression';
 
 export default function ESSPerSecondHeadToHead() {
@@ -129,7 +132,7 @@ function Panels({ payload, nIndex, width }: { payload: HeadToHeadPayload; nIndex
       <Panel title="(a) ESS / sec vs N (log-log)" width={panelW} height={panelH}>
         <ESSPanel payload={payload} nIndex={nIndex} width={panelW} height={panelH} />
       </Panel>
-      <Panel title={`(b) Posterior means at N = ${payload.N_grid[payload.N_grid.length - 1].toLocaleString()} (first 5 components)`} width={panelW} height={panelH}>
+      <Panel title={`(b) Posterior mean ± 1 sd at N = ${payload.N_grid[payload.N_grid.length - 1].toLocaleString()} (first 5 components)`} width={panelW} height={panelH}>
         <PosteriorMeansPanel payload={payload} width={panelW} height={panelH} />
       </Panel>
     </div>
@@ -238,21 +241,9 @@ function PosteriorMeansPanel({ payload, width, height }: { payload: HeadToHeadPa
   const innerH = height - margin.top - margin.bottom;
   const D = payload.true_beta_first5.length;
   const truth = payload.true_beta_first5;
-
-  const allMeans = [
-    ...payload.posterior_means_at_N_max.SGLD,
-    ...payload.posterior_means_at_N_max.SGHMC,
-    ...payload.posterior_means_at_N_max.NUTS,
-    ...truth,
-  ];
-  // Use sym log to handle SGHMC's diverged values without crushing the others.
-  const absMax = Math.max(...allMeans.map(Math.abs)) * 1.1;
-  const yS = d3.scaleSymlog().domain([-absMax, absMax]).constant(1).range([innerH, 0]);
-  const xS = d3
-    .scaleBand<number>()
-    .domain(Array.from({ length: D }, (_, i) => i))
-    .range([0, innerW])
-    .padding(0.25);
+  const means = payload.posterior_means_at_N_max;
+  const sds = payload.posterior_sd_at_N_max;
+  const sdOf = (name: 'SGLD' | 'SGHMC' | 'NUTS', i: number) => (sds ? sds[name][i] : 0);
 
   const series: { name: 'SGLD' | 'SGHMC' | 'NUTS'; color: string; offset: number }[] = [
     { name: 'SGLD', color: paletteSGMCMC.sgld, offset: -0.27 },
@@ -260,49 +251,75 @@ function PosteriorMeansPanel({ payload, width, height }: { payload: HeadToHeadPa
     { name: 'NUTS', color: paletteSGMCMC.nuts, offset: 0.27 },
   ];
 
-  const barW = (xS.bandwidth() ?? 30) / 4;
+  // Linear axis spanning every mean ± 1 sd and the truth: the point of the panel is that the
+  // SG-MCMC means agree with NUTS while their spread (posterior sd) is several times wider.
+  const ends = series.flatMap(({ name }) =>
+    means[name].flatMap((m, i) => [m - sdOf(name, i), m + sdOf(name, i)]),
+  );
+  const lo = Math.min(...ends, ...truth, 0);
+  const hi = Math.max(...ends, ...truth, 0);
+  const pad = 0.08 * (hi - lo || 1);
+  const yS = d3.scaleLinear().domain([lo - pad, hi + pad]).range([innerH, 0]).nice();
+  const xS = d3
+    .scaleBand<number>()
+    .domain(Array.from({ length: D }, (_, i) => i))
+    .range([0, innerW])
+    .padding(0.25);
+  const bw = xS.bandwidth() ?? 30;
+  const center = (i: number) => (xS(i) ?? 0) + bw / 2;
+  const yTicks = yS.ticks(5);
 
   return (
     <g transform={`translate(${margin.left},${margin.top})`}>
       <rect x={0} y={0} width={innerW} height={innerH} fill="var(--color-surface, #fafafa)" />
-      <line x1={0} x2={innerW} y1={yS(0)} y2={yS(0)} stroke="var(--color-text-muted, #888)" strokeOpacity={0.5} />
+      {yTicks.map((t) => (
+        <g key={`yt-${t}`}>
+          <line x1={0} x2={innerW} y1={yS(t)} y2={yS(t)} stroke="var(--color-text-muted, #888)" strokeOpacity={t === 0 ? 0.5 : 0.15} />
+          <text x={-6} y={yS(t) + 3} textAnchor="end" fontSize={10} fill="var(--color-text, #333)">{t}</text>
+        </g>
+      ))}
       {/* Truth markers (black diamonds) */}
       {truth.map((v, i) => (
         <polygon
           key={`truth-${i}`}
-          points={`${(xS(i) ?? 0) + (xS.bandwidth() ?? 0) / 2},${yS(v) - 5} ${(xS(i) ?? 0) + (xS.bandwidth() ?? 0) / 2 + 5},${yS(v)} ${(xS(i) ?? 0) + (xS.bandwidth() ?? 0) / 2},${yS(v) + 5} ${(xS(i) ?? 0) + (xS.bandwidth() ?? 0) / 2 - 5},${yS(v)}`}
+          points={`${center(i)},${yS(v) - 5} ${center(i) + 5},${yS(v)} ${center(i)},${yS(v) + 5} ${center(i) - 5},${yS(v)}`}
           fill="black"
         />
       ))}
       {series.map(({ name, color, offset }) =>
-        payload.posterior_means_at_N_max[name].map((v, i) => {
-          const cx = (xS(i) ?? 0) + (xS.bandwidth() ?? 0) / 2 + offset * (xS.bandwidth() ?? 0);
+        means[name].map((m, i) => {
+          const cx = center(i) + offset * bw;
+          const s = sdOf(name, i);
           return (
-            <rect
-              key={`${name}-${i}`}
-              x={cx - barW / 2}
-              y={Math.min(yS(0), yS(v))}
-              width={barW}
-              height={Math.abs(yS(v) - yS(0))}
-              fill={color}
-              opacity={0.85}
-            />
+            <g key={`${name}-${i}`}>
+              {s > 0 && (
+                <>
+                  <line x1={cx} x2={cx} y1={yS(m - s)} y2={yS(m + s)} stroke={color} strokeWidth={1.6} />
+                  <line x1={cx - 3} x2={cx + 3} y1={yS(m - s)} y2={yS(m - s)} stroke={color} strokeWidth={1.6} />
+                  <line x1={cx - 3} x2={cx + 3} y1={yS(m + s)} y2={yS(m + s)} stroke={color} strokeWidth={1.6} />
+                </>
+              )}
+              <circle cx={cx} cy={yS(m)} r={3.5} fill={color} />
+            </g>
           );
         }),
       )}
       <line x1={0} x2={innerW} y1={innerH} y2={innerH} stroke="var(--color-text-muted, #888)" />
       <line x1={0} x2={0} y1={0} y2={innerH} stroke="var(--color-text-muted, #888)" />
       {Array.from({ length: D }, (_, i) => (
-        <text key={i} x={(xS(i) ?? 0) + (xS.bandwidth() ?? 0) / 2} y={innerH + 16} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
+        <text key={i} x={center(i)} y={innerH + 16} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
           β_{i + 1}
         </text>
       ))}
-      <text transform={`translate(${-38}, ${innerH / 2}) rotate(-90)`} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">posterior mean (symlog)</text>
+      <text transform={`translate(${-38}, ${innerH / 2}) rotate(-90)`} textAnchor="middle" fontSize={10} fill="var(--color-text, #333)">
+        {sds ? 'posterior mean ± 1 sd' : 'posterior mean'}
+      </text>
       <g transform={`translate(${innerW + 8}, 12)`}>
         <rect x={0} y={-6} width={92} height={70} fill="var(--color-surface, #fff)" stroke="var(--color-border, #ccc)" />
         {series.map(({ name, color }, i) => (
           <g key={name} transform={`translate(0, ${i * 18})`}>
-            <rect x={4} y={0} width={12} height={8} fill={color} />
+            <line x1={10} x2={10} y1={-2} y2={10} stroke={color} strokeWidth={1.6} />
+            <circle cx={10} cy={4} r={3} fill={color} />
             <text x={20} y={7} fontSize={10} fill="var(--color-text, #333)">{name}</text>
           </g>
         ))}
