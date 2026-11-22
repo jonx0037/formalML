@@ -482,7 +482,7 @@ For the full proof of the Nerve Theorem, see our [Čech Complexes & Nerve Theore
 
 ## Financial Market Regime Detection
 
-One of Mapper's most compelling applications is **unsupervised market regime detection**. Financial markets exhibit distinct regimes — bull markets, bear markets, and transition periods — that correspond to different statistical properties of returns. Mapper can discover these regimes and their transitions without any labeled data, producing a topological map of market states.
+One of Mapper's most compelling applications is **unsupervised market regime detection**. Financial markets exhibit distinct regimes — bull markets, bear markets, and transition periods — that correspond to different statistical properties of returns. Mapper can discover these regimes, and where they blur into each other, without any labeled data, producing a topological map of market states.
 
 ### Feature Engineering
 
@@ -517,6 +517,7 @@ def generate_regime_returns(n_periods=2000):
 
     return returns, regime
 
+np.random.seed(2026)
 returns, true_regime = generate_regime_returns(2000)
 
 # Compute rolling features
@@ -555,11 +556,11 @@ The resulting graph reveals three key structures:
 
 1. **Regime clusters:** Nodes dominated by a single regime (blue = calm bull, red = volatile bear, green = recovery) form tight groups. These correspond to stable market states.
 
-2. **Transition edges:** Edges connecting nodes of different colors represent **regime transitions** — periods where market conditions are evolving from one state to another. These are precisely the points that fall in the overlap region of adjacent covering intervals.
+2. **Mixed edges:** An edge joins two nodes whose point sets share windows. Those shared windows fall in the overlap of two adjacent cover intervals of the lens (the L2 norm of the feature vector) and cluster with both nodes. So an edge between nodes of different dominant colors says that windows from two regimes look alike in feature space (similar rolling mean, volatility and skew), which is where the regimes are hard to tell apart. It is not by itself a record of the market moving from one state to the other: the lens and the clustering never see time. To read transitions into the graph, color the nodes by date, or check whether consecutive windows land in adjacent nodes.
 
-3. **Graph topology:** The overall graph structure reveals how regimes connect. If the graph has a loop, it suggests a **cyclical** pattern (e.g., bull to bear to recovery to bull). Branching suggests multiple possible transitions from a single state.
+3. **Graph topology:** The overall graph structure reveals how regimes sit next to each other in feature space. A loop means two different chains of overlapping clusters connect the same pair of states; whether the market actually travels around that loop in time is a separate question the graph alone cannot answer. Branching means one region of feature space borders several others.
 
-This is Mapper's unique contribution to market analysis: it provides a **topological map of market states and transitions** that standard clustering methods cannot produce. The graph is interpretable, colorable by any feature of interest, and directly reveals the transition dynamics.
+This is Mapper's unique contribution to market analysis: it provides a **topological map of market states** that standard clustering methods cannot produce — which states are adjacent and where regimes blur together. The graph is interpretable and colorable by any feature of interest; coloring it by date is what turns adjacency into a statement about transitions.
 
 <MarketRegimeMapper client:visible />
 

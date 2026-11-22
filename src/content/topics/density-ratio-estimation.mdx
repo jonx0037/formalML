@@ -1102,7 +1102,7 @@ The misspecification clause matters: when the model is *well-specified* — when
 
 ### Variance inflation and effective sample size
 
-The IW-ERM estimator's asymptotic correctness comes at a variance cost. The variance inflation factor relative to the unweighted estimator is approximately $\chi^2(p_{\text{test}} \,\|\, p_{\text{train}}) + 1$ — the same chi-squared quantity from §2.3. The operational diagnostic is again the effective sample size $n_{\text{eff}} = (\sum_i w_i)^2 / \sum_i w_i^2$. Two common practical adjustments: truncated importance weights $w_i \to \min(w_i, B)$ for some upper cap $B$ (trades bias for variance) and self-normalized weights $\hat R_{\text{IW}}^{\text{SN}}(f) = (\sum_i w_i L_i) / (\sum_i w_i)$ (introduces $O(1/n_{\text{train}})$ bias but reduces variance).
+The IW-ERM estimator's asymptotic correctness comes at a variance cost. The operational diagnostic is again the effective sample size $n_{\text{eff}} = (\sum_i w_i)^2 / \sum_i w_i^2$. Its inverse ratio $n_{\text{train}}/n_{\text{eff}}$ tends to $\mathbb{E}_{\text{train}}[w^2] = \chi^2(p_{\text{test}} \,\|\, p_{\text{train}}) + 1$ — the same chi-squared quantity from §2.3 — so $\chi^2 + 1$ is the effective-sample-size heuristic for the variance cost. It is not the exact variance ratio of the fitted parameters, which depends on the model and can differ a lot between parameters. Two common practical adjustments: truncated importance weights $w_i \to \min(w_i, B)$ for some upper cap $B$ (trades bias for variance) and self-normalized weights $\hat R_{\text{IW}}^{\text{SN}}(f) = (\sum_i w_i L_i) / (\sum_i w_i)$ (introduces $O(1/n_{\text{train}})$ bias but reduces variance).
 
 ### Numerical demonstration
 
@@ -1111,7 +1111,7 @@ We set up a misspecified linear-regression problem under covariate shift: true c
 <Figure
   src="/images/topics/density-ratio-estimation/10_covariate_shift.png"
   alt="Two-panel figure: left shows training scatter with four linear fits overlaid (unweighted, IW-true, IW-uLSIF, oracle) and the true y equals x squared curve. Right shows bar chart of test MSE for the four estimators."
-  caption="Covariate-shift correction on a misspecified linear-regression problem. The unweighted train fit converges to slope 2 because the train marginal puts mass at x equals 1 where x squared is steep. IW correction with either the true ratio or the uLSIF estimate moves the slope to near zero, matching the test-oracle fit. The bar chart makes the gap quantitative: unweighted test MSE is about three times the IW-corrected MSE on this DGP."
+  caption="Covariate-shift correction on a misspecified linear-regression problem. The unweighted train fit converges to slope 2 because the train marginal puts mass at x equals 1 where x squared is steep. IW correction with the true ratio moves the slope from 2.01 to 0.30, close to the test-oracle fit (0.02); with the uLSIF estimate it gets only partway (0.93). The bar chart makes the gap quantitative: the unweighted test MSE (7.13) is about 3.2 times the true-ratio IW fit's (2.20) and 2.4 times the uLSIF fit's (2.96) on this DGP."
 />
 
 ```python
@@ -1131,7 +1131,7 @@ def iw_linear_fit(x, y, w=None):
     return a, b
 ```
 
-The IW fit with the uLSIF-estimated ratio recovers the test-optimal slope to within 0.3 and tracks the IW-true-r fit's test MSE within $\sim 10\%$. The empirical $n_{\text{eff}}$ at $\mu_{\text{train}} = 1$ is about $200$ out of $500$ training samples — well above the $0.1$ threshold from §12.2, so the IW estimator is operating in a regime where the asymptotic guarantees apply.
+The IW fit with the true ratio recovers the test-optimal slope to within 0.3 (0.30 against the oracle's 0.02). The uLSIF-ratio fit stops at 0.93, and its test MSE (2.96) is 34% above the true-ratio fit's (2.20): the error in the estimated ratio costs part of the correction. The empirical $n_{\text{eff}}$ at $\mu_{\text{train}} = 1$ is about $200$ out of $500$ training samples — well above the $0.1$ threshold from §12.2, so the IW estimator is operating in a regime where the asymptotic guarantees apply.
 
 ## Conformal prediction under covariate shift
 
@@ -1400,7 +1400,7 @@ The four estimator families derived in this topic are mathematically clean and o
 
 **Calibration requirements for classification-DRE.** §7's classification-DRE identity assumes the classifier's predicted probabilities approximate the true posterior. Most modern classifiers are miscalibrated by default (Niculescu-Mizil and Caruana 2005; Guo et al. 2017). Plugging an uncalibrated classifier into the DRE identity gives a systematically biased ratio estimate, and the bias propagates into every downstream IW estimator without warning.
 
-**IW estimator variance is fundamental, not removable.** Even with a perfectly known $r$, the IW estimator's variance is inflated by $\chi^2(p \,\|\, q) + 1$ relative to the unweighted estimator. When the chi-squared divergence is large — which is the regime where reweighting matters most — IW estimators are unavoidably high-variance. Truncation and self-normalization help but introduce bias. There is no free lunch: large $\chi^2$ implies high IW variance.
+**IW estimator variance is fundamental, not removable.** Even with a perfectly known $r$, the IW estimator's effective sample size shrinks by the factor $\chi^2(p \,\|\, q) + 1$ relative to the unweighted estimator. When the chi-squared divergence is large — which is the regime where reweighting matters most — IW estimators are unavoidably high-variance. Truncation and self-normalization help but introduce bias. There is no free lunch: large $\chi^2$ implies high IW variance.
 
 **DRE in modern deep-learning practice.** The classical DRE pipeline — fit $\hat r$, then plug into a downstream IW estimator — is not always how the deep-learning community engages with density ratios. Modern generative models (GANs, score-based diffusion, VAE-GAN hybrids), contrastive representation learning (InfoNCE, SimCLR), and energy-based models all *implicitly* estimate density ratios as a side effect of their primary training objective. These implicit estimators are typically more accurate on high-dimensional structured data than explicit kernel-DRE, but they don't expose $\hat r$ as a first-class object; recovering it requires careful logit extraction or auxiliary discriminator probes.
 
