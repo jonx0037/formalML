@@ -197,7 +197,7 @@ That's the headline. Below it sit four secondary questions this topic resolves:
 - **What does the mini-batch gradient cost us?** SGLD's update rule replaces the full-data gradient with a mini-batch estimate. This is the only reason the method scales, but it injects extra noise into the SDE. Vollmer, Zygalakis, and Teh (2016) gave the finite-sample bias bound: under regularity, $\mathbb{E}[\phi(\theta_T)] - \pi(\phi) = O(\eta + B^{-1})$. We work that bound out and show what it means in practice.
 - **When does SGHMC actually beat SGLD?** The momentum extension is more expensive per step. We characterize the friction–noise trade-off (Chen, Fox, and Guestrin 2014) and pin down the regime where SGHMC's faster mixing pays for its higher cost — anisotropic posteriors with badly-conditioned curvature.
 - **What about hierarchical models like Neal's funnel?** The same funnel that motivated [probabilistic-programming](/topics/probabilistic-programming)'s non-centered reparameterization breaks SGLD and SGHMC alike, for the same geometric reason. The fix is to replace the Euclidean metric with the Fisher information — Riemann-manifold SG-MCMC (Patterson and Teh 2013; Ma, Chen, and Fox 2015). We derive the correction term and demonstrate the speedup.
-- **When should I reach for SG-MCMC over NUTS?** Closed answer at the end of the topic, with a head-to-head ESS-per-second comparison on a Bayesian logistic regression as $N$ grows from $500$ to $50{,}000$. NUTS dominates at small $N$; SG-MCMC dominates once full-batch gradients become the bottleneck.
+- **When should I reach for SG-MCMC over NUTS?** Closed answer at the end of the topic, with a head-to-head ESS-per-second comparison on a Bayesian logistic regression as $N$ grows from $500$ to $50{,}000$. NUTS edges ahead at the smallest $N$; SG-MCMC's lead grows with $N$ once full-batch gradients become NUTS's bottleneck, bought at a fixed mini-batch size with bias that also grows with $N$.
 
 ### 1.1 What we cover
 
@@ -659,7 +659,7 @@ $$
 r_{n+1} = (I - \eta C M^{-1})\, r_n - \eta\, \hat \nabla U_B(\theta_n) + \sqrt{2 \eta C}\, \xi_n.
 $$
 
-The mini-batch gradient noise injects an extra covariance $\eta^2\, V(\theta_n)$ into the momentum, where $V(\theta) = \mathrm{Cov}_S[\hat \nabla U_B(\theta)]$ is the per-step gradient-estimator variance at $\theta$. Chen, Fox, and Guestrin (2014) observed that this extra variance can be partially absorbed into the calibrated noise by replacing $C$ with $C - \tfrac{\eta}{2} V(\theta)$ in the $\sqrt{2 \eta \cdot}\, \xi_n$ term. In practice — including throughout BNN §7 — $\eta$ is small enough that the correction is dropped: $V(\theta)$ is hard to estimate, $\eta \cdot V(\theta)$ is much smaller than $C$, and the resulting bias is the same $O(\eta + B^{-1})$ that Vollmer–Zygalakis–Teh quantify in §8 anyway. The vanilla update (7.4) with $\hat \nabla U_B$ in place of $\nabla U$ is what we run.
+The mini-batch gradient noise injects an extra covariance $\eta^2\, V(\theta_n)$ into the momentum, where $V(\theta) = \mathrm{Cov}_S[\hat \nabla U_B(\theta)]$ is the per-step gradient-estimator variance at $\theta$. Chen, Fox, and Guestrin (2014) observed that this extra variance can be partially absorbed into the calibrated noise by replacing $C$ with $C - \tfrac{\eta}{2} V(\theta)$ in the $\sqrt{2 \eta \cdot}\, \xi_n$ term. In practice — including throughout BNN §7 — the correction is dropped: $V(\theta)$ is hard to estimate, $\eta \cdot V(\theta)$ is assumed small next to $C$, and the resulting bias is the same $O(\eta + B^{-1})$ that Vollmer–Zygalakis–Teh quantify in §8 anyway. The vanilla update (7.4) with $\hat \nabla U_B$ in place of $\nabla U$ is what we run. The smallness assumption is worth checking rather than trusting: on the §12.1 logistic-regression benchmark with $B = 32$, $\eta V / C$ is already about $0.5$ at $N = 500$ (with $C = 10$) and grows with $N$, which is where SGHMC's overdispersion in that benchmark comes from.
 
 ### 7.6 Why momentum mixes faster
 
@@ -1038,12 +1038,12 @@ The largest gap between SG-MCMC theory and SG-MCMC practice is hyperparameter se
 
 | Regime | $\eta$ | $B$ | $C$ (SGHMC) | Reference |
 |---|---|---|---|---|
-| Bayesian logistic regression, $N \sim 10^3$ | $10^{-3}$ | 32 | 0.1 | this notebook §6, §12 |
+| Bayesian logistic regression, $N = 500$ | $10^{-3}$ (SGLD), $5 \times 10^{-3}$ (SGHMC) | 32 | 10 | §12.1; rescale with $N$ |
 | Bayesian neural network, MNIST-scale | $10^{-5}$ | 128 | 0.05 | BNN §§6, 7 |
 | Bayesian neural network, ImageNet-scale | $10^{-6}$ | 512 | 0.01 | Wenzel et al. 2020 |
 | Hierarchical model with funnel pathology | $10^{-2}$ (RSGLD) | 64 | — | §10.6 |
 
-A useful rule-of-thumb: pick $\eta$ so that the per-step parameter change $\eta \|\nabla U\|$ is $\sim 10\%$ of the standard deviation of the chain at stationarity. This balances the discretization error against the noise floor.
+A useful rule-of-thumb: pick $\eta$ so that the per-step parameter change $\eta \|\nabla U\|$ is $\sim 10\%$ of the standard deviation of the chain at stationarity. This balances the discretization error against the noise floor. None of these values transfers across $N$: the posterior curvature grows linearly in $N$, so a fixed $\eta$ eventually crosses the stability limit $\eta \lambda_{\max} < 2$ of §8.5. §12.1 scales $\eta \propto 1/N$ for SGLD and $\eta \propto 1/\sqrt N$ with $C \propto \sqrt N$ for SGHMC from its $N = 500$ anchor.
 
 ## 12. SG-MCMC in Machine Learning
 
@@ -1051,11 +1051,11 @@ We have spent eleven sections developing the SG-MCMC framework on toy 2D targets
 
 ### 12.1 The head-to-head benchmark
 
-The natural way to compare SG-MCMC and NUTS is *effective sample size per second of wall-clock time* (ESS/sec). NUTS produces high-quality samples but pays a per-step cost of $O(N \cdot \text{tree depth})$ with full-data gradients; SG-MCMC produces lower-quality (biased) samples at $O(B)$ per step with mini-batched gradients. The crossover happens where NUTS's per-step cost outweighs its sampling-quality advantage.
+The natural way to compare SG-MCMC and NUTS is *effective sample size per second of wall-clock time* (ESS/sec). NUTS produces high-quality samples but pays a per-step cost of $O(N \cdot \text{tree depth})$ with full-data gradients; SG-MCMC produces lower-quality (biased) samples at $O(B)$ per step with mini-batched gradients. The crossover happens where NUTS's per-step cost outweighs its sampling-quality advantage — and where it lands also depends on how much bias the SG-MCMC chain carries at the step size it can afford.
 
 Our benchmark target is Bayesian logistic regression with $D = 10$ features and a Gaussian prior, varying the dataset size $N$ from $500$ to $50{,}000$. The posterior is asymptotically Gaussian by Bernstein–von Mises, so ESS is well-defined and the comparison across methods is meaningful. We measure ESS/sec for the marginal posterior mean of the first regression coefficient, $\beta_1$.
 
-The viz below runs all three methods — SGLD, SGHMC, NUTS — across the $N$ grid and reports the crossover. The headline result: at $N = 500$, NUTS dominates by a factor of $\sim 5\times$; at $N = 50{,}000$, SGLD dominates the wall-clock ESS race by orders of magnitude. The crossover happens around $N \approx 5{,}000$ for this problem; deeper architectures push it lower (SG-MCMC wins earlier) and well-conditioned problems push it higher.
+The viz below runs all three methods — SGLD, SGHMC, NUTS — across the $N$ grid. The SG-MCMC step sizes are scaled to the posterior curvature, which grows linearly in $N$: SGLD uses $\eta = 10^{-3} \cdot 500/N$, and SGHMC uses $\eta \propto 1/\sqrt N$ with friction $C \propto \sqrt N$ (anchored at $\eta = 5 \times 10^{-3}$, $C = 10$ at $N = 500$). Held fixed instead, $\eta = 10^{-3}$ crosses SGLD's stability limit $\eta \lambda_{\max} < 2$ (§8.5) near $N = 10{,}000$, and the chains diverge. With the scaling, NUTS leads at $N = 500$ by about $1.4$–$1.5\times$ (timed after a warm-up compile), SG-MCMC leads from $N = 2{,}000$ on, and the gap widens to about $90\times$ (SGLD) and $56\times$ (SGHMC) at $N = 50{,}000$, where NUTS pays $O(N)$ per gradient. The crossover falls between $N = 500$ and $2{,}000$ for this problem; no $N$ in between was run, and at these sizes the SG-MCMC wall-clock time is mostly loop overhead, so treat its location as rough. The SG-MCMC lead is bought with bias. For SGLD, $\eta\lambda$ is held fixed, but the gradient-noise factor $\sigma_g^2/(B\lambda)$ in (8.3) still grows linearly in $N$ at fixed $B = 32$; so at $N = 50{,}000$ both samplers' posterior means match NUTS within Monte Carlo error, while the posterior standard deviation of $\beta_1$ is about $7\times$ NUTS's for SGLD and $5\times$ for SGHMC (panel b). ESS per second does not see that overdispersion, so it is only half of the comparison: where the speed–bias trade turns depends on the problem and on how much bias the application can tolerate.
 
 <ESSPerSecondHeadToHead client:visible />
 
