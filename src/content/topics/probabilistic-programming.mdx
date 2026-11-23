@@ -214,7 +214,7 @@ with pm.Model() as model:
     idata = pm.sample(draws=1000, tune=1000, chains=2)
 ```
 
-The histogram of post-warmup posterior draws of $\theta$ should match the analytical $\mathrm{Beta}(16,\, 8)$ density to within Monte Carlo error of order $1/\sqrt{2000} \approx 0.022$ — panel (b) of Figure 1 below is a sanity check that this is what we get.
+The histogram of post-warmup posterior draws of $\theta$ should match the analytical $\mathrm{Beta}(16,\, 8)$ density up to Monte Carlo noise: the largest gap between the empirical CDF of $2000$ draws and the exact CDF is of order $1/\sqrt{2000} \approx 0.022$, and the posterior mean is pinned far more tightly, with a Monte Carlo standard error of about $0.094/\sqrt{2000} \approx 0.002$ for independent draws (the posterior standard deviation over $\sqrt{2000}$; the notebook's NUTS mean misses $0.6667$ by $0.0014$). Panel (b) of Figure 1 below is a sanity check that this is what we get.
 
 Notice everything we *didn't* do. We didn't compute the Jacobian of the Beta-to-unconstrained reparameterization NUTS needs. We didn't differentiate the joint log-density. We didn't tune the leapfrog step size or the dual-averaging schedule. We didn't write a Metropolis acceptance ratio. The model spec — three lines — was the entire user-side artifact, and the PPL produced everything else.
 
@@ -448,7 +448,7 @@ The reparameterization trick — $\boldsymbol{\eta} = \boldsymbol{\mu} + \boldsy
 
 ADVI is faster than NUTS by a factor that depends on model size and ELBO convergence speed — typically 5–50× for small models, 100–1000× for big ones. Its cost is structural: the mean-field Gaussian family is the simplest possible variational family, and posteriors with strong cross-correlations between parameters or with non-Gaussian shapes (multimodality, heavy tails, funnels) get distorted by it. The ADVI fit and the NUTS fit will agree to within sampling noise on well-behaved unimodal posteriors and disagree visibly on pathological ones.
 
-The ADVI diagnostic is the **ELBO trajectory** (or, equivalently, the loss trajectory if the optimizer is minimizing $-\mathrm{ELBO}$): a stable, monotonically decreasing loss curve that flattens at a plateau is what we want; a still-decreasing curve at the end of training is a signal to keep going.
+The ADVI diagnostic is the **ELBO trajectory** (or, equivalently, the loss trajectory if the optimizer is minimizing $-\mathrm{ELBO}$): a loss curve that trends downward (noisily, since each step's loss is a Monte Carlo estimate) and flattens at a plateau is what we want; a still-decreasing curve at the end of training is a signal to keep going.
 
 ### 4.4 MAP in 30 seconds
 
@@ -532,7 +532,7 @@ But they are not *geometrically equivalent* from NUTS's perspective. In the cent
 
 Panel (c) of Figure 5 plots the non-centered fit's draws of $(z_1, \log\tau)$ — the parameter NUTS actually saw — and the contrast with panel (b) is the punchline: the funnel is gone. The post-hoc $\theta_j = \mu + \tau z_j$ values reproduce the same marginal posterior on $\theta_j$ that the centered fit produces (they have to — the models are probabilistically equivalent), but the geometry NUTS navigated to compute that posterior is rectangular rather than funnel-shaped.
 
-The non-centered fit's diagnostics are clean: zero divergences, $\hat{R} \approx 1.00$ for all parameters, full-strength effective sample size. The reparameterization is purely a user-side change to the model code; the engine's behavior is identical. This is the gift of the PPL abstraction: the rewrite is a 3-line code edit, and the engine's machinery happily runs on the rewritten model with no further intervention.
+The non-centered fit's diagnostics are clean: zero divergences, $\hat{R} \approx 1.00$ for all parameters, and healthy effective sample sizes (in the notebook, bulk ESS for $\tau$ rises from $4$ to $516$ of the nominal 1000 draws, and for $\mu$ from $129$ to $1191$). The reparameterization is purely a user-side change to the model code; the engine's behavior is identical. This is the gift of the PPL abstraction: the rewrite is a 3-line code edit, and the engine's machinery happily runs on the rewritten model with no further intervention.
 
 <CenteredVsNonCenteredMorph client:visible />
 
